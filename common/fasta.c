@@ -15,6 +15,8 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "fasta.h"
+
 ssize_t
 load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 	char buf[512], name[512];

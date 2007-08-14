@@ -1,6 +1,7 @@
 /*	$Id$	*/
 
 #include <stdint.h>
+#include <string.h>
 
 #include <sys/time.h>
 

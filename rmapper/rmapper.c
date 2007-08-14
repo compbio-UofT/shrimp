@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -144,7 +145,7 @@ scan()
 	struct read_elem *re;
 	uint32_t i, idx, kmer, kmer_mask;
 	uint32_t base, skip = 0, score;
-	uint32_t goff, glen, rlen;
+	uint32_t goff, glen;
 	int prevhit;
 
 	kmer = EXTRACT(genome, 0);
@@ -216,6 +217,9 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
 	static int first = 1;
 	uint32_t word;
+	
+	/* shut up icc */
+	(void)name;
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
@@ -271,6 +275,9 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	static uint32_t past_kmers[MAX_KMERS_PER_READ];
 	static uint32_t npast_kmers;
 	int i;
+
+	/* shut up icc */
+	(void)offset;
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
@@ -345,7 +352,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	if (skip == 0 && ++cnt >= kmer_len) {
 		struct read_node *rn;
-		int i, unique = 1;
+		int unique = 1;
 
 		/*
 		 * Ensure that this kmer is unique within the read. If it's
@@ -432,7 +439,7 @@ print_pretty(struct read_elem *re)
 		printf("Score:   %d   (read start/end: %d/%d)\n",
 		    re->scores[i].score, sfr.read_start,
 		    sfr.read_start + sfr.mapped - 1);
-		printf("Index:   %d\n", goff + aoff);
+		printf("Index:   %u\n", goff + aoff);
 		
 		printf("Reftig:  ");
 		for (j = 4; j > 0; j--) {
@@ -499,7 +506,7 @@ print_normal(struct read_elem *re)
 		sw_full(genome, goff, glen, re->read, re->read_len,
 		    re->scores[i].score, NULL, NULL, &sfr);
 
-		printf("[%s] %d %d %d %d %d %d %d %d\n", re->name, sfr.score,
+		printf("[%s] %d %u %d %d %d %d %d %d\n", re->name, sfr.score,
 		    goff + sfr.genome_start,sfr.read_start, sfr.mapped,
 		    sfr.matches, sfr.mismatches, sfr.insertions, sfr.deletions);
 	}
@@ -573,15 +580,12 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	extern char *optarg;
-	extern int optind;
-
 	struct timeval tv1, tv2;
 	char *genome_file, *reads_file, *progname;
 	struct read_elem *re;
 	double cellspersec;
 	uint64_t invocs, cells;
-	int i, j, ch, hits = 0;
+	int ch, hits = 0;
 
 	progname = argv[0];
 
@@ -691,16 +695,16 @@ main(int argc, char **argv)
 	}
 
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    kmer length:                %d\n", kmer_len);
-	fprintf(stderr, "    kmer matches per window:    %d\n", num_matches);
-	fprintf(stderr, "    kmer taboo length:          %d\n", taboo_len);
-	fprintf(stderr, "    kmer window length:         %d\n", window_len);
-	fprintf(stderr, "    maximum hits per read:      %d\n", num_outputs);
+	fprintf(stderr, "    kmer length:                %u\n", kmer_len);
+	fprintf(stderr, "    kmer matches per window:    %u\n", num_matches);
+	fprintf(stderr, "    kmer taboo length:          %u\n", taboo_len);
+	fprintf(stderr, "    kmer window length:         %u\n", window_len);
+	fprintf(stderr, "    maximum hits per read:      %u\n", num_outputs);
 	fprintf(stderr, "    S-W match value:            %d\n", match_value);
 	fprintf(stderr, "    S-W mismatch value:         %d\n", mismatch_value);
 	fprintf(stderr, "    S-W gap open penalty:       %d\n", gap_open);
 	fprintf(stderr, "    S-W gap extend penalty:     %d\n", gap_extend);
-	fprintf(stderr, "    S-W hit threshold:          %d\n", sw_threshold);
+	fprintf(stderr, "    S-W hit threshold:          %u\n", sw_threshold);
 	fprintf(stderr, "\n");
 
 	gettimeofday(&tv1, NULL);
@@ -737,13 +741,13 @@ main(int argc, char **argv)
 	    ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
 	    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6) -
 	    (double)cells / cellspersec);
-	fprintf(stderr, "        Total Kmers:            %d\n", nkmers);
+	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    cells / cellspersec);
-	fprintf(stderr, "        Invocations:            %llu\n", invocs);
+	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
 	fprintf(stderr, "        Cells per Second:       %.2f million\n",
@@ -755,7 +759,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "    Scalar Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    cells / cellspersec);
-	fprintf(stderr, "        Invocations:            %llu\n", invocs);
+	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
 	fprintf(stderr, "        Cells per Second:       %.2f million\n",

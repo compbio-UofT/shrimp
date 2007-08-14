@@ -40,3 +40,7 @@ struct read_node {
 	struct read_elem *read;
 	struct read_node *next;
 };
+
+/* for optarg (and to shut up icc) */
+extern char *optarg;
+extern int optind;

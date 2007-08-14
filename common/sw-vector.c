@@ -51,7 +51,7 @@ static uint64_t swticks, swcells, swinvocs;
 static int
 vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 {
-	int i, j, score;
+	int i, j, score = 0;
 	__m128i v_score, v_zero, v_gap_ext, v_gap_open_ext;
 	__m128i v_match, v_mismatch;
 	__m128i v_a_gap, v_b_gap, v_nogap;
@@ -59,8 +59,11 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 	__m128i v_tmp;
 	int16_t w[8];
 
-#define SET16(a, e7, e6, e5, e4, e3, e2, e1, e0) \
-	_mm_set_epi16(a[e7],a[e6],a[e5],a[e4],a[e3],a[e2],a[e1],a[e0])
+#define SET16(a, e7, e6, e5, e4, e3, e2, e1, e0)      \
+	_mm_set_epi16((int16_t)a[e7], (int16_t)a[e6], \
+		      (int16_t)a[e5], (int16_t)a[e4], \
+		      (int16_t)a[e3], (int16_t)a[e2], \
+		      (int16_t)a[e1], (int16_t)a[e0])
 
 	v_score		= _mm_setzero_si128();
 	v_zero		= _mm_setzero_si128();
@@ -72,7 +75,7 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 
         for (i = 0; i < lena + 14; i++) {
                 nogap[i] = 0;
-                b_gap[i] = -gap_open;
+                b_gap[i] = (int16_t)-gap_open;
         }
 
 	for (i = 0; i < (lenb + 7)/8; i++) {
@@ -122,8 +125,8 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 			v_prev_nogap = v_nogap;
 			v_nogap = v_last_nogap;
 
-			b_gap[j] = _mm_extract_epi16(v_b_gap, 7);
-			nogap[j] = _mm_extract_epi16(v_nogap, 7);
+			b_gap[j] = (int16_t)_mm_extract_epi16(v_b_gap, 7);
+			nogap[j] = (int16_t)_mm_extract_epi16(v_nogap, 7);
 
 			v_score = _mm_max_epi16(v_score, v_last_nogap);
 		}
@@ -203,10 +206,10 @@ sw(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen)
 	memset(qr, -2, (qrlen + 14) * sizeof(qr[0]));
 
 	for (i = 0; i < glen; i++)
-		db[i+7] = EXTRACT(genome, goff + i);
+		db[i+7] = (int8_t)EXTRACT(genome, goff + i);
 
 	for (i = 0; i < rlen; i++)
-		qr[i+7] = EXTRACT(read, i);
+		qr[i+7] = (int8_t)EXTRACT(read, i);
 
 	score = vect_sw(&db[0], glen, &qr[7], rlen);
 

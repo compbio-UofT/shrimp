@@ -62,10 +62,11 @@ static char	       *dbalign, *qralign;
 static void
 full_sw(int lena, int lenb, int maxscore, int *iret, int *jret)
 {
-	char *q, *d;
-	int starti, startj;
-	int i, j, k, l, done;
+	int i, j;
 	int score, ms, go, ge, tmp, tmp2;
+
+	/* shut up gcc */
+	j = 0;
 
 	score = 0;
 	go = gap_open;
@@ -181,7 +182,7 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret)
 static int
 do_backtrace(int lena, int i, int j, struct sw_full_results *sfr)
 {
-	int k, from, fromscore, n, w, nw;
+	int k, from, fromscore;
 
 	from = SWM(i, j).back_northwest;
 	fromscore = SWM(i, j).score_northwest;
@@ -295,17 +296,17 @@ pretty_print(int i, int j, int k)
 		switch (backtrace[l]) {
 		case BACK_DELETION:
 			*d++ = '-';
-			*q++ = '0' + qr[i++];
+			*q++ = (char)('0' + qr[i++]);
 			break;
 
 		case BACK_INSERTION:
-			*d++ = '0' + db[j++];
+			*d++ = (char)('0' + db[j++]);
 			*q++ = '-';
 			break;
 
 		case BACK_MATCH_MISMATCH:
-			*d++ = '0' + db[j++];
-			*q++ = '0' + qr[i++];
+			*d++ = (char)('0' + db[j++]);
+			*q++ = (char)('0' + qr[i++]);
 			break;
 
 		default:
@@ -407,10 +408,10 @@ sw_full(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 		*qralignp = qralign;
 	
 	for (i = 0; i < glen; i++)
-		db[i] = EXTRACT(genome, goff + i);
+		db[i] = (int8_t)EXTRACT(genome, goff + i);
 
 	for (i = 0; i < rlen; i++)
-		qr[i] = EXTRACT(read, i);
+		qr[i] = (int8_t)EXTRACT(read, i);
 
 	full_sw(glen, rlen, maxscore, &i, &j);
 	k = do_backtrace(glen, i, j, sfr);
