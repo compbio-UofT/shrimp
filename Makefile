@@ -1,5 +1,4 @@
-CC=/home/rumble/intel/cce/10.0.025/bin/icc
-CFLAGS=-mcpu=pentium4 -O3
+CFLAGS=-Wall -Werror -O3 -static
 
 rmapper: rmapper.c fasta.o sw-vector.o sw-full.o util.o
 	$(CC) $(CFLAGS) -o $@ $+

@@ -1,0 +1,19 @@
+$Id$
+
+Building rmapper is easy - it requires a C compiler (gcc and icc have been
+used during development) and gmake. Intel's C Compiler (icc) is highly
+recommended as it is often at least 10-20% faster than gcc.
+
+Please note that rmapper is x86-only. Pentium 4 architectures seem to benefit
+considerably from 64-bit compiled code, whereas Core 2 architectures don't
+seem to care much.
+
+When building with icc, execute the following:
+	gmake CC="icc" CFLAGS="-Wall -Werror -axP -O3 -ipo -static"
+
+When building with gcc, execute the following:
+	gmake CC="gcc" CFLAGS="-Wall -Werror -O3"
+
+You may want to adjust your flags depending on your hardware and compiler
+versions. The above icc CFLAGS seemed optimal for both Pentium 4 and Core 2
+architectures.
