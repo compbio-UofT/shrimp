@@ -49,6 +49,7 @@ static u_int	nkmers;				/* total kmers of reads loaded*/
 static u_int	max_read_len;			/* longest read we've seen */
 
 /* Flags */
+static int bflag = 0;				/* print a progress bar */
 static int pflag = 0;				/* pretty print results */
 static int qflag = 1;				/* qsort output */
 
@@ -137,6 +138,56 @@ save_score(struct read_elem *re, int score, int index)
 	reheap(scores, 1);
 }
 
+static void
+progress_bar(uint32_t at, uint32_t of)
+{
+	static int lastperc, beenhere;
+	static char whirly = '\\';
+
+	char progbuf[52];
+	int perc, i, j;
+
+	perc = (at * 100) / of;
+
+	if (beenhere && perc - lastperc == 0)
+		return;
+
+	beenhere = 1;
+	lastperc = perc;
+
+	/* any excuse to have a whirly gig */
+	switch (whirly) {
+	case '|':
+		whirly = '/';
+		break;
+	case '/':
+		whirly = '-';
+		break;
+	case '-':
+		whirly = '\\';
+		break;
+	case '\\':
+		whirly = '|';
+		break;
+	}
+	progbuf[25] = whirly;
+		
+	for (i = j = 0; i <= 100; i += 2) {
+		if (j != 25) {
+			if (i <= perc)
+				progbuf[j++] = '=';
+			else
+				progbuf[j++] = ' ';
+		} else {
+			j++;
+		}
+	}
+	progbuf[51] = '\0';
+
+	fprintf(stderr, "\rProgress: [%s] %3d%%", progbuf, perc);
+	fflush(stderr);
+}
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan()
@@ -155,6 +206,9 @@ scan()
 	kmer_mask = 0xffffffff >> (32 - (kmer_len * 2));
 
 	for (i = kmer_len - 1; i < genome_len; i++) {
+		if (bflag)
+			progress_bar(i, genome_len);
+
 		base = EXTRACT(genome, i);
 		kmer = (kmer << 2) | base;
 		kmer &= kmer_mask;
@@ -209,6 +263,11 @@ scan()
 				}
 			}
 		}
+	}
+
+	if (bflag) {
+		progress_bar(i, genome_len);
+		fprintf(stderr, "\n\n");
 	}
 }
 
@@ -571,6 +630,10 @@ usage(char *progname)
 	fprintf(stderr, "options:\n");
 
 	fprintf(stderr,
+	    "    -b    Print scan progress bar                 (default: "
+	    "disabled)\n"); 
+
+	fprintf(stderr,
 	    "    -p    Pretty print alignments                 (default: "
 	    "disabled)\n"); 
 
@@ -589,7 +652,7 @@ main(int argc, char **argv)
 
 	progname = argv[0];
 
-	while ((ch = getopt(argc, argv, "k:n:t:w:o:m:i:g:e:s:p")) != -1) {
+	while ((ch = getopt(argc, argv, "k:n:t:w:o:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
 		case 'k':
 			kmer_len = atoi(optarg);
@@ -620,6 +683,9 @@ main(int argc, char **argv)
 			break;
 		case 's':
 			sw_threshold = atoi(optarg);
+			break;
+		case 'b':
+			bflag = 1;
 			break;
 		case 'p':
 			pflag = 1;
