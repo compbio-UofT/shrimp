@@ -140,7 +140,7 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 }
 
 int
-sw_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
+sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
     int _match, int _mismatch)
 {
 
@@ -173,7 +173,8 @@ sw_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 }
 
 void
-sw_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks, double *cellspersec)
+sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
+    double *cellspersec)
 {
 	
 	if (invoc != NULL)
@@ -187,7 +188,7 @@ sw_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks, double *cellspersec)
 }
 
 int
-sw(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen)
+sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen)
 {
 	uint64_t before, after;
 	int i, score;

@@ -199,7 +199,7 @@ scan()
 				else
 					glen = window_len * 2;
 
-				score = sw(genome, goff, glen,
+				score = sw_vector(genome, goff, glen,
 				    re->read, re->read_len);
 
 				if (score >= sw_threshold) {
@@ -680,7 +680,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (sw_setup(window_len * 2, max_read_len,
+	if (sw_vector_setup(window_len * 2, max_read_len,
 	    gap_open, gap_extend, match_value, mismatch_value)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
@@ -712,7 +712,7 @@ main(int argc, char **argv)
 	gettimeofday(&tv2, NULL);
 
 	if (!pflag) {
-		printf("# '[READ_NAME] score index read_start "
+		printf("# [READ_NAME] score index read_start "
 		    "read_mapped_length matches mismatches "
 		    "insertions deletions\n");
 	}
@@ -721,9 +721,10 @@ main(int argc, char **argv)
 		if (re->swhits == 0)
 			continue;
 
-		if (qflag)
+		if (qflag) {
 			qsort(&re->scores[1], re->scores[0].score,
 			    sizeof(re->scores[0]), qsort_scores);
+		}
 
 		if (pflag)
 			print_pretty(re);
@@ -733,7 +734,7 @@ main(int argc, char **argv)
 		hits++;
 	}
 
-	sw_stats(&invocs, &cells, NULL, &cellspersec);
+	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
 	
 	fprintf(stderr, "Statistics:\n");
 	fprintf(stderr, "    Kmer Scan:\n");
