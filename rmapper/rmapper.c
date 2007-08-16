@@ -28,6 +28,7 @@ static u_int window_len		= DEF_WINDOW_LEN;
 static u_int num_matches	= DEF_NUM_MATCHES;
 static u_int taboo_len		= DEF_TABOO_LEN;
 static u_int num_outputs	= DEF_NUM_OUTPUTS;
+static u_int max_read_len	= DEF_MAX_READ_LEN;
 
 static int   match_value	= DEF_MATCH_VALUE;
 static int   mismatch_value	= DEF_MISMATCH_VALUE;
@@ -46,7 +47,7 @@ static struct read_node **readmap;		/* kmer to read map */
 static u_int	nreads;				/* total reads loaded */
 static u_int	nkmers;				/* total kmers of reads loaded*/
 
-static u_int	max_read_len;			/* longest read we've seen */
+static u_int	longest_read_len;		/* longest read we've seen */
 
 /* Flags */
 static int bflag = 0;				/* print a progress bar */
@@ -393,8 +394,16 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		memset(re, 0, sizeof(struct read_elem) +
                     (sizeof(re->hits[0]) * num_matches));
 		re->name = strdup(name);
-		memset(re->read, 0, sizeof(re->read));
 		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
+
+		re->read = malloc(sizeof(re->read[0]) *
+		    ((max_read_len + 15) / 16));
+		if (re->read == NULL) {
+			perror("load_reads_helper: malloc failed");
+			exit(1);
+		}
+		memset(re->read, 0,
+		    sizeof(re->read[0]) * ((max_read_len + 15) / 16));
 
 		re->scores = malloc(sizeof(struct re_score) * (num_outputs +1));
 		if (re->scores == NULL) {
@@ -424,9 +433,10 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	if (base == 4)
 		skip = seed_span;
 	
-	if (re->read_len == 32) {
-		fprintf(stderr, "error: read [%s] exceeds 32 characters\n",
-		    re->name);
+	if (re->read_len == max_read_len) {
+		fprintf(stderr, "error: read [%s] exceeds %u characters\n"
+		    "please increase the maximum read length parameter\n",
+		    re->name, max_read_len);
 		exit(1);
 	}
 
@@ -438,7 +448,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	word |= (base << (2 * (re->read_len & 15)));
 	re->read[re->read_len >> 4] = word;
 	re->read_len++;
-	max_read_len = MAX(re->read_len, max_read_len);
+	longest_read_len = MAX(re->read_len, longest_read_len);
 
 	if (skip == 0 && ++cnt >= seed_span) {
 		struct read_node *rn;
@@ -661,6 +671,10 @@ usage(char *progname)
 	    DEF_NUM_OUTPUTS);
 
 	fprintf(stderr,
+	    "    -r    maximum read length                     (default: %d)\n",
+	    DEF_MAX_READ_LEN);
+
+	fprintf(stderr,
 	    "    -m    S-W match value                         (default: %d)\n",
 	    DEF_MATCH_VALUE);
 
@@ -706,7 +720,7 @@ main(int argc, char **argv)
 
 	progname = argv[0];
 
-	while ((ch = getopt(argc, argv, "k:n:t:w:o:m:i:g:e:s:pb")) != -1) {
+	while ((ch = getopt(argc, argv, "k:n:t:w:o:r:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
 		case 's':
 			spaced_seed = strdup(optarg);
@@ -726,6 +740,9 @@ main(int argc, char **argv)
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
+			break;
+		case 'r':
+			max_read_len = atoi(optarg);
 			break;
 		case 'm':
 			match_value = atoi(optarg);
@@ -804,14 +821,14 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (sw_vector_setup(window_len * 2, max_read_len,
+	if (sw_vector_setup(window_len * 2, longest_read_len,
 	    gap_open, gap_extend, match_value, mismatch_value)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
 		exit(1);
 	}
 
-	if (sw_full_setup(window_len * 2, max_read_len,
+	if (sw_full_setup(window_len * 2, longest_read_len,
 	    gap_open, gap_extend, match_value, mismatch_value)) {
 		fprintf(stderr, "failed to initialise scalar "
 		    "Smith-Waterman (%s)\n", strerror(errno));
@@ -829,6 +846,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "    seed taboo length:          %u\n", taboo_len);
 	fprintf(stderr, "    seed window length:         %u\n", window_len);
 	fprintf(stderr, "    maximum hits per read:      %u\n", num_outputs);
+	fprintf(stderr, "    maximum read length:        %u\n", max_read_len);
 	fprintf(stderr, "    S-W match value:            %d\n", match_value);
 	fprintf(stderr, "    S-W mismatch value:         %d\n", mismatch_value);
 	fprintf(stderr, "    S-W gap open penalty:       %d\n", gap_open);

@@ -9,6 +9,8 @@
 #define DEF_NUM_MATCHES		2
 #define DEF_TABOO_LEN		4
 #define DEF_NUM_OUTPUTS		100
+#define DEF_MAX_READ_LEN	64
+
 #define DEF_MATCH_VALUE		100
 #define DEF_MISMATCH_VALUE	-70
 #define DEF_GAP_OPEN		-100
@@ -23,7 +25,7 @@ struct re_score {
 struct read_elem {
 	char		 *name;
 	struct read_elem *next;			/* next in read list */
-	uint32_t	  read[2];		/* XXX - max 32 bases */
+	uint32_t	 *read;			/* the read as a bitstring */
 	uint32_t	  read_len;
 
 	int		  swhits;		/* num of hits with sw */
