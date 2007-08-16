@@ -192,12 +192,12 @@ progress_bar(uint32_t at, uint32_t of)
 }
 
 /* compress the given kmer into an index in 'readmap' according to the seed */
-static uint64_t
-kmer_to_mapidx(uint64_t kmer)
+static uint32_t
+kmer_to_mapidx(uint32_t *kmer)
 {
 	static int seed_span;
 
-	uint64_t mapidx;
+	uint32_t mapidx;
 	int i;
 
 	if (seed_span == 0)
@@ -207,11 +207,27 @@ kmer_to_mapidx(uint64_t kmer)
 	for (i = seed_span - 1; i >= 0; i--) {
 		if (spaced_seed[i] == '1') {
 			mapidx = mapidx << 2;
-			mapidx |= (kmer & (3 << (i * 2))) >> (i * 2);
+			mapidx |= (kmer[i / 16] & (3 << ((i % 16) * 2))) >>
+			    ((i % 16) * 2);
 		}
 	}
 
 	return (mapidx);
+}
+
+/* append 'valbits' of 'val' to the start of the bitfield in 'bf' */
+static void
+bitfield_append(uint32_t *bf, int totbits, uint32_t val, int valbits)
+{
+	uint32_t tmp;
+	int i;
+
+	for (i = 0; i < (totbits + 15) / 16; i++) {
+		tmp = bf[i] >> (32 - valbits);
+		bf[i] <<= valbits;
+		bf[i] |= val;
+		val = tmp;
+	}
 }
 
 /* scan the genome by kmers, running S-W as needed, and updating scores */
@@ -220,24 +236,30 @@ scan()
 {
 	struct read_node *rn;
 	struct read_elem *re;
-	uint64_t kmer, mapidx;
-	uint32_t i, idx;
+	uint32_t *kmer;
+	uint32_t i, idx, mapidx;
 	uint32_t base, skip = 0, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
 
 	seed_span = strlen(spaced_seed);
 
-	kmer = 0;
+	kmer = malloc(sizeof(kmer[0] * ((seed_span + 15) / 16)));
+	if (kmer == NULL) {
+		perror("scan: malloc failed\n");
+		exit(1);
+	}
+	
+	memset(kmer, 0, sizeof(kmer[0] * ((seed_span + 15) / 16)));
 	for (i = 0; i < seed_span - 1; i++)
-		kmer = (kmer << 2) | EXTRACT(genome, i);
+		bitfield_append(kmer, seed_span, EXTRACT(genome, i), 2);
 
 	for (i = seed_span - 1; i < genome_len; i++) {
 		if (bflag)
 			progress_bar(i, genome_len);
 
 		base = EXTRACT(genome, i);
-		kmer = (kmer << 2) | base;
+		bitfield_append(kmer, seed_span, base, 2);
 		mapidx = kmer_to_mapidx(kmer);
 
 		/*
@@ -357,7 +379,7 @@ static void
 load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
 	static struct read_elem *re = NULL;
-	static uint64_t kmer;
+	static uint32_t *kmer;
 	static uint32_t word, cnt, skip;
 	static uint32_t past_kmers[MAX_KMERS_PER_READ];
 	static uint32_t npast_kmers;
@@ -368,6 +390,14 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	seed_span = strlen(spaced_seed);
 	seed_weight = strchrcnt(spaced_seed, '1');
+
+	if (kmer == NULL) {
+		kmer = malloc(sizeof(kmer[0]) * ((seed_span + 15) / 16));
+		if (kmer == NULL) {
+			perror("load_reads_helper: malloc failed");
+			exit(1);
+		}
+	}
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
@@ -417,7 +447,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		for (i = 1; i <= re->scores[0].score; i++)
 			re->scores[i].score = 0x80000000 + i;
 
-		word = kmer = cnt = npast_kmers = 0;
+		word = cnt = npast_kmers = 0;
+		memset(kmer, 0, sizeof(kmer[0]) * ((seed_span + 15) / 16));
 		re->next = reads;
 		reads = re;
 		nreads++;
@@ -440,8 +471,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
-	kmer = (kmer << 2);
-	kmer |= base;
+	bitfield_append(kmer, seed_span, base, 2);
 
 	word = re->read[re->read_len >> 4];
 	word &= ~(0x3 << (2 * (re->read_len & 15)));
@@ -452,7 +482,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	if (skip == 0 && ++cnt >= seed_span) {
 		struct read_node *rn;
-		uint64_t mapidx;
+		uint32_t mapidx;
 		int unique = 1;
 
 		/*
@@ -624,7 +654,10 @@ valid_spaced_seed()
 	seed_span = strlen(spaced_seed);
 	seed_weight = strchrcnt(spaced_seed, '1');
 
-	if (seed_span < 1 || seed_span > 32)
+	if (seed_span < 1)
+		return (0);
+
+	if (strchrcnt(spaced_seed, '1') > 16)
 		return (0);
 
 	if (strchrcnt(spaced_seed, '0') != seed_span - seed_weight) 
@@ -651,27 +684,27 @@ usage(char *progname)
 	fprintf(stderr, "parameters:\n");
 
 	fprintf(stderr,
-	    "    -s    spaced seed                             (default: %s)\n",
+	    "    -s    Spaced seed                             (default: %s)\n",
 	    DEF_SPACED_SEED);
 
 	fprintf(stderr,
-	    "    -n    seed matches per window                 (default: %d)\n",
+	    "    -n    Seed matches per window                 (default: %d)\n",
 	    DEF_NUM_MATCHES);
 
 	fprintf(stderr,
-	    "    -t    seed taboo length                       (default: %d)\n",
+	    "    -t    Seed taboo length                       (default: %d)\n",
 	    DEF_TABOO_LEN);
 
 	fprintf(stderr,
-	    "    -w    seed window length                      (default: %d)\n",
+	    "    -w    Seed window length                      (default: %d)\n",
 	    DEF_WINDOW_LEN);
 
 	fprintf(stderr,
-	    "    -o    maximum hits per read                   (default: %d)\n",
+	    "    -o    Maximum hits per read                   (default: %d)\n",
 	    DEF_NUM_OUTPUTS);
 
 	fprintf(stderr,
-	    "    -r    maximum read length                     (default: %d)\n",
+	    "    -r    Maximum read length                     (default: %d)\n",
 	    DEF_MAX_READ_LEN);
 
 	fprintf(stderr,
@@ -837,16 +870,16 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    spaced seed:                %s\n", spaced_seed);
-	fprintf(stderr, "    spaced seed span:           %u\n",
+	fprintf(stderr, "    Spaced seed:                %s\n", spaced_seed);
+	fprintf(stderr, "    Spaced seed span:           %u\n",
 	    (u_int)strlen(spaced_seed));
-	fprintf(stderr, "    spaced seed weight:         %u\n",
+	fprintf(stderr, "    Spaced seed weight:         %u\n",
 	    strchrcnt(spaced_seed, '1'));
-	fprintf(stderr, "    seed matches per window:    %u\n", num_matches);
-	fprintf(stderr, "    seed taboo length:          %u\n", taboo_len);
-	fprintf(stderr, "    seed window length:         %u\n", window_len);
-	fprintf(stderr, "    maximum hits per read:      %u\n", num_outputs);
-	fprintf(stderr, "    maximum read length:        %u\n", max_read_len);
+	fprintf(stderr, "    Seed matches per window:    %u\n", num_matches);
+	fprintf(stderr, "    Seed taboo length:          %u\n", taboo_len);
+	fprintf(stderr, "    Seed window length:         %u\n", window_len);
+	fprintf(stderr, "    Maximum hits per read:      %u\n", num_outputs);
+	fprintf(stderr, "    Maximum read length:        %u\n", max_read_len);
 	fprintf(stderr, "    S-W match value:            %d\n", match_value);
 	fprintf(stderr, "    S-W mismatch value:         %d\n", mismatch_value);
 	fprintf(stderr, "    S-W gap open penalty:       %d\n", gap_open);
