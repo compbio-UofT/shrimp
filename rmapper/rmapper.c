@@ -819,10 +819,10 @@ main(int argc, char **argv)
 	}
 
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    spaced seed:                  %s\n", spaced_seed);
-	fprintf(stderr, "    spaced seed span:             %u\n",
+	fprintf(stderr, "    spaced seed:                %s\n", spaced_seed);
+	fprintf(stderr, "    spaced seed span:           %u\n",
 	    (u_int)strlen(spaced_seed));
-	fprintf(stderr, "    spaced seed weight:           %u\n",
+	fprintf(stderr, "    spaced seed weight:         %u\n",
 	    strchrcnt(spaced_seed, '1'));
 	fprintf(stderr, "    seed matches per window:    %u\n", num_matches);
 	fprintf(stderr, "    seed taboo length:          %u\n", taboo_len);
@@ -865,7 +865,7 @@ main(int argc, char **argv)
 	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
 	
 	fprintf(stderr, "Statistics:\n");
-	fprintf(stderr, "    Kmer Scan:\n");
+	fprintf(stderr, "    Spaced Seed Scan:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
 	    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6) -
