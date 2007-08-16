@@ -641,7 +641,7 @@ usage(char *progname)
 	fprintf(stderr, "parameters:\n");
 
 	fprintf(stderr,
-	    "    -k    spaced seed                             (default: %s)\n",
+	    "    -s    spaced seed                             (default: %s)\n",
 	    DEF_SPACED_SEED);
 
 	fprintf(stderr,
@@ -677,7 +677,7 @@ usage(char *progname)
 	    DEF_GAP_EXTEND);
 
 	fprintf(stderr,
-	    "    -s    S-W hit threshold                       (default: %d)\n",
+	    "    -h    S-W hit threshold                       (default: %d)\n",
 	    DEF_SW_THRESHOLD);
 
 	fprintf(stderr, "\n");
@@ -708,7 +708,7 @@ main(int argc, char **argv)
 
 	while ((ch = getopt(argc, argv, "k:n:t:w:o:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
-		case 'k':
+		case 's':
 			spaced_seed = strdup(optarg);
 			if (spaced_seed == NULL) {
 				fprintf(stderr, "error: strdup failed\n");
@@ -739,7 +739,7 @@ main(int argc, char **argv)
 		case 'e':
 			gap_extend = atoi(optarg);
 			break;
-		case 's':
+		case 'h':
 			sw_threshold = atoi(optarg);
 			break;
 		case 'b':
@@ -818,6 +818,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	fprintf(stderr, "\n");
 	fprintf(stderr, "Settings:\n");
 	fprintf(stderr, "    spaced seed:                %s\n", spaced_seed);
 	fprintf(stderr, "    spaced seed span:           %u\n",
