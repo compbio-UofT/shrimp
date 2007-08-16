@@ -4,7 +4,7 @@
 
 #define EXTRACT(_genome, _i) (((_genome)[(_i) >> 4] >> (2 * ((_i) & 15))) & 0x3)
 
-#define DEF_KMER_LEN		7
+#define DEF_KMER_SEED		"11110111"
 #define DEF_WINDOW_LEN		30
 #define DEF_NUM_MATCHES		2
 #define DEF_TABOO_LEN		4

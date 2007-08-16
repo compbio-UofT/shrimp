@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <sys/time.h>
+#include <sys/types.h>
 
 #include "util.h"
 
@@ -36,4 +37,18 @@ cpuhz()
 	after = rdtsc();
 
 	return (((double)(after - before) / diff) * 1.0e6);
+}
+
+u_int
+strchrcnt(const char *str, const char c)
+{
+	int i;
+
+	i = 0;
+	while (*str != '\0') {
+		if (*str++ == c)
+			i++;
+	}
+
+	return (i);
 }

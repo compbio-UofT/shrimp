@@ -5,3 +5,4 @@
 
 uint64_t rdtsc(void);
 double   cpuhz(void);
+u_int	 strchrcnt(const char *, const char);

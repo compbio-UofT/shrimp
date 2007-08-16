@@ -23,7 +23,7 @@
 #include "util.h"
 
 /* External parameters */
-static u_int kmer_len		= DEF_KMER_LEN;
+static char *kmer_seed		= DEF_KMER_SEED;
 static u_int window_len		= DEF_WINDOW_LEN;
 static u_int num_matches	= DEF_NUM_MATCHES;
 static u_int taboo_len		= DEF_TABOO_LEN;
@@ -147,13 +147,15 @@ progress_bar(uint32_t at, uint32_t of)
 	char progbuf[52];
 	int perc, i, j;
 
-	perc = (at * 100) / of;
+	perc = (at * 1000) / of;
 
-	if (beenhere && perc - lastperc == 0)
+	if (beenhere && perc - lastperc != 1)
 		return;
 
 	beenhere = 1;
 	lastperc = perc;
+
+	perc /= 10;
 
 	/* any excuse to have a whirly gig */
 	switch (whirly) {
@@ -188,30 +190,54 @@ progress_bar(uint32_t at, uint32_t of)
 	fflush(stderr);
 }
 
+/* compress the given kmer into an index in 'readmap' according to the seed */
+static uint64_t
+kmer_to_mapidx(uint64_t kmer)
+{
+	static int seed_span;
+
+	uint64_t mapidx;
+	int i;
+
+	if (seed_span == 0)
+		seed_span = strlen(kmer_seed);
+
+	mapidx = 0;
+	for (i = seed_span - 1; i >= 0; i--) {
+		if (kmer_seed[i] == '1') {
+			mapidx = mapidx << 2;
+			mapidx |= (kmer & (3 << (i * 2))) >> (i * 2);
+		}
+	}
+
+	return (mapidx);
+}
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan()
 {
 	struct read_node *rn;
 	struct read_elem *re;
-	uint32_t i, idx, kmer, kmer_mask;
+	uint64_t kmer, mapidx;
+	uint32_t i, idx;
 	uint32_t base, skip = 0, score;
 	uint32_t goff, glen;
-	int prevhit;
+	int prevhit, kmer_span;
 
-	kmer = EXTRACT(genome, 0);
-	kmer = (kmer << 2) | EXTRACT(genome, 1);
-	kmer = (kmer << 2) | EXTRACT(genome, 2);
+	kmer_span = strlen(kmer_seed);
 
-	kmer_mask = 0xffffffff >> (32 - (kmer_len * 2));
+	kmer = 0;
+	for (i = 0; i < kmer_span - 1; i++)
+		kmer = (kmer << 2) | EXTRACT(genome, i);
 
-	for (i = kmer_len - 1; i < genome_len; i++) {
+	for (i = kmer_span - 1; i < genome_len; i++) {
 		if (bflag)
 			progress_bar(i, genome_len);
 
 		base = EXTRACT(genome, i);
 		kmer = (kmer << 2) | base;
-		kmer &= kmer_mask;
+		mapidx = kmer_to_mapidx(kmer);
 
 		/*
 		 * If this is an invalid colour (our representation of 'N' in
@@ -220,16 +246,16 @@ scan()
 		 * XXX - currently not possible! 2 bits per colour!
 		 */
 		if (base == 4)
-			skip = kmer_len - 1;
+			skip = kmer_span - 1;
 
 		if (skip > 0) {
 			skip--;
 			continue;
 		}
 
-		idx = i - (kmer_len - 1);
+		idx = i - (kmer_span - 1);
 
-		for (rn = readmap[kmer]; rn != NULL; rn = rn->next) {
+		for (rn = readmap[mapidx]; rn != NULL; rn = rn->next) {
 			re = rn->read;
 
 			prevhit = re->hits[re->prev_hit];
@@ -330,19 +356,23 @@ static void
 load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
 	static struct read_elem *re = NULL;
-	static uint32_t word, kmer, kmer_mask, cnt, skip;
+	static uint64_t kmer;
+	static uint32_t word, cnt, skip;
 	static uint32_t past_kmers[MAX_KMERS_PER_READ];
 	static uint32_t npast_kmers;
-	int i;
+	int i, kmer_span, kmer_weight;
 
 	/* shut up icc */
 	(void)offset;
+
+	kmer_span = strlen(kmer_seed);
+	kmer_weight = strchrcnt(kmer_seed, '1');
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
 		size_t alloclen;
 
-		alloclen = sizeof(struct read_node *) * power(4, kmer_len);
+		alloclen = sizeof(struct read_node *) * power(4, kmer_weight);
 		readmap = malloc(alloclen);
 		if (readmap == NULL) {
 			perror("load_reads_helper: malloc failed");
@@ -373,6 +403,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		}
 		re->scores[0].score = num_outputs;
 		re->scores[0].index = 0;
+
+		/* init scores to negatives so we only need percolate down */
 		for (i = 1; i <= re->scores[0].score; i++)
 			re->scores[i].score = 0x80000000 + i;
 
@@ -390,7 +422,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	 * colour space), then don't use this kmer.
 	 */
 	if (base == 4)
-		skip = kmer_len;
+		skip = kmer_span;
 	
 	if (re->read_len == 32) {
 		fprintf(stderr, "error: read [%s] exceeds 32 characters\n",
@@ -398,8 +430,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
-	kmer_mask = 0xffffffff >> (32 - (kmer_len * 2));
-	kmer = (kmer << 2) & kmer_mask;
+	kmer = (kmer << 2);
 	kmer |= base;
 
 	word = re->read[re->read_len >> 4];
@@ -409,8 +440,9 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	re->read_len++;
 	max_read_len = MAX(re->read_len, max_read_len);
 
-	if (skip == 0 && ++cnt >= kmer_len) {
+	if (skip == 0 && ++cnt >= kmer_span) {
 		struct read_node *rn;
+		uint64_t mapidx;
 		int unique = 1;
 
 		/*
@@ -433,10 +465,12 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 				perror("load_reads_helper: malloc failed");
 				exit(1);
 			}
+
+			mapidx = kmer_to_mapidx(kmer);
 			
 			rn->read = re;
-			rn->next = readmap[kmer];
-			readmap[kmer] = rn;
+			rn->next = readmap[mapidx];
+			readmap[mapidx] = rn;
 			past_kmers[npast_kmers++] = word;
 			nkmers++;
 		}
@@ -572,6 +606,26 @@ print_normal(struct read_elem *re)
 	putchar('\n');
 }
 
+static int
+valid_kmer_seed()
+{
+	u_int seed_span, seed_weight;
+
+	seed_span = strlen(kmer_seed);
+	seed_weight = strchrcnt(kmer_seed, '1');
+
+	if (seed_span < 1 || seed_span > 32)
+		return (0);
+
+	if (strchrcnt(kmer_seed, '0') != seed_span - seed_weight) 
+		return (0);
+
+	if (seed_weight < 1)
+		return (0);
+
+	return (1);
+}
+
 static void
 usage(char *progname)
 {
@@ -587,8 +641,8 @@ usage(char *progname)
 	fprintf(stderr, "parameters:\n");
 
 	fprintf(stderr,
-	    "    -k    kmer length                             (default: %d)\n",
-	    DEF_KMER_LEN);
+	    "    -k    kmer seed                               (default: %s)\n",
+	    DEF_KMER_SEED);
 
 	fprintf(stderr,
 	    "    -n    kmer matches per window                 (default: %d)\n",
@@ -655,7 +709,11 @@ main(int argc, char **argv)
 	while ((ch = getopt(argc, argv, "k:n:t:w:o:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
 		case 'k':
-			kmer_len = atoi(optarg);
+			kmer_seed = strdup(optarg);
+			if (kmer_seed == NULL) {
+				fprintf(stderr, "error: strdup failed\n");
+				exit(1);
+			}
 			break;
 		case 'n':
 			num_matches = atoi(optarg);
@@ -703,12 +761,12 @@ main(int argc, char **argv)
 	genome_file = argv[0];
 	reads_file  = argv[1];
 
-	if (kmer_len < 1 || kmer_len > 16) {
-		fprintf(stderr, "error: invalid kmer length\n");
+	if (!valid_kmer_seed()) {
+		fprintf(stderr, "error: invalid kmer seed\n");
 		exit(1);
 	}
 
-	if (window_len < 1 || window_len < kmer_len) {
+	if (window_len < 1 || window_len < strlen(kmer_seed)) {
 		fprintf(stderr, "error: invalid window length\n");
 		exit(1);
 	}
@@ -761,7 +819,11 @@ main(int argc, char **argv)
 	}
 
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    kmer length:                %u\n", kmer_len);
+	fprintf(stderr, "    kmer seed:                  %s\n", kmer_seed);
+	fprintf(stderr, "    kmer seed span:             %u\n",
+	    (u_int)strlen(kmer_seed));
+	fprintf(stderr, "    kmer seed weight:           %u\n",
+	    strchrcnt(kmer_seed, '1'));
 	fprintf(stderr, "    kmer matches per window:    %u\n", num_matches);
 	fprintf(stderr, "    kmer taboo length:          %u\n", taboo_len);
 	fprintf(stderr, "    kmer window length:         %u\n", window_len);
