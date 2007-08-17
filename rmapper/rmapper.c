@@ -622,7 +622,7 @@ valid_spaced_seed()
 	if (seed_span < 1)
 		return (0);
 
-	if (strchrcnt(spaced_seed, '1') > 16)
+	if (strchrcnt(spaced_seed, '1') > MAX_SEED_WEIGHT)
 		return (0);
 
 	if (strchrcnt(spaced_seed, '0') != seed_span - seed_weight) 

@@ -15,6 +15,16 @@
 #define DEF_GAP_EXTEND		-70
 #define DEF_SW_THRESHOLD	1875
 
+/*
+ * The maximum seed weight (maximum number of 1's in the seed) sets an
+ * upper limit on our lookup table allocation size. The memory usage of
+ * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * sizeof(void *).
+ * At 16, this is 16GB on 32-bit and 32GB on 64-bit architectures.
+ */
+#ifndef
+#define MAX_SEED_WEIGHT		16
+#endif
+
 struct re_score {
 	int32_t  score;				/* doubles as heap cnt in [0] */
 	uint32_t index;
