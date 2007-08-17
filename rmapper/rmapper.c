@@ -54,6 +54,12 @@ static int bflag = 0;				/* print a progress bar */
 static int pflag = 0;				/* pretty print results */
 static int qflag = 1;				/* qsort output */
 
+/* Scan stats */
+static uint64_t shortest_scanned_kmer_list;
+static uint64_t longest_scanned_kmer_list;
+static uint64_t kmer_lists_scanned;
+static uint64_t kmer_list_entries_scanned;
+
 static size_t
 power(size_t base, size_t exp)
 {
@@ -258,7 +264,7 @@ scan()
 	struct read_node *rn;
 	struct read_elem *re;
 	uint32_t *kmer;
-	uint32_t i, idx, mapidx;
+	uint32_t i, j, idx, mapidx;
 	uint32_t base, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
@@ -280,6 +286,7 @@ scan()
 
 		idx = i - (seed_span - 1);
 
+		j = 0;
 		for (rn = readmap[mapidx]; rn != NULL; rn = rn->next) {
 			re = rn->read;
 
@@ -313,7 +320,14 @@ scan()
 					re->swhits++;
 				}
 			}
+
+			j++;
 		}
+
+		kmer_list_entries_scanned += j;
+		shortest_scanned_kmer_list = MIN(shortest_scanned_kmer_list, j);
+		longest_scanned_kmer_list = MAX(longest_scanned_kmer_list, j);
+		kmer_lists_scanned++;
 	}
 
 	if (bflag) {
@@ -884,6 +898,12 @@ main(int argc, char **argv)
 	    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6) -
 	    (double)cells / cellspersec);
 	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
+	fprintf(stderr, "        Minimal Kmer List:      %" PRIu64 "\n",
+	    shortest_scanned_kmer_list);
+	fprintf(stderr, "        Maximal Kmer List:      %" PRIu64 "\n",
+	    longest_scanned_kmer_list);
+	fprintf(stderr, "        Average Kmer List:      %.2f\n",
+	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
@@ -909,7 +929,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    General:\n");
-	fprintf(stderr, "        Reads matched:          %d\n", hits);
+	fprintf(stderr, "        Reads Matched:          %d\n", hits);
 	
 	return (0);
 }
