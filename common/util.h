@@ -6,3 +6,5 @@
 uint64_t rdtsc(void);
 double   cpuhz(void);
 u_int	 strchrcnt(const char *, const char);
+void    *xmalloc(size_t);
+char    *xstrdup(const char *);

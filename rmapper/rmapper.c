@@ -264,12 +264,7 @@ scan()
 
 	seed_span = strlen(spaced_seed);
 
-	kmer = malloc(sizeof(kmer[0] * ((seed_span + 15) / 16)));
-	if (kmer == NULL) {
-		perror("scan: malloc failed\n");
-		exit(1);
-	}
-	
+	kmer = xmalloc(sizeof(kmer[0] * ((seed_span + 15) / 16)));
 	memset(kmer, 0, sizeof(kmer[0] * ((seed_span + 15) / 16)));
 	for (i = 0; i < seed_span - 1; i++)
 		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i));
@@ -350,12 +345,7 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
-		genome = malloc((offset + 3) / 4);
-		if (genome == NULL) {
-			fprintf(stderr, "error: malloc failed: %s\n",
-			    strerror(errno));
-			exit(1);
-		}
+		genome = xmalloc((offset + 3) / 4);
 		memset(genome, 0, (offset + 3) / 4);
 		return;
 	}
@@ -389,8 +379,8 @@ load_genome(const char *file)
 static void
 load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
-	static struct read_elem *re = NULL;
-	static uint32_t **past_kmers = NULL;
+	static struct read_elem *re;
+	static uint32_t **past_kmers;
 	static uint32_t *kmer;
 	static uint32_t cnt, skip;
 	static uint32_t npast_kmers;
@@ -404,29 +394,16 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	seed_span = strlen(spaced_seed);
 	seed_weight = strchrcnt(spaced_seed, '1');
 
-	if (kmer == NULL) {
-		kmer = malloc(sizeof(kmer[0]) * ((seed_span + 15) / 16));
-		if (kmer == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
-	}
+	if (kmer == NULL)
+		kmer = xmalloc(sizeof(kmer[0]) * ((seed_span + 15) / 16));
 
 	if (past_kmers == NULL) {
 		len = sizeof(past_kmers[0]) * (max_read_len - seed_span + 1);
-		past_kmers = malloc(len);
-		if (past_kmers == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
+		past_kmers = xmalloc(len);
 
 		len = sizeof(kmer[0]) * ((seed_span + 15) / 16);
 		for (i = 0; i < (max_read_len - seed_span + 1); i++) {
-			past_kmers[i] = malloc(len);
-			if (past_kmers[i] == NULL) {
-				perror("load_reads_helper: malloc failed");
-				exit(1);
-			}
+			past_kmers[i] = xmalloc(len);
 			memset(past_kmers[i], 0, len);
 		}
 	}
@@ -434,42 +411,26 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	/* handle initial call to alloc resources */
 	if (base == -1) {
 		len = sizeof(struct read_node *) * power(4, seed_weight);
-		readmap = malloc(len);
-		if (readmap == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
+		readmap = xmalloc(len);
 		memset(readmap, 0, len);
 		return;
 	}
 
 	if (isnewentry) {
-		re = malloc(sizeof(struct read_elem) +
-		    (sizeof(re->hits[0]) * num_matches));
-		if (re == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
+		len = sizeof(struct read_elem) +
+		    (sizeof(re->hits[0]) * num_matches);
+		re = xmalloc(len);
+		memset(re, 0, len);
 
-		memset(re, 0, sizeof(struct read_elem) +
-                    (sizeof(re->hits[0]) * num_matches));
 		re->name = strdup(name);
 		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
 
-		re->read = malloc(sizeof(re->read[0]) *
-		    ((max_read_len + 15) / 16));
-		if (re->read == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
-		memset(re->read, 0,
-		    sizeof(re->read[0]) * ((max_read_len + 15) / 16));
+		len = sizeof(re->read[0]) * ((max_read_len + 15) / 16);
+		re->read = xmalloc(len);
+		memset(re->read, 0, len);
 
-		re->scores = malloc(sizeof(struct re_score) * (num_outputs +1));
-		if (re->scores == NULL) {
-			perror("load_reads_helper: malloc failed");
-			exit(1);
-		}
+		len = sizeof(struct re_score) * (num_outputs + 1);
+		re->scores = xmalloc(len);
 		re->scores[0].score = num_outputs;
 		re->scores[0].index = 0;
 
@@ -532,11 +493,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		}
 		
 		if (unique) {
-			rn = malloc(sizeof(struct read_node));
-			if (rn == NULL) {
-				perror("load_reads_helper: malloc failed");
-				exit(1);
-			}
+			rn = xmalloc(sizeof(struct read_node));
 
 			mapidx = kmer_to_mapidx(kmer);
 			
@@ -788,11 +745,7 @@ main(int argc, char **argv)
 	while ((ch = getopt(argc, argv, "k:n:t:w:o:r:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
 		case 's':
-			spaced_seed = strdup(optarg);
-			if (spaced_seed == NULL) {
-				fprintf(stderr, "error: strdup failed\n");
-				exit(1);
-			}
+			spaced_seed = xstrdup(optarg);
 			break;
 		case 'n':
 			num_matches = atoi(optarg);

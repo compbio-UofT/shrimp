@@ -1,7 +1,12 @@
 /*	$Id$	*/
 
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -51,4 +56,34 @@ strchrcnt(const char *str, const char c)
 	}
 
 	return (i);
+}
+
+void *
+xmalloc(size_t size)
+{
+	void *ptr;
+
+	ptr = malloc(size);
+	if (ptr == NULL) {
+		fprintf(stderr, "error: malloc failed: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	return (ptr);
+} 
+
+char *
+xstrdup(const char *str)
+{
+	char *dup;
+
+	assert(str != NULL);
+
+	dup = strdup(str);
+	if (dup == NULL) {
+		fprintf(stderr, "error: strdup failed: %s\n", strerror(errno));
+		exit(1);
+	}
+
+	return (dup);
 }
