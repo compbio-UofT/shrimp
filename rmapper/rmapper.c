@@ -258,7 +258,7 @@ scan()
 	struct read_elem *re;
 	uint32_t *kmer;
 	uint32_t i, idx, mapidx;
-	uint32_t base, skip = 0, score;
+	uint32_t base, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
 
@@ -276,20 +276,6 @@ scan()
 		base = EXTRACT(genome, i);
 		bitfield_prepend(kmer, seed_span, base);
 		mapidx = kmer_to_mapidx(kmer);
-
-		/*
-		 * If this is an invalid colour (our representation of 'N' in
-		 * colour space), then don't use this kmer.
-		 *
-		 * XXX - currently not possible! 2 bits per colour!
-		 */
-		if (base == 4)
-			skip = seed_span - 1;
-
-		if (skip > 0) {
-			skip--;
-			continue;
-		}
 
 		idx = i - (seed_span - 1);
 
@@ -382,8 +368,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	static struct read_elem *re;
 	static uint32_t **past_kmers;
 	static uint32_t *kmer;
-	static uint32_t cnt, skip;
-	static uint32_t npast_kmers;
+	static uint32_t cnt, npast_kmers;
 
 	size_t len;
 	int i, seed_span, seed_weight;
@@ -450,13 +435,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	assert(re != NULL);
 
-	/*
-	 * If this is an invalid colour (our representation of 'N' in
-	 * colour space), then don't use this kmer.
-	 */
-	if (base == 4)
-		skip = seed_span;
-	
 	if (re->read_len == max_read_len) {
 		fprintf(stderr, "error: read [%s] exceeds %u characters\n"
 		    "please increase the maximum read length parameter\n",
@@ -470,7 +448,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
 
-	if (skip == 0 && ++cnt >= seed_span) {
+	if (++cnt >= seed_span) {
 		struct read_node *rn;
 		uint32_t mapidx;
 		int unique = 1;
@@ -504,9 +482,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 			nkmers++;
 		}
 	}
-
-	if (skip > 0)
-		skip--;
 }
 
 static int
