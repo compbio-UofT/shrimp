@@ -215,19 +215,39 @@ kmer_to_mapidx(uint32_t *kmer)
 	return (mapidx);
 }
 
-/* prepend 'valbits' of 'val' to the start of the bitfield in 'bf' */
+/*
+ * Prepend the low 2 bits of 'val' to the start of the bitfield in 'bf'.
+ * 'entries' is the maximum number of 2-bit words to be sotred in the
+ * bitfield.
+ */
 static void
-bitfield_prepend(uint32_t *bf, int totbits, uint32_t val, int valbits)
+bitfield_prepend(uint32_t *bf, int entries, uint32_t val)
 {
 	uint32_t tmp;
 	int i;
 
-	for (i = 0; i < (totbits + 15) / 16; i++) {
-		tmp = bf[i] >> (32 - valbits);
-		bf[i] <<= valbits;
+	for (i = 0; i < (entries + 15) / 16; i++) {
+		tmp = bf[i] >> 30;
+		bf[i] <<= 2;
 		bf[i] |= val;
 		val = tmp;
 	}
+	bf[(entries + 15) / 16] &= (0xffffffff >> (32 - (2 * (entries & 15))));
+}
+
+/*
+ * Append the low 2 bits of 'val' to the end of the bitfield in 'bf'.
+ * 'entries' is the number of 2-bit words in 'bf' prior to the append.
+ */
+static void
+bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
+{
+	uint32_t word;
+
+	word = bf[entries / 16];
+	word &= ~(0x3 << (2 * (entries & 15)));
+	word |= ((val & 0x3) << (2 * (entries & 15)));
+	bf[entries >> 4] = word;
 }
 
 /* scan the genome by kmers, running S-W as needed, and updating scores */
@@ -252,14 +272,14 @@ scan()
 	
 	memset(kmer, 0, sizeof(kmer[0] * ((seed_span + 15) / 16)));
 	for (i = 0; i < seed_span - 1; i++)
-		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i), 2);
+		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i));
 
 	for (i = seed_span - 1; i < genome_len; i++) {
 		if (bflag)
 			progress_bar(i, genome_len);
 
 		base = EXTRACT(genome, i);
-		bitfield_prepend(kmer, seed_span, base, 2);
+		bitfield_prepend(kmer, seed_span, base);
 		mapidx = kmer_to_mapidx(kmer);
 
 		/*
@@ -324,24 +344,19 @@ static void
 load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
 	static int first = 1;
-	uint32_t word;
 	
 	/* shut up icc */
 	(void)name;
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
-		ssize_t alloclen;
-
-		alloclen = (offset + 3) / 4;
-
-		genome = malloc(alloclen);
+		genome = malloc((offset + 3) / 4);
 		if (genome == NULL) {
 			fprintf(stderr, "error: malloc failed: %s\n",
 			    strerror(errno));
 			exit(1);
 		}
-		memset(genome, 0, alloclen);
+		memset(genome, 0, (offset + 3) / 4);
 		return;
 	}
 
@@ -351,12 +366,8 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
-	/* XXX - we have no means of representing 'N' */
-
-	word = genome[offset >> 4];
-	word &= ~(0x3 << (2 * (offset & 15)));
-	word |= (base << (2 * (offset & 15)));
-	genome[offset >> 4] = word;
+	assert(offset == genome_len);
+	bitfield_append(genome, offset, base);
 	genome_len++;
 	first = 0;
 }
@@ -379,10 +390,12 @@ static void
 load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 {
 	static struct read_elem *re = NULL;
+	static uint32_t **past_kmers = NULL;
 	static uint32_t *kmer;
-	static uint32_t word, cnt, skip;
-	static uint32_t past_kmers[MAX_KMERS_PER_READ];
+	static uint32_t cnt, skip;
 	static uint32_t npast_kmers;
+
+	size_t len;
 	int i, seed_span, seed_weight;
 
 	/* shut up icc */
@@ -399,17 +412,34 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		}
 	}
 
+	if (past_kmers == NULL) {
+		len = sizeof(past_kmers[0]) * (max_read_len - seed_span + 1);
+		past_kmers = malloc(len);
+		if (past_kmers == NULL) {
+			perror("load_reads_helper: malloc failed");
+			exit(1);
+		}
+
+		len = sizeof(kmer[0]) * ((seed_span + 15) / 16);
+		for (i = 0; i < (max_read_len - seed_span + 1); i++) {
+			past_kmers[i] = malloc(len);
+			if (past_kmers[i] == NULL) {
+				perror("load_reads_helper: malloc failed");
+				exit(1);
+			}
+			memset(past_kmers[i], 0, len);
+		}
+	}
+
 	/* handle initial call to alloc resources */
 	if (base == -1) {
-		size_t alloclen;
-
-		alloclen = sizeof(struct read_node *) * power(4, seed_weight);
-		readmap = malloc(alloclen);
+		len = sizeof(struct read_node *) * power(4, seed_weight);
+		readmap = malloc(len);
 		if (readmap == NULL) {
 			perror("load_reads_helper: malloc failed");
 			exit(1);
 		}
-		memset(readmap, 0, alloclen);
+		memset(readmap, 0, len);
 		return;
 	}
 
@@ -447,7 +477,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		for (i = 1; i <= re->scores[0].score; i++)
 			re->scores[i].score = 0x80000000 + i;
 
-		word = cnt = npast_kmers = 0;
+		cnt = npast_kmers = 0;
 		memset(kmer, 0, sizeof(kmer[0]) * ((seed_span + 15) / 16));
 		re->next = reads;
 		reads = re;
@@ -456,6 +486,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		/* Throw out the first number as it depends on the marker */
 		return;
 	}
+
+	assert(re != NULL);
 
 	/*
 	 * If this is an invalid colour (our representation of 'N' in
@@ -471,12 +503,9 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
-	bitfield_prepend(kmer, seed_span, base, 2);
+	bitfield_prepend(kmer, seed_span, base);
 
-	word = re->read[re->read_len >> 4];
-	word &= ~(0x3 << (2 * (re->read_len & 15)));
-	word |= (base << (2 * (re->read_len & 15)));
-	re->read[re->read_len >> 4] = word;
+	bitfield_append(re->read, re->read_len, base);
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
 
@@ -489,11 +518,14 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		 * Ensure that this kmer is unique within the read. If it's
 		 * not, we don't want to point from one kmer to the same
 		 * read multiple times.
+		 *
+		 * This will only hit about 0.03% of 8mers.
 	 	 */
-		assert(npast_kmers <= MAX_KMERS_PER_READ);
+		assert(npast_kmers < (max_read_len - seed_span + 1));
 
+		len = sizeof(kmer[0]) * ((seed_span + 15) / 16);
 		for (i = 0; i < npast_kmers; i++) {
-			if (past_kmers[i] == word) {
+			if (memcmp(kmer, past_kmers[i], len) == 0) {
 				unique = 0;
 				break;
 			}
@@ -511,7 +543,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 			rn->read = re;
 			rn->next = readmap[mapidx];
 			readmap[mapidx] = rn;
-			past_kmers[npast_kmers++] = word;
+			memcpy(past_kmers[npast_kmers++], kmer, len);
 			nkmers++;
 		}
 	}

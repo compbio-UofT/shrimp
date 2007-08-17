@@ -1,7 +1,5 @@
 /*	$Id$	*/
 
-#define MAX_KMERS_PER_READ	512
-
 #define EXTRACT(_genome, _i) (((_genome)[(_i) >> 4] >> (2 * ((_i) & 15))) & 0x3)
 
 #define DEF_SPACED_SEED		"11110111"
