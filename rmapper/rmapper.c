@@ -215,9 +215,9 @@ kmer_to_mapidx(uint32_t *kmer)
 	return (mapidx);
 }
 
-/* append 'valbits' of 'val' to the start of the bitfield in 'bf' */
+/* prepend 'valbits' of 'val' to the start of the bitfield in 'bf' */
 static void
-bitfield_append(uint32_t *bf, int totbits, uint32_t val, int valbits)
+bitfield_prepend(uint32_t *bf, int totbits, uint32_t val, int valbits)
 {
 	uint32_t tmp;
 	int i;
@@ -252,14 +252,14 @@ scan()
 	
 	memset(kmer, 0, sizeof(kmer[0] * ((seed_span + 15) / 16)));
 	for (i = 0; i < seed_span - 1; i++)
-		bitfield_append(kmer, seed_span, EXTRACT(genome, i), 2);
+		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i), 2);
 
 	for (i = seed_span - 1; i < genome_len; i++) {
 		if (bflag)
 			progress_bar(i, genome_len);
 
 		base = EXTRACT(genome, i);
-		bitfield_append(kmer, seed_span, base, 2);
+		bitfield_prepend(kmer, seed_span, base, 2);
 		mapidx = kmer_to_mapidx(kmer);
 
 		/*
@@ -471,7 +471,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
-	bitfield_append(kmer, seed_span, base, 2);
+	bitfield_prepend(kmer, seed_span, base, 2);
 
 	word = re->read[re->read_len >> 4];
 	word &= ~(0x3 << (2 * (re->read_len & 15)));
