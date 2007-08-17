@@ -21,7 +21,7 @@
  * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * sizeof(void *).
  * At 16, this is 16GB on 32-bit and 32GB on 64-bit architectures.
  */
-#ifndef
+#ifndef MAX_SEED_WEIGHT
 #define MAX_SEED_WEIGHT		16
 #endif
 
