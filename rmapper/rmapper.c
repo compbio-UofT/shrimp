@@ -217,7 +217,7 @@ kmer_to_mapidx(uint32_t *kmer)
 
 /*
  * Prepend the low 2 bits of 'val' to the start of the bitfield in 'bf'.
- * 'entries' is the maximum number of 2-bit words to be sotred in the
+ * 'entries' is the maximum number of 2-bit words to be sorted in the
  * bitfield.
  */
 static void
@@ -232,6 +232,7 @@ bitfield_prepend(uint32_t *bf, int entries, uint32_t val)
 		bf[i] |= val;
 		val = tmp;
 	}
+
 	bf[(entries + 15) / 16] &= (0xffffffff >> (32 - (2 * (entries & 15))));
 }
 
