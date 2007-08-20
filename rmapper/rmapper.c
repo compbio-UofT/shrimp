@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +30,7 @@ static u_int num_matches	= DEF_NUM_MATCHES;
 static u_int taboo_len		= DEF_TABOO_LEN;
 static u_int num_outputs	= DEF_NUM_OUTPUTS;
 static u_int max_read_len	= DEF_MAX_READ_LEN;
+static int   kmer_stddev_limit  = DEF_KMER_STDDEV_LIMIT;
 
 static int   match_value	= DEF_MATCH_VALUE;
 static int   mismatch_value	= DEF_MISMATCH_VALUE;
@@ -43,6 +45,7 @@ static uint32_t	 genome_len;
 /* Reads */
 static struct read_elem  *reads;		/* list of reads */
 static struct read_node **readmap;		/* kmer to read map */
+static uint32_t		 *readmap_len;		/* entries in each readmap[n] */
 
 static u_int	nreads;				/* total reads loaded */
 static u_int	nkmers;				/* total kmers of reads loaded*/
@@ -257,6 +260,38 @@ bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
 	bf[entries >> 4] = word;
 }
 
+/*
+ * If kmer_stddev_limit is set to a reasonable value, prune all kmers, whose
+ * frequencies are more than 'kmer_stddev_limit' standard deviations greater
+ * than the mean.
+ */
+static void
+readmap_prune()
+{
+	double mean, stddev;
+	uint32_t i, j;
+
+	if (kmer_stddev_limit < 0)
+		return;
+
+	j = power(4, strchrcnt(spaced_seed, '1'));
+
+	mean = 0;
+	for (i = 0; i < j; i++)
+		mean += readmap_len[i];
+	mean /= j;
+
+	stddev = 0;
+	for (i = 0; i < j; i++)
+		stddev += pow((double)readmap_len[i] - mean, 2);
+	stddev = sqrt(stddev / j);
+
+	for (i = 0; i < j; i++) {
+		if (readmap_len[i] > mean + (kmer_stddev_limit * stddev))
+			readmap[i] = NULL;
+	}
+}
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan()
@@ -415,9 +450,13 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
-		len = sizeof(struct read_node *) * power(4, seed_weight);
+		len = sizeof(readmap[0]) * power(4, seed_weight);
 		readmap = xmalloc(len);
 		memset(readmap, 0, len);
+
+		len = sizeof(readmap_len[0]) * power(4, seed_weight);
+		readmap_len = xmalloc(len);
+		memset(readmap_len, 0, len);
 		return;
 	}
 
@@ -478,7 +517,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		 * not, we don't want to point from one kmer to the same
 		 * read multiple times.
 		 *
-		 * This will only hit about 0.03% of 8mers.
+		 * This will only hit about 0.03% of 8mers in 24mer reads.
 	 	 */
 		assert(npast_kmers < (max_read_len - seed_span + 1));
 
@@ -498,6 +537,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 			rn->read = re;
 			rn->next = readmap[mapidx];
 			readmap[mapidx] = rn;
+			readmap_len[mapidx]++;
 			memcpy(past_kmers[npast_kmers++], kmer, len);
 			nkmers++;
 		}
@@ -677,61 +717,65 @@ usage(char *progname)
 	fprintf(stderr, "usage: %s [parameters] [options] "
 	    "genome_file reads_file\n", progname);
 
-	fprintf(stderr, "parameters:\n");
+	fprintf(stderr, "Parameters:\n");
 
 	fprintf(stderr,
-	    "    -s    Spaced seed                             (default: %s)\n",
+	    "    -s    Spaced Seed                             (default: %s)\n",
 	    DEF_SPACED_SEED);
 
 	fprintf(stderr,
-	    "    -n    Seed matches per window                 (default: %d)\n",
+	    "    -n    Seed Matches per Window                 (default: %d)\n",
 	    DEF_NUM_MATCHES);
 
 	fprintf(stderr,
-	    "    -t    Seed taboo length                       (default: %d)\n",
+	    "    -t    Seed Taboo Length                       (default: %d)\n",
 	    DEF_TABOO_LEN);
 
 	fprintf(stderr,
-	    "    -w    Seed window length                      (default: %d)\n",
+	    "    -w    Seed Window Length                      (default: %d)\n",
 	    DEF_WINDOW_LEN);
 
 	fprintf(stderr,
-	    "    -o    Maximum hits per read                   (default: %d)\n",
+	    "    -o    Maximum Hits per Read                   (default: %d)\n",
 	    DEF_NUM_OUTPUTS);
 
 	fprintf(stderr,
-	    "    -r    Maximum read length                     (default: %d)\n",
+	    "    -r    Maximum Read Length                     (default: %d)\n",
 	    DEF_MAX_READ_LEN);
 
 	fprintf(stderr,
-	    "    -m    S-W match value                         (default: %d)\n",
+	    "    -d    Kmer Std. Deviation Limit               (default: %d)\n",
+	    DEF_KMER_STDDEV_LIMIT);
+
+	fprintf(stderr,
+	    "    -m    S-W Match Value                         (default: %d)\n",
 	    DEF_MATCH_VALUE);
 
 	fprintf(stderr,
-	    "    -i    S-W mismatch value                      (default: %d)\n",
+	    "    -i    S-W Mismatch Value                      (default: %d)\n",
 	    DEF_MISMATCH_VALUE);
 
 	fprintf(stderr,
-	    "    -g    S-W gap open penalty                    (default: %d)\n",
+	    "    -g    S-W Gap Open Penalty                    (default: %d)\n",
 	    DEF_GAP_OPEN);
 
 	fprintf(stderr,
-	    "    -e    S-W gap extend penalty                  (default: %d)\n",
+	    "    -e    S-W Gap Extend Penalty                  (default: %d)\n",
 	    DEF_GAP_EXTEND);
 
 	fprintf(stderr,
-	    "    -h    S-W hit threshold                       (default: %d)\n",
+	    "    -h    S-W Hit Threshold                       (default: %d)\n",
 	    DEF_SW_THRESHOLD);
 
 	fprintf(stderr, "\n");
-	fprintf(stderr, "options:\n");
+	fprintf(stderr, "Options:\n");
 
 	fprintf(stderr,
-	    "    -b    Print scan progress bar                 (default: "
+	    "    -b    Print Scan Progress Bar                 (default: "
 	    "disabled)\n"); 
 
 	fprintf(stderr,
-	    "    -p    Pretty print alignments                 (default: "
+	    "    -p    Pretty Print Alignments                 (default: "
 	    "disabled)\n"); 
 
 	exit(1);
@@ -749,7 +793,7 @@ main(int argc, char **argv)
 
 	progname = argv[0];
 
-	while ((ch = getopt(argc, argv, "k:n:t:w:o:r:m:i:g:e:s:pb")) != -1) {
+	while ((ch = getopt(argc, argv, "k:n:t:w:o:r:d:m:i:g:e:s:pb")) != -1) {
 		switch (ch) {
 		case 's':
 			spaced_seed = xstrdup(optarg);
@@ -768,6 +812,9 @@ main(int argc, char **argv)
 			break;
 		case 'r':
 			max_read_len = atoi(optarg);
+			break;
+		case 'd':
+			kmer_stddev_limit = atoi(optarg);
 			break;
 		case 'm':
 			match_value = atoi(optarg);
@@ -862,22 +909,26 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    Spaced seed:                %s\n", spaced_seed);
-	fprintf(stderr, "    Spaced seed span:           %u\n",
+	fprintf(stderr, "    Spaced Seed:                %s\n", spaced_seed);
+	fprintf(stderr, "    Spaced Seed Span:           %u\n",
 	    (u_int)strlen(spaced_seed));
-	fprintf(stderr, "    Spaced seed weight:         %u\n",
+	fprintf(stderr, "    Spaced Seed Weight:         %u\n",
 	    strchrcnt(spaced_seed, '1'));
-	fprintf(stderr, "    Seed matches per window:    %u\n", num_matches);
-	fprintf(stderr, "    Seed taboo length:          %u\n", taboo_len);
-	fprintf(stderr, "    Seed window length:         %u\n", window_len);
-	fprintf(stderr, "    Maximum hits per read:      %u\n", num_outputs);
-	fprintf(stderr, "    Maximum read length:        %u\n", max_read_len);
-	fprintf(stderr, "    S-W match value:            %d\n", match_value);
-	fprintf(stderr, "    S-W mismatch value:         %d\n", mismatch_value);
-	fprintf(stderr, "    S-W gap open penalty:       %d\n", gap_open);
-	fprintf(stderr, "    S-W gap extend penalty:     %d\n", gap_extend);
-	fprintf(stderr, "    S-W hit threshold:          %u\n", sw_threshold);
+	fprintf(stderr, "    Seed Matches per Window:    %u\n", num_matches);
+	fprintf(stderr, "    Seed Taboo Length:          %u\n", taboo_len);
+	fprintf(stderr, "    Seed Window Length:         %u\n", window_len);
+	fprintf(stderr, "    Maximum Hits per Read:      %u\n", num_outputs);
+	fprintf(stderr, "    Maximum Read Length:        %u\n", max_read_len);
+	fprintf(stderr, "    Kmer Std. Deviation Limit:  %d%s\n",
+	    kmer_stddev_limit, (kmer_stddev_limit < 0) ? " (None)" : "");
+	fprintf(stderr, "    S-W Match Value:            %d\n", match_value);
+	fprintf(stderr, "    S-W Mismatch Value:         %d\n", mismatch_value);
+	fprintf(stderr, "    S-W Gap Open Penalty:       %d\n", gap_open);
+	fprintf(stderr, "    S-W Gap Extend Penalty:     %d\n", gap_extend);
+	fprintf(stderr, "    S-W Hit Threshold:          %u\n", sw_threshold);
 	fprintf(stderr, "\n");
+
+	readmap_prune();
 
 	gettimeofday(&tv1, NULL);
 	scan();
@@ -915,11 +966,11 @@ main(int argc, char **argv)
 	    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6) -
 	    (double)cells / cellspersec);
 	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
-	fprintf(stderr, "        Minimal Kmer List:      %" PRIu64 "\n",
+	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
 	    shortest_scanned_kmer_list);
-	fprintf(stderr, "        Maximal Kmer List:      %" PRIu64 "\n",
+	fprintf(stderr, "        Maximal Reads/Kmer:     %" PRIu64 "\n",
 	    longest_scanned_kmer_list);
-	fprintf(stderr, "        Average Kmer List:      %.2f\n",
+	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
 	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
 	fprintf(stderr, "\n");
 

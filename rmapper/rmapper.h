@@ -8,6 +8,7 @@
 #define DEF_TABOO_LEN		4
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	64
+#define DEF_KMER_STDDEV_LIMIT	-1
 
 #define DEF_MATCH_VALUE		100
 #define DEF_MISMATCH_VALUE	-70
@@ -18,8 +19,9 @@
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
  * upper limit on our lookup table allocation size. The memory usage of
- * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * sizeof(void *).
- * At 16, this is 16GB on 32-bit and 32GB on 64-bit architectures.
+ * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * (sizeof(void *) +
+ * sizeof(uint32_t)). At 16, this is 32GB on 32-bit and 48GB on 64-bit
+ * architectures.
  */
 #ifndef MAX_SEED_WEIGHT
 #define MAX_SEED_WEIGHT		16
