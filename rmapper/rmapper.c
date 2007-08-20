@@ -371,8 +371,13 @@ load_genome(const char *file)
 	ret = load_fasta(file, load_genome_helper);
 
 	if (ret != -1)
-		fprintf(stderr, "Loaded %u colours of genome\n",
-		    (unsigned int)ret);
+		fprintf(stderr, "Loaded %u %s of genome\n",
+		    (unsigned int)ret,
+#ifdef USE_COLOURS
+		    "colours");
+#else
+		    "letters");
+#endif
 
 	return (ret == -1);
 }
@@ -507,8 +512,14 @@ load_reads(const char *file)
 	ret = load_fasta(file, load_reads_helper);
 
 	if (ret != -1)
-		fprintf(stderr, "Loaded %u colours in %u reads (%u kmers)\n",
-		    (unsigned int)ret, nreads, nkmers);
+		fprintf(stderr, "Loaded %u %s in %u reads (%u kmers)\n",
+		    (unsigned int)ret,
+#ifdef USE_COLOURS
+		    "colours",
+#else
+		    "letters",
+#endif
+		    nreads, nkmers);
 
 	return (ret == -1);
 }
@@ -521,6 +532,11 @@ print_pretty(struct read_elem *re)
 	char *dbalign, *qralign;
 	int i, j, len;
 	uint32_t goff, glen, aoff;
+#ifdef USE_COLOURS
+	char translate[5] = { '0', '1', '2', '3', '4' };
+#else
+	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
+#endif
 
 	printf("-----------------------------------------------------------\n");
 	printf("READ: [%s]\n", re->name);
@@ -556,13 +572,14 @@ print_pretty(struct read_elem *re)
 		printf("Reftig:  ");
 		for (j = 4; j > 0; j--) {
 			if (j <= goff + aoff)
-				putchar('0' + EXTRACT(genome, goff + aoff - j));
+				putchar(translate[
+				    EXTRACT(genome, goff + aoff - j)]);
 		}
 		printf("%s", dbalign);
 		for (j = 0; j < 4; j++) {
 			if ((goff + aoff + len + j) < genome_len)
-				putchar('0' + EXTRACT(genome,
-				    goff + aoff + len + j));
+				putchar(translate[EXTRACT(genome,
+				    goff + aoff + len + j)]);
 		}
 		putchar('\n');
 
@@ -619,7 +636,7 @@ print_normal(struct read_elem *re)
 		    re->scores[i].score, NULL, NULL, &sfr);
 
 		printf("[%s] %d %u %d %d %d %d %d %d\n", re->name, sfr.score,
-		    goff + sfr.genome_start,sfr.read_start, sfr.mapped,
+		    goff + sfr.genome_start, sfr.read_start, sfr.mapped,
 		    sfr.matches, sfr.mismatches, sfr.insertions, sfr.deletions);
 	}
 	putchar('\n');

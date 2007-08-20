@@ -20,6 +20,10 @@
 ssize_t
 load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 	char buf[512], name[512];
+#ifndef USE_COLOURS
+	char translate[256];
+#endif
+
 	struct stat sb;
 	FILE *fp;
 	ssize_t len;
@@ -40,6 +44,15 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 		    strerror(errno));
 		return (-1);
 	}
+
+#ifndef USE_COLOURS
+	memset(translate, -1, sizeof(translate));
+	translate['A'] = 0;
+	translate['C'] = 1;
+	translate['G'] = 2;
+	translate['T'] = 3;
+	translate['N'] = 4;
+#endif
 
 	len = 0;
 	isnewentry = 0;
@@ -62,11 +75,24 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 		for (i = 0; buf[i] != '\n' && buf[i] != '\0'; i++) {
 			int a;
 
+			buf[i] = (char)toupper((int)buf[i]);
+
 			if (buf[i] == 'T')
 				continue;
 
+#ifdef USE_COLOURS
 			a = buf[i] - '0';
-			assert(a >= 0 && a <= 4);
+#else
+			a = translate[(int)buf[i]];
+			if (a == -1) {
+				fprintf(stderr, "error: invalid character (%c) "
+				    "in input file [%s]\n", buf[i], file);
+				exit(1);
+			}
+#endif
+
+			/* sorry, no 'N' (it becomes 'G'... sue me). */
+			a &= 3;
 
 			base_func(a, len, isnewentry, name);
 			isnewentry = 0;

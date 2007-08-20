@@ -287,6 +287,12 @@ pretty_print(int i, int j, int k)
 {
 	char *d, *q;
 	int l, done;
+#ifdef USE_COLORS
+	char translate[5] = { '0', '1', '2', '3', '4' };
+#else
+	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
+#endif
+
 
 	d = dbalign;
 	q = qralign;
@@ -296,17 +302,17 @@ pretty_print(int i, int j, int k)
 		switch (backtrace[l]) {
 		case BACK_DELETION:
 			*d++ = '-';
-			*q++ = (char)('0' + qr[i++]);
+			*q++ = (char)(translate[(int)qr[i++]]);
 			break;
 
 		case BACK_INSERTION:
-			*d++ = (char)('0' + db[j++]);
+			*d++ = (char)(translate[(int)db[j++]]);
 			*q++ = '-';
 			break;
 
 		case BACK_MATCH_MISMATCH:
-			*d++ = (char)('0' + db[j++]);
-			*q++ = (char)('0' + qr[i++]);
+			*d++ = (char)(translate[(int)db[j++]]);
+			*q++ = (char)(translate[(int)qr[i++]]);
 			break;
 
 		default:
