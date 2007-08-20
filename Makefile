@@ -1,7 +1,8 @@
 CFLAGS=-Wall -Werror -O3 -static
+LDFLAGS=-lm
 
 rmapper: rmapper.c fasta.o sw-vector.o sw-full.o util.o
-	$(CC) $(CFLAGS) -o $@ $+
+	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 fasta.o: fasta.c fasta.h
 	$(CC) $(CFLAGS) -c -o $@ $<
