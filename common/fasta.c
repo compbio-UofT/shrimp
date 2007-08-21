@@ -91,8 +91,7 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 			}
 #endif
 
-			/* sorry, no 'N' (it becomes 'G'... sue me). */
-			a &= 3;
+			assert(a >= 0 && a <= 7);
 
 			base_func(a, len, isnewentry, name);
 			isnewentry = 0;

@@ -1,6 +1,7 @@
 /*	$Id$	*/
 
-#define EXTRACT(_genome, _i) (((_genome)[(_i) >> 4] >> (2 * ((_i) & 15))) & 0x3)
+#define EXTRACT(_genome, _i) (((_genome)[(_i) / 8] >> (4 * ((_i) % 8))) & 0xf)
+#define BPTO32BW(_x) (((_x) + 7) / 8)
 
 #define DEF_SPACED_SEED		"11110111"
 #define DEF_WINDOW_LEN		30

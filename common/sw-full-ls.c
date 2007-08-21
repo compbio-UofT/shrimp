@@ -288,7 +288,7 @@ pretty_print(int i, int j, int k)
 	char *d, *q;
 	int l, done;
 #ifdef USE_COLORS
-	char translate[5] = { '0', '1', '2', '3', '4' };
+	char translate[5] = { '0', '1', '2', '3', 'N' };
 #else
 	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
 #endif

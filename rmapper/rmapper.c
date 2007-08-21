@@ -216,17 +216,19 @@ kmer_to_mapidx(uint32_t *kmer)
 	for (i = seed_span - 1; i >= 0; i--) {
 		if (spaced_seed[i] == '1') {
 			mapidx = mapidx << 2;
-			mapidx |= (kmer[i / 16] & (3 << ((i % 16) * 2))) >>
-			    ((i % 16) * 2);
+			mapidx |= (kmer[i / 8] & (0x3 << ((i % 8) * 4))) >>
+			    ((i % 8) * 4);
 		}
 	}
+
+	assert(mapidx < power(4, seed_span));
 
 	return (mapidx);
 }
 
 /*
- * Prepend the low 2 bits of 'val' to the start of the bitfield in 'bf'.
- * 'entries' is the maximum number of 2-bit words to be sorted in the
+ * Prepend the low 4 bits of 'val' to the start of the bitfield in 'bf'.
+ * 'entries' is the maximum number of 4-bit words to be stored in the
  * bitfield.
  */
 static void
@@ -235,33 +237,33 @@ bitfield_prepend(uint32_t *bf, int entries, uint32_t val)
 	uint32_t tmp;
 	int i;
 
-	for (i = 0; i < (entries + 15) / 16; i++) {
-		tmp = bf[i] >> 30;
-		bf[i] <<= 2;
+	for (i = 0; i < BPTO32BW(entries); i++) {
+		tmp = bf[i] >> 28;
+		bf[i] <<= 4;
 		bf[i] |= val;
 		val = tmp;
 	}
 
-	bf[(entries + 15) / 16] &= (0xffffffff >> (32 - (2 * (entries & 15))));
+	bf[i - 1] &= (0xffffffff >> (32 - (4 * (entries % 8))));
 }
 
 /*
- * Append the low 2 bits of 'val' to the end of the bitfield in 'bf'.
- * 'entries' is the number of 2-bit words in 'bf' prior to the append.
+ * Append the low 4 bits of 'val' to the end of the bitfield in 'bf'.
+ * 'entries' is the number of 4-bit words in 'bf' prior to the append.
  */
 static void
 bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
 {
 	uint32_t word;
 
-	word = bf[entries / 16];
-	word &= ~(0x3 << (2 * (entries & 15)));
-	word |= ((val & 0x3) << (2 * (entries & 15)));
-	bf[entries >> 4] = word;
+	word = bf[entries / 8];
+	word &= ~(0xf << (4 * (entries % 8)));
+	word |= ((val & 0xf) << (4 * (entries % 8)));
+	bf[entries / 8] = word;
 }
 
 /*
- * If kmer_stddev_limit is set to a reasonable value, prune all kmers, whose
+ * If 'kmer_stddev_limit' is set to a reasonable value, prune all kmers, whose
  * frequencies are more than 'kmer_stddev_limit' standard deviations greater
  * than the mean.
  */
@@ -300,25 +302,37 @@ scan()
 	struct read_elem *re;
 	uint32_t *kmer;
 	uint32_t i, j, idx, mapidx;
-	uint32_t base, score;
+	uint32_t base, skip, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
 
 	seed_span = strlen(spaced_seed);
 
-	kmer = xmalloc(sizeof(kmer[0] * ((seed_span + 15) / 16)));
-	memset(kmer, 0, sizeof(kmer[0] * ((seed_span + 15) / 16)));
+	kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
+	memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
 	for (i = 0; i < seed_span - 1; i++)
 		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i));
 
+	skip = 0;
 	for (i = seed_span - 1; i < genome_len; i++) {
 		if (bflag)
 			progress_bar(i, genome_len);
 
 		base = EXTRACT(genome, i);
 		bitfield_prepend(kmer, seed_span, base);
-		mapidx = kmer_to_mapidx(kmer);
 
+		/*
+		 * Ignore kmers that contain an 'N'.
+		 */
+		if (base > 3)
+			skip = seed_span - 1;
+
+		if (skip > 0) {
+			skip--;
+			continue;
+		}
+
+		mapidx = kmer_to_mapidx(kmer);
 		idx = i - (seed_span - 1);
 
 		j = 0;
@@ -381,8 +395,8 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
-		genome = xmalloc((offset + 3) / 4);
-		memset(genome, 0, (offset + 3) / 4);
+		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(offset));
+		memset(genome, 0, (offset + 1) / 2);
 		return;
 	}
 
@@ -423,7 +437,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	static struct read_elem *re;
 	static uint32_t **past_kmers;
 	static uint32_t *kmer;
-	static uint32_t cnt, npast_kmers;
+	static uint32_t cnt, npast_kmers, skip;
 
 	size_t len;
 	int i, seed_span, seed_weight;
@@ -435,13 +449,13 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	seed_weight = strchrcnt(spaced_seed, '1');
 
 	if (kmer == NULL)
-		kmer = xmalloc(sizeof(kmer[0]) * ((seed_span + 15) / 16));
+		kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 
 	if (past_kmers == NULL) {
 		len = sizeof(past_kmers[0]) * (max_read_len - seed_span + 1);
 		past_kmers = xmalloc(len);
 
-		len = sizeof(kmer[0]) * ((seed_span + 15) / 16);
+		len = sizeof(kmer[0]) * BPTO32BW(seed_span);
 		for (i = 0; i < (max_read_len - seed_span + 1); i++) {
 			past_kmers[i] = xmalloc(len);
 			memset(past_kmers[i], 0, len);
@@ -469,7 +483,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		re->name = strdup(name);
 		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
 
-		len = sizeof(re->read[0]) * ((max_read_len + 15) / 16);
+		len = sizeof(re->read[0]) * BPTO32BW(max_read_len);
 		re->read = xmalloc(len);
 		memset(re->read, 0, len);
 
@@ -482,8 +496,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		for (i = 1; i <= re->scores[0].score; i++)
 			re->scores[i].score = 0x80000000 + i;
 
-		cnt = npast_kmers = 0;
-		memset(kmer, 0, sizeof(kmer[0]) * ((seed_span + 15) / 16));
+		cnt = npast_kmers = skip = 0;
+		memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
 		re->next = reads;
 		reads = re;
 		nreads++;
@@ -507,6 +521,17 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
 
+	/*
+	 * Ignore kmers that contain an 'N'.
+	 */
+	if (base > 3)
+		skip = seed_span - 1;
+
+	if (skip > 0) {
+		skip--;
+		return;
+	}
+
 	if (++cnt >= seed_span) {
 		struct read_node *rn;
 		uint32_t mapidx;
@@ -521,7 +546,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 	 	 */
 		assert(npast_kmers < (max_read_len - seed_span + 1));
 
-		len = sizeof(kmer[0]) * ((seed_span + 15) / 16);
+		len = sizeof(kmer[0]) * BPTO32BW(seed_span);
 		for (i = 0; i < npast_kmers; i++) {
 			if (memcmp(kmer, past_kmers[i], len) == 0) {
 				unique = 0;
@@ -573,7 +598,7 @@ print_pretty(struct read_elem *re)
 	int i, j, len;
 	uint32_t goff, glen, aoff;
 #ifdef USE_COLOURS
-	char translate[5] = { '0', '1', '2', '3', '4' };
+	char translate[5] = { '0', '1', '2', '3', 'N' };
 #else
 	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
 #endif
