@@ -92,7 +92,12 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, char), int s)
 			if (s == COLOUR_SPACE) {
 				if (buf[i] == 'A' || buf[i] == 'C' ||
 				    buf[i] == 'G' || buf[i] == 'T') {
-					initbp = buf[i];
+					switch (buf[i]) {
+					case 'A': initbp = BASE_A; break;
+					case 'C': initbp = BASE_C; break;
+					case 'G': initbp = BASE_G; break;
+					case 'T': initbp = BASE_T; break;
+					}
 					continue;
 				}
 			}

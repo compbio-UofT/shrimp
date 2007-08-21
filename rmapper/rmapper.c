@@ -46,6 +46,15 @@ static uint32_t	 genome_len;
 /* Genomic sequence, in letter space, stored in 32-bit words, first is in LSB */
 static uint32_t *genome_ls;
 static uint32_t  genome_ls_len;
+
+/* Letter space to colour space conversion table */
+static int colourmat[5][5] = {
+	{ 0, 1, 2, 3, 4 },
+	{ 1, 0, 3, 2, 4 },
+	{ 2, 3, 0, 1, 4 },
+	{ 3, 2, 1, 0, 4 },
+	{ 4, 4, 4, 4, 4 }
+};
 #endif
 
 /* Reads */
@@ -161,7 +170,7 @@ progress_bar(uint32_t at, uint32_t of)
 	static char whirly = '\\';
 
 	char progbuf[52];
-	int perc, i, j;
+	int perc, i, j, dec;
 
 	perc = (at * 1000) / of;
 
@@ -171,6 +180,7 @@ progress_bar(uint32_t at, uint32_t of)
 	beenhere = 1;
 	lastperc = perc;
 
+	dec = perc % 10;
 	perc /= 10;
 
 	/* any excuse to have a whirly gig */
@@ -202,7 +212,7 @@ progress_bar(uint32_t at, uint32_t of)
 	}
 	progbuf[51] = '\0';
 
-	fprintf(stderr, "\rProgress: [%s] %3d%%", progbuf, perc);
+	fprintf(stderr, "\rProgress: [%s] %3d.%1d%%", progbuf, perc, dec);
 	fflush(stderr);
 }
 
@@ -397,19 +407,11 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 {
 	static int first = 1;
 	static int last;
-	static int colourmat[5][5] = {
-		{ 0, 1, 2, 3, 4 },
-		{ 1, 0, 3, 2, 4 },
-		{ 2, 3, 0, 1, 4 },
-		{ 3, 2, 1, 0, 4 },
-		{ 4, 4, 4, 4, 4 }
-	};
-	
+
 	/* shut up icc */
 	(void)name;
 	(void)last;
 	(void)initbp;
-	(void)colourmat;
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
@@ -533,9 +535,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		nreads++;
 
 		re->initbp = initbp;
-
-		/* Throw out the first number as it depends on the marker */
-		return;
 	}
 
 	assert(re != NULL);
@@ -547,11 +546,24 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		exit(1);
 	}
 
-	bitfield_prepend(kmer, seed_span, base);
-
 	bitfield_append(re->read, re->read_len, base);
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
+
+#ifdef USE_COLOURS
+	/*
+	 * For simplicity we throw out the first kmer. If we did not do so,
+	 * we'd run into a ton of colour-letter space headaches. For instance, 
+	 * how should the first read kmer match against a kmer from the genome?
+	 * The first colour of the genome kmer depends on the previous letter
+	 * in the genome, so we may have a matching read, but the colour
+	 * representation doesn't agree due to different initialising bases.
+	 */
+	if (isnewentry)
+		return;
+#endif
+
+	bitfield_prepend(kmer, seed_span, base);
 
 	/*
 	 * Ignore kmers that contain an 'N'.
