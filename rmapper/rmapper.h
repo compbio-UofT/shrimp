@@ -46,6 +46,8 @@ struct read_elem {
 	uint32_t	  prev_hit;		/* prev index in 'hits' */
 	uint32_t	  next_hit;		/* next index in 'hits' */
 	uint32_t	  hits[0];		/* size depends on num_matches*/
+	
+	char		  initbp;		/* colour space init letter */
 };
 
 /* for kmer to read map */

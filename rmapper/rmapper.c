@@ -42,6 +42,12 @@ static u_int sw_threshold	= DEF_SW_THRESHOLD;
 static uint32_t *genome;
 static uint32_t	 genome_len;
 
+#ifdef USE_COLOURS
+/* Genomic sequence, in letter space, stored in 32-bit words, first is in LSB */
+static uint32_t *genome_ls;
+static uint32_t  genome_ls_len;
+#endif
+
 /* Reads */
 static struct read_elem  *reads;		/* list of reads */
 static struct read_node **readmap;		/* kmer to read map */
@@ -386,17 +392,34 @@ scan()
 }
 
 static void
-load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
+load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
+    char initbp)
 {
 	static int first = 1;
+	static int last;
+	static int colourmat[5][5] = {
+		{ 0, 1, 2, 3, 4 },
+		{ 1, 0, 3, 2, 4 },
+		{ 2, 3, 0, 1, 4 },
+		{ 3, 2, 1, 0, 4 },
+		{ 4, 4, 4, 4, 4 }
+	};
 	
 	/* shut up icc */
 	(void)name;
+	(void)last;
+	(void)initbp;
+	(void)colourmat;
 
 	/* handle initial call to alloc resources */
 	if (base == -1) {
 		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(offset));
-		memset(genome, 0, (offset + 1) / 2);
+		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(offset));
+#ifdef USE_COLOURS
+		genome_ls = xmalloc(sizeof(genome_ls[0]) * BPTO32BW(offset));
+		memset(genome_ls, 0, sizeof(genome_ls[0]) * BPTO32BW(offset));
+		last = BASE_T;
+#endif
 		return;
 	}
 
@@ -406,9 +429,20 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name)
 		exit(1);
 	}
 
+	assert(base >= 0 && base <= 5);
 	assert(offset == genome_len);
+
+#ifdef USE_COLOURS
+	bitfield_append(genome, offset, colourmat[last][base]);
+	genome_len++;
+	bitfield_append(genome_ls, offset, base);
+	genome_ls_len++;
+	last = base;
+#else
 	bitfield_append(genome, offset, base);
 	genome_len++;
+#endif
+
 	first = 0;
 }
 
@@ -417,22 +451,18 @@ load_genome(const char *file)
 {
 	ssize_t ret;
 
-	ret = load_fasta(file, load_genome_helper);
+	ret = load_fasta(file, load_genome_helper, LETTER_SPACE);
 
 	if (ret != -1)
-		fprintf(stderr, "Loaded %u %s of genome\n",
-		    (unsigned int)ret,
-#ifdef USE_COLOURS
-		    "colours");
-#else
-		    "letters");
-#endif
+		fprintf(stderr, "Loaded %u letters of genome\n",
+		    (unsigned int)ret);
 
 	return (ret == -1);
 }
 
 static void
-load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
+load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
+    char initbp)
 {
 	static struct read_elem *re;
 	static uint32_t **past_kmers;
@@ -501,6 +531,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name)
 		re->next = reads;
 		reads = re;
 		nreads++;
+
+		re->initbp = initbp;
 
 		/* Throw out the first number as it depends on the marker */
 		return;
@@ -574,7 +606,11 @@ load_reads(const char *file)
 {
 	ssize_t ret;
 
-	ret = load_fasta(file, load_reads_helper);
+#ifdef USE_COLOURS
+	ret = load_fasta(file, load_reads_helper, COLOUR_SPACE);
+#else
+	ret = load_fasta(file, load_reads_helper, LETTER_SPACE);
+#endif
 
 	if (ret != -1)
 		fprintf(stderr, "Loaded %u %s in %u reads (%u kmers)\n",

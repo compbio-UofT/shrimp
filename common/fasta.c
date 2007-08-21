@@ -18,16 +18,20 @@
 #include "fasta.h"
 
 ssize_t
-load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
+load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, char), int s)
+{
 	char buf[512], name[512];
-#ifndef USE_COLOURS
 	char translate[256];
-#endif
 
 	struct stat sb;
 	FILE *fp;
 	ssize_t len;
 	int i, isnewentry;
+	char initbp;
+
+	initbp = 0;
+
+	assert(s == COLOUR_SPACE || s == LETTER_SPACE);
 
 	if (stat(file, &sb)) {
 		fprintf(stderr, "error: failed to stat file [%s]: %s\n", file,
@@ -36,7 +40,7 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 	}
 
 	/* tell consumer how many bytes worth of data we can maximally have */
-	base_func(-1, sb.st_size, -1, NULL);
+	bf(-1, sb.st_size, -1, NULL, -1);
 
 	fp = fopen(file, "r");
 	if (fp == NULL) {
@@ -45,14 +49,22 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 		return (-1);
 	}
 
-#ifndef USE_COLOURS
 	memset(translate, -1, sizeof(translate));
-	translate['A'] = 0;
-	translate['C'] = 1;
-	translate['G'] = 2;
-	translate['T'] = 3;
-	translate['N'] = 4;
-#endif
+
+	if (s == COLOUR_SPACE) {
+		translate['0'] = BASE_0;
+		translate['1'] = BASE_1;
+		translate['2'] = BASE_2;
+		translate['3'] = BASE_3;
+		translate['4'] = BASE_N;
+		translate['N'] = BASE_N;
+	} else {	
+		translate['A'] = BASE_A;
+		translate['C'] = BASE_C;
+		translate['G'] = BASE_G;
+		translate['T'] = BASE_T;
+		translate['N'] = BASE_N;
+	}
 
 	len = 0;
 	isnewentry = 0;
@@ -77,23 +89,24 @@ load_fasta(const char *file, void (*base_func)(int, ssize_t, int, char *)) {
 
 			buf[i] = (char)toupper((int)buf[i]);
 
-			if (buf[i] == 'T')
-				continue;
+			if (s == COLOUR_SPACE) {
+				if (buf[i] == 'A' || buf[i] == 'C' ||
+				    buf[i] == 'G' || buf[i] == 'T') {
+					initbp = buf[i];
+					continue;
+				}
+			}
 
-#ifdef USE_COLOURS
-			a = buf[i] - '0';
-#else
 			a = translate[(int)buf[i]];
 			if (a == -1) {
 				fprintf(stderr, "error: invalid character (%c) "
 				    "in input file [%s]\n", buf[i], file);
 				exit(1);
 			}
-#endif
 
 			assert(a >= 0 && a <= 7);
 
-			base_func(a, len, isnewentry, name);
+			bf(a, len, isnewentry, name, initbp);
 			isnewentry = 0;
 			len++;
 		}
