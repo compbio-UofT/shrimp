@@ -191,7 +191,6 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int initbp)
 	}
 	if (score != maxscore) {
 		fprintf(stderr, "error: full_sw failed to find maxscore!\n");
-fprintf(stderr, "score: %d, maxscore: %d\n", score, maxscore);
 		exit(1);
 	}
 
