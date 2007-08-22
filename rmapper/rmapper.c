@@ -376,8 +376,14 @@ scan()
 				else
 					glen = window_len * 2;
 
+#ifdef USE_COLOURS
 				score = sw_vector(genome, goff, glen,
-				    re->read, re->read_len);
+				    re->read, re->read_len,
+				    genome_ls, re->initbp);
+#else
+				score = sw_vector(genome, goff, glen,
+				    re->read, re->read_len, NULL, -1);
+#endif
 
 				if (score >= sw_threshold) {
 					save_score(re, score, i);
@@ -403,7 +409,7 @@ scan()
 
 static void
 load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
-    char initbp)
+    int initbp)
 {
 	static int first = 1;
 	static int last;
@@ -464,7 +470,7 @@ load_genome(const char *file)
 
 static void
 load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
-    char initbp)
+    int initbp)
 {
 	static struct read_elem *re;
 	static uint32_t **past_kmers;
@@ -670,8 +676,15 @@ print_pretty(struct read_elem *re)
 		else
 			glen = window_len * 2;
 
+#ifdef USE_COLOURS
 		sw_full(genome, goff, glen, re->read, re->read_len,
-		    re->scores[i].score, &dbalign, &qralign, &sfr);
+		    genome_ls, re->initbp, re->scores[i].score,
+		    &dbalign, &qralign, &sfr);
+#else
+		sw_full(genome, goff, glen, re->read, re->read_len,
+		    NULL, -1, re->scores[i].score, &dbalign, &qralign, &sfr);
+
+#endif
 		aoff = sfr.genome_start;
 
 		len = strlen(dbalign);
@@ -745,8 +758,15 @@ print_normal(struct read_elem *re)
 		else
 			glen = window_len * 2;
 
+#ifdef USE_COLOURS
 		sw_full(genome, goff, glen, re->read, re->read_len,
-		    re->scores[i].score, NULL, NULL, &sfr);
+		    genome_ls, re->initbp, re->scores[i].score,
+		    NULL, NULL, &sfr);
+#else
+		sw_full(genome, goff, glen, re->read, re->read_len,
+		    NULL, -1, re->scores[i].score, NULL, NULL, &sfr);
+
+#endif
 
 		printf("[%s] %d %u %d %d %d %d %d %d\n", re->name, sfr.score,
 		    goff + sfr.genome_start, sfr.read_start, sfr.mapped,

@@ -22,7 +22,7 @@
 #include "util.h"
 
 static int	initialised;
-static int8_t  *db, *qr;
+static int8_t  *db, *db_ls, *qr;
 static int	dblen, qrlen;
 static int16_t *nogap, *b_gap;
 static int	gap_open, gap_ext;
@@ -49,7 +49,8 @@ static uint64_t swticks, swcells, swinvocs;
  *	   consider the padding as matches!
  */
 static int
-vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
+vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
+    int8_t *ls_seqA, int initbp)
 {
 	int i, j, score = 0;
 	__m128i v_score, v_zero, v_gap_ext, v_gap_open_ext;
@@ -58,6 +59,20 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
 	__m128i v_last_nogap, v_prev_nogap, v_seq_a, v_seq_b;
 	__m128i v_tmp;
 	int16_t w[8];
+#ifdef USE_COLOURS
+	int a_gap, prev_nogap, last_nogap;
+	int colourmat[5][5] = {
+		{ 0, 1, 2, 3, 4 },
+		{ 1, 0, 3, 2, 4 },
+		{ 2, 3, 0, 1, 4 },
+		{ 3, 2, 1, 0, 4 },
+		{ 4, 4, 4, 4, 4 }
+	};
+#endif
+
+	/* shut up icc */
+	(void)ls_seqA;
+	(void)initbp;
 
 #define SET16(a, e7, e6, e5, e4, e3, e2, e1, e0)      \
 	_mm_set_epi16((int16_t)a[e7], (int16_t)a[e6], \
@@ -77,6 +92,44 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb)
                 nogap[i] = 0;
                 b_gap[i] = (int16_t)-gap_open;
         }
+
+#ifdef USE_COLOURS
+	/*
+	 * When using colour space reads, we must handle the first row
+	 * specially. This is because the read will begin with some marker
+	 * base, which will affect matching against the genome.
+	 *
+	 * For 25mer reads, this actually makes things faster, because our
+	 * vectorised portion becomes evenly divisible by 8 again. Yey.
+	 */
+	a_gap = -gap_open;
+	last_nogap = prev_nogap = 0;
+	for (i = 7; i < (lena + 7); i++) {
+		int a, ms;
+
+		a_gap = MAX((last_nogap - gap_open - gap_ext),
+		    (a_gap - gap_ext));
+		b_gap[i] = (uint16_t)MAX((nogap[i] - gap_open - gap_ext),
+		    (b_gap[i] - gap_ext));
+
+		a = colourmat[ls_seqA[i]][initbp];
+		ms = (a == seqB[0]) ? match : mismatch;
+
+		last_nogap = MAX((prev_nogap + ms), 0);
+		last_nogap = MAX(last_nogap, a_gap);
+		last_nogap = MAX(last_nogap, b_gap[i]);
+		prev_nogap = nogap[i];
+		nogap[i] = (uint16_t)last_nogap;
+		score = MAX(score, last_nogap);
+	}
+
+	v_score = SET16((&score), 0, 0, 0, 0, 0, 0, 0, 0);
+	score = 0;
+	seqB++;
+	lenb--;
+
+	assert(lenb != 0);
+#endif
 
 	for (i = 0; i < (lenb + 7)/8; i++) {
 		int k = i * 8;
@@ -149,6 +202,10 @@ sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	if (db == NULL)
 		return (1);
 
+	db_ls = malloc((dblen + 14) * sizeof(db_ls[0]));
+	if (db_ls == NULL)
+		return (1);
+
 	qrlen = _qrlen;
 	qr = malloc((qrlen + 14) * sizeof(qr[0]));
 	if (qr == NULL)
@@ -188,7 +245,8 @@ sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 }
 
 int
-sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen)
+sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
+    uint32_t *genome_ls, int initbp)
 {
 	uint64_t before, after;
 	int i, score;
@@ -209,10 +267,15 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen)
 	for (i = 0; i < glen; i++)
 		db[i+7] = (int8_t)EXTRACT(genome, goff + i);
 
+	if (genome_ls != NULL) {
+		for (i = 0; i < glen; i++)
+			db_ls[i+7] = (int8_t)EXTRACT(genome_ls, goff + i);
+	}
+
 	for (i = 0; i < rlen; i++)
 		qr[i+7] = (int8_t)EXTRACT(read, i);
 
-	score = vect_sw(&db[0], glen, &qr[7], rlen);
+	score = vect_sw(&db[0], glen, &qr[7], rlen, &db_ls[0], initbp);
 
 	swcells += (glen * rlen);
 	after = rdtsc();

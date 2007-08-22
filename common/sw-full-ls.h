@@ -13,5 +13,5 @@ struct sw_full_results {
 
 int	sw_full_setup(int, int, int, int, int, int);
 void	sw_full_stats(uint64_t *, uint64_t *, uint64_t *, double *);
-void	sw_full(uint32_t *, int, int, uint32_t *, int, int, char **, char **,
-	    struct sw_full_results *);
+void	sw_full(uint32_t *, int, int, uint32_t *, int, uint32_t *,
+		int, int, char **, char **, struct sw_full_results *);

@@ -15,4 +15,4 @@
 
 #define BASE_N		4
 
-ssize_t load_fasta(const char *, void (*)(int, ssize_t, int, char *, char),int);
+ssize_t load_fasta(const char *, void (*)(int, ssize_t, int, char *, int), int);

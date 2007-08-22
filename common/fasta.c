@@ -18,7 +18,7 @@
 #include "fasta.h"
 
 ssize_t
-load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, char), int s)
+load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 {
 	char buf[512], name[512];
 	char translate[256];
@@ -26,8 +26,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, char), int s)
 	struct stat sb;
 	FILE *fp;
 	ssize_t len;
-	int i, isnewentry;
-	char initbp;
+	int i, isnewentry, initbp;
 
 	initbp = 0;
 
