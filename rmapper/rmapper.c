@@ -17,13 +17,14 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "fasta.h"
+#include "../common/fasta.h"
+#include "../common/util.h"
+
 #include "rmapper.h"
 #include "sw-full-common.h"
 #include "sw-full-cs.h"
 #include "sw-full-ls.h"
 #include "sw-vector.h"
-#include "util.h"
 
 /* External parameters */
 static char *spaced_seed	= DEF_SPACED_SEED;

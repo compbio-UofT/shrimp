@@ -14,10 +14,11 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "../common/util.h"
+
 #include "rmapper.h"
 #include "sw-full-common.h"
 #include "sw-full-cs.h"
-#include "util.h"
 
 struct swcell {
 	int score_n;

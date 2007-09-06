@@ -17,9 +17,10 @@
 
 #include <sys/time.h>
 
+#include "../common/util.h"
+
 #include "rmapper.h"
 #include "sw-vector.h"
-#include "util.h"
 
 static int	initialised;
 static int8_t  *db, *db_ls, *qr;
