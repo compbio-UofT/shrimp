@@ -3,11 +3,8 @@
 #ifndef _LOOKUP_H_
 #define _LOOKUP_H_
 
-#include <pthread.h>
-
-#include "util.h"
-
 #ifdef USE_PTHREADS
+#include <pthread.h>
 #ifdef USE_SPINLOCKS
 typedef pthread_spinlock_t	lookup_lock_t;
 #define lookup_lock_create(_x)	pthread_spin_init(_x, PTHREAD_PROCESS_SHARED)

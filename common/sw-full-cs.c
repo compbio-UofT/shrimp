@@ -16,7 +16,6 @@
 
 #include "../common/util.h"
 
-#include "rmapper.h"
 #include "sw-full-common.h"
 #include "sw-full-cs.h"
 

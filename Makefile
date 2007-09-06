@@ -9,22 +9,13 @@ all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass bin/revcmpl \
 # rmapper/
 #
 
-bin/rmapper-cs: rmapper/rmapper.c common/fasta-cs.o rmapper/sw-vector.o \
-    rmapper/sw-full-cs.o rmapper/sw-full-ls.o common/util.o
+bin/rmapper-cs: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
+    common/sw-full-cs.o common/sw-full-ls.o common/util.o
 	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
 
-bin/rmapper-ls: rmapper/rmapper.c common/fasta-cs.o rmapper/sw-vector.o \
-    rmapper/sw-full-cs.o rmapper/sw-full-ls.o common/util.o
+bin/rmapper-ls: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
+    common/sw-full-cs.o common/sw-full-ls.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
-
-rmapper/sw-vector.o: rmapper/sw-vector.c rmapper/rmapper.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-rmapper/sw-full-cs.o: rmapper/sw-full-cs.c rmapper/rmapper.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-rmapper/sw-full-ls.o: rmapper/sw-full-ls.c rmapper/rmapper.h
-	$(CC) $(CFLAGS) -c -o $@ $<
 
 #
 # colourise
@@ -84,6 +75,14 @@ common/lookup.o: common/lookup.c common/lookup.h
 
 common/red_black_tree.o: common/red_black_tree.c common/red_black_tree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+common/sw-vector.o: common/sw-vector.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+common/sw-full-cs.o: common/sw-full-cs.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+common/sw-full-ls.o: common/sw-full-ls.c
 
 common/util.o: common/util.c common/util.h
 	$(CC) $(CFLAGS) -c -o $@ $<

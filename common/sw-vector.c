@@ -19,7 +19,6 @@
 
 #include "../common/util.h"
 
-#include "rmapper.h"
 #include "sw-vector.h"
 
 static int	initialised;
@@ -29,6 +28,7 @@ static int16_t *nogap, *b_gap;
 static int	gap_open, gap_ext;
 static int	match, mismatch;
 static uint64_t swticks, swcells, swinvocs;
+static int	use_colours;
 
 /*
  * Calculate the Smith-Waterman score.
@@ -187,7 +187,7 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 
 int
 sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-    int _match, int _mismatch)
+    int _match, int _mismatch, int _use_colours)
 {
 
 	dblen = _dblen;
@@ -216,6 +216,7 @@ sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	gap_ext = -(_gap_ext);
 	match = _match;
 	mismatch = _mismatch;
+	use_colours = _use_colours;
 
 	initialised = 1;
 

@@ -18,13 +18,13 @@
 #include <sys/time.h>
 
 #include "../common/fasta.h"
+#include "../common/sw-full-common.h"
+#include "../common/sw-full-cs.h"
+#include "../common/sw-full-ls.h"
+#include "../common/sw-vector.h"
 #include "../common/util.h"
 
 #include "rmapper.h"
-#include "sw-full-common.h"
-#include "sw-full-cs.h"
-#include "sw-full-ls.h"
-#include "sw-vector.h"
 
 /* External parameters */
 static char *spaced_seed	= DEF_SPACED_SEED;
@@ -1087,7 +1087,7 @@ main(int argc, char **argv)
 	}
 
 	if (sw_vector_setup(window_len * 2, longest_read_len,
-	    gap_open, gap_extend, match_value, mismatch_value)) {
+	    gap_open, gap_extend, match_value, mismatch_value, use_colours)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
 		exit(1);
