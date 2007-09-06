@@ -40,6 +40,9 @@ helper(int letter, ssize_t offset, int isnewentry, char *name)
 	static int last = 0;
 	static int first = 1;
 
+	/* shut up, icc */
+	(void)offset;
+
 	/* ignore resource allocation call */
 	if (letter == -1)
 		return;

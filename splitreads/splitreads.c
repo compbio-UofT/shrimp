@@ -37,7 +37,7 @@ main(int argc, char **argv)
 			if (out != NULL)	
 				fclose(out);
 
-			snprintf(fname, sizeof(fname), "%d_to_%d.csfasta",
+			snprintf(fname, sizeof(fname), "%u_to_%u.csfasta",
 			    readsdone, readsdone + readsper - 1);
 
 			out = fopen(fname, "w");

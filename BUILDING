@@ -9,7 +9,8 @@ considerably from 64-bit compiled code, whereas Core 2 architectures don't
 seem to care much.
 
 When building with icc, execute the following:
-    gmake CC="icc" CFLAGS="-Wall -Werror -axP -O3 -ipo -static" LDFLAGS="-lm"
+    gmake CC="icc" CFLAGS="-Wall -Werror -wd981,1572 -axP -O3 -ipo -static" \
+        LDFLAGS="-lm"
 
 When building with gcc, execute the following:
     gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -static" LDFLAGS="-lm"
