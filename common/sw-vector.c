@@ -59,16 +59,6 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 	__m128i v_last_nogap, v_prev_nogap, v_seq_a, v_seq_b;
 	__m128i v_tmp;
 	int16_t w[8];
-#ifdef USE_COLOURS
-	int a_gap, prev_nogap, last_nogap;
-	int colourmat[5][5] = {
-		{ 0, 1, 2, 3, 4 },
-		{ 1, 0, 3, 2, 4 },
-		{ 2, 3, 0, 1, 4 },
-		{ 3, 2, 1, 0, 4 },
-		{ 4, 4, 4, 4, 4 }
-	};
-#endif
 
 	/* shut up icc */
 	(void)ls_seqA;
@@ -93,7 +83,6 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
                 b_gap[i] = (int16_t)-gap_open;
         }
 
-#ifdef USE_COLOURS
 	/*
 	 * When using colour space reads, we must handle the first row
 	 * specially. This is because the read will begin with some marker
@@ -102,34 +91,37 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 	 * For 25mer reads, this actually makes things faster, because our
 	 * vectorised portion becomes evenly divisible by 8 again. Yey.
 	 */
-	a_gap = -gap_open;
-	last_nogap = prev_nogap = 0;
-	for (i = 7; i < (lena + 7); i++) {
-		int a, ms;
+	if (use_colours) {
+		int a_gap, prev_nogap, last_nogap;
 
-		a_gap = MAX((last_nogap - gap_open - gap_ext),
-		    (a_gap - gap_ext));
-		b_gap[i] = (uint16_t)MAX((nogap[i] - gap_open - gap_ext),
-		    (b_gap[i] - gap_ext));
+		a_gap = -gap_open;
+		last_nogap = prev_nogap = 0;
+		for (i = 7; i < (lena + 7); i++) {
+			int a, ms;
 
-		a = colourmat[ls_seqA[i]][initbp];
-		ms = (a == seqB[0]) ? match : mismatch;
+			a_gap = MAX((last_nogap - gap_open - gap_ext),
+			    (a_gap - gap_ext));
+			b_gap[i] =(uint16_t)MAX((nogap[i] - gap_open - gap_ext),
+			    (b_gap[i] - gap_ext));
 
-		last_nogap = MAX((prev_nogap + ms), 0);
-		last_nogap = MAX(last_nogap, a_gap);
-		last_nogap = MAX(last_nogap, b_gap[i]);
-		prev_nogap = nogap[i];
-		nogap[i] = (uint16_t)last_nogap;
-		score = MAX(score, last_nogap);
+			a = lstocs(ls_seqA[i], initbp);
+			ms = (a == seqB[0]) ? match : mismatch;
+
+			last_nogap = MAX((prev_nogap + ms), 0);
+			last_nogap = MAX(last_nogap, a_gap);
+			last_nogap = MAX(last_nogap, b_gap[i]);
+			prev_nogap = nogap[i];
+			nogap[i] = (uint16_t)last_nogap;
+			score = MAX(score, last_nogap);
+		}
+
+		v_score = SET16((&score), 0, 0, 0, 0, 0, 0, 0, 0);
+		score = 0;
+		seqB++;
+		lenb--;
+
+		assert(lenb != 0);
 	}
-
-	v_score = SET16((&score), 0, 0, 0, 0, 0, 0, 0, 0);
-	score = 0;
-	seqB++;
-	lenb--;
-
-	assert(lenb != 0);
-#endif
 
 	for (i = 0; i < (lenb + 7)/8; i++) {
 		int k = i * 8;

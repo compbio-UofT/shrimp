@@ -15,7 +15,8 @@
 #include <sys/time.h>
 
 #include "rmapper.h"
-#include "sw-full.h"
+#include "sw-full-common.h"
+#include "sw-full-ls.h"
 #include "util.h"
 
 struct swcell {
@@ -48,7 +49,7 @@ enum {
 };
 
 static int		initialised;
-static int8_t	       *db, *db_ls, *qr;
+static int8_t	       *db, *qr;
 static int		dblen, qrlen;
 static int		gap_open, gap_ext;
 static int		match, mismatch;
@@ -60,23 +61,13 @@ static char	       *dbalign, *qralign;
 #define SWM(_i, _j) swmatrix[((_i) + 1) * (lena + 1) + (_j) + 1]
 
 static void
-full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int initbp)
+full_sw(int lena, int lenb, int maxscore, int *iret, int *jret)
 {
 	int i, j;
 	int score, ms, go, ge, tmp, tmp2;
-#ifdef USE_COLOURS
-	int colourmat[5][5] = {
-		{ 0, 1, 2, 3, 4 },
-		{ 1, 0, 3, 2, 4 },
-		{ 2, 3, 0, 1, 4 },
-		{ 3, 2, 1, 0, 4 },
-		{ 4, 4, 4, 4, 4 }
-	};
-#endif
 
 	/* shut up gcc */
 	j = 0;
-	(void)initbp;
 
 	score = 0;
 	go = gap_open;
@@ -100,24 +91,7 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int initbp)
 			/*
 			 * northwest
 			 */
-#ifdef USE_COLOURS
-			/*
-			 * When using colour space reads, we must handle the
-			 * first row specially. This is because the read will
-			 * begin with some marker base, which will affect
-			 * matching against the genome.
-			 */
-			if (i == 0) {
-				int a;
-
-				a = colourmat[db_ls[j]][initbp];
-				ms = (a == qr[0]) ? match : mismatch;
-			} else {
-				ms = (db[j] == qr[i]) ? match : mismatch;
-			}
-#else
 			ms = (db[j] == qr[i]) ? match : mismatch;
-#endif
 
 			tmp  = SWM(i-1, j-1).score_northwest + ms;
 			tmp2 = FROM_NORTHWEST_NORTHWEST;
@@ -314,12 +288,7 @@ pretty_print(int i, int j, int k)
 {
 	char *d, *q;
 	int l, done;
-#ifdef USE_COLOURS
-	char translate[5] = { '0', '1', '2', '3', 'N' };
-#else
 	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
-#endif
-
 
 	d = dbalign;
 	q = qralign;
@@ -354,17 +323,13 @@ pretty_print(int i, int j, int k)
 }
 
 int
-sw_full_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
+sw_full_ls_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
     int _match, int _mismatch)
 {
 
 	dblen = _dblen;
 	db = malloc(dblen * sizeof(db[0]));
 	if (db == NULL)
-		return (1);
-
-	db_ls = malloc(dblen * sizeof(db[0]));
-	if (db_ls == NULL)
 		return (1);
 
 	qrlen = _qrlen;
@@ -399,7 +364,7 @@ sw_full_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 }
 
 void
-sw_full_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
+sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
     double *cellspersec)
 {
 	
@@ -414,9 +379,9 @@ sw_full_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 }
 
 void
-sw_full(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    uint32_t *genome_ls, int initbp, int maxscore, char **dbalignp,
-    char **qralignp, struct sw_full_results *sfr)
+sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
+    int maxscore, char **dbalignp, char **qralignp,
+    struct sw_full_results *sfr)
 {
 	struct sw_full_results scratch;
 	uint64_t before, after;
@@ -448,15 +413,10 @@ sw_full(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	for (i = 0; i < glen; i++)
 		db[i] = (int8_t)EXTRACT(genome, goff + i);
 
-	if (genome_ls != NULL) {
-		for (i = 0; i < glen; i++)
-			db_ls[i] = (int8_t)EXTRACT(genome_ls, goff + i);
-	}
-
 	for (i = 0; i < rlen; i++)
 		qr[i] = (int8_t)EXTRACT(read, i);
 
-	full_sw(glen, rlen, maxscore, &i, &j, initbp);
+	full_sw(glen, rlen, maxscore, &i, &j);
 	k = do_backtrace(glen, i, j, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->mapped = i - sfr->read_start + 1;

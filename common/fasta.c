@@ -104,7 +104,9 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			a = translate[(int)buf[i]];
 			if (a == -1) {
 				fprintf(stderr, "error: invalid character (%c) "
-				    "in input file [%s]\n", buf[i], file);
+				    "in input file [%s] (have you mixed up "
+				    "letter space and colour space binaries?)"
+				    "\n", buf[i], file);
 				exit(1);
 			}
 

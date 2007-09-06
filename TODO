@@ -1,0 +1,5 @@
+$Id$
+
+1) There is some code duplication, for instance in fasta parsers.
+2) The fasta parsing code is doubtlessly going to choke on some slightly
+   different formats someday.
