@@ -2,7 +2,7 @@ $Id$
 
 The following very liberal licenses apply to this distribution:
 
-1) tools/finalpass/red_black_tree.{c,h} are covered by the following:
+1) common/red_black_tree.{c,h} are covered by the following:
 
 ------
 Redistribution and use in source and binary forms, with or without

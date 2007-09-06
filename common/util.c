@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -86,4 +87,69 @@ xstrdup(const char *str)
 	}
 
 	return (dup);
+}
+
+unsigned int
+hash_string(const char *x)
+{
+	unsigned int hash = 0;
+
+	while (*x != '\0')
+		hash = 31 * hash + *x++;
+
+	return (hash);
+}
+
+/* factorial using stirling's approximation after 20 */
+double
+factorial(u_int n)
+{
+	const double fact[21] = {
+		1,
+		1,
+		2,
+		6,
+		24,
+		120,
+		720,
+		5040,
+		40320,
+		362880,
+		3628800,
+		39916800,
+		479001600,
+		6227020800,
+		87178291200,
+		1307674368000,
+		20922789888000,
+		355687428096000,
+		6402373705728000,
+		121645100408832000,
+		2432902008176640000
+	};
+	double a, b;
+
+	if (n <= 20)
+		return (fact[n]);
+
+	a = sqrt(2 * M_PI * n);
+	b = pow(n / M_E, n);
+
+	return (a * b);
+}
+
+/* choose in log space */
+double
+ls_choose(int64_t n, int64_t k)
+{
+	double a, b, c;
+
+	if (k < 0 || k > n)
+		return (0);
+
+	a = log(factorial(n));
+	b = log(factorial(k));
+	c = log(factorial(n - k));
+
+	return (a - (b + c));
 }
