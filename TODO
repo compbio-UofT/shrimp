@@ -3,3 +3,5 @@ $Id$
 1) There is some code duplication, for instance in fasta parsers.
 2) The fasta parsing code is doubtlessly going to choke on some slightly
    different formats someday.
+3) str* operations are often not done safely. We should add local strl*
+   functions and use them.
