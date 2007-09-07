@@ -24,12 +24,12 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ------
 
-2) all other source files (.c, .h) are covered by the following:
+2) everything else is covered by the following:
 
 -----
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that neither the name of Stephen
-M. Rumble nor the names of any contributors are be used to endorse or
+M. Rumble nor the names of any contributors are used to endorse or
 promote products derived from this software without specific prior
 written permission.
 
