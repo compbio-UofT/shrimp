@@ -5,3 +5,7 @@ $Id$
    different formats someday.
 3) str* operations are often not done safely. We should add local strl*
    functions and use them.
+4) Output file formats are a bit ugly and no single facilities exist for
+   parsing them. There's one centralised output facility, but none for input.
+5) Many outputs could probably benefit from spacing parameters to printf,
+   rather than inserting spaces in the code.
