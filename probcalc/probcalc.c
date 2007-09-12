@@ -27,7 +27,8 @@ static lookup_t reftig_cache;		/* reftig name cache */
 enum {
 	FIELD_NAME = 0,
 	FIELD_SCORE,
-	FIELD_INDEX,
+	FIELD_INDEX_START,
+	FIELD_INDEX_END,
 	FIELD_READ_START,
 	FIELD_READ_MAPPED_LENGTH,
 	FIELD_MATCHES,
@@ -36,12 +37,13 @@ enum {
 	FIELD_DELETIONS,
 	FIELD_CROSSOVERS
 };
-#define NFIELDS	10
+#define NFIELDS	11
 
 struct readstats {
 	char    *reftig;
 	int32_t  score;
-	uint32_t index;
+	uint32_t index_start;
+	uint32_t index_end;
 	uint32_t read_start;
 	uint32_t read_mapped_length;
 	uint32_t matches;
@@ -126,10 +128,10 @@ reheap(struct readstats *stats, int node)
 
 /* update our match min-heap */
 static void
-save_match(struct readinfo *ri, char *reftig, int32_t score, uint32_t index,
-    uint32_t read_start, uint32_t read_mapped_length, uint32_t matches,
-    uint32_t mismatches, uint32_t insertions, uint32_t deletions,
-    uint32_t crossovers)
+save_match(struct readinfo *ri, char *reftig, int32_t score,
+    uint32_t index_start, uint32_t index_end, uint32_t read_start,
+    uint32_t read_mapped_length, uint32_t matches, uint32_t mismatches,
+    uint32_t insertions, uint32_t deletions, uint32_t crossovers)
 {
 	struct readstats *stats = ri->top_matches;
 
@@ -138,7 +140,8 @@ save_match(struct readinfo *ri, char *reftig, int32_t score, uint32_t index,
 
 	stats[1].reftig			= reftig;
 	stats[1].score			= score;
-	stats[1].index 			= index;
+	stats[1].index_start		= index_start;
+	stats[1].index_end		= index_end;
 	stats[1].read_start		= read_start;
 	stats[1].read_mapped_length	= read_mapped_length;
 	stats[1].matches		= matches;
@@ -203,18 +206,6 @@ progress_bar(uint32_t at, uint32_t of)
 	fflush(stderr);
 }
 
-static char *
-trim_brackets(char *str)
-{
-
-	if (str[0] == '[')
-		str++;
-	if (str[strlen(str) - 1] == ']')
-		str[strlen(str) - 1] = '\0';
-
-	return (str);
-}
-
 static void
 parse_line(char *buf, const char *fname, const int line, char *reftig)
 {
@@ -257,7 +248,8 @@ parse_line(char *buf, const char *fname, const int line, char *reftig)
 		score = atoi(fields[FIELD_SCORE]);
 		if (score > ri->top_matches[1].score) {
 			save_match(ri, reftig, score,
-			    atoi(fields[FIELD_INDEX]),
+			    atoi(fields[FIELD_INDEX_START]),
+			    atoi(fields[FIELD_INDEX_END]),
 			    atoi(fields[FIELD_READ_START]),
 			    atoi(fields[FIELD_READ_MAPPED_LENGTH]),
 			    atoi(fields[FIELD_MATCHES]),
@@ -283,7 +275,8 @@ parse_line(char *buf, const char *fname, const int line, char *reftig)
 
 		save_match(ri, reftig,
 		    atoi(fields[FIELD_SCORE]),
-		    atoi(fields[FIELD_INDEX]),
+		    atoi(fields[FIELD_INDEX_START]),
+		    atoi(fields[FIELD_INDEX_END]),
 		    atoi(fields[FIELD_READ_START]),
 		    atoi(fields[FIELD_READ_MAPPED_LENGTH]),
 		    atoi(fields[FIELD_MATCHES]),
@@ -298,36 +291,6 @@ parse_line(char *buf, const char *fname, const int line, char *reftig)
 			exit(1);
 		}
 	}
-}
-
-/* extract the reftig name from a comment within the file */
-static char *
-extract_reftig(char *line, char *curreftig)
-{
-	char *s, *key;
-
-	if (strncmp(line, "# REFTIG: [", 11) == 0) {
-		line += 11;
-		s = line;
-		while (*line != ']' && *line != '\0')
-			line++;
-		*line = '\0';
-
-		if (lookup_find(reftig_cache, s, (void *)&key, NULL))
-			return (key);
-
-		s = xstrdup(s);
-
-		if (lookup_add(reftig_cache, s, NULL) == false) {
-			fprintf(stderr, "error: failed to add to reftig cache "
-			    "- probably out of memory\n");
-			exit(1);
-		}
-
-		return (s);
-	}
-
-	return (curreftig);
 }
 
 /*
@@ -385,7 +348,24 @@ read_file(const char *dir, const char *file)
 	reftig = NULL;
 	for (line = 0; fgets(buf, sizeof(buf), fp) != NULL; line++) {
 		if (buf[0] == '#') {
-			reftig = extract_reftig(buf, reftig);
+			char *nreftig, *key;
+
+			nreftig = extract_reftig(buf);
+			if (nreftig != NULL) {
+				if (lookup_find(reftig_cache, nreftig,
+				    (void *)&key, NULL))
+					reftig = key;
+
+				reftig = xstrdup(nreftig);
+
+				if (lookup_add(reftig_cache, reftig,
+				    NULL) == false) {
+					fprintf(stderr, "error: failed to add "
+					    "to reftig cache probably out of "
+					    "memory\n");
+					exit(1);
+				}
+			}
 		} else if (buf[0] != '\n') {
 			if (reftig == NULL)
 				reftig = derive_reftig((char *)file);
@@ -566,17 +546,17 @@ calc_probs(void *arg, void *key, void *val)
 
 		/* handle letter and colour spaces separately */
 		if (rates->crossovers == 0) {
-			printf("[%s] [%s] %.8f %d %u %u %u %u %u %u %u\n",
-			    ri->name, rs->reftig, rspv[i].pval, rs->score,
-			    rs->index, rs->read_start, rs->read_mapped_length,
-			    rs->matches, rs->mismatches, rs->insertions,
-			    rs->deletions);
-		} else {
 			printf("[%s] [%s] %.8f %d %u %u %u %u %u %u %u %u\n",
 			    ri->name, rs->reftig, rspv[i].pval, rs->score,
-			    rs->index, rs->read_start, rs->read_mapped_length,
-			    rs->matches, rs->mismatches, rs->insertions,
-			    rs->deletions, rs->crossovers);
+			    rs->index_start, rs->index_end, rs->read_start,
+			    rs->read_mapped_length, rs->matches, rs->mismatches,
+			    rs->insertions, rs->deletions);
+		} else {
+			printf("[%s] [%s] %.8f %d %u %u %u %u %u %u %u %u %u\n",
+			    ri->name, rs->reftig, rspv[i].pval, rs->score,
+			    rs->index_start, rs->index_end, rs->read_start,
+			    rs->read_mapped_length, rs->matches, rs->mismatches,
+			    rs->insertions, rs->deletions, rs->crossovers);
 		}
 	}
 }

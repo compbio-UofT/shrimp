@@ -15,4 +15,8 @@
 
 #define BASE_N		4
 
+/* overrides for the base argument to indicate beginning and end of file */
+#define FASTA_ALLOC	-1
+#define FASTA_DEALLOC	-2
+
 ssize_t load_fasta(const char *, void (*)(int, ssize_t, int, char *, int), int);

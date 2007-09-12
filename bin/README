@@ -4,6 +4,8 @@ Program			Function
 -------			--------
 colourise		convert letterspace fasta files to colourspace
 finalpass		parse rmapper output (non-pretty-printed output)
+prettyprint-cs		pretty print alignments from finalpass (colourspace)
+prettyprint-ls		pretty print alignments from finalpass (letterspace)
 revcmpl			generate reverse complements of fasta reftigs
 rmapper-cs		colourspace read mapper
 rmapper-ls		letterspace read mapper

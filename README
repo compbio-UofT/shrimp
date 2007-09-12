@@ -1,7 +1,18 @@
 $Id$
 
-Usage
------
+Table of Contents
+-----------------
+  1.   Introduction
+  2    Usage
+  3.   Program Parameters
+  3.   Contact
+  4.   Acknowledgements
+
+1. Introduction
+---------------
+
+2. Usage
+--------
 
 The distribution makes use of several programs. The first and most important
 is 'rmapper'. 'rmapper' performs Smith-Waterman alignments of multiple reads
@@ -21,8 +32,169 @@ The output produced by the 'finalpass' utility is essentially a subset of
 the input, but with an added p-value field. These matches may then have
 their full alignments printed using the 'finalprint' utility.
 
-Acknowledgements
-----------------
+3. Program Parameters
+---------------------
+
+'rmapper' takes a variety of parameters, which differ sightly depending on
+whether colour-space or letter-space reads are being employed. What follows
+is a run-down of these options (in some strange, non-alphabetical order).
+
+	rmapper-cs and rmapper-ls parameters (common parameters):
+		[ -s spaced_seed ]
+
+		The spaced seed is a single contiguous string of 0's and 1's.
+		0's represent wildcards, or positions which will always be
+		considered as matching, whereas 1's dictate positions that must
+		match. A string of all 1's will result in a simple kmer scan.
+
+		Note that our implementation creates a hash table based on the
+		kmer size (spaced seed 'weight', or number of 1's). Hence
+		memory usage increases by a factor of four for each addition
+		1. At 16, we're looking at a 32GB hash table allocation for
+		32-bit architectures.
+
+		[ -n seed_matches_per_window ]
+
+		The number of seed matches per window dictates how many seeds
+		must match within some window length of the genome before that
+		region is considered for Smith-Waterman alignment. A lower
+		value will increase sensitivity while drastically increasing
+		runnig time. Higher values will have the opposite effect.
+
+		[ -t seed_taboo_length ]
+
+		the seed taboo length specifies how many target genome bases
+		or colours must exist prior to a previous seed match in order
+		to count another seed match as a hit.
+
+		[ -w seed_window_length ]
+
+		This parameter specifies the genomic span in bases (or colours)
+		in which 'seed_matches_per_window' must exist before the read
+		is given consideration by the Smith-Waterman alignment
+		machinery.
+
+		[ -o maximum_hits_per_read ]
+
+		This parameter specifies how many hits to remember for each
+		read. If more hits are encountered, ones with lower scores are
+		dropped to make room.
+
+		[ -r maximum_read_length ]
+
+		This parameter specifies the maximum length of reads that will
+		be encountered in the dataset. If larger reads than the default
+		are used, an appropriate value must be passed to 'rmapper'.
+
+		[ -d kmer_std_dev_limit ]
+
+		This option permits pruning read kmers, which occur with
+		frequencies greater than 'kmer_std_dev_limit' standard
+		deviations above the average. This can shorten running time
+		at the cost of some sensitivity.
+
+		NB: A negative value disables this option.
+
+		[ -m sw_match_value ]
+
+		The value applied to matches during the Smith-Waterman score
+		calculation.
+
+		[ -i sw_mismatch_value ]
+
+		The value applied to mismatches during the Smith-Waterman score
+		calculation.
+		
+		[ -g sw_gap_open_penalty ]
+
+		The value applied to gap opens during the Smith-Waterman score
+		calculation.
+
+		[ -e sw_gap_extend_penalty ]
+
+		The value applied to gap extends during the Smith-Waterman score
+		calculation.
+
+		[ -h sw_threshold ]
+
+		NB: This option differs slightly in meaning between letter-space
+		    and colour-space.
+
+		In letter-space, this parameter determines the threshold score
+		for both vectored and full Smith-Waterman alignments. Any values
+		less than this quanitity will be thrown away.
+
+		In colour-space, this parameter affects only the full Smith-
+		Waterman alignment, which is performed in letter-space. The
+		threshold of the colour-space fast vectored alignment can be
+		specified by the -v option. Generally, the -h parameter should
+		be stricter (higher) than the -v option, since naive
+		colour-space alignments using regular Smith-Waterman suffer
+		additionally due to artifacts such as single SNPs resulting in
+		two colour mismatches.
+
+		[ -b ]
+
+		This option simply prints a progress bar to stderr during the
+		spaced seed scan and vectored Smith-Waterman phases. It exists
+		to give a general feel for run-time when testing parameters.
+		Since it will probably slow down execution marginally, it is
+		not enabled by default and should only be used during manual,
+		interactive execution.
+
+		[ -p ]
+
+		'rmapper' has two output formats. The first, and default,
+		prints a list of appropriately scoring reads and various
+		parameters, such as where they occurred in the genome (index),
+		how many matches, mismatches, and gaps there were, and so forth.
+		The '-p' flag enables a 'pretty print' output, which displays
+		similar parameters, but also a full alignment.
+
+		These alignments can also be obtained after the fact by running
+		the default output file through the 'finalprint' program.
+
+	rmapper-cs-specific parameters: 
+		[ -x crossover_penalty ]
+
+		This specifies the penalty applied when transitioning between
+		Smith-Waterman matricies during the full scan phase. While
+		the vectored scan applies to colour-space, the final full
+		alignment is done in letter-space. Since each next letter in
+		letter-space depends on the previous letter and colour, any
+		error on the colour space read will affect all following
+		letters when converting to text space. For this reason, we
+		must perform our alignment of all four possible letter space
+		translations of the read and permit jumping between matricies
+		(at the crossover_penalty) cost, when errors occur.
+
+		[ -v sw_vector_hit_threshold ]
+
+		Unlike in letter-space, where the vectored Smith-Waterman and
+		full Smith-Waterman alignments are done both in letter-space
+		and present identical scores, in colour-space the vectored
+		score represents the original colour-space read aligned to
+		the colour-space translation of the genome. This will differ
+		from the final alignment, which is done purely in letter-space.
+		Since the function of the vectored pass exists merely to prune
+		insufficiently good alignments and the vectored pass is not a
+		true textual alignment, scores for both passes are likely to
+		differ. Generally, since a single SNP in letter-space will
+		result in two colour changes, the threshold for the colour-space
+		alignment should be less than that of letter-space. 
+
+rmapper-ls-specific parameters:
+	None for now.
+
+4. Contact
+----------
+
+The authors of this software may be contacted at the following e-mail addresses:
+	brudno at cs dot toronto dot edu	(Michael Brudno)
+	rumble at cs dot toronto dot edu	(Stephen Rumble)
+
+5. Acknowledgements
+-------------------
 
 Development was performed at the University of Toronto's Computational
 Biology lab in collaboration with the Stanford University Sidow Lab.

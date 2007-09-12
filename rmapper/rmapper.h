@@ -17,7 +17,8 @@ extern const int use_colours;
 #define DEF_GAP_OPEN		-100
 #define DEF_GAP_EXTEND		-70
 #define DEF_XOVER_PENALTY	-200
-#define DEF_SW_THRESHOLD	1875
+#define DEF_SW_VECT_THRESHOLD	1875	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_FULL_THRESHOLD	1975
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an

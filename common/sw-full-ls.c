@@ -77,12 +77,20 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret)
 		SWM(i, -1).score_northwest = 0;
 		SWM(i, -1).score_north = -go;
 		SWM(i, -1).score_west = -go;
+
+		SWM(i, -1).back_northwest = 0;
+		SWM(i, -1).back_north = 0;
+		SWM(i, -1).back_west = 0;
 	}
 
 	for (i = -1; i < lena; i++) {
 		SWM(-1, i).score_northwest = 0;
-		SWM(-1, i).score_north = -go;
-		SWM(-1, i).score_west = -go;
+		SWM(-1, i).score_north = 0;
+		SWM(-1, i).score_west = 0;
+
+		SWM(-1, i).back_northwest = 0;
+		SWM(-1, i).back_north = 0;
+		SWM(-1, i).back_west = 0;
 	}
 
 	for (i = 0; i < lenb; i++) {
@@ -193,7 +201,6 @@ do_backtrace(int lena, int i, int j, struct sw_full_results *sfr)
 	}
 	if (SWM(i, j).score_north > fromscore)
 		from = SWM(i, j).back_north;
-
 
 	/* fill out the backtrace */
 	k = (dblen + qrlen) - 1;
@@ -419,7 +426,8 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	full_sw(glen, rlen, maxscore, &i, &j);
 	k = do_backtrace(glen, i, j, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
-	sfr->mapped = i - sfr->read_start + 1;
+	sfr->gmapped = j - sfr->genome_start + 1;
+	sfr->rmapped = i - sfr->read_start + 1;
 	sfr->score = maxscore;
 
 	swcells += (glen * rlen);

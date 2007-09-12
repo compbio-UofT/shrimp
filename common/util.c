@@ -153,3 +153,77 @@ ls_choose(int64_t n, int64_t k)
 
 	return (a - (b + c));
 }
+
+char *
+trim_brackets(char *str)
+{
+
+	if (str[0] == '[')
+		str++;
+	if (str[strlen(str) - 1] == ']')
+		str[strlen(str) - 1] = '\0';
+
+	return (str);
+}
+
+/*
+ * Prepend the low 4 bits of 'val' to the start of the bitfield in 'bf'.
+ * 'entries' is the maximum number of 4-bit words to be stored in the
+ * bitfield.
+ */
+void
+bitfield_prepend(uint32_t *bf, uint32_t entries, uint32_t val)
+{
+	uint32_t tmp;
+	int i;
+
+	for (i = 0; i < BPTO32BW(entries); i++) {
+		tmp = bf[i] >> 28;
+		bf[i] <<= 4;
+		bf[i] |= val;
+		val = tmp;
+	}
+
+	bf[i - 1] &= (0xffffffff >> (32 - (4 * (entries % 8))));
+}
+
+/*
+ * Append the low 4 bits of 'val' to the end of the bitfield in 'bf'.
+ * 'entries' is the number of 4-bit words in 'bf' prior to the append.
+ */
+void
+bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
+{
+	uint32_t word;
+
+	word = bf[entries / 8];
+	word &= ~(0xf << (4 * (entries % 8)));
+	word |= ((val & 0xf) << (4 * (entries % 8)));
+	bf[entries / 8] = word;
+}
+
+/*
+ * Extract the reftig name from a comment within the file.
+ *
+ * NB: This function will modify the string in place if it's a 'REFTIG: '
+ *     line.
+ */
+char *
+extract_reftig(char *line)
+{
+	char *s;
+
+	if (strncmp(line, "# REFTIG: [", 11) == 0) {
+		line += 11;
+		s = line;
+
+		while (*line != ']' && *line != '\0')
+			line++;
+		*line = '\0';
+
+		return (s);
+	}
+
+	return (NULL);
+}
+

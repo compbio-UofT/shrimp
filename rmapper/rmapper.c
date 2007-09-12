@@ -22,6 +22,7 @@
 #include "../common/sw-full-cs.h"
 #include "../common/sw-full-ls.h"
 #include "../common/sw-vector.h"
+#include "../common/output.h"
 #include "../common/util.h"
 
 #include "rmapper.h"
@@ -40,7 +41,8 @@ static int   mismatch_value	= DEF_MISMATCH_VALUE;
 static int   gap_open		= DEF_GAP_OPEN;
 static int   gap_extend		= DEF_GAP_EXTEND;
 static int   xover_penalty	= DEF_XOVER_PENALTY;
-static u_int sw_threshold	= DEF_SW_THRESHOLD;
+static u_int sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
+static u_int sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t *genome;
@@ -252,42 +254,6 @@ kmer_to_mapidx(uint32_t *kmer)
 }
 
 /*
- * Prepend the low 4 bits of 'val' to the start of the bitfield in 'bf'.
- * 'entries' is the maximum number of 4-bit words to be stored in the
- * bitfield.
- */
-static void
-bitfield_prepend(uint32_t *bf, int entries, uint32_t val)
-{
-	uint32_t tmp;
-	int i;
-
-	for (i = 0; i < BPTO32BW(entries); i++) {
-		tmp = bf[i] >> 28;
-		bf[i] <<= 4;
-		bf[i] |= val;
-		val = tmp;
-	}
-
-	bf[i - 1] &= (0xffffffff >> (32 - (4 * (entries % 8))));
-}
-
-/*
- * Append the low 4 bits of 'val' to the end of the bitfield in 'bf'.
- * 'entries' is the number of 4-bit words in 'bf' prior to the append.
- */
-static void
-bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
-{
-	uint32_t word;
-
-	word = bf[entries / 8];
-	word &= ~(0xf << (4 * (entries % 8)));
-	word |= ((val & 0xf) << (4 * (entries % 8)));
-	bf[entries / 8] = word;
-}
-
-/*
  * If 'kmer_stddev_limit' is set to a reasonable value, prune all kmers, whose
  * frequencies are more than 'kmer_stddev_limit' standard deviations greater
  * than the mean.
@@ -394,7 +360,7 @@ scan()
 					    re->read, re->read_len, NULL, -1);
 				}
 
-				if (score >= sw_threshold) {
+				if (score >= sw_vect_threshold) {
 					save_score(re, score, i);
 					re->last_swhit_idx = i;
 					re->swhits++;
@@ -428,8 +394,11 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 	(void)last;
 	(void)initbp;
 
+	if (base == FASTA_DEALLOC)
+		return;
+
 	/* handle initial call to alloc resources */
-	if (base == -1) {
+	if (base == FASTA_ALLOC) {
 		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(offset));
 		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(offset));
 
@@ -498,6 +467,9 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	/* shut up icc */
 	(void)offset;
 
+	if (base == FASTA_DEALLOC)
+		return;
+
 	seed_span = strlen(spaced_seed);
 	seed_weight = strchrcnt(spaced_seed, '1');
 
@@ -516,7 +488,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	}
 
 	/* handle initial call to alloc resources */
-	if (base == -1) {
+	if (base == FASTA_ALLOC) {
 		len = sizeof(readmap[0]) * power(4, seed_weight);
 		readmap = xmalloc(len);
 		memset(readmap, 0, len);
@@ -656,111 +628,6 @@ load_reads(const char *file)
 }
 
 static void
-print_pretty(const char *name, const struct sw_full_results *sfr,
-    const char *dbalign, const char *qralign, uint32_t goff, int newread)
-{
-	static int firstcall = 1;
-
-	int j, len;
-	uint32_t *genome_ptr;
-	uint32_t aoff;
-	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
-
-	if (use_colours)
-		genome_ptr = genome_ls;
-	else
-		genome_ptr = genome;
-
-	if (newread && !firstcall) {
-		putchar('\n');
-		putchar('\n');
-	}
-	firstcall = 0;
-
-	if (newread) {
-		printf("---------------------------------------------------\n");
-		printf("READ: [%s]\n", name);
-		printf("---------------------------------------------------\n");
-	}
-
-	putchar('\n');
-
-	aoff = sfr->genome_start;
-
-	len = strlen(dbalign);
-	assert(len == strlen(qralign));
-
-	printf("Score:   %d   (read start/end: %d/%d)\n",
-	    sfr->score, sfr->read_start,
-	    sfr->read_start + sfr->mapped - 1);
-	printf("Index:   %u\n", goff + aoff);
-	
-	printf("Reftig:  ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putchar(translate[
-			    EXTRACT(genome_ptr, goff + aoff - j)]);
-	}
-	printf("%s", dbalign);
-	for (j = 0; j < 4; j++) {
-		if ((goff + aoff + len + j) < genome_len)
-			putchar(translate[EXTRACT(genome_ptr,
-			    goff + aoff + len + j)]);
-	}
-	putchar('\n');
-
-	printf("Match:   ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putchar(' ');
-	}
-	for (j = 0; j < len; j++) {
-		if (dbalign[j] == qralign[j] && dbalign[j] != '-') {
-			putchar('|');
-		} else {
-			assert(j != 0);
-			if (dbalign[j] == toupper((int)qralign[j]))
-				putchar('X');
-			else if (islower((int)qralign[j]))
-				putchar('x');
-			else
-				putchar(' ');
-		}
-	}
-	putchar('\n');
-
-	printf("Read:    ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putchar(' ');
-	}
-	printf("%s\n", qralign);
-}
-
-static void
-print_normal(const char *name, const struct sw_full_results *sfr,
-    uint32_t goff, int newread)
-{
-	static int firstcall = 1;
-
-	if (!firstcall && newread)
-		putchar('\n');
-	firstcall = 0;
-
-	if (use_colours) {
-		printf("[%s] %d %u %d %d %d %d %d %d %d\n", name, sfr->score,
-		    goff + sfr->genome_start, sfr->read_start, sfr->mapped,
-		    sfr->matches, sfr->mismatches, sfr->insertions,
-		    sfr->deletions, sfr->crossovers);
-	} else {
-		printf("[%s] %d %u %d %d %d %d %d %d\n", name, sfr->score,
-		    goff + sfr->genome_start, sfr->read_start, sfr->mapped,
-		    sfr->matches, sfr->mismatches, sfr->insertions,
-		    sfr->deletions);
-	}
-}
-
-static void
 print_alignments(struct read_elem *re)
 {
 	struct sw_full_results *sfr;
@@ -797,8 +664,8 @@ print_alignments(struct read_elem *re)
 			glen = window_len * 2;
 
 		if (use_colours) {
-			sw_full_cs(genome, goff, glen, re->read, re->read_len,
-			    genome_ls, re->initbp, re->scores[i].score,
+			sw_full_cs(genome_ls, goff, glen, re->read,
+			    re->read_len, re->initbp, re->scores[i].score,
 			    &qa[i-1].dbalign, &qa[i-1].qralign, &sfr[i-1]);
 		} else {
 			sw_full_ls(genome, goff, glen, re->read, re->read_len,
@@ -832,11 +699,14 @@ print_alignments(struct read_elem *re)
 			continue;
 
 		if (pflag) {
-			print_pretty(qa[i].name, qa[i].cookie, qa[i].dbalign,
-			    qa[i].qralign, qa[i].goff, newread);
+			sw_print_pretty(stdout, qa[i].name, qa[i].cookie,
+			    qa[i].dbalign, qa[i].qralign,
+			    (use_colours) ? genome_ls : genome,
+			    (use_colours) ? genome_ls_len : genome_len,
+			    qa[i].goff, newread);
 		} else {
-			print_normal(qa[i].name, qa[i].cookie, qa[i].goff,
-			    newread);
+			sw_print_normal(stdout, qa[i].name, qa[i].cookie,
+			    qa[i].goff, use_colours, newread);
 		}
 
 		newread = 0;
@@ -939,9 +809,18 @@ usage(char *progname)
 		    "default: %d)\n", DEF_XOVER_PENALTY);
 	}
 
-	fprintf(stderr,
-	    "    -h    S-W Hit Threshold                       (default: %d)\n",
-	    DEF_SW_THRESHOLD);
+	if (use_colours) {
+		fprintf(stderr,
+		    "    -h    S-W Full Hit Threshold                  "
+		    "(default: %d)\n", DEF_SW_FULL_THRESHOLD);
+		fprintf(stderr,
+		    "    -v    S-W Vector Hit Threshold                "
+		    "(default: %d)\n", DEF_SW_VECT_THRESHOLD);
+	} else {
+		fprintf(stderr,
+		    "    -h    S-W Hit Threshold                       "
+		    "(default: %d)\n", DEF_SW_FULL_THRESHOLD);
+	}
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Options:\n");
@@ -975,7 +854,7 @@ main(int argc, char **argv)
 	progname = argv[0];
 
 	if (use_colours)
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:bp";
+		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:bp";
 	else
 		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:bp";
 
@@ -1019,7 +898,11 @@ main(int argc, char **argv)
 			xover_penalty = atoi(optarg);
 			break;
 		case 'h':
-			sw_threshold = atoi(optarg);
+			sw_full_threshold = atoi(optarg);
+			break;
+		case 'v':
+			assert(use_colours);
+			sw_vect_threshold = atoi(optarg);
 			break;
 		case 'b':
 			bflag = 1;
@@ -1033,7 +916,7 @@ main(int argc, char **argv)
 	}
 	argc -= optind;
 	argv += optind;
-	
+
 	if (argc != 2) {
 		fprintf(stderr, "error: %sreads_file not specified\n",
 		    (argc == 0) ? "genome_file, " : "");
@@ -1042,6 +925,9 @@ main(int argc, char **argv)
 
 	genome_file = argv[0];
 	reads_file  = argv[1];
+
+	if (!use_colours)
+		sw_vect_threshold = sw_full_threshold;
 
 	if (!valid_spaced_seed()) {
 		fprintf(stderr, "error: invalid spaced seed\n");
@@ -1131,7 +1017,15 @@ main(int argc, char **argv)
 		    xover_penalty);
 	}
 
-	fprintf(stderr, "    S-W Hit Threshold:          %u\n", sw_threshold);
+	if (use_colours) {
+		fprintf(stderr, "    S-W Vector Hit Threshold:   %u\n",
+		    sw_vect_threshold);
+		fprintf(stderr, "    S-W Full Hit Threshold:     %u\n",
+		    sw_full_threshold);
+	} else {
+		fprintf(stderr, "    S-W Hit Threshold:          %u\n",
+		    sw_full_threshold);
+	}
 	fprintf(stderr, "\n");
 
 	readmap_prune();
@@ -1142,12 +1036,12 @@ main(int argc, char **argv)
 
 	if (!pflag) {
 		if (use_colours) {
-			printf("#\n# [READ_NAME] score index read_start "
-			    "read_mapped_length matches mismatches "
+			printf("#\n# [READ_NAME] score indexstart indexend "
+			    "read_start read_mapped_length matches mismatches "
 			    "insertions deletions crossovers\n");
 		} else {
-			printf("#\n# [READ_NAME] score index read_start "
-			    "read_mapped_length matches mismatches "
+			printf("#\n# [READ_NAME] score indexstart indexend "
+			    "read_start read_mapped_length matches mismatches "
 			    "insertions deletions\n");
 		}
 	}

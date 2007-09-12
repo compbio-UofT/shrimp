@@ -3,8 +3,9 @@
 struct sw_full_results {
 	/* Common fields */
 	int read_start;					/* read index of map */
+	int rmapped;					/* read mapped length */
 	int genome_start;				/* genome index of map*/
-	int mapped;					/* read mapped length */
+	int gmapped;					/* genome mapped len */
 	int matches;					/* # of matches */
 	int mismatches;					/* # of substitutions */
 	int insertions;					/* # of insertions */

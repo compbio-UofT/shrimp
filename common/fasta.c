@@ -38,8 +38,13 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 		return (-1);
 	}
 
+	if (!S_ISREG(sb.st_mode)) {
+		fprintf(stderr, "error: [%s] is not a regular file\n", file);
+		return (-1);
+	}
+
 	/* tell consumer how many bytes worth of data we can maximally have */
-	bf(-1, sb.st_size, -1, NULL, -1);
+	bf(FASTA_ALLOC, sb.st_size, -1, NULL, -1);
 
 	fp = fopen(file, "r");
 	if (fp == NULL) {
@@ -117,6 +122,9 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			len++;
 		}
 	}
+
+	/* tell consumer that we're done so they can cleanup, etc */
+	bf(FASTA_DEALLOC, -1, -1, NULL, -1);
 
 	fclose(fp);
 

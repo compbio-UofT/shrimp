@@ -2,19 +2,19 @@
 CFLAGS=-Wall -Werror -O3 -static
 LDFLAGS=-lm
 
-all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass bin/revcmpl \
-    bin/splitreads bin/splittigs
+all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass \
+    bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads bin/splittigs
 
 #
 # rmapper/
 #
 
 bin/rmapper-cs: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
-    common/sw-full-cs.o common/sw-full-ls.o common/util.o
+    common/sw-full-cs.o common/sw-full-ls.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
 
 bin/rmapper-ls: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
-    common/sw-full-cs.o common/sw-full-ls.o common/util.o
+    common/sw-full-cs.o common/sw-full-ls.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
@@ -36,8 +36,18 @@ bin/finalpass: finalpass/finalpass.c common/lookup.o common/red_black_tree.o \
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
-# finalprint
+# prettyprint
 #
+
+bin/prettyprint-cs: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
+    common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
+    common/output.o common/util.o
+	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
+
+bin/prettyprint-ls: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
+    common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
+    common/output.o common/util.o
+	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
 # revcmpl
@@ -76,13 +86,17 @@ common/lookup.o: common/lookup.c common/lookup.h
 common/red_black_tree.o: common/red_black_tree.c common/red_black_tree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/sw-vector.o: common/sw-vector.c
+common/output.o: common/output.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 common/sw-full-cs.o: common/sw-full-cs.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 common/sw-full-ls.o: common/sw-full-ls.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+common/sw-vector.o: common/sw-vector.c
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -93,6 +107,7 @@ common/util.o: common/util.c common/util.h
 
 clean:
 	rm -f bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass \
-	    bin/revcmpl bin/splitreads bin/splittigs
+	    bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads \
+	    bin/splittigs
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f

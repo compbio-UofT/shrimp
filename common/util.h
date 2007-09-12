@@ -19,6 +19,10 @@ char	       *xstrdup(const char *);
 unsigned int	hash_string(const char *);
 double		factorial(u_int);
 double		ls_choose(int64_t, int64_t);
+char	       *trim_brackets(char *);
+void		bitfield_prepend(uint32_t *, uint32_t, uint32_t);
+void		bitfield_append(uint32_t *, uint32_t, uint32_t);
+char	       *extract_reftig(char *);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;

@@ -163,12 +163,20 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 			SWM_x(i, j, -1).score_nw = 0;
 			SWM_x(i, j, -1).score_n = -go;
 			SWM_x(i, j, -1).score_w = -go;
+
+			SWM_x(i, j, -1).back_nw = 0;
+			SWM_x(i, j, -1).back_n = 0;
+			SWM_x(i, j, -1).back_w = 0;
 		}
 
 		for (j = -1; j < lena; j++) {
 			SWM_x(i, -1, j).score_nw = 0;
 			SWM_x(i, -1, j).score_n  = -go;
 			SWM_x(i, -1, j).score_w  = -go;
+
+			SWM_x(i, -1, j).back_nw = 0;
+			SWM_x(i, -1, j).back_n = 0;
+			SWM_x(i, -1, j).back_w = 0;
 		}
 	}
 
@@ -179,7 +187,7 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 				 * Do not permit a free crossover on the first
 				 * letter of the read.
 				 */
-				if (i != 0)
+				if (k != 0 && j == 0)
 					resetval = (2 * xover_penalty) - 1;
 				else
 					resetval = 0;
@@ -246,8 +254,10 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 					}
 				}
 
-				if (tmp <= 0)
-					tmp = tmp2 = resetval;
+				if (tmp <= resetval) {
+					tmp = resetval;
+					tmp2 = 0;
+				}
 
 				SWM_x(k, i, j).score_nw = tmp;
 				SWM_x(k, i, j).back_nw  = tmp2;
@@ -293,8 +303,10 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 				}
 
 
-				if (tmp <= 0)
-					tmp = tmp2 = resetval;
+				if (tmp <= resetval) {
+					tmp = resetval;
+					tmp2 = 0;
+				}
 					
 				SWM_x(k, i, j).score_n = tmp;
 				SWM_x(k, i, j).back_n  = tmp2;
@@ -341,8 +353,10 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 					}
 				}
 #endif
-				if (tmp <= 0)
-					tmp = tmp2 = resetval;
+				if (tmp <= resetval) {
+					tmp = resetval;
+					tmp2 = 0;
+				}
 
 				SWM_x(k, i, j).score_w = tmp;
 				SWM_x(k, i, j).back_w  = tmp2;
@@ -390,7 +404,7 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 static int
 do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 {
-	int off, from, fromscore;
+	int off, from, fromscore, done;
 
 	from = SWM_x(k, i, j).back_nw;
 	fromscore = SWM_x(k, i, j).score_nw;
@@ -401,10 +415,10 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 	if (SWM_x(k, i, j).score_n > fromscore)
 		from = SWM_x(k, i, j).back_n;
 
-
 	/* fill out the backtrace */
+	done = 0;
 	off = (dblen + qrlen) - 1;
-	while (i >= 0 && j >= 0) {
+	while (i >= 0 && j >= 0 && !done) {
 		assert(off >= 0);
 
 		if (SWM_x(k, i, j).score_n <= 0 &&
@@ -485,6 +499,18 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 			backtrace[off] = BACK_D_DELETION;
 			break;
 
+		case FROM_A_WEST_WEST:
+		case FROM_A_WEST_NORTHWEST:
+		case FROM_B_WEST_WEST:
+		case FROM_B_WEST_NORTHWEST:
+		case FROM_C_WEST_WEST:
+		case FROM_C_WEST_NORTHWEST:
+		case FROM_D_WEST_WEST:
+		case FROM_D_WEST_NORTHWEST:
+			/* doesn't make sense to cross over on a genomic gap */
+			backtrace[off] = BACK_INSERTION;
+			break;
+
 		case FROM_A_NORTHWEST_NORTH:
 		case FROM_A_NORTHWEST_NORTHWEST:
 		case FROM_A_NORTHWEST_WEST:
@@ -508,6 +534,9 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		case FROM_D_NORTHWEST_WEST:
 			backtrace[off] = BACK_D_MATCH_MISMATCH;
 			break;
+
+		default:
+			assert(0);
 		}
 
 		/* continue backtrace (nb: i and j have already been changed) */
@@ -621,6 +650,10 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 				sfr->crossovers++;
 				k = 3;
 			}
+			break;
+
+		default:
+			done = 1;
 			break;
 		}
 
@@ -779,9 +812,9 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 }
 
 void
-sw_full_cs(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    uint32_t *genome_ls, int initbp, int maxscore, char **dbalignp,
-    char **qralignp, struct sw_full_results *sfr)
+sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
+    int initbp, int maxscore, char **dbalignp, char **qralignp,
+    struct sw_full_results *sfr)
 {
 	struct sw_full_results scratch;
 	uint64_t before, after;
@@ -810,14 +843,8 @@ sw_full_cs(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	if (qralignp != NULL)
 		*qralignp = qralign;
 	
-
-	if (genome_ls == NULL) {
-		for (i = 0; i < glen; i++)
-			db[i] = (int8_t)EXTRACT(genome, goff + i);
-	} else {
-		for (i = 0; i < glen; i++)
-			db[i] = (int8_t)EXTRACT(genome_ls, goff + i);
-	}
+	for (i = 0; i < glen; i++)
+		db[i] = (int8_t)EXTRACT(genome_ls, goff + i);
 
 	/*
 	 * Generate each possible letter space sequence from the colour space
@@ -836,7 +863,8 @@ sw_full_cs(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	sfr->score = full_sw(glen, rlen, maxscore, &i, &j, &k);
 	k = do_backtrace(glen, i, j, k, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
-	sfr->mapped = i - sfr->read_start + 1;
+	sfr->gmapped = j - sfr->genome_start + 1;
+	sfr->rmapped = i - sfr->read_start + 1;
 
 	swcells += (glen * rlen);
 	after = rdtsc();
