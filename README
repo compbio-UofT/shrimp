@@ -23,14 +23,14 @@ entire genome. The utility 'tools/splittigs' can be used to split a genome
 file containing multiple reftigs into individual parts.
 
 Once rmapper has been run, the standard output format of all alignments
-should be parsed via the 'tools/finalpass' program. This code analyses all
+should be parsed via the 'tools/probcalc' program. This code analyses all
 alignment output, saving the top 'n' matches per read, and calculates the
 probability of the match being bad. A threshold removes all outputs with a
 sufficiently high p-value.
 
-The output produced by the 'finalpass' utility is essentially a subset of
+The output produced by the 'probcalc' utility is essentially a subset of
 the input, but with an added p-value field. These matches may then have
-their full alignments printed using the 'finalprint' utility.
+their full alignments printed using the 'probcalc' utility.
 
 3. Program Parameters
 ---------------------
@@ -152,7 +152,7 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		similar parameters, but also a full alignment.
 
 		These alignments can also be obtained after the fact by running
-		the default output file through the 'finalprint' program.
+		the default output file through the 'probcalc' program.
 
 	rmapper-cs-specific parameters: 
 		[ -x crossover_penalty ]

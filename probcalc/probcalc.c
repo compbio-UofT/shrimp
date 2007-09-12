@@ -18,7 +18,7 @@
 #include "../common/lookup.h"
 #include "../common/util.h"
 
-#include "finalpass.h"
+#include "probcalc.h"
 
 static lookup_t read_list;		/* list of reads and top matches */
 static lookup_t reftig_cache;		/* reftig name cache */

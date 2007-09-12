@@ -2,7 +2,7 @@
 CFLAGS=-Wall -Werror -O3 -static
 LDFLAGS=-lm
 
-all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass \
+all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
     bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads bin/splittigs
 
 #
@@ -28,10 +28,10 @@ bin/colourise/fasta.o: colourise/fasta.c colourise/fasta.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 #
-# finalpass 
+# probcalc 
 #
 
-bin/finalpass: finalpass/finalpass.c common/lookup.o common/red_black_tree.o \
+bin/probcalc: probcalc/probcalc.c common/lookup.o common/red_black_tree.o \
     common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
@@ -106,7 +106,7 @@ common/util.o: common/util.c common/util.h
 #
 
 clean:
-	rm -f bin/rmapper-cs bin/rmapper-ls bin/colourise bin/finalpass \
+	rm -f bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
 	    bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads \
 	    bin/splittigs
 	find . -name '*.o' |xargs rm -f
