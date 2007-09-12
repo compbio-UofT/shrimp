@@ -19,11 +19,11 @@ is 'rmapper'. 'rmapper' performs Smith-Waterman alignments of multiple reads
 within one fasta file against a single reftig in another fasta file. Since
 many reads are mapped against only one reftig per invocation, rmapper must
 be run multiple times against each reftig (and reverse complement) of the
-entire genome. The utility 'tools/splittigs' can be used to split a genome
-file containing multiple reftigs into individual parts.
+entire genome. The utility 'splittigs' can be used to split a genome file
+containing multiple reftigs into individual parts.
 
 Once rmapper has been run, the standard output format of all alignments
-should be parsed via the 'tools/probcalc' program. This code analyses all
+should be parsed via the 'probcalc' program. This code analyses all
 alignment output, saving the top 'n' matches per read, and calculates the
 probability of the match being bad. A threshold removes all outputs with a
 sufficiently high p-value.
