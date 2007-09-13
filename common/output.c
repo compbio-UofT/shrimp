@@ -14,9 +14,9 @@
 #include "../common/util.h"
 
 void
-sw_print_pretty(FILE *fp, const char *name, const struct sw_full_results *sfr,
-    const char *dbalign, const char *qralign, uint32_t *genome,
-    uint32_t genome_len, uint32_t goff, int newread)
+output_pretty(FILE *fp, const char *readname, const char *reftigname,
+    const struct sw_full_results *sfr, const char *dbalign, const char *qralign,
+    uint32_t *genome, uint32_t genome_len, uint32_t goff, int newread)
 {
 	static int firstcall = 1;
 
@@ -33,7 +33,7 @@ sw_print_pretty(FILE *fp, const char *name, const struct sw_full_results *sfr,
 	if (newread) {
 		fprintf(fp,
 		    "------------------------------------------------------\n");
-		fprintf(fp, "READ: [%s]\n", name);
+		fprintf(fp, "READ: [%s]\n", readname);
 		fprintf(fp,
 		    "------------------------------------------------------\n");
 	}
@@ -48,8 +48,11 @@ sw_print_pretty(FILE *fp, const char *name, const struct sw_full_results *sfr,
 	fprintf(fp, "Score:   %d   (read start/end: %d/%d)\n",
 	    sfr->score, sfr->read_start,
 	    sfr->read_start + sfr->rmapped - 1);
-	fprintf(fp, "Index:   %u   (end: %u)\n", goff + aoff,
-	    goff + sfr->genome_start + sfr->gmapped - 1);
+	fprintf(fp, "Index:   %u   (end: %u%s%s%s)\n", goff + aoff,
+	    goff + sfr->genome_start + sfr->gmapped - 1,
+	    (reftigname != NULL) ? ", reftig: [" : "",
+	    (reftigname != NULL) ? reftigname : "",
+	    (reftigname != NULL) ? "]" : "");
 	
 	fprintf(fp, "Reftig:  ");
 	for (j = 4; j > 0; j--) {
@@ -94,24 +97,28 @@ sw_print_pretty(FILE *fp, const char *name, const struct sw_full_results *sfr,
 }
 
 void
-sw_print_normal(FILE *fp, const char *name, const struct sw_full_results *sfr,
-    uint32_t goff, int use_colours, int newread)
+output_normal(FILE *fp, const char *readname, const char *reftigname,
+    const struct sw_full_results *sfr, uint32_t goff, int use_colours,
+    int newread)
 {
 	static int firstcall = 1;
+
+	/* shut up, icc */
+	(void)reftigname;
 
 	if (!firstcall && newread)
 		putc('\n', fp);
 	firstcall = 0;
 
 	if (use_colours) {
-		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d %d\n", name,
+		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d %d\n", readname,
 		    sfr->score, goff + sfr->genome_start,
 		    goff + sfr->genome_start + sfr->gmapped - 1,
 		    sfr->read_start, sfr->rmapped, sfr->matches,
 		    sfr->mismatches, sfr->insertions, sfr->deletions,
 		    sfr->crossovers);
 	} else {
-		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d\n", name,
+		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d\n", readname,
 		    sfr->score, goff + sfr->genome_start,
 		    goff + sfr->genome_start + sfr->gmapped - 1,
 		    sfr->read_start, sfr->rmapped, sfr->matches,

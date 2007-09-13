@@ -442,9 +442,10 @@ print_alignments()
 			    fpo->score, &dbalign, &qralign, &sfr);
 		}
 
-		sw_print_pretty(stdout, read->name, &sfr, dbalign, qralign,
-		    reftig->sequence, reftig->sequence_len, fpo->index_start,
-		    (lastread == NULL || strcmp(read->name, lastread) != 0));
+		output_pretty(stdout, read->name, reftig->name, &sfr, dbalign,
+		    qralign, reftig->sequence, reftig->sequence_len,
+		    fpo->index_start, (lastread == NULL ||
+		    strcmp(read->name, lastread) != 0));
 
 		lastread = read->name;
 	}

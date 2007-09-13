@@ -699,13 +699,13 @@ print_alignments(struct read_elem *re)
 			continue;
 
 		if (pflag) {
-			sw_print_pretty(stdout, qa[i].name, qa[i].cookie,
+			output_pretty(stdout, qa[i].name, NULL, qa[i].cookie,
 			    qa[i].dbalign, qa[i].qralign,
 			    (use_colours) ? genome_ls : genome,
 			    (use_colours) ? genome_ls_len : genome_len,
 			    qa[i].goff, newread);
 		} else {
-			sw_print_normal(stdout, qa[i].name, qa[i].cookie,
+			output_normal(stdout, qa[i].name, NULL, qa[i].cookie,
 			    qa[i].goff, use_colours, newread);
 		}
 
