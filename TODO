@@ -1,5 +1,7 @@
 $Id$
 
+0) There should be a 'shrimp' script in the root directory that wraps all
+   sorts of functionality and generally makes things very trivial to use.
 1) There is some code duplication, for instance in fasta parsers.
 2) The fasta parsing code is doubtlessly going to choke on some slightly
    different formats someday.
