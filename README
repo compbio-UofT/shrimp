@@ -14,6 +14,45 @@ Table of Contents
 1. Introduction
 --------------------------------------------------------------------------------
 
+SHRiMP is a software package for aligning genomic reads against a target genome.
+It was primarily developed with the multitudinous short reads of next generation
+sequencing machines in mind, as well as Applied Biosystem's colourspace genomic
+representation.
+
+SHRiMP is actually a suite of several programs, which, employed in succession,
+search for appropriate alignments, analyse the probability of alignments being
+bad, and print out visual alignments for further study.
+
+SHRiMP uses a few mechanisms to search for alignments. First, all kmers within
+all source reads are generated and used as offsets into a hash table of the
+reads themselves. Second, for each kmer in the genome a specified spaced seed is
+applied and the resultant kmer is used to index matching reads in the genome.
+For each read containing the kmer, a notation is added that a kmer hit was just
+made. If 'n' kmer hits occur within 'm' genomic bases, the read and a section
+of genome of length '2m' around the latest kmer hit is fed into a vectored
+Smith-Waterman algorithm to generate an alignment score. If the score is
+sufficient, the score and genomic offset (index) is remembered. One this process
+has completed for the entire genome, all saved read/index pairs are fed into a
+full Smith-Waterman algorithm, and a detailed output is generated.
+
+The speed of execution depends largely on the spaced seed employed, the number
+of desired matches within a window, the window length, and Smith-Waterman score
+thresholds. For example, aligning 22e6 25-colour reads against the Ciona
+Savignyi genome (173.67 Mbases) takes approximately 6.5 hours on a cluster of
+200 Xeon 3.2GHz Hyperthreaded CPUs using a spaced seed of length 8, span 7, a
+window lenght of 30, 2 matches per window, and a Smith-Waterman threshold of
+1875 (penalties: 100 for matches, -70 mismatch, -75 gap open, -25 gap extend,
+-200 crossover). For comparison, were a vectored Smith-Waterman alignment run
+on the same hardware, with an average execution of 500e6 matrix cells/second,
+this would take over 3 weeks on the same hardware.
+
+The more exact the matches need to be, the larger the spaced seed weight can be,
+and the faster the kmer scan runs. By decreasing the weight by one, execution
+time increases by approximately a factor of four. Due to memory limitations,
+weights quickly become impractical around 16. Similarly, exceedingly small
+weights will offer little or no benefit over a full Smith-Waterman run. It is
+the user's prerogative to balance sensitivity and resource usage (whether it be
+CPU, memory, or disk space used by output).
 
 --------------------------------------------------------------------------------
 2. Usage
