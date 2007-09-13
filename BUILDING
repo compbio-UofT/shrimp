@@ -13,7 +13,8 @@ When building with icc, execute the following:
         LDFLAGS="-lm"
 
 When building with gcc, execute the following:
-    gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -static" LDFLAGS="-lm"
+    gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -mmmx -msse -msse2 -static" \
+        LDFLAGS="-lm"
 
 You may want to adjust your flags depending on your hardware and compiler
 versions. The above icc CFLAGS seemed optimal for both Pentium 4 and Core 2
