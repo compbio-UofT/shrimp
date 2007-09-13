@@ -250,7 +250,7 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 static void
 load_genome_file(char *dir, char *file, void *arg)
 {
-	char fpath[PATH_MAX + 1];
+	char fpath[2048];
 	ssize_t ret;
 
 	/* shut up, icc */
@@ -351,7 +351,7 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 static void
 load_reads_file(char *dir, char *file, void *arg)
 {
-	char fpath[PATH_MAX + 1];
+	char fpath[2048];
 	ssize_t ret;
 
 	/* shut up, icc */

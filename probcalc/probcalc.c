@@ -326,7 +326,7 @@ derive_reftig(char *file)
 static uint64_t
 read_file(const char *dir, const char *file)
 {
-	char fpath[PATH_MAX + 1];
+	char fpath[2048];
 	char buf[512];
 	struct stat sb;
 	char *reftig;

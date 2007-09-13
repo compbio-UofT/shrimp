@@ -14,11 +14,11 @@ strtrim(char *str)
 	if (str == NULL)
 		return (NULL);
 
-	while (isspace(*str))
+	while (isspace((int)*str))
 		str++;
 
 	for (i = strlen(str) - 1; i >= 0; i--) {
-		if (!isspace(str[i]))
+		if (!isspace((int)str[i]))
 			break;
 		str[i] = '\0';
 	}
