@@ -1,6 +1,6 @@
 /*	$Id$	*/
 
-#define RMAPPER_VERSION_STR	"0.42"
+#define RMAPPER_VERSION_STR	"1.0.0"
 
 extern const int use_colours;
 
