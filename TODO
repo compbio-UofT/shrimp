@@ -11,3 +11,5 @@ $Id$
    parsing them. There's one centralised output facility, but none for input.
 5) Many outputs could probably benefit from spacing parameters to printf,
    rather than inserting spaces in the code.
+6) Pre-calculate and cache translations of reads, so as not to do them over
+   again for each S-W call. This may improve CS vectored performance a fair bit.
