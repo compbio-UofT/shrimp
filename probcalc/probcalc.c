@@ -690,6 +690,16 @@ main(int argc, char **argv)
 	    (double)rates.total_len;
 	rates.mrate = (double)rates.matches / (double)rates.total_len;
 
+	if (rates.erate == 0.0 || rates.srate == 0.0 || rates.irate == 0.0 ||
+	    rates.mrate == 0.0) {
+		fprintf(stderr, "NB: one or more rates changed from 0 to "
+		    "1.0e-9\n");
+	}
+	rates.erate = (rates.erate == 0.0) ? 1.0e-9 : rates.erate;
+	rates.srate = (rates.srate == 0.0) ? 1.0e-9 : rates.srate;
+	rates.irate = (rates.irate == 0.0) ? 1.0e-9 : rates.irate;
+	rates.mrate = (rates.mrate == 0.0) ? 10.e-9 : rates.mrate;
+
 	fprintf(stderr, "error rate:         %.10f\n", rates.erate);
 	fprintf(stderr, "substitution rate:  %.10f\n", rates.srate);
 	fprintf(stderr, "indel rate:         %.10f\n", rates.irate);
