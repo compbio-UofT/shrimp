@@ -74,16 +74,27 @@ struct rates {
 
 struct readstatspval {
 	struct readstats *rs;
+	double		  nohits;
+	double		  otherswrong;
 	double            pval;
+};
+
+enum {
+	SORT_PVAL,
+	SORT_OTHERSWRONG,
+	SORT_NOHITS
 };
 
 static uint64_t total_alignments;	/* total outputs in all files */
 static uint64_t total_unique_reads;	/* total unique reads in all files */
 
 /* arguments */
-static double   pval_cutoff = DEF_PVAL_CUTOFF;
-static int	top_matches = DEF_TOP_MATCHES;
+static double   pval_cutoff		= DEF_PVAL_CUTOFF;
+static double   nohits_cutoff		= DEF_NOHITS_CUTOFF;
+static double	otherswrong_cutoff	= DEF_OTHERSWRONG_CUTOFF;
+static int	top_matches		= DEF_TOP_MATCHES;
 static uint64_t genome_len;
+static int	sort_field		= SORT_PVAL;
 
 static unsigned int
 keyhasher(void *k)
@@ -463,10 +474,28 @@ static int
 rspvcmp(const void *a, const void *b)
 {
 	const struct readstatspval *rspva = a, *rspvb = b;
+	double cmp_a, cmp_b;
 
-	if (rspva->pval == rspvb->pval)
+	switch (sort_field) {
+	case SORT_OTHERSWRONG:
+		cmp_a = rspva->otherswrong;
+		cmp_b = rspvb->otherswrong;
+		break;
+	case SORT_NOHITS:
+		cmp_a = rspva->nohits;
+		cmp_b = rspvb->nohits;
+		break;
+	case SORT_PVAL:
+		cmp_a = rspva->pval;
+		cmp_b = rspvb->pval;
+		break;
+	default:
+		assert(0);
+	}
+
+	if (cmp_a == cmp_b)
 		return (0);
-	else if (rspva->pval < rspva->pval)
+	else if (cmp_a < cmp_b)
 		return (1);
 	else
 		return (-1);
@@ -497,11 +526,11 @@ calc_probs(void *arg, void *key, void *val)
 
 		rspv[i - 1].rs = rs;
 		rlen = rs->matches + rs->mismatches;
-		rspv[i - 1].pval = p_otherswrong(rlen, rs->crossovers,
+		rspv[i - 1].otherswrong = p_otherswrong(rlen, rs->crossovers,
 		    rates->erate, rs->mismatches, rates->srate,
 		    rs->insertions + rs->deletions, rates->irate,
 		    rs->matches, rates->mrate);
-		norm += rspv[i - 1].pval;
+		norm += rspv[i - 1].otherswrong;
 	}
 
 	/* 2: Normalise our values */
@@ -511,7 +540,7 @@ calc_probs(void *arg, void *key, void *val)
 		if (rs->score < 0)
 			continue;
 
-		rspv[i - 1].pval /= norm;
+		rspv[i - 1].otherswrong /= norm;
 	}
 
 	/* 3: For each match calculate the probably it's bad */
@@ -525,8 +554,9 @@ calc_probs(void *arg, void *key, void *val)
 		rlen = rs->matches + rs->mismatches;
 		r = p_nohits(genome_len, rlen, rs->mismatches, rs->crossovers,
 		    rs->insertions + rs->deletions);
+		rspv[i - 1].nohits = r;
 
-		r *= rspv[i - 1].pval;
+		r *= rspv[i - 1].otherswrong;
 		r = 1 - r;
 
 		rspv[j].rs = rs;
@@ -537,23 +567,51 @@ calc_probs(void *arg, void *key, void *val)
 	if (j > 0)
 		qsort(rspv, j, sizeof(rspv), rspvcmp);
 
+	if (rates->crossovers == 0) {
+		printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong nohits "
+		    "score indexstart indexend read_start read_mapped_length "
+		    "matches mismatches insertions deletions crossovers\n");
+	} else {
+		printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong nohits "
+		    "score indexstart indexend read_start read_mapped_length "
+		    "matches mismatches insertions deletions\n");
+	}
+
 	/* 5: Finally, print out values in ascending order until the cutoff */
 	for (i = 0; i < j; i++) {
 		struct readstats *rs = rspv[i].rs;
 
-		if (rspv[i].pval >= pval_cutoff)
-			break;
+		if (rspv[i].pval > pval_cutoff) {
+			if (sort_field == SORT_PVAL)
+				break;
+			else
+				continue;
+		}
+		if (rspv[i].otherswrong > otherswrong_cutoff) {
+			if (sort_field == SORT_OTHERSWRONG)
+				break;
+			else
+				continue;
+		}
+		if (rspv[i].nohits > nohits_cutoff) {
+			if (sort_field == SORT_NOHITS)
+				break;
+			else
+				continue;
+		}
 
 		/* handle letter and colour spaces separately */
 		if (rates->crossovers == 0) {
-			printf("[%s] [%s] %.8f %d %u %u %u %u %u %u %u %u\n",
-			    ri->name, rs->reftig, rspv[i].pval, rs->score,
+			printf("[%s] [%s] %.8f %.8f %.8f %d %u %u %u %u %u "
+			    "%u %u %u\n", ri->name, rs->reftig, rspv[i].pval,
+			    rspv[i].otherswrong, rspv[i].nohits, rs->score,
 			    rs->index_start, rs->index_end, rs->read_start,
 			    rs->read_mapped_length, rs->matches, rs->mismatches,
 			    rs->insertions, rs->deletions);
 		} else {
-			printf("[%s] [%s] %.8f %d %u %u %u %u %u %u %u %u %u\n",
-			    ri->name, rs->reftig, rspv[i].pval, rs->score,
+			printf("[%s] [%s] %.8f %.8f %.8f %d %u %u %u %u %u "
+			    "%u %u %u %u\n", ri->name, rs->reftig, rspv[i].pval,
+			    rspv[i].otherswrong, rspv[i].nohits, rs->score,
 			    rs->index_start, rs->index_end, rs->read_start,
 			    rs->read_mapped_length, rs->matches, rs->mismatches,
 			    rs->insertions, rs->deletions, rs->crossovers);
@@ -570,8 +628,9 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [-p pval] [-t top_matches] genome_len "
-	    "results_directory\n", progname);
+	fprintf(stderr, "usage: %s [-n nohits_cutoff] [-o otherswrong_cutoff] "
+	    "[-p pval_cutoff] [-s nohits|otherswrong|pval] [-t top_matches] "
+	    "genome_len results_directory\n", progname);
 	exit(1);
 }
 
@@ -587,11 +646,29 @@ main(int argc, char **argv)
 	int ch;
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "p:t:")) != -1) {	
+	while ((ch = getopt(argc, argv, "n:o:p:s:t:")) != -1) {	
 		switch (ch) {
+		case 'n':
+			nohits_cutoff = atof(optarg);
+			break;
+		case 'o':
+			otherswrong_cutoff = atof(optarg);
+			break;
 		case 'p':
 			pval_cutoff = atof(optarg);
 			break;
+		case 's':
+			if (strstr(optarg, "nohits") != NULL) {
+				sort_field = SORT_NOHITS;
+			} else if (strstr(optarg, "otherswrong") != NULL) {
+				sort_field = SORT_OTHERSWRONG;
+			} else if (strstr(optarg, "pval") != NULL) {
+				sort_field = SORT_PVAL;
+			} else {
+				fprintf(stderr, "error: invalid sort "
+				    "criteria\n");
+				usage(progname);
+			}
 		case 't':
 			top_matches = atoi(optarg);
 			break;

@@ -1,4 +1,6 @@
 /*	$Id$	*/
 
-#define DEF_PVAL_CUTOFF	0.45
-#define DEF_TOP_MATCHES 10
+#define DEF_PVAL_CUTOFF		1.0
+#define DEF_OTHERSWRONG_CUTOFF	1.0
+#define DEF_NOHITS_CUTOFF	1.0
+#define DEF_TOP_MATCHES		10
