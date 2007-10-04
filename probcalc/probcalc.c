@@ -325,8 +325,8 @@ derive_reftig(char *file)
 	}
 
 	if (lookup_add(reftig_cache, s, NULL) == false) {
-		fprintf(stderr, "error: failed to add to reftig cache "
-		    "- probably out of memory\n");
+		fprintf(stderr, "error: failed to add to reftig cache (%d)"
+		    "- probably out of memory\n", __LINE__);
 		exit(1);
 	}
 	
@@ -360,20 +360,24 @@ read_file(const char *dir, const char *file)
 	for (line = 0; fgets(buf, sizeof(buf), fp) != NULL; line++) {
 		if (buf[0] == '#') {
 			char *nreftig, *key;
+			bool add;
 
 			nreftig = extract_reftig(buf);
 			if (nreftig != NULL) {
 				if (lookup_find(reftig_cache, nreftig,
-				    (void *)&key, NULL))
+				    (void *)&key, NULL)) {
 					reftig = key;
+					add = false;
+				} else {
+					reftig = xstrdup(nreftig);
+					add = true;
+				}
 
-				reftig = xstrdup(nreftig);
-
-				if (lookup_add(reftig_cache, reftig,
+				if (add && lookup_add(reftig_cache, reftig,
 				    NULL) == false) {
 					fprintf(stderr, "error: failed to add "
-					    "to reftig cache probably out of "
-					    "memory\n");
+					    "to reftig cache (%d) - probably "
+					    "out of memory\n", __LINE__);
 					exit(1);
 				}
 			}
@@ -505,11 +509,13 @@ static void
 calc_probs(void *arg, void *key, void *val)
 {
 	static struct readstatspval *rspv;
+	static bool first_global = true;
 
 	struct rates *rates = arg;
 	struct readinfo *ri = val;
 	double r, norm;
 	int i, j, rlen;
+	bool first_local = true;
 
 	(void)key;
 
@@ -518,64 +524,46 @@ calc_probs(void *arg, void *key, void *val)
 
 	/* 1: Calculate P(others wrong) for each hit */
 	norm = 0;
-	for (i = 1; i <= top_matches; i++) {
+	for (i = 1, j = 0; i <= top_matches; i++) {
 		struct readstats *rs = &ri->top_matches[i];
 
 		if (rs->score < 0)
 			continue;
 
-		rspv[i - 1].rs = rs;
+		rspv[j].rs = rs;
 		rlen = rs->matches + rs->mismatches;
-		rspv[i - 1].otherswrong = p_otherswrong(rlen, rs->crossovers,
+		rspv[j].otherswrong = p_otherswrong(rlen, rs->crossovers,
 		    rates->erate, rs->mismatches, rates->srate,
 		    rs->insertions + rs->deletions, rates->irate,
 		    rs->matches, rates->mrate);
-		norm += rspv[i - 1].otherswrong;
+		norm += rspv[j].otherswrong;
+		j++;
 	}
 
 	/* 2: Normalise our values */
-	for (i = 1; i <= top_matches; i++) {
-		struct readstats *rs = &ri->top_matches[i];
-
-		if (rs->score < 0)
-			continue;
-
-		rspv[i - 1].otherswrong /= norm;
+	for (i = 0; i < j; i++) {
+		assert(rspv[i].rs->score >= 0);
+		rspv[i].otherswrong /= norm;
 	}
 
 	/* 3: For each match calculate the probably it's bad */
-	j = 0;
-	for (i = 1; i <= top_matches; i++) {
-		struct readstats *rs = &ri->top_matches[i];
+	for (i = 0; i < j; i++) {
+		struct readstats *rs = rspv[i].rs;
 
-		if (rs->score < 0)
-			continue;
+		assert(rs->score >= 0);
 
 		rlen = rs->matches + rs->mismatches;
 		r = p_nohits(genome_len, rlen, rs->mismatches, rs->crossovers,
 		    rs->insertions + rs->deletions);
-		rspv[i - 1].nohits = r;
+		rspv[i].nohits = r;
 
-		r *= rspv[i - 1].otherswrong;
-		r = 1 - r;
-
-		rspv[j].rs = rs;
-		rspv[j++].pval = r;
+		r *= rspv[i].otherswrong;
+		r = 1.0 - r;
+		rspv[i].pval = r;
 	}
 
 	/* 4: Sort the values ascending */
-	if (j > 0)
-		qsort(rspv, j, sizeof(rspv), rspvcmp);
-
-	if (rates->crossovers == 0) {
-		printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong nohits "
-		    "score indexstart indexend read_start read_mapped_length "
-		    "matches mismatches insertions deletions crossovers\n");
-	} else {
-		printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong nohits "
-		    "score indexstart indexend read_start read_mapped_length "
-		    "matches mismatches insertions deletions\n");
-	}
+	qsort(rspv, j, sizeof(*rspv), rspvcmp);
 
 	/* 5: Finally, print out values in ascending order until the cutoff */
 	for (i = 0; i < j; i++) {
@@ -599,6 +587,24 @@ calc_probs(void *arg, void *key, void *val)
 			else
 				continue;
 		}
+
+		if (first_local && rates->crossovers == 0) {
+			if (!first_global)
+				putchar('\n');
+			printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong "
+			    "nohits score indexstart indexend read_start "
+			    "read_mapped_length matches mismatches insertions "
+			    "deletions crossovers\n");
+		} else if (first_local) {
+			if (!first_global)
+				putchar('\n');
+			printf("# [READ_NAME] [REFTIG_NAME] pval otherswrong "
+			    "nohits score indexstart indexend read_start "
+			    "read_mapped_length matches mismatches insertions "
+			    "deletions\n");
+		}
+		first_local = false;
+		first_global = false;
 
 		/* handle letter and colour spaces separately */
 		if (rates->crossovers == 0) {
@@ -786,17 +792,6 @@ main(int argc, char **argv)
 	 * Second iterative pass: Determine probabilities for all reads' best
 	 * alignments.
 	 */
-
-	/* handle letter and colour spaces separately */
-	if (rates.crossovers == 0) {
-		printf("# [READ_NAME] [REFTIG_NAME] pval score index "
-		    "read_start read_mapped_length matches mismatches "
-		    "insertions deletions\n");
-	} else {
-		printf("# [READ_NAME] [REFTIG_NAME] pval score index "
-		    "read_start read_mapped_length matches mismatches "
-		    "insertions deletions crossovers\n");
-	}
 	lookup_iterate(read_list, calc_probs, &rates);
 
 	return (0);
