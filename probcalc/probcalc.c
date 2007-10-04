@@ -500,9 +500,9 @@ rspvcmp(const void *a, const void *b)
 	if (cmp_a == cmp_b)
 		return (0);
 	else if (cmp_a < cmp_b)
-		return (1);
-	else
 		return (-1);
+	else
+		return (1);
 }
 
 static void
@@ -675,6 +675,7 @@ main(int argc, char **argv)
 				    "criteria\n");
 				usage(progname);
 			}
+			break;
 		case 't':
 			top_matches = atoi(optarg);
 			break;
