@@ -59,6 +59,7 @@ struct readinfo {
 };
 
 struct rates {
+	uint64_t samples;
 	uint64_t total_len;
 	uint64_t insertions;
 	uint64_t deletions;
@@ -418,7 +419,8 @@ calc_rates(void *arg, void *key, void *val)
 
 	best = prev_best = 0;
 	for (i = 1; i <= ri->top_matches[0].score; i++) {
-		if (ri->top_matches[i].score > best) {
+		if (best == 0 ||
+		    ri->top_matches[i].score >= ri->top_matches[best].score) {
 			prev_best = best;
 			best = i;
 		}
@@ -432,6 +434,7 @@ calc_rates(void *arg, void *key, void *val)
 	    ri->top_matches[prev_best].score)) {
 		rs = &ri->top_matches[best];
 
+		rates->samples++;
 		rates->total_len  += rs->matches + rs->mismatches;
 		rates->insertions += rs->insertions;
 		rates->deletions  += rs->deletions;
@@ -761,6 +764,7 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "total matches:      %" PRIu64 "\n", total_alignments);
 	fprintf(stderr, "total unique reads: %" PRIu64 "\n",total_unique_reads);
+	fprintf(stderr, "total samples:      %" PRIu64 "\n", rates.samples);
 	fprintf(stderr, "total length:       %" PRIu64 "\n", rates.total_len); 
 	fprintf(stderr, "insertions:         %" PRIu64 "\n", rates.insertions); 
 	fprintf(stderr, "deletions:          %" PRIu64 "\n", rates.deletions); 
