@@ -16,6 +16,10 @@ When building with gcc, execute the following:
     gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -mmmx -msse -msse2 -static" \
         LDFLAGS="-lm"
 
+NB: Mac OS X users may want to avoid the '-static' flag if compilation errors
+    occur. Apple either doesn't ship some or all static libraries, or there are
+    other things going on in Appleland that I don't understand.
+
 You may want to adjust your flags depending on your hardware and compiler
 versions. The above icc CFLAGS seemed optimal for both Pentium 4 and Core 2
 architectures.
