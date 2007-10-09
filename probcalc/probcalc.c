@@ -20,6 +20,9 @@
 
 #include "probcalc.h"
 
+/* XXX - hack until we supply the read length */
+#define READLEN 25
+
 static lookup_t read_list;		/* list of reads and top matches */
 static lookup_t reftig_cache;		/* reftig name cache */
 
@@ -464,7 +467,7 @@ calc_rates(void *arg, void *key, void *val)
 
 	if (best != 0 &&
 	    p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		rs->insertions + rs->deletions, 25) < pchance_cutoff) {
+		rs->insertions + rs->deletions, READLEN) < pchance_cutoff) {
 
 		rates->samples++;
 		rates->total_len  += rs->matches + rs->mismatches;
@@ -557,7 +560,7 @@ calc_probs(void *arg, void *key, void *val)
 		rlen = rs->matches + rs->mismatches + rs->insertions +
 		    rs->deletions;
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		    rs->insertions + rs->deletions, 25);
+		    rs->insertions + rs->deletions, READLEN);
 
 		if (rs->score < 0 || s > pchance_cutoff)
 			continue;
@@ -569,7 +572,7 @@ calc_probs(void *arg, void *key, void *val)
 		rspv[j].pgenome = p_thissource(rlen, rs->crossovers,
 		    rates->erate, rs->mismatches, rates->srate,
 		    rs->insertions + rs->deletions, rates->irate,
-		    rs->matches, rates->mrate, 25);
+		    rs->matches, rates->mrate, READLEN);
 		rspv[j].normlogodds = rspv[j].pgenome / rspv[j].pchance;
 		norm += rspv[j].normlogodds;
 		j++;
