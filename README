@@ -244,9 +244,9 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		This option simply prints a progress bar to stderr during the
 		spaced seed scan and vectored Smith-Waterman phases. It exists
 		to give a general feel for run-time when testing parameters.
-		Since it will probably slow down execution marginally, it is
-		not enabled by default and should only be used during manual,
-		interactive execution.
+		Since it will slow down execution speed noticably (25% or so),
+		it is not enabled by default and should only be used during
+		manual, interactive execution.
 
 		[ -p ]
 
