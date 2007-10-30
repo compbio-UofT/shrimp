@@ -31,6 +31,7 @@ main(int argc, char **argv)
 {
 	char buf[512];
 	FILE *in, *out;
+	int skipping, nfiles;
 
 	if (argc != 2) {
 		fprintf(stderr, "error: need 1 parameter\n");
@@ -44,6 +45,7 @@ main(int argc, char **argv)
 	}
 
 	out = NULL;
+	skipping = nfiles = 0;
 	while (fgets(buf, sizeof(buf), in) != NULL) {
 		if (buf[0] == '>') {
 			char fname[512];
@@ -61,12 +63,30 @@ main(int argc, char **argv)
 				perror("fopen(out)");
 				exit(1);
 			}
+			fprintf(stderr, "splitting into file [%s]\n", fname);
+			nfiles++;
 		}
+
+		if (out == NULL) {
+			if (!skipping) {
+				fprintf(stderr, "warning: no contig label yet; "
+				    "skipping line\n");
+			}
+			skipping = 1;
+			continue;
+		}
+		skipping = 0;
 
 		if (fwrite(buf, strlen(buf), 1, out) != 1) {
 			perror("fwrite(out)");
 			exit(1);
 		}
+	}
+
+	if (nfiles != 0) {
+		fprintf(stderr, "------------------------------------------\n");
+		fprintf(stderr, "created %d individual contig files\n", nfiles);
+		fprintf(stderr, "------------------------------------------\n");
 	}
 
 	return (0);
