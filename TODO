@@ -7,11 +7,9 @@ $Id$
    different formats someday.
 3) str* operations are often not done safely. We should add local strl*
    functions and use them.
-4) Output file formats are a bit ugly and no single facilities exist for
-   parsing them. There's one centralised output facility, but none for input.
-5) Many outputs could probably benefit from spacing parameters to printf,
+4) Many outputs could probably benefit from spacing parameters to printf,
    rather than inserting spaces in the code.
-6) Pre-calculate and cache translations of reads, so as not to do them over
+5) Pre-calculate and cache translations of reads, so as not to do them over
    again for each S-W call. This may improve CS vectored performance a fair bit.
-7) Fix the for-loop spaced seed compressor so it scales.
-8) Fix time calculations (and perhaps errors) when -n is large (e.g. 222).
+6) Fix the for-loop spaced seed compressor so it scales.
+7) Fix time calculations (and perhaps errors) when -n is large (e.g. 222).

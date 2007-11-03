@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,8 +28,10 @@ static int	dblen, qrlen;
 static int16_t *nogap, *b_gap;
 static int	gap_open, gap_ext;
 static int	match, mismatch;
-static uint64_t swticks, swcells, swinvocs;
 static int	use_colours;
+
+/* statistics */
+static uint64_t swticks, swcells, swinvocs;
 
 /*
  * Calculate the Smith-Waterman score.
@@ -187,7 +190,7 @@ vect_sw(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 
 int
 sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-    int _match, int _mismatch, int _use_colours)
+    int _match, int _mismatch, int _use_colours, bool reset_stats)
 {
 
 	dblen = _dblen;
@@ -218,6 +221,9 @@ sw_vector_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	mismatch = _mismatch;
 	use_colours = _use_colours;
 
+	if (reset_stats)
+		swticks = swcells = swinvocs = 0;
+
 	initialised = 1;
 
 	return (0);
@@ -234,8 +240,11 @@ sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 		*cells = swcells;
 	if (ticks != NULL)
 		*ticks = swticks;
-	if (cellspersec != NULL)
+	if (cellspersec != NULL) {
 		*cellspersec = (double)swcells / ((double)swticks / cpuhz());
+		if (isnan(*cellspersec))
+			*cellspersec = 0;
+	}
 }
 
 int

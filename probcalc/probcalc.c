@@ -15,50 +15,23 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "../common/sw-full-common.h"
+#include "../common/input.h"
 #include "../common/lookup.h"
 #include "../common/util.h"
+#include "../common/version.h"
 
 #include "probcalc.h"
 
-/* XXX - hack until we supply the read length */
-#define READLEN 25
-
 static lookup_t read_list;		/* list of reads and top matches */
-static lookup_t reftig_cache;		/* reftig name cache */
+static lookup_t contig_cache;		/* contig name cache */
+static lookup_t read_seq_cache;		/* read sequence cache */
 
-/* fields in our output */
-enum {
-	FIELD_NAME = 0,
-	FIELD_SCORE,
-	FIELD_INDEX_START,
-	FIELD_INDEX_END,
-	FIELD_READ_START,
-	FIELD_READ_MAPPED_LENGTH,
-	FIELD_MATCHES,
-	FIELD_MISMATCHES,
-	FIELD_INSERTIONS,
-	FIELD_DELETIONS,
-	FIELD_CROSSOVERS
-};
-#define NFIELDS	11
-
-struct readstats {
-	char    *reftig;
-	int32_t  score;
-	uint32_t index_start;
-	uint32_t index_end;
-	uint32_t read_start;
-	uint32_t read_mapped_length;
-	uint32_t matches;
-	uint32_t mismatches;
-	uint32_t insertions;
-	uint32_t deletions;
-	uint32_t crossovers;
-};
+static bool Rflag = false;		/* include read sequence in output */
 
 struct readinfo {
-	char		*name;
-	struct readstats top_matches[0];
+	char	    *name;
+	struct input top_matches[0];
 };
 
 struct rates {
@@ -77,23 +50,23 @@ struct rates {
 };
 
 struct readstatspval {
-	struct readstats *rs;
+	struct input     *rs;
 	double		  pchance;
 	double		  pgenome;
-	double            normlogodds;
+	double            normodds;
 };
 
 enum {
-	SORT_PCHANCE,
+	SORT_PCHANCE = 1,
 	SORT_PGENOME,
-	SORT_NORMLOGODDS
+	SORT_NORMODDS
 };
 
 static uint64_t total_alignments;	/* total outputs in all files */
 static uint64_t total_unique_reads;	/* total unique reads in all files */
 
 /* arguments */
-static double   normlogodds_cutoff	= DEF_NORMLOGODDS_CUTOFF;
+static double   normodds_cutoff		= DEF_NORMODDS_CUTOFF;
 static double   pchance_cutoff		= DEF_PCHANCE_CUTOFF;
 static double	pgenome_cutoff	        = DEF_PGENOME_CUTOFF;
 static int	top_matches		= DEF_TOP_MATCHES;
@@ -116,9 +89,9 @@ keycomparer(void *a, void *b)
 
 /* percolate down in our min-heap */
 static void
-reheap(struct readstats *stats, int node)
+reheap(struct input *stats, int node)
 {
-	struct readstats tmp;
+	struct input tmp;
 	int left, right, max;
 
 	left  = node * 2;
@@ -143,198 +116,15 @@ reheap(struct readstats *stats, int node)
 
 /* update our match min-heap */
 static void
-save_match(struct readinfo *ri, char *reftig, int32_t score,
-    uint32_t index_start, uint32_t index_end, uint32_t read_start,
-    uint32_t read_mapped_length, uint32_t matches, uint32_t mismatches,
-    uint32_t insertions, uint32_t deletions, uint32_t crossovers)
+save_match(struct readinfo *ri, struct input *input)
 {
-	struct readstats *stats = ri->top_matches;
+	struct input *stats = ri->top_matches;
 
-	if (score < stats[1].score)
+	if (input->score < stats[1].score)
 		return;
 
-	stats[1].reftig			= reftig;
-	stats[1].score			= score;
-	stats[1].index_start		= index_start;
-	stats[1].index_end		= index_end;
-	stats[1].read_start		= read_start;
-	stats[1].read_mapped_length	= read_mapped_length;
-	stats[1].matches		= matches;
-	stats[1].mismatches		= mismatches;
-	stats[1].insertions		= insertions;
-	stats[1].deletions		= deletions;
-	stats[1].crossovers		= crossovers;
-
+	memcpy(&stats[1], input, sizeof(stats[1]));
 	reheap(stats, 1);
-}
-
-static void
-progress_bar(uint32_t at, uint32_t of)
-{
-	static int lastperc, beenhere;
-	static char whirly = '\\';
-
-	char progbuf[52];
-	int perc, i, j, dec;
-
-	perc = (at * 10000) / of;
-
-	if (beenhere && perc - lastperc != 1)
-		return;
-
-	beenhere = 1;
-	lastperc = perc;
-
-	dec = perc % 100;
-	perc /= 100;
-
-	/* any excuse to have a whirly gig */
-	switch (whirly) {
-	case '|':
-		whirly = '/';
-		break;
-	case '/':
-		whirly = '-';
-		break;
-	case '-':
-		whirly = '\\';
-		break;
-	case '\\':
-		whirly = '|';
-		break;
-	}
-	progbuf[25] = whirly;
-		
-	for (i = j = 0; i <= 100; i += 2) {
-		if (j != 25) {
-			if (i <= perc)
-				progbuf[j++] = '=';
-			else
-				progbuf[j++] = ' ';
-		} else {
-			j++;
-		}
-	}
-	progbuf[51] = '\0';
-
-	fprintf(stderr, "\rProgress: [%s] %3d.%02d%%", progbuf, perc, dec);
-	fflush(stderr);
-}
-
-static void
-parse_line(char *buf, const char *fname, const int line, char *reftig)
-{
-	char *fields[NFIELDS];
-	char *field, *name;
-	struct readinfo *ri;
-	int32_t score;
-	int i;
-
-	memset(fields, 0, sizeof(fields));
-
-	field = strtok(buf, " \t\r\n");
-	for (i = 0; i < (sizeof(fields) / sizeof(fields[0])); i++) {
-		if (field == NULL)
-			break;
-		fields[i] = field;
-		field = strtok(NULL, " \t\r\n");
-	}
-
-	/*
-	 * The last valid field for letter space and colour space alignments
-	 * must be present.
-	 */
-	if (fields[FIELD_DELETIONS] == NULL) {
-		fprintf(stderr, "error: file format error: file [%s] line %d\n",
-		    fname, line);
-		exit(1);
-	}
-
-	/* Fake any colour space fields if we're in letter space */
-	if (fields[FIELD_CROSSOVERS] == NULL)
-		fields[FIELD_CROSSOVERS] = "0";
-
-	total_alignments++;
-
-	name = trim_brackets(fields[FIELD_NAME]);
-
-	if (lookup_find(read_list, name, NULL, (void *)&ri)) {
-		/* test if score better than worst, if so, add it */
-		score = atoi(fields[FIELD_SCORE]);
-		if (score > ri->top_matches[1].score) {
-			save_match(ri, reftig, score,
-			    atoi(fields[FIELD_INDEX_START]),
-			    atoi(fields[FIELD_INDEX_END]),
-			    atoi(fields[FIELD_READ_START]),
-			    atoi(fields[FIELD_READ_MAPPED_LENGTH]),
-			    atoi(fields[FIELD_MATCHES]),
-			    atoi(fields[FIELD_MISMATCHES]),
-			    atoi(fields[FIELD_INSERTIONS]),
-			    atoi(fields[FIELD_DELETIONS]),
-			    atoi(fields[FIELD_CROSSOVERS]));
-		}
-	} else {
-		total_unique_reads++;
-
-		/* alloc, init, insert in lookup */
-		ri = xmalloc(sizeof(*ri) +
-		    sizeof(ri->top_matches[0]) * (top_matches + 1));
-		memset(ri, 0, sizeof(*ri) +
-		    sizeof(ri->top_matches[0]) * (top_matches + 1));
-
-		ri->name = xstrdup(name);
-
-		ri->top_matches[0].score = top_matches;
-		for (i = 1; i <= top_matches; i++)
-			ri->top_matches[i].score = 0x80000000 + i;
-
-		save_match(ri, reftig,
-		    atoi(fields[FIELD_SCORE]),
-		    atoi(fields[FIELD_INDEX_START]),
-		    atoi(fields[FIELD_INDEX_END]),
-		    atoi(fields[FIELD_READ_START]),
-		    atoi(fields[FIELD_READ_MAPPED_LENGTH]),
-		    atoi(fields[FIELD_MATCHES]),
-		    atoi(fields[FIELD_MISMATCHES]),
-		    atoi(fields[FIELD_INSERTIONS]),
-		    atoi(fields[FIELD_DELETIONS]),
-		    atoi(fields[FIELD_CROSSOVERS]));
-
-		if (lookup_add(read_list, ri->name, ri) == false) {
-			fprintf(stderr, "error: failed to add to lookup - "
-			    "probably out of memory\n");
-			exit(1);
-		}
-	}
-}
-
-/*
- * if no reftig name was included in the input file, derive it from the
- * filename. this is a hack for data produced before the reftig name was
- * included.
- */
-static char *
-derive_reftig(char *file)
-{
-	char *s, *dot, *key;
-
-	s = xstrdup(file);
-	dot = strstr(s, ".fa");
-	if (dot != NULL)
-		*dot = '\0';
-
-	if (lookup_find(reftig_cache, s, (void *)&key, NULL)) {
-		free(s);
-		return (key);
-	}
-
-	if (lookup_add(reftig_cache, s, NULL) == false) {
-		fprintf(stderr, "error: failed to add to reftig cache (%d)"
-		    "- probably out of memory\n", __LINE__);
-		exit(1);
-	}
-	
-	return (s);
 }
 
 /* Returns the number of bytes read */
@@ -342,11 +132,12 @@ static uint64_t
 read_file(const char *dir, const char *file)
 {
 	char fpath[2048];
-	char buf[512];
+	struct input input;
 	struct stat sb;
-	char *reftig;
+	struct readinfo *ri;
+	char *key;
 	FILE *fp;
-	u_int line;
+	int i;
 
 	fpath[0] = '\0';
 	strcpy(fpath, dir);
@@ -360,36 +151,82 @@ read_file(const char *dir, const char *file)
 		exit(1);
 	}
 
-	reftig = NULL;
-	for (line = 0; fgets(buf, sizeof(buf), fp) != NULL; line++) {
-		if (buf[0] == '#') {
-			char *nreftig, *key;
-			bool add;
-
-			nreftig = extract_reftig(buf);
-			if (nreftig != NULL) {
-				if (lookup_find(reftig_cache, nreftig,
-				    (void *)&key, NULL)) {
-					reftig = key;
-					add = false;
-				} else {
-					reftig = xstrdup(nreftig);
-					add = true;
-				}
-
-				if (add && lookup_add(reftig_cache, reftig,
+	while (input_parseline(fp, &input)) {
+		/*
+		 * If we don't want the read sequence, free it if it exists.
+		 * Otherwise, cache it so we don't have duplicates hogging
+		 * memory.
+		 */
+		if (!Rflag) {
+			if (input.read_seq != NULL)
+				free(input.read_seq);
+			input.read_seq = NULL;
+		} else {
+			if (lookup_find(read_seq_cache, input.read_seq,
+			    (void *)&key, NULL)) {
+				free(input.read_seq);
+				input.read_seq = key;
+			} else {
+				if (lookup_add(read_seq_cache, input.read_seq,
 				    NULL) == false) {
 					fprintf(stderr, "error: failed to add "
-					    "to reftig cache (%d) - probably "
+					    "to read_seq cache (%d) - probably "
 					    "out of memory\n", __LINE__);
 					exit(1);
 				}
 			}
-		} else if (buf[0] != '\n') {
-			if (reftig == NULL)
-				reftig = derive_reftig((char *)file);
+		}
 
-			parse_line(buf, file, line, reftig);
+		/*
+		 * Cache the contig names similarly, so we don't waste memory.
+		 */
+		if (lookup_find(contig_cache, input.genome, (void *)&key,
+		    NULL)) {
+			free(input.genome);
+			input.genome = key;
+		} else {
+			if (lookup_add(contig_cache, input.genome,
+			    NULL) == false) {
+				fprintf(stderr, "error: failed to add to "
+				    "contig cache (%d) - probably out of "
+				    "memory\n", __LINE__);
+				exit(1);
+			}
+		}
+
+		total_alignments++;
+
+		if (lookup_find(read_list, input.read, (void *)&key,
+		    (void *)&ri)) {
+			/* use only one read name string to save space */
+			free(input.read);
+			input.read = key;
+
+			/* test if score better than worst, if so, add it */
+			if (input.score > ri->top_matches[1].score)
+				save_match(ri, &input);
+		} else {
+			total_unique_reads++;
+
+			/* alloc, init, insert in lookup */
+			ri = xmalloc(sizeof(*ri) +
+			    sizeof(ri->top_matches[0]) * (top_matches + 1));
+			memset(ri, 0, sizeof(*ri) +
+			    sizeof(ri->top_matches[0]) * (top_matches + 1));
+
+			ri->name = input.read;
+
+			ri->top_matches[0].score = top_matches;
+			for (i = 1; i <= top_matches; i++)
+				ri->top_matches[i].score = 0x80000000 + i;
+
+			save_match(ri, &input);
+
+			if (lookup_add(read_list, ri->name, ri) == false) {
+				fprintf(stderr, "error: failed to add to lookup"
+				    " - probably out of memory\n");
+				exit(1);
+			}
 		}
 	}
 
@@ -408,7 +245,6 @@ static double
 p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 {
 	double r = 0;
-	//	int i;
 
 	r += ls_choose(k - 2, nsubs+nerrors) + ((nsubs + nerrors) * log(4));
 
@@ -424,7 +260,7 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 	r = 1 - r;
 
 	/* if hit not full length we need to correct */
-	l *= MAX(origlen - k+1,1);
+	l *= MAX(origlen - k+1, 1);
 
 	/* 2 for the two strands */
 	r = 2.0 * l * log(r);
@@ -441,13 +277,14 @@ calc_rates(void *arg, void *key, void *val)
 
 	struct rates *rates = arg;
 	struct readinfo *ri = val;
-	struct readstats *rs;
+	struct input *rs;
+	double d;
 	int32_t best;
 	int i, rlen;
 
 	(void)key;
 
-	progress_bar((int)calls, (int)total_unique_reads);	/* XXX */
+	progress_bar(stderr, calls, total_unique_reads, 100);
 	calls++;
 
 	best = 0;
@@ -465,9 +302,10 @@ calc_rates(void *arg, void *key, void *val)
 	rs = &ri->top_matches[best];
 	rlen =  rs->matches + rs->mismatches + rs->insertions + rs->deletions;
 
-	if (best != 0 &&
-	    p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		rs->insertions + rs->deletions, READLEN) < pchance_cutoff) {
+	d = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
+		rs->insertions + rs->deletions, rs->read_length);
+
+	if (best != 0 && d < pchance_cutoff) {
 
 		rates->samples++;
 		rates->total_len  += rs->matches + rs->mismatches;
@@ -519,10 +357,10 @@ rspvcmp(const void *a, const void *b)
 		cmp_a = rspva->pchance;
 		cmp_b = rspvb->pchance;
 		break;
-	case SORT_NORMLOGODDS:
+	case SORT_NORMODDS:
 		/* reversed - want big first */
-	        cmp_a = rspvb->normlogodds;
-		cmp_b = rspva->normlogodds;
+	        cmp_a = rspvb->normodds;
+		cmp_b = rspva->normodds;
 		break;
 	default:
 		assert(0);
@@ -540,15 +378,17 @@ static void
 calc_probs(void *arg, void *key, void *val)
 {
 	static struct readstatspval *rspv;
-	static bool first_global = true;
+	static uint64_t calls;
 
 	struct rates *rates = arg;
 	struct readinfo *ri = val;
 	double s, norm;
 	int i, j, rlen;
-	bool first_local = true;
 
 	(void)key;
+
+	progress_bar(stderr, calls, total_unique_reads, 10);
+	calls++;
 
 	if (rspv == NULL)
 		rspv = xmalloc(sizeof(rspv[0]) * (top_matches + 1));
@@ -556,13 +396,17 @@ calc_probs(void *arg, void *key, void *val)
 	/* 1: Calculate P(chance) and P(genome) for each hit */
 	norm = 0;
 	for (i = 1, j = 0; i <= top_matches; i++) {
-		struct readstats *rs = &ri->top_matches[i];
+		struct input *rs = &ri->top_matches[i];
+
+		if (rs->score < 0)
+			continue;
+
 		rlen = rs->matches + rs->mismatches + rs->insertions +
 		    rs->deletions;
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		    rs->insertions + rs->deletions, READLEN);
+		    rs->insertions + rs->deletions, rs->read_length);
 
-		if (rs->score < 0 || s > pchance_cutoff)
+		if (s > pchance_cutoff)
 			continue;
 
 		rspv[j].rs = rs;
@@ -572,27 +416,25 @@ calc_probs(void *arg, void *key, void *val)
 		rspv[j].pgenome = p_thissource(rlen, rs->crossovers,
 		    rates->erate, rs->mismatches, rates->srate,
 		    rs->insertions + rs->deletions, rates->irate,
-		    rs->matches, rates->mrate, READLEN);
-		rspv[j].normlogodds = rspv[j].pgenome / rspv[j].pchance;
-		norm += rspv[j].normlogodds;
+		    rs->matches, rates->mrate, rs->read_length);
+		rspv[j].normodds = rspv[j].pgenome / rspv[j].pchance;
+		norm += rspv[j].normodds;
 		j++;
 	}
 
 	/* 2: Normalise our values */
-	for (i = 0; i < j; i++) {
-		assert(rspv[i].rs->score >= 0);
-		rspv[i].normlogodds = rspv[i].normlogodds/norm;
-	}
+	for (i = 0; i < j; i++)
+		rspv[i].normodds = rspv[i].normodds / norm;
 
 	/* 4: Sort the values ascending */
 	qsort(rspv, j, sizeof(*rspv), rspvcmp);
 
 	/* 5: Finally, print out values in ascending order until the cutoff */
 	for (i = 0; i < j; i++) {
-		struct readstats *rs = rspv[i].rs;
+		struct input *rs = rspv[i].rs;
 
-		if (rspv[i].normlogodds < normlogodds_cutoff) {
-			if (sort_field == SORT_NORMLOGODDS)
+		if (rspv[i].normodds < normodds_cutoff) {
+			if (sort_field == SORT_NORMODDS)
 				break;
 			else
 				continue;
@@ -610,42 +452,22 @@ calc_probs(void *arg, void *key, void *val)
 				continue;
 		}
 
-		if (first_local && rates->crossovers != 0) {
-			if (!first_global)
-				putchar('\n');
-			printf("# [READ_NAME] [CONTIG_NAME] normlogodds "
-			    "pgenome pchance score indexstart indexend "
-			    "read_start read_mapped_length matches mismatches "
-			    "insertions deletions crossovers\n");
-		} else if (first_local) {
-			if (!first_global)
-				putchar('\n');
-			printf("# [READ_NAME] [CONTIG_NAME] normlogodds "
-			    "pgenome pchance score indexstart indexend "
-			    "read_start read_mapped_length matches mismatches "
-			    "insertions deletions\n");
-		}
-		first_local = false;
-		first_global = false;
+		/* the only sane way is to reproduce the output code, sadly. */
+		printf("> r=\"%s\" g=\"%s\" g_str=%c ", rs->read, rs->genome,
+		    (rs->revcmpl) ? '-' : '+');
 
-		/* handle letter and colour spaces separately */
-		if (rates->crossovers == 0) {
-			printf("[%s] [%s] %.8f %.8f %.8f %d %u %u %u %u %u "
-			    "%u %u %u\n", ri->name, rs->reftig,
-			    rspv[i].normlogodds, rspv[i].pgenome,
-			    rspv[i].pchance, rs->score, rs->index_start,
-			    rs->index_end, rs->read_start,
-			    rs->read_mapped_length, rs->matches, rs->mismatches,
-			    rs->insertions, rs->deletions);
-		} else {
-			printf("[%s] [%s] %.8f %.8f %.8f %d %u %u %u %u %u "
-			    "%u %u %u %u\n", ri->name, rs->reftig,
-			    rspv[i].normlogodds, rspv[i].pgenome,
-			    rspv[i].pchance, rs->score, rs->index_start,
-			    rs->index_end, rs->read_start,
-			    rs->read_mapped_length, rs->matches, rs->mismatches,
-			    rs->insertions, rs->deletions, rs->crossovers);
-		}
+		if (rs->read_seq != NULL && rs->read_seq[0] != '\0')
+			printf("read_seq=\"%s\" ", rs->read_seq);
+
+		/* NB: internally 0 is first position, output is 1. adjust */
+		printf("score=%d g_start=%u g_end=%u r_start=%u r_end=%u "
+		    "r_len=%u match=%u subs=%u ins=%u dels=%u xovers=%u "
+		    "normodds=%f pgenome=%f pchance=%f\n\n", rs->score,
+		    rs->genome_start + 1, rs->genome_end + 1,
+		    rs->read_start + 1, rs->read_end + 1, rs->read_length,
+		    rs->matches, rs->mismatches, rs->insertions, rs->deletions,
+		    rs->crossovers, rspv[i].normodds, rspv[i].pgenome,
+		    rspv[i].pchance);
 	}
 }
 
@@ -658,9 +480,9 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [-n normlogodds_cutoff] [-o pgenome_cutoff] "
-	    "[-p pchance_cutoff] [-s normlogodds|pgenome|pchance] "
-	    "[-t top_matches] genome_len results_directory\n", progname);
+	fprintf(stderr, "usage: %s [-n normodds_cutoff] [-o pgenome_cutoff] "
+	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
+	    "[-t top_matches] [-R] genome_len results_directory\n", progname);
 	exit(1);
 }
 
@@ -675,11 +497,18 @@ main(int argc, char **argv)
 	uint64_t i, bytes, files;
 	int ch;
 
+	fprintf(stderr, "--------------------------------------------------"
+	    "------------------------------\n");
+	fprintf(stderr, "probcalc. (SHRiMP version %s)\n",
+	    SHRIMP_VERSION_STRING);
+	fprintf(stderr, "--------------------------------------------------"
+	    "------------------------------\n");
+
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:s:t:")) != -1) {	
+	while ((ch = getopt(argc, argv, "n:o:p:s:t:R")) != -1) {	
 		switch (ch) {
 		case 'n':
-			normlogodds_cutoff = atof(optarg);
+			normodds_cutoff = atof(optarg);
 			break;
 		case 'o':
 			pgenome_cutoff = atof(optarg);
@@ -692,8 +521,8 @@ main(int argc, char **argv)
 				sort_field = SORT_PCHANCE;
 			} else if (strstr(optarg, "pgenome") != NULL) {
 				sort_field = SORT_PGENOME;
-			} else if (strstr(optarg, "normlogodds") != NULL) {
-				sort_field = SORT_NORMLOGODDS;
+			} else if (strstr(optarg, "normodds") != NULL) {
+				sort_field = SORT_NORMODDS;
 			} else {
 				fprintf(stderr, "error: invalid sort "
 				    "criteria\n");
@@ -702,6 +531,9 @@ main(int argc, char **argv)
 			break;
 		case 't':
 			top_matches = atoi(optarg);
+			break;
+		case 'R':
+			Rflag = true;
 			break;
 		default:
 			usage(progname);
@@ -716,15 +548,34 @@ main(int argc, char **argv)
 	genome_len = strtoul(argv[0], NULL, 0);
 	dir = argv[1];
 
+	fprintf(stderr, "\nSettings:\n");
+	fprintf(stderr, "    Normodds Cutoff:  < %f\n", normodds_cutoff);
+	fprintf(stderr, "    Pgenome Cutoff:   < %f\n", pgenome_cutoff);
+	fprintf(stderr, "    Pchance Cutoff:   > %f\n", pchance_cutoff);
+	fprintf(stderr, "    Sort Criteria:      %s\n",
+	    (sort_field == SORT_PCHANCE)  ? "pchance"  :
+	    (sort_field == SORT_PGENOME)  ? "pgenome"  :
+	    (sort_field == SORT_NORMODDS) ? "normodds" : "<unknown>");
+	fprintf(stderr, "    Top Matches:        %d\n", top_matches);
+	fprintf(stderr, "    Genome Length:      %" PRIu64 "\n", genome_len);
+
+	fprintf(stderr, "\n");
+	
 	read_list = lookup_create(keyhasher, keycomparer, false);
 	if (read_list == NULL) {
 		fprintf(stderr, "error: failed to allocate read_list\n");
 		exit(1);
 	}
 
-	reftig_cache = lookup_create(keyhasher, keycomparer, false);
-	if (reftig_cache == NULL) {
-		fprintf(stderr, "error: failed to allocate reftig_cache\n");
+	contig_cache = lookup_create(keyhasher, keycomparer, false);
+	if (contig_cache == NULL) {
+		fprintf(stderr, "error: failed to allocate contig_cache\n");
+		exit(1);
+	}
+
+	read_seq_cache = lookup_create(keyhasher, keycomparer, false);
+	if (read_seq_cache == NULL) {
+		fprintf(stderr, "error: failed to allocate read_seq_cache\n");
 		exit(1);
 	}
 
@@ -755,19 +606,21 @@ main(int argc, char **argv)
 
 	i = bytes = 0;
 	fprintf(stderr, "Parsing %" PRIu64 " files...\n", files);
+	progress_bar(stderr, 0, 0, 100);
 	while (1) {
 		de = readdir(dp);
 		if (de == NULL)
 			break;
 
 		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, ".."))
+		    strcmp(de->d_name, "..")) {
 			bytes += read_file(dir, de->d_name);
+			i++;
+		}
 
-		progress_bar(i, files);
-
-		i++;
+		progress_bar(stderr, i, files, 100);
 	}
+	progress_bar(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
 	    (double)bytes / (1024 * 1024), i);
 
@@ -778,20 +631,32 @@ main(int argc, char **argv)
 	 */
 
 	fprintf(stderr, "\nCalculating top match rates...\n");
+	progress_bar(stderr, 0, 0, 100);
 	memset(&rates, 0, sizeof(rates));
 	lookup_iterate(read_list, calc_rates, &rates);
+	progress_bar(stderr, total_unique_reads, total_unique_reads, 100);
 	fprintf(stderr, "\nCalculated rates for %" PRIu64 " reads\n",
 	    total_unique_reads);
 
-	fprintf(stderr, "total matches:      %" PRIu64 "\n", total_alignments);
-	fprintf(stderr, "total unique reads: %" PRIu64 "\n",total_unique_reads);
-	fprintf(stderr, "total samples:      %" PRIu64 "\n", rates.samples);
-	fprintf(stderr, "total length:       %" PRIu64 "\n", rates.total_len); 
-	fprintf(stderr, "insertions:         %" PRIu64 "\n", rates.insertions); 
-	fprintf(stderr, "deletions:          %" PRIu64 "\n", rates.deletions); 
-	fprintf(stderr, "matches:            %" PRIu64 "\n", rates.matches); 
-	fprintf(stderr, "mismatches:         %" PRIu64 "\n", rates.mismatches); 
-	fprintf(stderr, "crossovers:         %" PRIu64 "\n", rates.crossovers); 
+	fprintf(stderr, "\nStatistics:\n");
+	fprintf(stderr, "    total matches:      %" PRIu64 "\n",
+	    total_alignments);
+	fprintf(stderr, "    total unique reads: %" PRIu64 "\n",
+	    total_unique_reads);
+	fprintf(stderr, "    total samples:      %" PRIu64 "\n",
+	    rates.samples);
+	fprintf(stderr, "    total length:       %" PRIu64 "\n",
+	    rates.total_len); 
+	fprintf(stderr, "    insertions:         %" PRIu64 "\n",
+	    rates.insertions); 
+	fprintf(stderr, "    deletions:          %" PRIu64 "\n",
+	    rates.deletions); 
+	fprintf(stderr, "    matches:            %" PRIu64 "\n",
+	    rates.matches); 
+	fprintf(stderr, "    mismatches:         %" PRIu64 "\n",
+	    rates.mismatches); 
+	fprintf(stderr, "    crossovers:         %" PRIu64 "\n",
+	    rates.crossovers); 
 
 	rates.erate = (double)rates.crossovers / (double)rates.total_len;
 	rates.srate = (double)rates.mismatches / (double)rates.total_len;
@@ -809,16 +674,19 @@ main(int argc, char **argv)
 	rates.irate = (rates.irate == 0.0) ? 1.0e-9 : rates.irate;
 	rates.mrate = (rates.mrate == 0.0) ? 10.e-9 : rates.mrate;
 
-	fprintf(stderr, "error rate:         %.10f\n", rates.erate);
-	fprintf(stderr, "substitution rate:  %.10f\n", rates.srate);
-	fprintf(stderr, "indel rate:         %.10f\n", rates.irate);
-	fprintf(stderr, "match rate:         %.10f\n", rates.mrate);
+	fprintf(stderr, "    error rate:         %.10f\n", rates.erate);
+	fprintf(stderr, "    substitution rate:  %.10f\n", rates.srate);
+	fprintf(stderr, "    indel rate:         %.10f\n", rates.irate);
+	fprintf(stderr, "    match rate:         %.10f\n", rates.mrate);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
 	 * alignments.
 	 */
+	fprintf(stderr, "\nGenerating output...\n");
+	progress_bar(stderr, 0, 0, 10);
 	lookup_iterate(read_list, calc_probs, &rates);
+	progress_bar(stderr, total_unique_reads, total_unique_reads, 10);
 
 	return (0);
 }

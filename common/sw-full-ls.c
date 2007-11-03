@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,10 +54,12 @@ static int8_t	       *db, *qr;
 static int		dblen, qrlen;
 static int		gap_open, gap_ext;
 static int		match, mismatch;
-static uint64_t		swticks, swcells, swinvocs;
 static struct swcell   *swmatrix;
 static int8_t	       *backtrace;
 static char	       *dbalign, *qralign;
+
+/* statistics */
+static uint64_t		swticks, swcells, swinvocs;
 
 #define SWM(_i, _j) swmatrix[((_i) + 1) * (lena + 1) + (_j) + 1]
 
@@ -331,7 +334,7 @@ pretty_print(int i, int j, int k)
 
 int
 sw_full_ls_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-    int _match, int _mismatch)
+    int _match, int _mismatch, bool reset_stats)
 {
 
 	dblen = _dblen;
@@ -365,6 +368,9 @@ sw_full_ls_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	match = _match;
 	mismatch = _mismatch;
 
+	if (reset_stats)
+		swticks = swcells = swinvocs = 0;
+
 	initialised = 1;
 
 	return (0);
@@ -381,8 +387,11 @@ sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 		*cells = swcells;
 	if (ticks != NULL)
 		*ticks = swticks;
-	if (cellspersec != NULL)
+	if (cellspersec != NULL) {
 		*cellspersec = (double)swcells / ((double)swticks / cpuhz());
+		if (isnan(*cellspersec))
+			*cellspersec = 0;
+	}
 }
 
 void

@@ -12,6 +12,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
+#include "fasta.h"
 #include "util.h"
 
 uint64_t
@@ -202,28 +203,146 @@ bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
 	bf[entries / 8] = word;
 }
 
-/*
- * Extract the reftig name from a comment within the file.
- *
- * NB: This function will modify the string in place if it's a 'REFTIG: '
- *     line.
- */
-char *
-extract_reftig(char *line)
+void
+progress_bar(FILE *output, uint64_t at, uint64_t of, uint incr)
 {
-	char *s;
+	static int lastperc, beenhere;
+	static char whirly = '\\';
 
-	if (strncmp(line, "# REFTIG: [", 11) == 0) {
-		line += 11;
-		s = line;
+	char progbuf[52];
+	int perc, i, j, dec;
 
-		while (*line != ']' && *line != '\0')
-			line++;
-		*line = '\0';
-
-		return (s);
+	if (at == 0 && of == 0) {
+		beenhere = lastperc = 0;
+		whirly = '\\';
+		return;
 	}
 
-	return (NULL);
+	perc = (at * 100 * incr) / of;
+
+	if (beenhere && perc == lastperc)
+		return;
+
+	beenhere = 1;
+	lastperc = perc;
+
+	dec = perc % incr;
+	perc /= incr;
+
+	/* any excuse to have a whirly gig */
+	switch (whirly) {
+	case '|':
+		whirly = '/';
+		break;
+	case '/':
+		whirly = '-';
+		break;
+	case '-':
+		whirly = '\\';
+		break;
+	case '\\':
+		whirly = '|';
+		break;
+	}
+	if (at >= of)
+		whirly = '|';
+
+	progbuf[25] = whirly;
+		
+	for (i = j = 0; i <= 100; i += 2) {
+		if (j != 25) {
+			if (i <= perc)
+				progbuf[j++] = '=';
+			else
+				progbuf[j++] = ' ';
+		} else {
+			j++;
+		}
+	}
+	progbuf[51] = '\0';
+
+	fprintf(output, "\rProgress: [%s] %3d.%02d%%", progbuf, perc, dec);
+	fflush(output);
 }
 
+static inline uint32_t
+swap_nibbles(uint32_t i)
+{
+
+	return (((i & 0xf0000000) >> 28) |
+		((i & 0x0f000000) >> 20) |
+		((i & 0x00f00000) >> 12) |
+		((i & 0x000f0000) >>  4) |
+		((i & 0x0000f000) <<  4) |
+		((i & 0x00000f00) << 12) |
+		((i & 0x000000f0) << 20) |
+		((i & 0x0000000f) << 28));
+}
+
+/*
+ * genome <- reverse_complement(genome)
+ *
+ * This is straightforward on purpose; it's suboptimal, but we won't be getting
+ * any performance improvements by speeding it up.
+ */
+void
+reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
+{
+	uint32_t i, j, tmp, fudge, up, down;
+
+	assert(g_len != 0);
+	assert(g_ls != NULL);
+
+	/* First, swap all words and the nibbles within and complement them. */
+	for (i = 0, j = BPTO32BW(g_len) - 1; i <= j; i++, j--) {
+		tmp = g_ls[i];
+		g_ls[i] = swap_nibbles(g_ls[j]);
+		g_ls[j] = swap_nibbles(tmp);
+
+		g_ls[i]=(complement_base((g_ls[i] & 0x0000000f) >>  0) <<  0) |
+			(complement_base((g_ls[i] & 0x000000f0) >>  4) <<  4) |
+			(complement_base((g_ls[i] & 0x00000f00) >>  8) <<  8) |
+			(complement_base((g_ls[i] & 0x0000f000) >> 12) << 12) |
+			(complement_base((g_ls[i] & 0x000f0000) >> 16) << 16) |
+			(complement_base((g_ls[i] & 0x00f00000) >> 20) << 20) |
+			(complement_base((g_ls[i] & 0x0f000000) >> 24) << 24) |
+			(complement_base((g_ls[i] & 0xf0000000) >> 28) << 28);
+
+		g_ls[j]=(complement_base((g_ls[j] & 0x0000000f) >>  0) <<  0) |
+			(complement_base((g_ls[j] & 0x000000f0) >>  4) <<  4) |
+			(complement_base((g_ls[j] & 0x00000f00) >>  8) <<  8) |
+			(complement_base((g_ls[j] & 0x0000f000) >> 12) << 12) |
+			(complement_base((g_ls[j] & 0x000f0000) >> 16) << 16) |
+			(complement_base((g_ls[j] & 0x00f00000) >> 20) << 20) |
+			(complement_base((g_ls[j] & 0x0f000000) >> 24) << 24) |
+			(complement_base((g_ls[j] & 0xf0000000) >> 28) << 28);
+	}
+
+	/*
+	 * If (g_len % 8) != 0, we need to shift all words down since
+	 * the last word had some zeroed fields.
+	 */
+	fudge = 8 - (g_len % 8);
+	if (fudge != 8) {
+		down = fudge * 4;
+		up = 32 - down;
+
+		for (i = 0; i < BPTO32BW(g_len); i++) {
+			if (i > 0)
+				g_ls[i - 1] |= (g_ls[i] << up);
+			g_ls[i] >>= down;
+		}
+	}
+
+	/* If necessary, regenerate the colour-space genome */
+	if (g_cs != NULL) {
+		int base, lastbp;
+
+		lastbp = BASE_T;
+		for (i = 0; i < g_len; i++) {
+			base = EXTRACT(g_ls, i);
+			bitfield_append(g_cs, i, lstocs(lastbp, base));
+			lastbp = base;
+		}
+	}
+}

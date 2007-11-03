@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -13,66 +14,105 @@
 #include "../common/output.h"
 #include "../common/util.h"
 
-void
-output_pretty(FILE *fp, const char *readname, const char *reftigname,
-    const struct sw_full_results *sfr, const char *dbalign, const char *qralign,
-    uint32_t *genome, uint32_t genome_len, uint32_t goff, int newread)
+static char *
+readtostr(uint32_t *read, u_int len, bool use_colours, int initbp)
 {
-	static int firstcall = 1;
+	static char *buf;
+	static u_int buflen, i, j;
+	char lstranslate[5] = { 'A', 'C', 'G', 'T', 'N' };
+	char cstranslate[5] = { '0', '1', '2', '3', '4' };
 
+	assert(initbp >= 0 && initbp <= 4);
+	
+	if (buflen < len) {
+		if (buf != NULL)
+			free(buf);
+		buf = xmalloc(len + 1);
+		buflen = len + 1;
+	}
+
+	i = 0;
+
+	if (use_colours)
+		buf[i++] = lstranslate[initbp];
+
+	for (j = 0; j < len; j++) {
+		assert((int)EXTRACT(read, j) >= 0 && (int)EXTRACT(read, j) <=4);
+
+		if (use_colours)
+			buf[i + j] = cstranslate[EXTRACT(read, j)];
+		else
+			buf[i + j] = lstranslate[EXTRACT(read, j)]; 
+	}
+
+	buf[i + j] = '\0';
+
+	return (buf);
+}
+
+/* This is so ugly it hurts. */
+void
+output_pretty(FILE *fp, const char *readname, const char *contigname,
+    const struct sw_full_results *sfr, const char *dbalign, const char *qralign,
+    uint32_t *genome, uint32_t genome_len, uint32_t goff, bool use_colours,
+    uint32_t *read, u_int readlen, int initbp, bool revcmpl)
+{
+	char *gpre, *gpost, *lspre, *lspost, *mpre, *nospace = "";
 	int j, len;
-	uint32_t aoff;
-	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
+	uint32_t genome_start, genome_end, read_start, read_end;
 
-	if (newread && !firstcall) {
-		putc('\n', fp);
-		putc('\n', fp);
+	/* shut up, icc */
+	(void)readname;
+	(void)genome;
+	(void)contigname;
+
+	genome_start = goff + sfr->genome_start;
+	genome_end   = goff + sfr->genome_start + sfr->gmapped - 1;
+
+	if (revcmpl) {
+		uint32_t tmp = genome_start;
+		assert(genome_len >= genome_end - 1);
+		assert(genome_len >= genome_start - 1);
+		genome_start = genome_len - genome_end - 1;
+		genome_end = genome_len - tmp - 1;
 	}
-	firstcall = 0;
 
-	if (newread) {
-		fprintf(fp,
-		    "------------------------------------------------------\n");
-		fprintf(fp, "READ: [%s]\n", readname);
-		fprintf(fp,
-		    "------------------------------------------------------\n");
-	}
-
-	putc('\n', fp);
-
-	aoff = sfr->genome_start;
+	read_start = sfr->read_start;
+	read_end   = sfr->read_start + sfr->rmapped - 1;
 
 	len = strlen(dbalign);
 	assert(len == strlen(qralign));
 
-	fprintf(fp, "Score:   %d   (read start/end: %d/%d)\n",
-	    sfr->score, sfr->read_start,
-	    sfr->read_start + sfr->rmapped - 1);
-	fprintf(fp, "Index:   %u   (end: %u%s%s%s)\n", goff + aoff,
-	    goff + sfr->genome_start + sfr->gmapped - 1,
-	    (reftigname != NULL) ? ", reftig: [" : "",
-	    (reftigname != NULL) ? reftigname : "",
-	    (reftigname != NULL) ? "]" : "");
-	
-	fprintf(fp, "Reftig:  ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putc(translate[
-			    EXTRACT(genome, goff + aoff - j)], fp);
+	gpre = gpost = lspre = lspost = mpre = nospace;
+	if (read_start > 0) {
+		gpre = xmalloc(read_start + 1);
+		lspre = xmalloc(read_start + 1);
+		mpre = xmalloc(read_start + 1);
+		for (j = 0; j < read_start; j++) {
+			gpre[j] = '-';
+			lspre[j] = '-';
+			mpre[j] = ' ';
+		}
+		gpre[j] = lspre[j] = mpre[j] = '\0';
 	}
-	fprintf(fp, "%s", dbalign);
-	for (j = 0; j < 4; j++) {
-		if ((goff + aoff + len + j) < genome_len)
-			putc(translate[EXTRACT(genome,
-			    goff + aoff + len + j)], fp);
+	if (read_end < (readlen - 1)) {
+		gpost = xmalloc(readlen - read_end);
+		lspost = xmalloc(readlen - read_end);
+		for (j = 0; j < (readlen - read_end - 1); j++) {
+			gpost[j] = '-';
+			lspost[j] = '-';
+		}
+		gpost[j] = lspost[j] = '\0';
 	}
-	putc('\n', fp);
 
-	fprintf(fp, "Match:   ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putc(' ', fp);
-	}
+	/* NB: internally 0 is first position, output uses 1. adjust. */
+
+	fprintf(fp, "G: %10" PRId64 "    %s%s%s    %-10" PRId64 "\n",
+	    (revcmpl) ? (int64_t)genome_end + 1 : (int64_t)genome_start + 1,
+	    gpre, dbalign, gpost,
+	    (revcmpl) ? (int64_t)genome_start + 1 : (int64_t)genome_end + 1);
+
+	fprintf(fp, "%16s %s", "", mpre);
 	for (j = 0; j < len; j++) {
 		if (dbalign[j] == qralign[j] && dbalign[j] != '-') {
 			putc('|', fp);
@@ -88,40 +128,132 @@ output_pretty(FILE *fp, const char *readname, const char *reftigname,
 	}
 	putc('\n', fp);
 
-	fprintf(fp, "Read:    ");
-	for (j = 4; j > 0; j--) {
-		if (j <= goff + aoff)
-			putc(' ', fp);
+	if (use_colours) {
+		fprintf(fp, "T: %10s    %s%s%s\n", "", lspre, qralign, lspost);
+	} else {
+		fprintf(fp, "R: %10u    %s%s%s    %-10u\n", read_start + 1,
+		    lspre, qralign, lspost, read_end + 1);
 	}
-	fprintf(fp, "%s\n", qralign);
+
+	if (use_colours) {
+		char *rstr;
+
+		fprintf(fp, "R: %10u   ", read_start + 1);
+		rstr = readtostr(read, readlen, use_colours, initbp);
+		assert(strlen(rstr) > 1);
+		fputc(*rstr++, fp);
+		for (j = 0; j < read_start; j++) {
+			assert(*rstr != '\0');
+			fputc(*rstr++, fp);
+		}
+		for (j = 0; *rstr != '\0';) {
+			if (qralign[j] == '-')
+				fputc('-', fp);
+			else
+				fputc(*rstr++, fp);
+			if (qralign[j] != '\0')
+				j++;
+		}
+		fprintf(fp, "    %-10u\n", read_end + 1);
+	}
+
+	if (gpre != nospace)
+		free(gpre);
+	if (gpost != nospace)
+		free(gpost);
+	if (lspre != nospace)
+		free(lspre);
+	if (lspost != nospace)
+		free(lspost);
+	if (mpre != nospace)
+		free(mpre);
+}
+
+/* Escape '=' and '"' using '\', otherwise our parser will have trouble. */
+static char *
+escapestr(const char *str)
+{
+	char *buf;
+	int i, j, len;
+	bool escape = false;
+
+	for (i = len = 0; str[i] != '\0'; i++) {
+		if (str[i] == '=' || str[i] == '"') {
+			len++;
+			escape = true;
+		}
+		len++;
+	}
+	len++;
+
+	if (!escape)
+		return (NULL);
+
+	buf = xmalloc(len);
+
+	for (i = j = 0; str[i] != '\0'; i++, j++) {
+		if (str[i] == '=' || str[i] == '"')
+			buf[j++] = '\\';
+		buf[j] = str[i];
+	}
+	buf[j] = '\0';
+
+	assert(j >= 0 && j < len);
+
+	return (buf);
 }
 
 void
-output_normal(FILE *fp, const char *readname, const char *reftigname,
-    const struct sw_full_results *sfr, uint32_t goff, int use_colours,
-    int newread)
+output_normal(FILE *fp, const char *readname, const char *contigname,
+    const struct sw_full_results *sfr, uint32_t genome_len, uint32_t goff,
+    bool use_colours, uint32_t *read, u_int readlen, int initbp, bool revcmpl,
+    bool print_readseq)
 {
-	static int firstcall = 1;
+	uint32_t genome_start, genome_end;
+	const char *cname, *rname;
 
-	/* shut up, icc */
-	(void)reftigname;
+	assert(fp != NULL && readname != NULL);
+	assert(contigname != NULL && read != NULL);
 
-	if (!firstcall && newread)
-		putc('\n', fp);
-	firstcall = 0;
+	genome_start = goff + sfr->genome_start;
+	genome_end = goff + sfr->genome_start + sfr->gmapped - 1;
 
-	if (use_colours) {
-		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d %d\n", readname,
-		    sfr->score, goff + sfr->genome_start,
-		    goff + sfr->genome_start + sfr->gmapped - 1,
-		    sfr->read_start, sfr->rmapped, sfr->matches,
-		    sfr->mismatches, sfr->insertions, sfr->deletions,
-		    sfr->crossovers);
-	} else {
-		fprintf(fp, "[%s] %d %u %u %d %d %d %d %d %d\n", readname,
-		    sfr->score, goff + sfr->genome_start,
-		    goff + sfr->genome_start + sfr->gmapped - 1,
-		    sfr->read_start, sfr->rmapped, sfr->matches,
-		    sfr->mismatches, sfr->insertions, sfr->deletions);
+	assert(genome_len > genome_start && genome_len > genome_end);
+
+	if (revcmpl) {
+		uint32_t tmp = genome_start;
+		genome_start = genome_len - genome_end - 1;
+		genome_end = genome_len - tmp - 1;
 	}
+
+	rname = escapestr(readname);
+	if (rname == NULL)
+		rname = readname;
+	
+	cname = escapestr(contigname);
+	if (cname == NULL)
+		cname = contigname;
+
+	fprintf(fp, "> r=\"%s\" g=\"%s\" g_str=%c ", rname, cname,
+	    (revcmpl) ? '-' : '+');
+
+	if (print_readseq) {
+		fprintf(fp, "r_seq=\"%s\" ",
+		    readtostr(read, readlen, use_colours, initbp));
+	}
+
+	/* NB: internally 0 is first position, output uses 1. adjust. */
+	fprintf(fp, "score=%d g_start=%u g_end=%u r_start=%d r_end=%d r_len=%u "
+	    "match=%d subs=%d ins=%d dels=%d", sfr->score, genome_start + 1,
+	    genome_end + 1, sfr->read_start + 1,
+	    sfr->read_start + sfr->rmapped - 1 + 1, readlen, sfr->matches,
+	    sfr->mismatches, sfr->insertions, sfr->deletions);
+	  
+	if (use_colours)
+		fprintf(fp, " xovers=%d", sfr->crossovers);
+
+	if (rname != readname)
+		free((void *)rname);
+	if (cname != contigname)
+		free((void *)cname);
 }

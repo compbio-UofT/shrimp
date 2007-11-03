@@ -6,8 +6,9 @@ Table of Contents
   1.   Introduction
   2.   Usage
   3.   Program Parameters
-  3.   Contact
-  4.   Acknowledgements
+  4.   Output Format
+  5.   Contact
+  6.   Acknowledgements
 
 
 --------------------------------------------------------------------------------
@@ -42,11 +43,11 @@ Savignyi genome (173.67 Mbases) takes approximately 6.5 hours on a cluster of
 200 Xeon 3.2GHz Hyperthreaded CPUs using a spaced seed of length 8, span 7, a
 window lenght of 30, 2 matches per window, and a Smith-Waterman threshold of
 1875 (penalties: 100 for matches, -70 mismatch, -75 gap open, -25 gap extend,
--200 crossover). For comparison, were a vectored Smith-Waterman alignment run
-on the same hardware, with an average execution of 500e6 matrix cells/second,
-this would take over 3 weeks on the same hardware.
+-200 crossover). For comparison, were vectored Smith-Waterman alignments run
+on the same hardware with an average execution of 500e6 matrix cells/second,
+it would take over 3 weeks.
 
-The more exact the matches need to be, the larger the spaced seed weight can be,
+The less exact the matches need to be, the larger the spaced seed weight can be,
 and the faster the kmer scan runs. By decreasing the weight by one, execution
 time increases by approximately a factor of four. Due to memory limitations,
 weights quickly become impractical around 16. Similarly, exceedingly small
@@ -55,8 +56,8 @@ the user's prerogative to balance sensitivity and resource usage (whether it be
 CPU, memory, or disk space used by output).
 
 Please note that the vectored Smith-Waterman algorithm is written specifically
-for the SSE2 instruction set. Hence this program will not run on non-x86 or
-x86_64 processors. Porting those algorithms to similar vector processors should
+for the SSE2 instruction set. Hence this program will not run on non-x86/x86_64
+processors. Porting those algorithms to similar vector processors should
 be relatively straightforward, however.
 
 --------------------------------------------------------------------------------
@@ -65,76 +66,77 @@ be relatively straightforward, however.
 
 The distribution makes use of several programs. The first and most important
 is 'rmapper'. 'rmapper' performs Smith-Waterman alignments of multiple reads
-within one fasta file against a single reftig in another fasta file. Since
-many reads are mapped against only one reftig per invocation, 'rmapper' must
-be run multiple times against each reftig (and reverse complement) of the
-entire genome. The utility 'splittigs' can be used to split a genome file
-containing multiple reftigs into individual parts.
+within one fasta file against one or more reftigs in other fasta files. rmapper
+was designed to map a set of reads against the entire genome (all contigs and
+their reverse-complements) in one invocation. Parallelism can be achieved by
+splitting the set of reads into N chunks, where N is the desired level of
+parallelism.
 
 Once 'rmapper' has been run, the standard output format of all alignments
-should be parsed via the 'probcalc' program. This code analyses all
-alignment output, saving the top 'n' matches per read, and calculates the
-probability of the match being bad. A threshold removes all outputs with a
-sufficiently high p-value.
+may be parsed via the 'probcalc' program. This code analyses all alignment
+output, saving the top 'n' matches per read, and calculates the probability of
+the match randomly occurring in the genome and matching the read, and the
+normalised odds (P(read match)/P(random)). Thresholds can be set for each to
+remove undesirably high or low values. Sorting can also be done on any one of
+the three aforementioned parameters.
 
-The output produced by the 'probcalc' utility is essentially a subset of
-the input, but with an added p-value field. These matches may then have
-their full alignments printed using the 'prettyprint' utility.
+The output produced by the 'probcalc' utility is essentially a superset of
+the input, with added 'pgenome', 'pchance' and 'normodds' fields. These
+matches may then have their full alignments printed using the 'prettyprint'
+utility (although one could certainly feed rmapper output to prettyprint
+directly).
 
-What follows is a complete example of scanning a set of reads against a
-single reftig (and its reverse complement) from the Ciona Savignyi genome.
-We'll then calculate the probabilities of each match being erroneous, and
-then print out pretty alignments.
+What follows is a complete example of scanning a set of reads against an
+entire genome (and its reverse-complement) from the Ciona Savignyi organism.
+We'll then calculate the associated probabilities and print out pretty
+alignments.
 
 We shall assume a large set of colourspace reads exist in a single file
-'reads.csfasta' and the entire Ciona genome exists in 'ciona.fasta'.
+'reads.csfasta' and the entire Ciona genome exists in 'ciona.fasta', both in
+the present working directory.
 
-  1)  mkdir genome
-  2)  mkdir reads
-  3)  mkdir results
-  4)  cd genome
-  5)  splittigs ../ciona.fasta
-  6)  revcmpl reftig_9.fa > reftig_9_revcmpl.fa
-  7)  cd ../reads
-  8)  splitreads 1000 ../reads.csfasta
-  9)  cd ..
-  10) rmapper-cs -s 11110111 -n 2 -t 4 -w 30 -o 10 -r 25 -m 100 -i -70 -g -100 \
-      -e -70 -x -200 -h 1975 -v 1875 -b genome/reftig_9.fa \
-      reads/0_to_999.csfasta > results/reftig_9.0_to_999.out
-  11) probcalc -p 0.4 -t 10 173673243 results/ > reftig_9.0_to_999.probcalc.out
-  12) prettyprint-cs reftig_9.0_to_999.probcalc.out genome/ reads/
+  1)  mkdir reads
+  2)  mkdir results
+  3)  cd reads
+  4)  splitreads 1000 ../reads.csfasta
+  5)  cd ..
+  6)  rmapper-cs -s 11110111 -n 2 -t 4 -w 28 -o 10 -r 25 -m 100 -i -70 -g -100 \
+          -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta
+         ciona.fasta > results/ciona.0_to_999.out
+  7) probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
+  8) prettyprint-cs ciona.0_to_999.probcalc.out genome/ reads/
 
-Lines 1-3 set up the necessary directory structure. genome/ contains the reftigs
-of the genome to search against, reads/ contains one or more fasta files
-containing letterspace or colourspace reads. results/ contains the results of
-the 'rmapper' pass, which are fed to 'probcalc' to generate the probabilities of
-them being poor matches.
+Lines 1&2 set up the necessary directory structure. reads/ contains one or more
+fasta files containing letterspace or colourspace reads. results/ contains the
+results of the 'rmapper' pass, which are fed to 'probcalc' to generate the
+probabilities of them being poor matches.
 
-Lines 4-6 changes to the genome/ directory and split the concatenate ciona
-reftig file into dividual reftigs (one per file). It also generates the
-reverse-complement of reftig_9.
-
-Lines 7-8 split the reads.csfasta file, which contains a large number of
+Lines 3&4 split the reads.csfasta file, which contains a large number of
 colourspace reads into smaller chunks. This both saves memory, and would allow
 us to parallelise the computation.
 
-Line 10 maps all reads split into the file 0_to_999.csfasta against reftig_9.
+Line 6 maps all reads split into the file 0_to_999.csfasta against ciona.fasta.
 The various parameters are verbosely documented later in this file. The output
 of 'rmapper' is piped into a file in the results/ directory for later
-evaluation.
+evaluation. This step could be parallelised across all *_to_*.csfasta files
+created by splitreads.
 
-Line 11 calculates the probability of each hit generated by 'rmapper' of being
+Line 7 calculates the probability of each hit generated by 'rmapper' of being
 bad. It takes two mandatory parameters: the total genome length, and a directory
 of 'rmapper' result files. The extra '-p' parameter specifies to cut out all
 matches from the output whose probability of being bad is greater than the
 supplied value (default is 1.0). The output is piped into a further results file
 for later evaluation by the 'prettyprint-cs' progrma. Note that 'probcalc'
-should be run once all results have been gathered.
+should be run once enough results have been gathered to generate reasonable
+statistics. Since this phase takes a relatively short amount of time, it is
+probably best done once sequentially for all output generated.
 
-Line 12 prints pretty visual alignments of our resultant mappings. It requires
+Line 8 prints pretty visual alignments of our resultant mappings. It requires
 knowning all genomic and reads files in order to locate each read referenced in
-the input file (generated by either 'rmapper' or 'probcalc') and align it
-against the appropriate reftig in the genome.
+the input file (generated by either 'rmapper' or 'probcalc') and aligns them
+against the appropriate contig in the genome. Alternatively, one could have run
+rmapper with the -P flag to generate these in the initial output (although that
+could consume a considerable amount of disk space).
 
 
 --------------------------------------------------------------------------------
@@ -239,7 +241,7 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		additionally due to artifacts such as single SNPs resulting in
 		two colour mismatches.
 
-		[ -b ]
+		[ -B ]
 
 		This option simply prints a progress bar to stderr during the
 		spaced seed scan and vectored Smith-Waterman phases. It exists
@@ -248,17 +250,23 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		it is not enabled by default and should only be used during
 		manual, interactive execution.
 
-		[ -p ]
+		[ -P ]
 
 		'rmapper' has two output formats. The first, and default,
 		prints a list of appropriately scoring reads and various
 		parameters, such as where they occurred in the genome (index),
 		how many matches, mismatches, and gaps there were, and so forth.
-		The '-p' flag enables a 'pretty print' output, which displays
+		The '-P' flag enables a 'pretty print' output, which displays
 		similar parameters, but also a full alignment.
 
 		These alignments can also be obtained after the fact by running
 		the default output file through the 'probcalc' program.
+
+		[ -R ]
+
+		Include the entire read sequence in the output generated. This
+		will consume huge gobs of disk space for large reads and is
+		disabled by default. Saved reads are placed in the 'r_seq' key.
 
 	rmapper-cs-specific parameters: 
 		[ -x crossover_penalty ]
@@ -289,12 +297,121 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		result in two colour changes, the threshold for the colour-space
 		alignment should be less than that of letter-space. 
 
-rmapper-ls-specific parameters:
-	None for now.
+	rmapper-ls-specific parameters:
+		None for now.
+
+
+'prettyprint' currently takes only one optional parameter.
+
+	prettyprint-cs and prettyprint-ls parameters (common parameters):
+		[ -m sw_match_value ]
+
+		See the 'rmapper' -m description.
+
+		[ -i sw_mismatch_value ]
+
+		See the 'rmapper' -i description.
+
+		[ -g sw_gap_open_penalty ]
+
+		See the 'rmapper' -g description.
+
+		[ -e sw_gap_extend_penalty ]
+
+		See the 'rmapper' -e description.
+
+		[ -h sw_threshold ]
+
+		See the 'rmapper' -h description.
+
+		[ -i ]
+
+		See the 'rmapper' -m description.
+
+		[ -R ]
+
+		Include the entire read sequence in the output generated. This
+		will only have an effect for input lines containing the 'r_seq'
+		key.
+
+	prettyprint-cs-specific parameters:
+		[ -x crossover_penalty ]
+
+		See the 'rmapper-cs' -x description.
+
+	prettyprint-ls-specific parameters:
+		None for now.
+
+
+'probcalc' takes a few optional parameters as well:
+	[-n normodds_cutoff]
+
+	Set a threshold for normodds. Any values lower than this threshold will
+	be suppressed.
+	
+	[-o pgenome_cutoff]
+
+	Set a threshold for pgenome. Any values lower than this threshold will
+	be suppressed.
+	
+	[-p pchance_cutoff]
+
+	Set a threshold for pchance. Any values higher than this threshold will
+	be suppressed.
+
+	[-s normodds|pgenome|pchance]
+
+	Sort based on normodds, pgenome, or pchance given the appropriate
+	string.
+
+	[-t top_matches]
+
+	Save only top_matches best matches.
+
+	[ -R ]
+ 
+	Include the entire read sequence in the output generated. This
+	will only have an effect for input lines containing the 'r_seq'
+	key.
 
 
 --------------------------------------------------------------------------------
-4. Contact
+4. Output Format
+--------------------------------------------------------------------------------
+
+rmapper probcalc, and prettyprint all adhere to a common output format: a
+simple string of key/value pairs beginning with '>'. For example:
+
+> r="872_553_145_F3" g="reftig_9" g_str=- score=2300 g_start=454878 g_end=454902
+r_start=1 r_end=25 r_len=25 match=25 subs=0 ins=0 dels=0 xovers=1
+
+Only lines beginning with a '>' character are parsed. This enables us to output
+pretty alignments using 'rmapper' with the -P flag, or with prettyprint, while
+maintaining output compatibility. '=' and '"' characters is read and reftig
+names are escaped using the '\' character automatically.
+
+Descriptions of the keys are as follows:
+	'r'		Read name
+	'g'		Reftig name
+	'g_str'		Genome strand ('+' or '-')
+	'score'		Alignment score
+	'g_start'	Start of alignment in genome (beginning with 1, not 0).
+	'g_end'		End of alignment in genome (inclusive).
+	'r_start'	Start of alignment in read (beginning with 1, not 0).
+	'r_end'		End of alignment in read (inclusive).
+	'r_len'		Length of the read in bases/colours.
+	'match'		Number of letters matched.
+	'subs'		Substitutions
+	'ins'		Insertions
+	'dels'		Deletions
+	'xovers'	Colour-space only: matrix crossovers encountered.
+	'pchance'	Probability of read matching by chance in the genome.
+	'pgenome'	Probability of the read matching where it did.
+	'normodds'	Normalised pgenome/pchance.
+
+
+--------------------------------------------------------------------------------
+5. Contact
 --------------------------------------------------------------------------------
 
 The authors of this software may be contacted at the following e-mail addresses:
@@ -303,7 +420,7 @@ The authors of this software may be contacted at the following e-mail addresses:
 
 
 --------------------------------------------------------------------------------
-5. Acknowledgements
+6. Acknowledgements
 --------------------------------------------------------------------------------
 
 Development was performed at the University of Toronto's Computational

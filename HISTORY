@@ -1,0 +1,10 @@
+$Id$
+
+1.0.1: November 2, 2007
+	- First public release. New output format.
+	- '-b', '-p' flags changed to '-B', '-P'. (Parameters lowercase,
+	  options uppercase).
+	- Multiple contig support and internal reverse-complementing of contigs.
+
+1.0.0: Summer 2007
+	- Internal development version. Old ouput format.

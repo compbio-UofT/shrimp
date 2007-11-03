@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -306,6 +307,10 @@ lookup_remove(lookup_t lu, void *key, void **rkey, void **rvalue)
 {
 	bool ret;
 	unsigned int hash;
+
+	/* shut up, icc */
+	ret = false;
+	(void)ret;
 
 	assert(key != NULL);
 

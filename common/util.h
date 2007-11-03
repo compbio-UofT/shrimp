@@ -22,11 +22,22 @@ double		ls_choose(int64_t, int64_t);
 char	       *trim_brackets(char *);
 void		bitfield_prepend(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
-char	       *extract_reftig(char *);
+void		progress_bar(FILE *, uint64_t, uint64_t, uint);
+void		reverse_complement(uint32_t *, uint32_t *, uint32_t);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;
 extern int   optind;
+
+static inline int
+complement_base(int base)
+{
+	int cmpl[5] = { 3, 2, 1, 0, 4 }; /* A->T, G->C, G->C, T->A, N->N */
+
+	assert(base >= 0 && base <= 5);
+
+	return (cmpl[base]);
+}
 
 /*
  * Given the first letter of a pair corresponding to a colour, and the colour

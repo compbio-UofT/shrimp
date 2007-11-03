@@ -74,6 +74,8 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 	isnewentry = 0;
 	name[0] = '\0';
 	while (fgets(buf, sizeof(buf), fp) != NULL) {
+		bool have_initbp = false;
+
 		if (buf[0] == '#')
 			continue;
 
@@ -87,13 +89,13 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			isnewentry = 1;
 			continue;
 		}
-			
+
 		for (i = 0; buf[i] != '\n' && buf[i] != '\0'; i++) {
 			int a;
 
 			buf[i] = (char)toupper((int)buf[i]);
 
-			if (s == COLOUR_SPACE) {
+			if (!have_initbp && s == COLOUR_SPACE) {
 				if (buf[i] == 'A' || buf[i] == 'C' ||
 				    buf[i] == 'G' || buf[i] == 'T') {
 					switch (buf[i]) {
@@ -102,6 +104,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 					case 'G': initbp = BASE_G; break;
 					case 'T': initbp = BASE_T; break;
 					}
+					have_initbp = true;
 					continue;
 				}
 			}
@@ -109,9 +112,10 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			a = translate[(int)buf[i]];
 			if (a == -1) {
 				fprintf(stderr, "error: invalid character (%c) "
-				    "in input file [%s] (have you mixed up "
-				    "letter space and colour space binaries?)"
-				    "\n", buf[i], file);
+				    "in input file [%s]\n", buf[i], file);
+				fprintf(stderr, "       (Did you mixed up "
+				    "letter space and colour space "
+				    "binaries?)\n");
 				exit(1);
 			}
 

@@ -1,8 +1,6 @@
 /*	$Id$	*/
 
-#define RMAPPER_VERSION_STR	"1.0.0"
-
-extern const int use_colours;
+extern const bool use_colours;
 
 #define DEF_SPACED_SEED		"11110111"
 #define DEF_WINDOW_LEN		30
@@ -32,8 +30,12 @@ extern const int use_colours;
 #endif
 
 struct re_score {
-	int32_t  score;				/* doubles as heap cnt in [0] */
-	uint32_t index;
+	struct read_elem *parent;		/* associated read_elem */
+	struct re_score  *next;			/* linked list */
+	int		  contig_num;		/* config index (for filename)*/
+	bool		  revcmpl;		/* from contig's reverse cmpl */
+	int32_t		  score;		/* doubles as heap cnt in [0] */
+	uint32_t	  index;
 };
 
 struct read_elem {
@@ -41,6 +43,8 @@ struct read_elem {
 	struct read_elem *next;			/* next in read list */
 	uint32_t	 *read;			/* the read as a bitstring */
 	uint32_t	  read_len;
+
+	uint32_t	  final_matches;	/* num of final output matches*/
 
 	int		  swhits;		/* num of hits with sw */
 	uint32_t	  last_swhit_idx;	/* index of last sw hit */

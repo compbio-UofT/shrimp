@@ -24,6 +24,7 @@
 #include "../common/sw-vector.h"
 #include "../common/output.h"
 #include "../common/util.h"
+#include "../common/version.h"
 
 #include "rmapper.h"
 
@@ -47,6 +48,7 @@ static u_int sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t *genome;
 static uint32_t	 genome_len;
+static char     *contig_name;			/* name of contig in genome */
 
 /*
  * Genomic sequence, in letter space, stored in 32-bit words, first is in LSB
@@ -54,7 +56,6 @@ static uint32_t	 genome_len;
  * NB: Colour space only
  */
 static uint32_t *genome_ls;
-static uint32_t  genome_ls_len;
 
 /* Reads */
 static struct read_elem  *reads;		/* list of reads */
@@ -67,8 +68,9 @@ static u_int	nkmers;				/* total kmers of reads loaded*/
 static u_int	longest_read_len;		/* longest read we've seen */
 
 /* Flags */
-static int bflag = 0;				/* print a progress bar */
-static int pflag = 0;				/* pretty print results */
+static int Bflag = false;			/* print a progress bar */
+static int Pflag = false;			/* pretty print results */
+static int Rflag = false;			/* add read seq to output */
 
 /* Scan stats */
 static uint64_t shortest_scanned_kmer_list;
@@ -77,20 +79,10 @@ static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
 
 #ifdef USE_COLOURS
-const int use_colours = 1;
+const bool use_colours = true;
 #else
-const int use_colours = 0;
+const bool use_colours = false;
 #endif
-
-struct alignment_sort {
-	int32_t		score;
-	uint32_t	index;
-	char	       *name;
-	char	       *dbalign;
-	char	       *qralign;
-	void	       *cookie;
-	int		goff;
-};
 
 static size_t
 power(size_t base, size_t exp)
@@ -105,30 +97,6 @@ power(size_t base, size_t exp)
 		ret *= base;
 
 	return (ret);
-}
-
-/* qsort callback - descending score, increasing index */
-static int
-qsort_alignments(const void *a, const void *b)
-{
-	const struct alignment_sort *sa, *sb;
-
-	sa = a;
-	sb = b;
-
-	if (sa->score < sb->score)
-		return (1);
-
-	if (sa->score > sb->score)
-		return (-1);
-
-	if (sa->index > sb->index)
-		return (1);
-
-	if (sa->index < sb->index)
-		return (-1);
-
-	return (0);
 }
 
 /* percolate down in our min-heap */
@@ -160,7 +128,8 @@ reheap(struct re_score *scores, int node)
 
 /* update our score min-heap */
 static void
-save_score(struct read_elem *re, int score, int index)
+save_score(struct read_elem *re, int score, int index, int contig_num,
+    bool revcmpl)
 {
 	struct re_score *scores;
 
@@ -171,60 +140,9 @@ save_score(struct read_elem *re, int score, int index)
 
 	scores[1].score = score;
 	scores[1].index = index;
+	scores[1].contig_num = contig_num;
+	scores[1].revcmpl = revcmpl;
 	reheap(scores, 1);
-}
-
-static void
-progress_bar(uint32_t at, uint32_t of)
-{
-	static int lastperc, beenhere;
-	static char whirly = '\\';
-
-	char progbuf[52];
-	int perc, i, j, dec;
-
-	perc = (at * 1000) / of;
-
-	if (beenhere && perc - lastperc != 1)
-		return;
-
-	beenhere = 1;
-	lastperc = perc;
-
-	dec = perc % 10;
-	perc /= 10;
-
-	/* any excuse to have a whirly gig */
-	switch (whirly) {
-	case '|':
-		whirly = '/';
-		break;
-	case '/':
-		whirly = '-';
-		break;
-	case '-':
-		whirly = '\\';
-		break;
-	case '\\':
-		whirly = '|';
-		break;
-	}
-	progbuf[25] = whirly;
-		
-	for (i = j = 0; i <= 100; i += 2) {
-		if (j != 25) {
-			if (i <= perc)
-				progbuf[j++] = '=';
-			else
-				progbuf[j++] = ' ';
-		} else {
-			j++;
-		}
-	}
-	progbuf[51] = '\0';
-
-	fprintf(stderr, "\rProgress: [%s] %3d.%1d%%", progbuf, perc, dec);
-	fflush(stderr);
 }
 
 /* compress the given kmer into an index in 'readmap' according to the seed */
@@ -279,6 +197,13 @@ readmap_prune()
 		stddev += pow((double)readmap_len[i] - mean, 2);
 	stddev = sqrt(stddev / j);
 
+	fprintf(stderr, "Pruning kmers... (mean: %f, stddev: %f, "
+	    "stddev limit: +/- %f)\n", mean, stddev,
+	    kmer_stddev_limit * stddev);
+	if (mean < 1.0)
+		fprintf(stderr, "WARNING: low mean - are you sure you want to "
+		    "prune kmers?\n");
+
 	for (i = 0; i < j; i++) {
 		if (readmap_len[i] > mean + (kmer_stddev_limit * stddev))
 			readmap[i] = NULL;
@@ -287,7 +212,7 @@ readmap_prune()
 
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
-scan()
+scan(int contig_num, bool revcmpl)
 {
 	struct read_node *rn;
 	struct read_elem *re;
@@ -299,6 +224,8 @@ scan()
 
 	seed_span = strlen(spaced_seed);
 
+	progress_bar(stderr, 0, 0, 10);
+
 	kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 	memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
 	for (i = 0; i < seed_span - 1; i++)
@@ -306,8 +233,8 @@ scan()
 
 	skip = 0;
 	for (i = seed_span - 1; i < genome_len; i++) {
-		if (bflag)
-			progress_bar(i, genome_len);
+		if (Bflag)
+			progress_bar(stderr, i, genome_len, 10);
 
 		base = EXTRACT(genome, i);
 		bitfield_prepend(kmer, seed_span, base);
@@ -361,7 +288,8 @@ scan()
 				}
 
 				if (score >= sw_vect_threshold) {
-					save_score(re, score, i);
+					save_score(re, score, i, contig_num,
+					    revcmpl);
 					re->last_swhit_idx = i;
 					re->swhits++;
 				}
@@ -376,22 +304,24 @@ scan()
 		kmer_lists_scanned++;
 	}
 
-	if (bflag) {
-		progress_bar(i, genome_len);
-		fprintf(stderr, "\n\n");
+	if (Bflag) {
+		progress_bar(stderr, genome_len, genome_len, 10);
+		putc('\n', stderr);
 	}
+
+	free(kmer);
 }
 
 static void
 load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
     int initbp)
 {
-	static int first = 1;
-	static int last;
+	static bool first = true;
+	static int lastbp;
 
 	/* shut up icc */
 	(void)name;
-	(void)last;
+	(void)lastbp;
 	(void)initbp;
 
 	if (base == FASTA_DEALLOC)
@@ -399,22 +329,34 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 	/* handle initial call to alloc resources */
 	if (base == FASTA_ALLOC) {
+		first = true;
+		if (genome != NULL)
+			free(genome);
 		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(offset));
+		genome_len = 0;
 		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(offset));
 
 		if (use_colours) {
+			if (genome_ls != NULL)
+				free(genome_ls);
 			genome_ls =
 			    xmalloc(sizeof(genome_ls[0]) * BPTO32BW(offset));
 			memset(genome_ls, 0,
 			    sizeof(genome_ls[0]) * BPTO32BW(offset));
-			last = BASE_T;
+			lastbp = BASE_T;
 		}
 		return;
 	}
 
+	if (first) {
+		if (contig_name != NULL)
+			free(contig_name);
+		contig_name = xstrdup(name);
+	}
+
 	if (isnewentry && !first) {
 		fprintf(stderr, "error: genome file consists of more than one "
-		    "reftig!\n");
+		    "contig!\n");
 		exit(1);
 	}
 
@@ -422,20 +364,16 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 	assert(offset == genome_len);
 
 	if (use_colours) {
-		bitfield_append(genome, offset, lstocs(last, base));
+		bitfield_append(genome, offset, lstocs(lastbp, base));
 		genome_len++;
 		bitfield_append(genome_ls, offset, base);
-		genome_ls_len++;
-		last = base;
+		lastbp = base;
 	} else {
 		bitfield_append(genome, offset, base);
 		genome_len++;
 	}
 
-	if (first)
-		printf("# REFTIG: [%s]\n", name);
-
-	first = 0;
+	first = false;
 }
 
 static int
@@ -446,8 +384,8 @@ load_genome(const char *file)
 	ret = load_fasta(file, load_genome_helper, LETTER_SPACE);
 
 	if (ret != -1)
-		fprintf(stderr, "Loaded %u letters of genome\n",
-		    (unsigned int)ret);
+		fprintf(stderr, "Loaded %u letters from contig \"%s\" [%s]\n",
+		    (unsigned int)ret, contig_name, file);
 
 	return (ret == -1);
 }
@@ -514,8 +452,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 		len = sizeof(struct re_score) * (num_outputs + 1);
 		re->scores = xmalloc(len);
+		memset(re->scores, 0, len);
 		re->scores[0].score = num_outputs;
-		re->scores[0].index = 0;
 
 		/* init scores to negatives so we only need percolate down */
 		for (i = 1; i <= re->scores[0].score; i++)
@@ -575,7 +513,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (++cnt >= seed_span) {
 		struct read_node *rn;
 		uint32_t mapidx;
-		int unique = 1;
+		bool unique = true;
 
 		/*
 		 * Ensure that this kmer is unique within the read. If it's
@@ -589,11 +527,11 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		len = sizeof(kmer[0]) * BPTO32BW(seed_span);
 		for (i = 0; i < npast_kmers; i++) {
 			if (memcmp(kmer, past_kmers[i], len) == 0) {
-				unique = 0;
+				unique = false;
 				break;
 			}
 		}
-		
+
 		if (unique) {
 			rn = xmalloc(sizeof(struct read_node));
 
@@ -628,35 +566,24 @@ load_reads(const char *file)
 }
 
 static void
-print_alignments(struct read_elem *re)
+generate_output(struct re_score *rs, bool revcmpl)
 {
-	struct sw_full_results *sfr;
-	struct alignment_sort *qa;
+	static bool firstcall = true;
+
+	struct sw_full_results sfr;
+	char *dbalign, *qralign;
+	struct read_elem *re;
 	uint32_t goff, glen;
-	uint32_t prev_index;
-	int32_t prev_score;
-	int i, newread;
 
-	/*
-	 * Allocate space and do all of the full S-W scans up front, then
-	 * sort, and finally output. This is not necessary in the letter
-	 * space case, but it is needed for the colour space and common
-	 * code is always nicer.
-	 */
-	sfr = xmalloc(sizeof(*sfr) * re->scores[0].score);
-	qa = xmalloc(sizeof(*qa) * re->scores[0].score);
+	for (; rs != NULL; rs = rs->next) {
+		re = rs->parent;
 
-	memset(sfr, 0, sizeof(*sfr) * re->scores[0].score);
-	memset(qa, 0, sizeof(*qa) * re->scores[0].score);
-
-	for (i = 1; i <= re->scores[0].score; i++) {
-		if (re->scores[i].score < 0)
-			continue;
-
-		if (re->scores[i].index < window_len)
+		if (rs->index < window_len)
 			goff = 0;
 		else
-			goff = re->scores[i].index - window_len;
+			goff = rs->index - window_len;
+
+		assert(goff < genome_len);
 
 		if (goff + (window_len * 2) >= genome_len)
 			glen = genome_len - goff;
@@ -665,61 +592,102 @@ print_alignments(struct read_elem *re)
 
 		if (use_colours) {
 			sw_full_cs(genome_ls, goff, glen, re->read,
-			    re->read_len, re->initbp, re->scores[i].score,
-			    &qa[i-1].dbalign, &qa[i-1].qralign, &sfr[i-1]);
+			    re->read_len, re->initbp, rs->score, &dbalign,
+			    &qralign, &sfr);
 		} else {
 			sw_full_ls(genome, goff, glen, re->read, re->read_len,
-			    re->scores[i].score, &qa[i-1].dbalign,
-			    &qa[i-1].qralign, &sfr[i-1]);
+			    rs->score, &dbalign, &qralign, &sfr);
 		}
 
-		qa[i-1].score = sfr[i-1].score;
-		qa[i-1].index = sfr[i-1].genome_start + goff;
-		qa[i-1].name = re->name;
-		qa[i-1].dbalign = xstrdup(qa[i-1].dbalign);
-		qa[i-1].qralign = xstrdup(qa[i-1].qralign);
-		qa[i-1].cookie = &sfr[i-1];
-		qa[i-1].goff = goff;
+		if (sfr.score < sw_full_threshold)
+			continue;
+
+		re->final_matches++;
+
+		if (!firstcall)
+			fputc('\n', stdout);
+		firstcall = false;
+
+		output_normal(stdout, re->name, contig_name, &sfr, genome_len,
+		    goff, use_colours, re->read, re->read_len, re->initbp,
+		    revcmpl, Rflag);
+		fputc('\n', stdout);
+
+		if (Pflag) {
+			fputc('\n', stdout);
+			output_pretty(stdout, re->name, contig_name, &sfr,
+			    dbalign, qralign,
+			    (use_colours) ? genome_ls : genome, genome_len,
+			    goff, use_colours, re->read, re->read_len,
+			    re->initbp, revcmpl);
+		}
 	}
+}
 
-	qsort(qa, re->scores[0].score, sizeof(qa[0]), qsort_alignments);
+static int
+final_pass(char **files, int nfiles)
+{
+	struct {
+		struct re_score *scores;
+		struct re_score *revcmpl_scores;
+	} *contig_list;
+	struct read_elem *re;
+	int i, hits = 0;
 
-	newread = 1;
+	contig_list = xmalloc(sizeof(*contig_list) * nfiles);
+	memset(contig_list, 0, sizeof(*contig_list) * nfiles);
 
-	/* shut up, gcc */
-	prev_index = prev_score = -1;
-
-	for (i = 0; i < re->scores[0].score; i++) {
-		if (qa[i].cookie == NULL)
+	/* For each contig, generate a linked list of hits from it. */
+	for (re = reads; re != NULL; re = re->next) {
+		if (re->swhits == 0)
 			continue;
-	
-		/* skip duplicates */
-		if (newread == 0 && qa[i].score == prev_score &&
-		    qa[i].index == prev_index)
-			continue;
 
-		if (pflag) {
-			output_pretty(stdout, qa[i].name, NULL, qa[i].cookie,
-			    qa[i].dbalign, qa[i].qralign,
-			    (use_colours) ? genome_ls : genome,
-			    (use_colours) ? genome_ls_len : genome_len,
-			    qa[i].goff, newread);
-		} else {
-			output_normal(stdout, qa[i].name, NULL, qa[i].cookie,
-			    qa[i].goff, use_colours, newread);
-		}
-
-		newread = 0;
+		hits++;
 		
-		free(qa[i].dbalign);
-		free(qa[i].qralign);
+		for (i = 1; i <= re->scores[0].score; i++) {
+			int cn = re->scores[i].contig_num;
 
-		prev_score = qa[i].score;
-		prev_index = qa[i].index;
+			if (re->scores[i].score < 0)
+				continue;
+
+			assert(cn >= 0 && cn < nfiles);
+			assert(re->scores[i].parent == NULL);
+			assert(re->scores[i].next == NULL);
+			assert(re->scores[i].score >= sw_vect_threshold);
+
+			if (re->scores[i].revcmpl) {
+				re->scores[i].next =
+				    contig_list[cn].revcmpl_scores;
+				contig_list[cn].revcmpl_scores = &re->scores[i];
+			} else {
+				re->scores[i].next =
+				    contig_list[cn].scores;
+				contig_list[cn].scores = &re->scores[i];
+			}
+
+			re->scores[i].parent = re;
+		}
 	}
 
-	free(sfr);
-	free(qa);
+	/* Now, do a final s-w for all reads of each contig and output them. */
+	for (i = 0; i < nfiles; i++) {
+		if (load_genome(files[i])) {
+			fprintf(stderr, "error: failed to reload genome file "
+			    "[%s] for final pass\n", files[i]);
+			exit(1);
+		}
+		
+		generate_output(contig_list[i].scores, false);
+		if (use_colours)
+			reverse_complement(genome_ls, genome, genome_len);
+		else
+			reverse_complement(genome, NULL, genome_len);
+		generate_output(contig_list[i].revcmpl_scores, true);
+	}
+
+	free(contig_list);
+
+	return (hits);
 }
 
 static int
@@ -745,6 +713,72 @@ valid_spaced_seed()
 	return (1);
 }
 
+static int
+scan_genomes(char **files, int nfiles, double *scantime, double *loadtime,
+    double *revcmpltime)
+{
+	struct timeval tv1, tv2;
+	double stime, ltime, rtime;
+	int i;
+
+	stime = ltime = rtime = 0;
+
+	for (i = 0; i < nfiles; i++) {
+		fprintf(stderr, "Processing contig file [%s] (%d of %d)\n",
+		    files[i], i + 1, nfiles);
+
+		gettimeofday(&tv1, NULL);
+		if (load_genome(files[i]))
+			return (1);
+		gettimeofday(&tv2, NULL);
+
+		ltime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
+		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
+
+		/*
+		 * Do it forwards.
+		 */
+		gettimeofday(&tv1, NULL);
+		scan(i, false);
+		gettimeofday(&tv2, NULL);
+
+		stime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
+		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
+
+		/*
+		 * Do it reverse-complementwards.
+		 */
+		fprintf(stderr, "Processing reverse complement of contig file "
+		    "[%s] (%d of %d)\n", files[i], i + 1, nfiles);
+
+		gettimeofday(&tv1, NULL);
+		if (use_colours)
+			reverse_complement(genome_ls, genome, genome_len);
+		else
+			reverse_complement(genome, NULL, genome_len);
+		gettimeofday(&tv2, NULL);
+
+		rtime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
+		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
+
+		gettimeofday(&tv1, NULL);
+		scan(i, true);
+		gettimeofday(&tv2, NULL);
+
+		stime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
+		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
+	}
+
+	if (scantime != NULL)
+		*scantime = stime;
+	if (loadtime != NULL)
+		*loadtime = ltime;
+	if (revcmpltime != NULL)
+		*revcmpltime = rtime;
+
+	return (0);
+}
+
 static void
 usage(char *progname)
 {
@@ -755,7 +789,7 @@ usage(char *progname)
 		progname = slash + 1;
 
 	fprintf(stderr, "usage: %s [parameters] [options] "
-	    "genome_file reads_file\n", progname);
+	    "reads_file genome_file1 genome_file2...\n", progname);
 
 	fprintf(stderr, "Parameters:\n");
 
@@ -826,12 +860,16 @@ usage(char *progname)
 	fprintf(stderr, "Options:\n");
 
 	fprintf(stderr,
-	    "    -b    Print Scan Progress Bar                 (default: "
+	    "    -B    Print Scan Progress Bar                 (default: "
 	    "disabled)\n"); 
 
 	fprintf(stderr,
-	    "    -p    Pretty Print Alignments                 (default: "
+	    "    -P    Pretty Print Alignments                 (default: "
 	    "disabled)\n"); 
+
+	fprintf(stderr,
+	    "    -R    Print Reads in Output                   (default: "
+	    "disabled)\n");
 
 	exit(1);
 }
@@ -839,24 +877,26 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	struct timeval tv1, tv2;
-	char *genome_file, *reads_file, *progname, *optstr;
 	struct read_elem *re;
-	double cellspersec;
-	uint64_t invocs, cells;
-	int ch, ret, hits = 0;
+	char *reads_file, *progname, *optstr;
+	char **genome_files;
+	double cellspersec, stime, ltime, rtime;
+	uint64_t invocs, cells, reads_matched, total_matches;
+	int ch, ret, ngenome_files;
 
-	fprintf(stderr, "------------------------------------------------\n");
-	fprintf(stderr, "rmapper: %s SPACE. Version %s\n",
-	    (use_colours) ? "COLOUR" : "LETTER", RMAPPER_VERSION_STR);
-	fprintf(stderr, "------------------------------------------------\n\n");
+	fprintf(stderr, "--------------------------------------------------"
+	    "------------------------------\n");
+	fprintf(stderr, "rmapper: %s SPACE. (SHRiMP version %s)\n",
+	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING);
+	fprintf(stderr, "--------------------------------------------------"
+	    "------------------------------\n");
 
 	progname = argv[0];
 
 	if (use_colours)
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:bp";
+		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:BPR";
 	else
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:bp";
+		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:BPR";
 
 	while ((ch = getopt(argc, argv, optstr)) != -1) {
 		switch (ch) {
@@ -904,11 +944,14 @@ main(int argc, char **argv)
 			assert(use_colours);
 			sw_vect_threshold = atoi(optarg);
 			break;
-		case 'b':
-			bflag = 1;
+		case 'B':
+			Bflag = true;
 			break;
-		case 'p':
-			pflag = 1;
+		case 'P':
+			Pflag = true;
+			break;
+		case 'R':
+			Rflag = true;
 			break;
 		default:
 			usage(progname);
@@ -917,14 +960,15 @@ main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 2) {
-		fprintf(stderr, "error: %sreads_file not specified\n",
-		    (argc == 0) ? "genome_file, " : "");
+	if (argc < 2) {
+		fprintf(stderr, "error: %sgenome_file(s) not specified\n",
+		    (argc == 0) ? "reads_file, " : "");
 		usage(progname);
 	}
 
-	genome_file = argv[0];
-	reads_file  = argv[1];
+	reads_file    = argv[0];
+	genome_files  = &argv[1];
+	ngenome_files = argc - 1;
 
 	if (!use_colours)
 		sw_vect_threshold = sw_full_threshold;
@@ -964,36 +1008,6 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (load_genome(genome_file)) {
-		exit(1);
-	}
-
-	if (load_reads(reads_file)) {
-		exit(1);
-	}
-
-	if (sw_vector_setup(window_len * 2, longest_read_len,
-	    gap_open, gap_extend, match_value, mismatch_value, use_colours)) {
-		fprintf(stderr, "failed to initialise vector "
-		    "Smith-Waterman (%s)\n", strerror(errno));
-		exit(1);
-	}
-
-	if (use_colours) {
-		ret = sw_full_cs_setup(window_len * 2, longest_read_len,
-		    gap_open, gap_extend, match_value, mismatch_value,
-		    xover_penalty);
-	} else {
-		ret = sw_full_ls_setup(window_len * 2, longest_read_len,
-		    gap_open, gap_extend, match_value, mismatch_value);
-	}
-	if (ret) {
-		fprintf(stderr, "failed to initialise scalar Smith-Waterman "
-		    "(%s)\n", strerror(errno));
-		exit(1);
-	}
-
-	fprintf(stderr, "\n");
 	fprintf(stderr, "Settings:\n");
 	fprintf(stderr, "    Spaced Seed:                %s\n", spaced_seed);
 	fprintf(stderr, "    Spaced Seed Span:           %u\n",
@@ -1028,52 +1042,63 @@ main(int argc, char **argv)
 	}
 	fprintf(stderr, "\n");
 
-	readmap_prune();
+	if (load_reads(reads_file))
+		exit(1);
 
-	gettimeofday(&tv1, NULL);
-	scan();
-	gettimeofday(&tv2, NULL);
-
-	if (!pflag) {
-		if (use_colours) {
-			printf("#\n# [READ_NAME] score indexstart indexend "
-			    "read_start read_mapped_length matches mismatches "
-			    "insertions deletions crossovers\n");
-		} else {
-			printf("#\n# [READ_NAME] score indexstart indexend "
-			    "read_start read_mapped_length matches mismatches "
-			    "insertions deletions\n");
-		}
+	if (sw_vector_setup(window_len * 2, longest_read_len, gap_open,
+	    gap_extend, match_value, mismatch_value, use_colours, false)) {
+		fprintf(stderr, "failed to initialise vector "
+		    "Smith-Waterman (%s)\n", strerror(errno));
+		exit(1);
 	}
 
-	for (re = reads; re != NULL; re = re->next) {
-		if (re->swhits == 0)
-			continue;
+	if (use_colours) {
+		ret = sw_full_cs_setup(window_len * 2, longest_read_len,
+		    gap_open, gap_extend, match_value, mismatch_value,
+		    xover_penalty, false);
+	} else {
+		ret = sw_full_ls_setup(window_len * 2, longest_read_len,
+		    gap_open, gap_extend, match_value, mismatch_value, false);
+	}
+	if (ret) {
+		fprintf(stderr, "failed to initialise scalar "
+		    "Smith-Waterman (%s)\n", strerror(errno));
+		exit(1);
+	}
 
-		print_alignments(re);
-		hits++;
+	readmap_prune();
+
+	if (scan_genomes(genome_files, ngenome_files, &stime, &ltime, &rtime))
+		exit(1);
+
+	fprintf(stderr, "Generating output...\n");
+	final_pass(genome_files, ngenome_files);
+
+	reads_matched = total_matches = 0;
+	for (re = reads; re != NULL; re = re->next) {
+		reads_matched += (re->final_matches == 0) ? 0 : 1;
+		total_matches += re->final_matches;
 	}
 
 	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
 	
-	fprintf(stderr, "Statistics:\n");
+	fprintf(stderr, "\nStatistics:\n");
 	fprintf(stderr, "    Spaced Seed Scan:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
-	    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6) -
-	    (double)cells / cellspersec);
+	    stime - ((cellspersec == 0) ? 0 : (double)cells / cellspersec));
 	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
 	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
 	    shortest_scanned_kmer_list);
 	fprintf(stderr, "        Maximal Reads/Kmer:     %" PRIu64 "\n",
 	    longest_scanned_kmer_list);
 	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
+	    (kmer_lists_scanned == 0) ? 0 :
 	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    cells / cellspersec);
+	    (cellspersec == 0) ? 0 : cells / cellspersec);
 	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
@@ -1088,7 +1113,7 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "    Scalar Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    cells / cellspersec);
+	    (cellspersec == 0) ? 0 : cells / cellspersec);
 	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
@@ -1097,7 +1122,14 @@ main(int argc, char **argv)
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    General:\n");
-	fprintf(stderr, "        Reads Matched:          %d\n", hits);
+	fprintf(stderr, "        Reads Matched:          %" PRIu64 "    "
+	    "(%.4f%%)\n", reads_matched,
+	    (nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
+	fprintf(stderr, "        Total Matches:          %" PRIu64 "\n",
+	    total_matches);
+	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
+	    (total_matches == 0) ? 0 : ((double)total_matches /
+	    (double)reads_matched));
 	
 	return (0);
 }

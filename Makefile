@@ -32,7 +32,7 @@ bin/colourise/fasta.o: colourise/fasta.c colourise/fasta.h
 #
 
 bin/probcalc: probcalc/probcalc.c common/lookup.o common/red_black_tree.o \
-    common/util.o
+    common/input.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
@@ -41,12 +41,12 @@ bin/probcalc: probcalc/probcalc.c common/lookup.o common/red_black_tree.o \
 
 bin/prettyprint-cs: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
     common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
-    common/output.o common/util.o
+    common/input.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
 
 bin/prettyprint-ls: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
     common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
-    common/output.o common/util.o
+    common/input.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
@@ -86,16 +86,19 @@ common/lookup.o: common/lookup.c common/lookup.h
 common/red_black_tree.o: common/red_black_tree.c common/red_black_tree.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/output.o: common/output.c
+common/input.o: common/input.c common/input.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/sw-full-cs.o: common/sw-full-cs.c
+common/output.o: common/output.c common/output.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/sw-full-ls.o: common/sw-full-ls.c
+common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/sw-vector.o: common/sw-vector.c
+common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-common.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+common/sw-vector.o: common/sw-vector.c common/sw-vector.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h

@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -102,10 +103,12 @@ static int		dblen, qrlen;
 static int		gap_open, gap_ext;
 static int		match, mismatch;
 static int		xover_penalty;
-static uint64_t		swticks, swcells, swinvocs;
 static struct swcell   *swmatrix[4];
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
+
+/* statistics */
+static uint64_t		swticks, swcells, swinvocs;
 
 #define SWM_x(_x, _i, _j) swmatrix[(_x)][((_i) + 1) * (lena + 1) + (_j) + 1]
 
@@ -183,12 +186,8 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 	for (i = 0; i < lenb; i++) {
 		for (j = 0; j < lena; j++) {
 			for (k = 0; k < 4; k++) {
-				/*
-				 * Do not permit a free crossover on the first
-				 * letter of the read.
-				 */
-				if (k != 0 && j == 0)
-					resetval = (2 * xover_penalty) - 1;
+				if (k != 0)
+					resetval = xover_penalty;
 				else
 					resetval = 0;
 
@@ -660,7 +659,14 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		off--;
 	}
 
-	return (off + 1);
+	off++;
+
+	if (k != 0) {
+		backtrace[off] |= BT_CROSSOVER;
+		sfr->crossovers++;
+	}
+
+	return (off);
 }
 
 /*
@@ -750,7 +756,7 @@ pretty_print(int i, int j, int k)
 
 int
 sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-    int _match, int _mismatch, int _xover_penalty)
+    int _match, int _mismatch, int _xover_penalty, bool reset_stats)
 {
 	int i;
 
@@ -791,6 +797,9 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	mismatch = _mismatch;
 	xover_penalty = _xover_penalty;
 
+	if (reset_stats)
+		swticks = swcells = swinvocs = 0;
+
 	initialised = 1;
 
 	return (0);
@@ -807,8 +816,11 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 		*cells = swcells;
 	if (ticks != NULL)
 		*ticks = swticks;
-	if (cellspersec != NULL)
+	if (cellspersec != NULL) {
 		*cellspersec = (double)swcells / ((double)swticks / cpuhz());
+		if (isnan(*cellspersec))
+			*cellspersec = 0;
+	}
 }
 
 void

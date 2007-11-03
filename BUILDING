@@ -16,6 +16,10 @@ When building with gcc, execute the following:
     gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -mmmx -msse -msse2 -static" \
         LDFLAGS="-lm"
 
+Debugging and assertion features may be turned off by adding "-NDEBUG" to the
+CFLAGS argument. However, at present assertions don't appear to cost much and
+any improvement in performance will be very small.
+
 NB: Mac OS X users may want to avoid the '-static' flag if compilation errors
     occur. Apple either doesn't ship some or all static libraries, or there are
     other things going on in Appleland that I don't understand.
