@@ -69,10 +69,10 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 	genome_start = goff + sfr->genome_start;
 	genome_end   = goff + sfr->genome_start + sfr->gmapped - 1;
 
+	assert(genome_len > genome_start && genome_len > genome_end);
+
 	if (revcmpl) {
 		uint32_t tmp = genome_start;
-		assert(genome_len >= genome_end - 1);
-		assert(genome_len >= genome_start - 1);
 		genome_start = genome_len - genome_end - 1;
 		genome_end = genome_len - tmp - 1;
 	}
