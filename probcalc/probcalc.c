@@ -510,7 +510,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:s:t:B:R")) != -1) {	
+	while ((ch = getopt(argc, argv, "n:o:p:s:t:BR")) != -1) {
 		switch (ch) {
 		case 'n':
 			normodds_cutoff = atof(optarg);
