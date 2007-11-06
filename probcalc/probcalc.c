@@ -695,6 +695,8 @@ main(int argc, char **argv)
 	PROGRESS_BAR(stderr, 0, 0, 10);
 	lookup_iterate(read_list, calc_probs, &rates);
 	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
+	if (Bflag)
+		putc('\n', stderr);
 
 	return (0);
 }
