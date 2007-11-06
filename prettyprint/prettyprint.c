@@ -176,6 +176,8 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (isnewentry && !first) {
 		fprintf(stderr, "error: genome file consists of more than "
 		    "one contig [%s]!\n", name);
+		fprintf(stderr, "       prettyprint expects one contig per "
+		    "fasta file - use 'splittigs' to break files up.\n");
 		exit(1);
 	}
 
