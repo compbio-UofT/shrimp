@@ -84,6 +84,9 @@ const bool use_colours = true;
 const bool use_colours = false;
 #endif
 
+#define PROGRESS_BAR(_a, _b, _c, _d)	\
+    if (Bflag) progress_bar((_a), (_b), (_c), (_d))
+
 static size_t
 power(size_t base, size_t exp)
 {
@@ -224,7 +227,7 @@ scan(int contig_num, bool revcmpl)
 
 	seed_span = strlen(spaced_seed);
 
-	progress_bar(stderr, 0, 0, 10);
+	PROGRESS_BAR(stderr, 0, 0, 10);
 
 	kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 	memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
@@ -233,8 +236,7 @@ scan(int contig_num, bool revcmpl)
 
 	skip = 0;
 	for (i = seed_span - 1; i < genome_len; i++) {
-		if (Bflag)
-			progress_bar(stderr, i, genome_len, 10);
+		PROGRESS_BAR(stderr, i, genome_len, 10);
 
 		base = EXTRACT(genome, i);
 		bitfield_prepend(kmer, seed_span, base);
@@ -305,7 +307,7 @@ scan(int contig_num, bool revcmpl)
 	}
 
 	if (Bflag) {
-		progress_bar(stderr, genome_len, genome_len, 10);
+		PROGRESS_BAR(stderr, genome_len, genome_len, 10);
 		putc('\n', stderr);
 	}
 
@@ -357,6 +359,8 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (isnewentry && !first) {
 		fprintf(stderr, "error: genome file consists of more than one "
 		    "contig!\n");
+		fprintf(stderr, "       rmapper expects one contig per fasta "
+		    "file - use 'splittigs' to break files up.\n");
 		exit(1);
 	}
 
