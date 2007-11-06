@@ -384,12 +384,12 @@ r_start=1 r_end=25 r_len=25 match=25 subs=0 ins=0 dels=0 xovers=1
 
 Only lines beginning with a '>' character are parsed. This enables us to output
 pretty alignments using 'rmapper' with the -P flag, or with prettyprint, while
-maintaining output compatibility. '=' and '"' characters is read and reftig
+maintaining output compatibility. '=' and '"' characters in read and reftig
 names are escaped using the '\' character automatically.
 
 Descriptions of the keys are as follows:
 	'r'		Read name
-	'g'		Reftig name
+	'g'		Contig (genome) name
 	'g_str'		Genome strand ('+' or '-')
 	'score'		Alignment score
 	'g_start'	Start of alignment in genome (beginning with 1, not 0).
@@ -399,9 +399,9 @@ Descriptions of the keys are as follows:
 	'r_len'		Length of the read in bases/colours.
 	'match'		Number of letters matched.
 	'subs'		Substitutions
-	'ins'		Insertions
-	'dels'		Deletions
-	'xovers'	Colour-space only: matrix crossovers encountered.
+	'ins'		Insertions in the base genome
+	'dels'		Deletions from the base genome
+	'xovers'	Colour-space only: matrix crossovers (errors) found.
 	'pchance'	Probability of read matching by chance in the genome.
 	'pgenome'	Probability of the read matching where it did.
 	'normodds'	Normalised pgenome/pchance.
