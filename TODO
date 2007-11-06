@@ -13,3 +13,4 @@ $Id$
    again for each S-W call. This may improve CS vectored performance a fair bit.
 6) Fix the for-loop spaced seed compressor so it scales.
 7) Fix time calculations (and perhaps errors) when -n is large (e.g. 222).
+8) Add surrounding base pairs to genomic pretty output rather than dashes.
