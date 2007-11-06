@@ -27,6 +27,7 @@ static lookup_t read_list;		/* list of reads and top matches */
 static lookup_t contig_cache;		/* contig name cache */
 static lookup_t read_seq_cache;		/* read sequence cache */
 
+static bool Bflag = false;		/* print a progress bar */
 static bool Rflag = false;		/* include read sequence in output */
 
 struct readinfo {
@@ -72,6 +73,9 @@ static double	pgenome_cutoff	        = DEF_PGENOME_CUTOFF;
 static int	top_matches		= DEF_TOP_MATCHES;
 static uint64_t genome_len;
 static int	sort_field		= SORT_PCHANCE;
+
+#define PROGRESS_BAR(_a, _b, _c, _d)	\
+    if (Bflag) progress_bar((_a), (_b), (_c), (_d))
 
 static unsigned int
 keyhasher(void *k)
@@ -284,7 +288,7 @@ calc_rates(void *arg, void *key, void *val)
 
 	(void)key;
 
-	progress_bar(stderr, calls, total_unique_reads, 100);
+	PROGRESS_BAR(stderr, calls, total_unique_reads, 100);
 	calls++;
 
 	best = 0;
@@ -387,7 +391,7 @@ calc_probs(void *arg, void *key, void *val)
 
 	(void)key;
 
-	progress_bar(stderr, calls, total_unique_reads, 10);
+	PROGRESS_BAR(stderr, calls, total_unique_reads, 10);
 	calls++;
 
 	if (rspv == NULL)
@@ -482,7 +486,8 @@ usage(char *progname)
 
 	fprintf(stderr, "usage: %s [-n normodds_cutoff] [-o pgenome_cutoff] "
 	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
-	    "[-t top_matches] [-R] genome_len results_directory\n", progname);
+	    "[-t top_matches] [-B] [-R] total_genome_len results_directory\n",
+	    progname);
 	exit(1);
 }
 
@@ -505,7 +510,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:s:t:R")) != -1) {	
+	while ((ch = getopt(argc, argv, "n:o:p:s:t:B:R")) != -1) {	
 		switch (ch) {
 		case 'n':
 			normodds_cutoff = atof(optarg);
@@ -531,6 +536,9 @@ main(int argc, char **argv)
 			break;
 		case 't':
 			top_matches = atoi(optarg);
+			break;
+		case 'B':
+			Bflag = true;
 			break;
 		case 'R':
 			Rflag = true;
@@ -606,7 +614,7 @@ main(int argc, char **argv)
 
 	i = bytes = 0;
 	fprintf(stderr, "Parsing %" PRIu64 " files...\n", files);
-	progress_bar(stderr, 0, 0, 100);
+	PROGRESS_BAR(stderr, 0, 0, 100);
 	while (1) {
 		de = readdir(dp);
 		if (de == NULL)
@@ -618,9 +626,9 @@ main(int argc, char **argv)
 			i++;
 		}
 
-		progress_bar(stderr, i, files, 100);
+		PROGRESS_BAR(stderr, i, files, 100);
 	}
-	progress_bar(stderr, files, files, 100);
+	PROGRESS_BAR(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
 	    (double)bytes / (1024 * 1024), i);
 
@@ -631,10 +639,10 @@ main(int argc, char **argv)
 	 */
 
 	fprintf(stderr, "\nCalculating top match rates...\n");
-	progress_bar(stderr, 0, 0, 100);
+	PROGRESS_BAR(stderr, 0, 0, 100);
 	memset(&rates, 0, sizeof(rates));
 	lookup_iterate(read_list, calc_rates, &rates);
-	progress_bar(stderr, total_unique_reads, total_unique_reads, 100);
+	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
 	fprintf(stderr, "\nCalculated rates for %" PRIu64 " reads\n",
 	    total_unique_reads);
 
@@ -684,9 +692,9 @@ main(int argc, char **argv)
 	 * alignments.
 	 */
 	fprintf(stderr, "\nGenerating output...\n");
-	progress_bar(stderr, 0, 0, 10);
+	PROGRESS_BAR(stderr, 0, 0, 10);
 	lookup_iterate(read_list, calc_probs, &rates);
-	progress_bar(stderr, total_unique_reads, total_unique_reads, 10);
+	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
 
 	return (0);
 }
