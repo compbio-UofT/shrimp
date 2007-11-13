@@ -1,5 +1,14 @@
 $Id$
 
+1.0.3: November ?, 2007
+	- Added -S flag to probcalc and made double pass mode the default.
+	- Misc. documentation updates.
+
+1.0.2: November 6, 2007
+	- Fix invalid assertion in common/output.c:output_pretty.
+	- probcalc progress bar disabled by default (enabled by -B flag).
+	- Misc. documentation updates.
+
 1.0.1: November 2, 2007
 	- First public release. New output format.
 	- '-b', '-p' flags changed to '-B', '-P'. (Parameters lowercase,
