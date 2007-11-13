@@ -122,7 +122,7 @@ load_output_file(char *file)
 		memcpy(&fpo->input, &inp, sizeof(fpo->input));
 		fpo->next = NULL;
 
-		if (inp.revcmpl) {
+		if (INPUT_IS_REVCMPL(&inp)) {
 			if (lastfpo_revcmpl == NULL)
 				alignments_revcmpl = fpo;
 			else
