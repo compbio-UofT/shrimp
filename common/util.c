@@ -103,7 +103,7 @@ hash_string(const char *x)
 
 /* factorial using stirling's approximation after 20 */
 double
-factorial(u_int n)
+ls_factorial(u_int n)
 {
 	const double fact[21] = {
 		1.0,
@@ -131,12 +131,12 @@ factorial(u_int n)
 	double a, b;
 
 	if (n <= 20)
-		return (fact[n]);
+		return log (fact[n]);
 
-	a = sqrt(2 * M_PI * n);
-	b = pow(n / M_E, n);
+	a = log( sqrt(2 * M_PI * n));
+	b = n * log(n / M_E);
 
-	return (a * b);
+	return (a + b);
 }
 
 /* choose in log space */
@@ -148,9 +148,9 @@ ls_choose(int64_t n, int64_t k)
 	if (k < 0 || k > n)
 		return (0);
 
-	a = log(factorial(n));
-	b = log(factorial(k));
-	c = log(factorial(n - k));
+	a = ls_factorial(n);
+	b = ls_factorial(k);
+	c = ls_factorial(n - k);
 
 	return (a - (b + c));
 }
