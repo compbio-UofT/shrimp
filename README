@@ -80,7 +80,7 @@ normalised odds (P(read match)/P(random)). Thresholds can be set for each to
 remove undesirably high or low values. Sorting can also be done on any one of
 the three aforementioned parameters.
 
-The output produced by the 'probcalc' utility is essentially a superset of
+The output produced by the 'probcalc' utility is essentially a subset of
 the input, with added 'pgenome', 'pchance' and 'normodds' fields. These
 matches may then have their full alignments printed using the 'prettyprint'
 utility (although one could certainly feed rmapper output to prettyprint
@@ -130,8 +130,12 @@ and a directory of 'rmapper' result files. The output is piped into a further
 results file for later evaluation by the 'prettyprint-cs' progrma. Note that
 'probcalc' should be run once enough results have been gathered to generate
 reasonable statistics. Since this phase takes a relatively short amount of time,
-it is probably best done once sequentially for all output generated. See section
-3 for details regarding probcalc's parameters.
+it is probably best done once sequentially for all output generated.
+
+Also note that probcalc mandates that results for a single read do not appear
+in multiple input files. If rmapper had been run against the entire genome for
+some set of reads, this would not be the case. See section 3 for details
+regarding probcalc's parameters.
 
 Line 8 prints pretty visual alignments of our resultant mappings. It requires
 knowning all genomic and reads files in order to locate each read referenced in
@@ -365,11 +369,25 @@ is a run-down of these options (in some strange, non-alphabetical order).
 
 	Save only top_matches best matches.
 
+	[ -B ]
+
+	Print a progress bar to stderr during various phases of computation.
+
 	[ -R ]
  
 	Include the entire read sequence in the output generated. This
 	will only have an effect for input lines containing the 'r_seq'
 	key.
+
+	[ -S ]
+
+	Do everything in a single pass. Typically probcalc will run over all
+	rmapper results files twice in order to save memory. This option will
+	use one pass only at the expense of using far more memory than usual,
+	however, a significant speed advantage is gained. Additionally, while
+	probcalc normally mandates that each results file from rmapper contains
+	matches for unique reads (no read may appear in multiple files), this
+	option does not have the same restriction.
 
 
 --------------------------------------------------------------------------------

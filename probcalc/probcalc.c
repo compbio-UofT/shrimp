@@ -29,6 +29,7 @@ static lookup_t read_seq_cache;		/* read sequence cache */
 
 static bool Bflag = false;		/* print a progress bar */
 static bool Rflag = false;		/* include read sequence in output */
+static bool Sflag = false;		/* do it all in one pass (save in ram)*/
 
 struct readinfo {
 	char	    *name;
@@ -272,13 +273,9 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 	return (1- pow(M_E, r));
 }
 
-
-
 static void
 calc_rates(void *arg, void *key, void *val)
 {
-	static uint64_t calls;
-
 	struct rates *rates = arg;
 	struct readinfo *ri = val;
 	struct input *rs;
@@ -288,8 +285,11 @@ calc_rates(void *arg, void *key, void *val)
 
 	(void)key;
 
-	PROGRESS_BAR(stderr, calls, total_unique_reads, 100);
-	calls++;
+	if (Sflag) {
+		static uint64_t calls;
+		PROGRESS_BAR(stderr, calls, total_unique_reads, 100);
+		calls++;
+	}
 
 	best = 0;
 	for (i = 1; i <= ri->top_matches[0].score; i++) {
@@ -297,6 +297,11 @@ calc_rates(void *arg, void *key, void *val)
 		    ri->top_matches[i].score >= ri->top_matches[best].score) {
 			best = i;
 		}
+	}
+
+	if (!Sflag) {
+		assert(ri->top_matches[0].score == 1);
+		assert(ri->top_matches[1].score >= 0);
 	}
 
 	/*
@@ -310,7 +315,6 @@ calc_rates(void *arg, void *key, void *val)
 		rs->insertions + rs->deletions, rs->read_length);
 
 	if (best != 0 && d < pchance_cutoff) {
-
 		rates->samples++;
 		rates->total_len  += rs->matches + rs->mismatches;
 		rates->insertions += rs->insertions;
@@ -382,7 +386,6 @@ static void
 calc_probs(void *arg, void *key, void *val)
 {
 	static struct readstatspval *rspv;
-	static uint64_t calls;
 
 	struct rates *rates = arg;
 	struct readinfo *ri = val;
@@ -391,8 +394,11 @@ calc_probs(void *arg, void *key, void *val)
 
 	(void)key;
 
-	PROGRESS_BAR(stderr, calls, total_unique_reads, 10);
-	calls++;
+	if (Sflag) {
+		static uint64_t calls;
+		PROGRESS_BAR(stderr, calls, total_unique_reads, 10);
+		calls++;
+	}
 
 	if (rspv == NULL)
 		rspv = xmalloc(sizeof(rspv[0]) * (top_matches + 1));
@@ -458,7 +464,7 @@ calc_probs(void *arg, void *key, void *val)
 
 		/* the only sane way is to reproduce the output code, sadly. */
 		printf("> r=\"%s\" g=\"%s\" g_str=%c ", rs->read, rs->genome,
-		    (rs->revcmpl) ? '-' : '+');
+		    (INPUT_IS_REVCMPL(rs)) ? '-' : '+');
 
 		if (rs->read_seq != NULL && rs->read_seq[0] != '\0')
 			printf("read_seq=\"%s\" ", rs->read_seq);
@@ -468,11 +474,228 @@ calc_probs(void *arg, void *key, void *val)
 		    "r_len=%u match=%u subs=%u ins=%u dels=%u xovers=%u "
 		    "normodds=%f pgenome=%f pchance=%f\n\n", rs->score,
 		    rs->genome_start + 1, rs->genome_end + 1,
-		    rs->read_start + 1, rs->read_end + 1, rs->read_length,
-		    rs->matches, rs->mismatches, rs->insertions, rs->deletions,
-		    rs->crossovers, rspv[i].normodds, rspv[i].pgenome,
-		    rspv[i].pchance);
+		    (u_int)rs->read_start + 1, (u_int)rs->read_end + 1,
+		    (u_int)rs->read_length, (u_int)rs->matches,
+		    (u_int)rs->mismatches, (u_int)rs->insertions,
+		    (u_int)rs->deletions, (u_int)rs->crossovers,
+		    rspv[i].normodds, rspv[i].pgenome, rspv[i].pchance);
 	}
+}
+
+static void
+cleanup_cb(void *arg, void *key, void *val)
+{
+	bool ret;
+
+	ret = lookup_remove(arg, key, NULL, NULL);
+	free(key);
+	free(val);
+
+	assert(ret);
+}
+
+/* Remove everything from read_list and read_seq_cache. */
+static void
+cleanup()
+{
+
+	lookup_iterate(read_list, cleanup_cb, read_list);
+	lookup_iterate(read_seq_cache, cleanup_cb, read_seq_cache);
+
+	assert(lookup_count(read_list) == 0);
+	assert(lookup_count(read_seq_cache) == 0);
+}
+
+static void
+ratestats(struct rates *rates)
+{
+
+	fprintf(stderr, "\nCalculated rates for %" PRIu64 " reads\n",
+	    total_unique_reads);
+
+	fprintf(stderr, "\nStatistics:\n");
+	fprintf(stderr, "    total matches:      %" PRIu64 "\n",
+	    total_alignments);
+	fprintf(stderr, "    total unique reads: %" PRIu64 "\n",
+	    total_unique_reads);
+	fprintf(stderr, "    total samples:      %" PRIu64 "\n",
+	    rates->samples);
+	fprintf(stderr, "    total length:       %" PRIu64 "\n",
+	    rates->total_len); 
+	fprintf(stderr, "    insertions:         %" PRIu64 "\n",
+	    rates->insertions); 
+	fprintf(stderr, "    deletions:          %" PRIu64 "\n",
+	    rates->deletions); 
+	fprintf(stderr, "    matches:            %" PRIu64 "\n",
+	    rates->matches); 
+	fprintf(stderr, "    mismatches:         %" PRIu64 "\n",
+	    rates->mismatches); 
+	fprintf(stderr, "    crossovers:         %" PRIu64 "\n",
+	    rates->crossovers); 
+
+	rates->erate = (double)rates->crossovers / (double)rates->total_len;
+	rates->srate = (double)rates->mismatches / (double)rates->total_len;
+	rates->irate = (double)(rates->insertions + rates->deletions) /
+	    (double)rates->total_len;
+	rates->mrate = (double)rates->matches / (double)rates->total_len;
+
+	if (rates->erate == 0.0 || rates->srate == 0.0 || rates->irate == 0.0 ||
+	    rates->mrate == 0.0) {
+		fprintf(stderr, "NB: one or more rates changed from 0 to "
+		    "1.0e-9\n");
+	}
+	rates->erate = (rates->erate == 0.0) ? 1.0e-9 : rates->erate;
+	rates->srate = (rates->srate == 0.0) ? 1.0e-9 : rates->srate;
+	rates->irate = (rates->irate == 0.0) ? 1.0e-9 : rates->irate;
+	rates->mrate = (rates->mrate == 0.0) ? 10.e-9 : rates->mrate;
+
+	fprintf(stderr, "    error rate:         %.10f\n", rates->erate);
+	fprintf(stderr, "    substitution rate:  %.10f\n", rates->srate);
+	fprintf(stderr, "    indel rate:         %.10f\n", rates->irate);
+	fprintf(stderr, "    match rate:         %.10f\n", rates->mrate);
+}
+
+/*
+ * Do everything in one pass, saving it all in memory. This is potentially
+ * much faster (factor of two or so), but can eat a ton of memory.
+ *
+ * This mode does _not_ require that all matches for a single individual read
+ * are in the same file.
+ */
+static void
+do_single_pass(char *dir, DIR *dp, uint64_t files)
+{
+	struct rates rates;
+	struct dirent *de;
+	uint64_t i, bytes;
+
+	fprintf(stderr, "warning: single pass mode may consume a large amount "
+	    "of memory!\n\n");
+
+	i = bytes = 0;
+	fprintf(stderr, "Parsing %" PRIu64 " files...\n", files);
+	PROGRESS_BAR(stderr, 0, 0, 100);
+	while (1) {
+		de = readdir(dp);
+		if (de == NULL)
+			break;
+
+		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
+		    strcmp(de->d_name, "..")) {
+			bytes += read_file(dir, de->d_name);
+			i++;
+		}
+
+		PROGRESS_BAR(stderr, i, files, 100);
+	}
+	PROGRESS_BAR(stderr, files, files, 100);
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	    (double)bytes / (1024 * 1024), i);
+
+	/*
+	 * First iterative pass: calculate rates for top matches of reads.
+	 */
+
+	fprintf(stderr, "\nCalculating top match rates...\n");
+	PROGRESS_BAR(stderr, 0, 0, 100);
+	memset(&rates, 0, sizeof(rates));
+	lookup_iterate(read_list, calc_rates, &rates);
+	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
+
+	ratestats(&rates);
+
+	/*
+	 * Second iterative pass: Determine probabilities for all reads' best
+	 * alignments.
+	 */
+	fprintf(stderr, "\nGenerating output...\n");
+	PROGRESS_BAR(stderr, 0, 0, 10);
+	lookup_iterate(read_list, calc_probs, &rates);
+	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
+	if (Bflag)
+		putc('\n', stderr);
+}
+
+/*
+ * Do everything in two passes, once per file to calculate rates, and another
+ * time per file to do the probability calculations.
+ *
+ * This mode requires that all matches for a single individual read are in
+ * the same file.
+ */
+static void
+do_double_pass(char *dir, DIR *dp, uint64_t files)
+{
+	struct rates rates;
+	struct dirent *de;
+	uint64_t i, bytes;
+	int tmp_top_matches;
+
+	/* only need best match for calculating rates */
+	tmp_top_matches = top_matches;
+	top_matches = 1;
+
+	i = bytes = 0;
+	memset(&rates, 0, sizeof(rates));
+	fprintf(stderr, "PASS 1: Parsing %" PRIu64 " files to calculate "
+	    "rates...\n", files);
+	PROGRESS_BAR(stderr, 0, 0, 100);
+	while (1) {
+		de = readdir(dp);
+		if (de == NULL)
+			break;
+
+		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
+		    strcmp(de->d_name, "..")) {
+			bytes += read_file(dir, de->d_name);
+			i++;
+		}
+
+		/* iterate over what's been read and free stored data */
+		lookup_iterate(read_list, calc_rates, &rates);
+		cleanup();
+
+		PROGRESS_BAR(stderr, i, files, 100);
+	}
+	PROGRESS_BAR(stderr, files, files, 100);
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	    (double)bytes / (1024 * 1024), i);
+
+	/* restore desired top matches */
+	top_matches = tmp_top_matches;
+
+	ratestats(&rates);
+
+	/*
+	 * Second iterative pass: Determine probabilities for all reads' best
+	 * alignments.
+	 */
+	rewinddir(dp);
+
+	fprintf(stderr, "PASS 2: Parsing %" PRIu64 " files to calculate "
+	    "probabilities...\n", files);
+	PROGRESS_BAR(stderr, 0, 0, 100);
+	i = bytes = 0;
+	while (1) {
+		de = readdir(dp);
+		if (de == NULL)
+			break;
+
+		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
+		    strcmp(de->d_name, "..")) {
+			bytes += read_file(dir, de->d_name);
+			i++;
+		}
+
+		/* iterate over what's been read and free stored data */
+		lookup_iterate(read_list, calc_probs, &rates);
+		cleanup();
+
+		PROGRESS_BAR(stderr, i, files, 100);
+	}
+	PROGRESS_BAR(stderr, files, files, 100);
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	    (double)bytes / (1024 * 1024), i);
 }
 
 static void
@@ -486,20 +709,18 @@ usage(char *progname)
 
 	fprintf(stderr, "usage: %s [-n normodds_cutoff] [-o pgenome_cutoff] "
 	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
-	    "[-t top_matches] [-B] [-R] total_genome_len results_directory\n",
-	    progname);
+	    "[-t top_matches] [-B] [-R] [-S] "
+	    "total_genome_len results_directory\n", progname);
 	exit(1);
 }
 
 int
 main(int argc, char **argv)
 {
-	struct stat;
-	struct rates rates;
 	DIR *dp;
-	char *progname, *dir;
 	struct dirent *de;
-	uint64_t i, bytes, files;
+	char *progname, *dir;
+	uint64_t files;
 	int ch;
 
 	fprintf(stderr, "--------------------------------------------------"
@@ -510,7 +731,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:s:t:BR")) != -1) {
+	while ((ch = getopt(argc, argv, "n:o:p:s:t:BRS")) != -1) {
 		switch (ch) {
 		case 'n':
 			normodds_cutoff = atof(optarg);
@@ -542,6 +763,9 @@ main(int argc, char **argv)
 			break;
 		case 'R':
 			Rflag = true;
+			break;
+		case 'S':
+			Sflag = true;
 			break;
 		default:
 			usage(progname);
@@ -612,91 +836,12 @@ main(int argc, char **argv)
 
 	rewinddir(dp);
 
-	i = bytes = 0;
-	fprintf(stderr, "Parsing %" PRIu64 " files...\n", files);
-	PROGRESS_BAR(stderr, 0, 0, 100);
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, "..")) {
-			bytes += read_file(dir, de->d_name);
-			i++;
-		}
-
-		PROGRESS_BAR(stderr, i, files, 100);
-	}
-	PROGRESS_BAR(stderr, files, files, 100);
-	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
-	    (double)bytes / (1024 * 1024), i);
+	if (Sflag)
+		do_single_pass(dir, dp, files);
+	else
+		do_double_pass(dir, dp, files);
 
 	closedir(dp);
-
-	/*
-	 * First iterative pass: calculate rates for top matches of reads.
-	 */
-
-	fprintf(stderr, "\nCalculating top match rates...\n");
-	PROGRESS_BAR(stderr, 0, 0, 100);
-	memset(&rates, 0, sizeof(rates));
-	lookup_iterate(read_list, calc_rates, &rates);
-	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
-	fprintf(stderr, "\nCalculated rates for %" PRIu64 " reads\n",
-	    total_unique_reads);
-
-	fprintf(stderr, "\nStatistics:\n");
-	fprintf(stderr, "    total matches:      %" PRIu64 "\n",
-	    total_alignments);
-	fprintf(stderr, "    total unique reads: %" PRIu64 "\n",
-	    total_unique_reads);
-	fprintf(stderr, "    total samples:      %" PRIu64 "\n",
-	    rates.samples);
-	fprintf(stderr, "    total length:       %" PRIu64 "\n",
-	    rates.total_len); 
-	fprintf(stderr, "    insertions:         %" PRIu64 "\n",
-	    rates.insertions); 
-	fprintf(stderr, "    deletions:          %" PRIu64 "\n",
-	    rates.deletions); 
-	fprintf(stderr, "    matches:            %" PRIu64 "\n",
-	    rates.matches); 
-	fprintf(stderr, "    mismatches:         %" PRIu64 "\n",
-	    rates.mismatches); 
-	fprintf(stderr, "    crossovers:         %" PRIu64 "\n",
-	    rates.crossovers); 
-
-	rates.erate = (double)rates.crossovers / (double)rates.total_len;
-	rates.srate = (double)rates.mismatches / (double)rates.total_len;
-	rates.irate = (double)(rates.insertions + rates.deletions) /
-	    (double)rates.total_len;
-	rates.mrate = (double)rates.matches / (double)rates.total_len;
-
-	if (rates.erate == 0.0 || rates.srate == 0.0 || rates.irate == 0.0 ||
-	    rates.mrate == 0.0) {
-		fprintf(stderr, "NB: one or more rates changed from 0 to "
-		    "1.0e-9\n");
-	}
-	rates.erate = (rates.erate == 0.0) ? 1.0e-9 : rates.erate;
-	rates.srate = (rates.srate == 0.0) ? 1.0e-9 : rates.srate;
-	rates.irate = (rates.irate == 0.0) ? 1.0e-9 : rates.irate;
-	rates.mrate = (rates.mrate == 0.0) ? 10.e-9 : rates.mrate;
-
-	fprintf(stderr, "    error rate:         %.10f\n", rates.erate);
-	fprintf(stderr, "    substitution rate:  %.10f\n", rates.srate);
-	fprintf(stderr, "    indel rate:         %.10f\n", rates.irate);
-	fprintf(stderr, "    match rate:         %.10f\n", rates.mrate);
-
-	/*
-	 * Second iterative pass: Determine probabilities for all reads' best
-	 * alignments.
-	 */
-	fprintf(stderr, "\nGenerating output...\n");
-	PROGRESS_BAR(stderr, 0, 0, 10);
-	lookup_iterate(read_list, calc_probs, &rates);
-	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
-	if (Bflag)
-		putc('\n', stderr);
 
 	return (0);
 }

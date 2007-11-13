@@ -155,10 +155,11 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 	case 'g':
 		if (strcmp(key, "g") == 0)
 			inp->genome = xstrdup(unescapestr(val));
-		else if (strcmp(key, "g_str") == 0)
-			inp->revcmpl = (val[0] == '-') ? true : false;
+		else if (strcmp(key, "g_str") == 0) {
+			if (*val == '-')
+				inp->flags |= INPUT_FLAG_IS_REVCMPL;
 		/* NB: internally 0 is first position, in output 1 is. adjust.*/
-		else if (strcmp(key, "g_start") == 0)
+		} else if (strcmp(key, "g_start") == 0)
 			inp->genome_start = strtoul(val, NULL, 0) - 1;
 		else if (strcmp(key, "g_end") == 0)
 			inp->genome_end = strtoul(val, NULL, 0) - 1;
@@ -181,18 +182,21 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 		break;
 
 	case 'n':
-		if (strcmp(key, "normodds") == 0)
-			/* from probcalc; ignore */;
-		else
+		if (strcmp(key, "normodds") == 0) {
+			inp->normodds = atof(val);
+			inp->flags |= INPUT_FLAG_HAS_NORMODDS;
+		} else
 			error = true;
 		break;
 
 	case 'p':
-		if (strcmp(key, "pgenome") == 0)
-			/* from probcalc; ignore */;
-		else if (strcmp(key, "pchance") == 0)
-			/* from probcalc; ignore */;
-		else
+		if (strcmp(key, "pgenome") == 0) {
+			inp->pgenome = atof(val);
+			inp->flags |= INPUT_FLAG_HAS_PGENOME;
+		} else if (strcmp(key, "pchance") == 0) {
+			inp->pchance = atof(val);
+			inp->flags |= INPUT_FLAG_HAS_PCHANCE;
+		} else
 			error = true;
 		break;
 
@@ -200,7 +204,7 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 		if (strcmp(key, "r") == 0)
 			inp->read = xstrdup(unescapestr(val));
 		else if (strcmp(key, "r_seq") == 0)
-			inp->revcmpl = xstrdup(val);
+			inp->read_seq = xstrdup(val);
 		else if (strcmp(key, "r_start") == 0)
 			inp->read_start = strtoul(val, NULL, 0) - 1;
 		else if (strcmp(key, "r_end") == 0)
