@@ -672,7 +672,7 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 	 */
 	rewinddir(dp);
 
-	fprintf(stderr, "PASS 2: Parsing %" PRIu64 " files to calculate "
+	fprintf(stderr, "\nPASS 2: Parsing %" PRIu64 " files to calculate "
 	    "probabilities...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	i = bytes = 0;
