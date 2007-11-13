@@ -1,64 +1,50 @@
 $Id$
 
+README for SHRiMP: SHort Read Mapping Package version 1.0.3 
+http://compbio.cs.toronto.edu/shrimp
+
+Stephen Rumble (rumble at cs dot toronto dot edu)
+Michael Brudno (brudno at cs dot toronto dot edu)
+
 --------------------------------------------------------------------------------
 Table of Contents
 --------------------------------------------------------------------------------
-  1.   Introduction
+  1.   Overview
   2.   Usage
   3.   Program Parameters
   4.   Output Format
-  5.   Contact
-  6.   Acknowledgements
+  5.   SHRiMP Algorithms
+  6.   SHRiMP Statistics
+  7.   Contact
+  8.   Acknowledgements
 
 
 --------------------------------------------------------------------------------
-1. Introduction
+1. Overview
 --------------------------------------------------------------------------------
 
 SHRiMP is a software package for aligning genomic reads against a target genome.
-It was primarily developed with the multitudinous short reads of next generation
-sequencing machines in mind, as well as Applied Biosystem's colourspace genomic
-representation.
+It was primarily developed with the multitudinous short reads of Next Generation
+Sequencing (NGS) machines in mind. It allows for rapid mapping, accurate
+alignment, and p-value computation for Illumina/Solexa as well as Applied
+Biosystems' SOLiD colourspace genomic representation. SHRiMP is a suite of
+several programs, which, employed in succession, search for appropriate
+alignments, analyse alignment statistics, and print out visual alignments for
+further study.
 
-SHRiMP is actually a suite of several programs, which, employed in succession,
-search for appropriate alignments, analyse the probability of alignments being
-bad, and print out visual alignments for further study.
+SHRiMP uses two techniques to rapidly match reads to a genome: we use an
+effective implementation of the q-gram filtering technique (utilizing spaced
+seeds) to rapidly identify potentially homologous regions, and a vectored
+Smith-Waterman implementation to speed up the accurate alignment of these
+regions to reads. We also include in the SHRiMP package tools to analyze the
+resultant alignments, including programs that compute for every alignment the
+probability that the match would occur by chance (in a genome with iid
+nucleotides) and a prettyprint tool that can help visualize the alignments for
+each read. For AB SOLiD colour space reads we use a novel color-space to letter-
+space Smith Waterman algorithm to identify sequencing errors as well as SNPs and
+micro-indels. The details of the algorithm and the methods we use to compute
+p-values are layed out in Sections 5 and 6, respectively.
 
-SHRiMP uses a few mechanisms to search for alignments. First, all kmers within
-all source reads are generated and used as offsets into a hash table of the
-reads themselves. Second, for each kmer in the genome a specified spaced seed is
-applied and the resultant kmer is used to index matching reads in the genome.
-For each read containing the kmer, a notation is added that a kmer hit was just
-made. If 'n' kmer hits occur within 'm' genomic bases, the read and a section
-of genome of length '2m' around the latest kmer hit is fed into a vectored
-Smith-Waterman algorithm to generate an alignment score. If the score is
-sufficient, the score and genomic offset (index) is remembered. One this process
-has completed for the entire genome, all saved read/index pairs are fed into a
-full Smith-Waterman algorithm, and a detailed output is generated.
-
-The speed of execution depends largely on the spaced seed employed, the number
-of desired matches within a window, the window length, and Smith-Waterman score
-thresholds. For example, aligning 22e6 25-colour reads against the Ciona
-Savignyi genome (173.67 Mbases) takes approximately 6.5 hours on a cluster of
-200 Xeon 3.2GHz Hyperthreaded CPUs using a spaced seed of length 8, span 7, a
-window lenght of 30, 2 matches per window, and a Smith-Waterman threshold of
-1875 (penalties: 100 for matches, -70 mismatch, -75 gap open, -25 gap extend,
--200 crossover). For comparison, were vectored Smith-Waterman alignments run
-on the same hardware with an average execution of 500e6 matrix cells/second,
-it would take over 3 weeks.
-
-The less exact the matches need to be, the larger the spaced seed weight can be,
-and the faster the kmer scan runs. By decreasing the weight by one, execution
-time increases by approximately a factor of four. Due to memory limitations,
-weights quickly become impractical around 16. Similarly, exceedingly small
-weights will offer little or no benefit over a full Smith-Waterman run. It is
-the user's prerogative to balance sensitivity and resource usage (whether it be
-CPU, memory, or disk space used by output).
-
-Please note that the vectored Smith-Waterman algorithm is written specifically
-for the SSE2 instruction set. Hence this program will not run on non-x86/x86_64
-processors. Porting those algorithms to similar vector processors should
-be relatively straightforward, however.
 
 --------------------------------------------------------------------------------
 2. Usage
@@ -76,15 +62,14 @@ Once 'rmapper' has been run, the standard output format of all alignments
 may be parsed via the 'probcalc' program. This code analyses all alignment
 output, saving the top 'n' matches per read, and calculates the probability of
 the match randomly occurring in the genome and matching the read, and the
-normalised odds (P(read match)/P(random)). Thresholds can be set for each to
-remove undesirably high or low values. Sorting can also be done on any one of
-the three aforementioned parameters.
+normalized odds (P(read match)/P(random)/normalization_factor). Thresholds can
+be set for each to remove undesirably high or low values. Sorting can also be
+done on any one of the three aforementioned parameters.
 
-The output produced by the 'probcalc' utility is essentially a subset of
-the input, with added 'pgenome', 'pchance' and 'normodds' fields. These
-matches may then have their full alignments printed using the 'prettyprint'
-utility (although one could certainly feed rmapper output to prettyprint
-directly).
+The output produced by the 'probcalc' utility is essentially a subset of the
+input, with added 'pgenome', 'pchance' and 'normodds' fields. These matches may
+then have their full alignments printed using the 'prettyprint' utility
+(although one could certainly feed rmapper output to prettyprint directly).
 
 What follows is a complete example of scanning a set of reads against an
 entire genome (and its reverse-complement) from the Ciona Savignyi organism.
@@ -130,12 +115,12 @@ and a directory of 'rmapper' result files. The output is piped into a further
 results file for later evaluation by the 'prettyprint-cs' progrma. Note that
 'probcalc' should be run once enough results have been gathered to generate
 reasonable statistics. Since this phase takes a relatively short amount of time,
-it is probably best done once sequentially for all output generated.
+it is probably best done once sequentially for all output generated. 
 
-Also note that probcalc mandates that results for a single read do not appear
-in multiple input files. If rmapper had been run against the entire genome for
-some set of reads, this would not be the case. See section 3 for details
-regarding probcalc's parameters.
+Also note that probaclc mandates that results for a single read do not appear in
+multiple files. If rmapper has been run against the entire genome for some set
+of reads this assumption will hold. See section 3 for details regarding 
+probcalc's parameters.
 
 Line 8 prints pretty visual alignments of our resultant mappings. It requires
 knowning all genomic and reads files in order to locate each read referenced in
@@ -369,9 +354,9 @@ is a run-down of these options (in some strange, non-alphabetical order).
 
 	Save only top_matches best matches.
 
-	[ -B ]
-
-	Print a progress bar to stderr during various phases of computation.
+ 	[ -B ]
+ 
+ 	Print a progress bar to stderr during various phases of computation.
 
 	[ -R ]
  
@@ -379,16 +364,15 @@ is a run-down of these options (in some strange, non-alphabetical order).
 	will only have an effect for input lines containing the 'r_seq'
 	key.
 
-	[ -S ]
-
-	Do everything in a single pass. Typically probcalc will run over all
-	rmapper results files twice in order to save memory. This option will
-	use one pass only at the expense of using far more memory than usual,
-	however, a significant speed advantage is gained. Additionally, while
-	probcalc normally mandates that each results file from rmapper contains
-	matches for unique reads (no read may appear in multiple files), this
-	option does not have the same restriction.
-
+ 	[ -S ]
+ 
+ 	Do everything in a single pass. Typically probcalc will run over all
+ 	rmapper results files twice in order to save memory. This option will
+ 	use one pass only at the expense of using far more memory than usual,
+ 	however, a significant speed advantage is gained. Additionally, while
+ 	probcalc normally mandates that results from rmapper for a specific
+	read appear in at most one file, this option does not have the same
+	restriction.
 
 --------------------------------------------------------------------------------
 4. Output Format
@@ -402,12 +386,12 @@ r_start=1 r_end=25 r_len=25 match=25 subs=0 ins=0 dels=0 xovers=1
 
 Only lines beginning with a '>' character are parsed. This enables us to output
 pretty alignments using 'rmapper' with the -P flag, or with prettyprint, while
-maintaining output compatibility. '=' and '"' characters in read and reftig
-names are escaped using the '\' character automatically.
+maintaining output compatibility. '=' and '"' characters in read and 
+contig/chromosome names are escaped using the '\' character automatically.
 
 Descriptions of the keys are as follows:
 	'r'		Read name
-	'g'		Contig (genome) name
+	'g'		Genome (Contig/Chromosome) name
 	'g_str'		Genome strand ('+' or '-')
 	'score'		Alignment score
 	'g_start'	Start of alignment in genome (beginning with 1, not 0).
@@ -417,17 +401,105 @@ Descriptions of the keys are as follows:
 	'r_len'		Length of the read in bases/colours.
 	'match'		Number of letters matched.
 	'subs'		Substitutions
-	'ins'		Insertions in the base genome
-	'dels'		Deletions from the base genome
-	'xovers'	Colour-space only: matrix crossovers (errors) found.
+	'ins'		Insertions (in the base genome)
+	'dels'		Deletions (in the base genome)
+	'xovers'	Colourspace only: matrix crossovers (read errors) found.
 	'pchance'	Probability of read matching by chance in the genome.
 	'pgenome'	Probability of the read matching where it did.
-	'normodds'	Normalised pgenome/pchance.
+	'normodds'	Normalized pgenome/pchance.
 
 
 --------------------------------------------------------------------------------
-5. Contact
+5. SHRiMP Algorithms
 --------------------------------------------------------------------------------
+
+SHRiMP uses a fast k-mer scan in order to locate the regions of potential
+homology. One important feature is that we index the reads, rather than
+the reference genome. This makes our memory usage independent of the size 
+of the genome (but proportional to the size of the largest contig). All of 
+the k-mers in all of the source reads are generated and a lookup table 
+mapping the k-mers to the reads where they are present is built. We use spaced 
+k-mers (also used in the PatternHunter as well as many other tools) and 
+allow the user to specify the particular pattern of ones (positions that must 
+match) and zeros (positions that may differ).
+
+For each read containing the kmer, a notation is added that a kmer hit was just
+made. If 'n' kmer hits occur within 'm' genomic bases, the read and a section
+of genome of length '2m' around the latest kmer hit is fed into a vectored
+Smith-Waterman algorithm to generate an alignment score. If the score is
+sufficient, the score and genomic offset (index) is remembered. One this process
+has completed for the entire genome, top scoring saved read/index pairs are fed 
+into a full Smith-Waterman algorithm, and a detailed output is generated.
+
+The speed of execution depends largely on the spaced seed employed, the number
+of desired matches within a window, the window length, and Smith-Waterman score
+thresholds. For example, aligning 22e6 25-colour reads against the Ciona
+Savignyi genome (173.67 Mbases) takes approximately 6.5 hours on a cluster of
+50 4-way Xeon 3.2GHz Hyperthreaded CPUs (200 cores) using a spaced seed of 
+length 8, weight 7, a window lenght of 30, 2 matches per window, and a 
+Smith-Waterman threshold of 1875 (penalties: 100 for matches, -70 mismatch, 
+-75 gap open, -25 gap extend, -200 crossover). 
+
+The closer the expected matches are to perfect, the larger the spaced seed
+weight can be, and the faster the k-mer scan runs. By decreasing the weight by
+one, execution time increases by approximately a factor of four. Due to memory 
+limitations, weights quickly become impractical around 16. Similarly,
+exceedingly small weights will offer little or no benefit over a full
+Smith-Waterman run. 
+
+Please note that the vectored Smith-Waterman algorithm is written specifically
+for the SSE2 instruction set. Hence this program will not run on non-x86/x86_64
+processors. Porting those algorithms to similar vector processors should
+be relatively straightforward.
+
+
+--------------------------------------------------------------------------------
+7. SHRiMP Statistics
+--------------------------------------------------------------------------------
+
+The 'probcalc' utility computes the probability that a hit would be generated by
+chance in a random genome, the probability that it is generated by the reference
+genome, and the normalized odds. 
+
+To compute the probability that a hit happened by chance (p_chance), we compute 
+the probability that a match equally good or better would occur in a genome of 
+equal length where at every position each nucleotide can be randomly selected 
+with probability 0.25. To compute this we compute the number of k-mer strings that have fewer then the observed number changes. In the case of mismatches and
+(for colour-space) crossovers, the number of such strings is:
+$(length choose mismatches) * 4^(mismatches+crossovers)$, as any letter can be
+put in place the position where the mismatch occured, and get an as-good, or
+better alignment. For indels, the number of strings is:
+$(length choose indels) * (2^indels) * (4^indellength)$. The 2 corresponds to
+having either an insertion or a deletion, and the 4^indellength to the possible
+strings inside the insertion/deletion. If the hit does not span the whole read,
+we further multiply by $read_length-hit_length +1$ to account for the increased
+number of matching strings. Now let the total number of strings be Z; then we
+define p_chance as $1- (1-Z/(4^k))^genome_length$. This is the application of
+the Bayesian "noisy or" to the probability that a certain position matched one
+of the strings as close or closer to the read in question than the real hit.
+
+The second value computed by probcalc is the probability that each hit was
+generated by the genome (p_genome). For this we use a bootstrapping approach to 
+estimate the rates of matches, mismatches (SNPs), indels, and, for colour space,
+crossovers, taking only the best hit of every read if it is below the p-chance
+threshold. The probability that a certain region of the genome generated a given
+read is exactly the product of the frequencies of all of the events observed in
+the alignment.
+
+Finally the normalized odds are computed by summing up the odds
+$(p_genome/p_chance)$ for every hit for every read, and dividing each value by
+their sum. This value represents how much more likely is this hit to be right
+than all the other ones. For example having two equally good hits with lead to
+normalized odd values of 0.5 for both, while having an almost exact match and a
+more distant one will lead to large discrepancies.
+
+
+--------------------------------------------------------------------------------
+8. Contact
+--------------------------------------------------------------------------------
+
+The program website is 
+    	http://compbio.cs.toronto.edu/shrimp
 
 The authors of this software may be contacted at the following e-mail addresses:
 	brudno at cs dot toronto dot edu	(Michael Brudno)
@@ -435,7 +507,7 @@ The authors of this software may be contacted at the following e-mail addresses:
 
 
 --------------------------------------------------------------------------------
-6. Acknowledgements
+9. Acknowledgements
 --------------------------------------------------------------------------------
 
 Development was performed at the University of Toronto's Computational
