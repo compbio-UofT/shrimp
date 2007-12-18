@@ -88,8 +88,8 @@ contig), both in the present working directory.
   6)  rmapper-cs -s 11110111 -n 2 -t 4 -w 28 -o 10 -r 25 -m 100 -i -70 -g -100 \
           -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta
          ciona.fasta > results/ciona.0_to_999.out
-  7) probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
-  8) prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
+  7)  probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
+  8)  prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
          ciona.0_to_999.probcalc.out genome/ reads/
 
 Lines 1&2 set up the necessary directory structure. reads/ contains one or more
