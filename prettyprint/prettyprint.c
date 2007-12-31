@@ -14,7 +14,7 @@
 #include <sys/stat.h>
 
 #include "../common/fasta.h"
-#include "../common/lookup.h"
+#include "../common/dynhash.h"
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
 #include "../common/sw-full-ls.h"
@@ -32,8 +32,8 @@ static int gap_open	  = DEF_GAP_OPEN;
 static int gap_extend     = DEF_GAP_EXTEND;
 static int xover_penalty  = DEF_XOVER_PENALTY;
 
-static lookup_t read_list;
-static lookup_t contig_list;
+static dynhash_t read_list;
+static dynhash_t contig_list;
 
 static uint64_t nread_bases;
 static uint64_t ncontig_bases;
@@ -186,14 +186,14 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		seq->name = xstrdup(name);
 		seq->initbp = initbp;
 
-		/* add to our lookup */
-		if (lookup_find(contig_list, seq->name, NULL, NULL)) {
+		/* add to our dynhash */
+		if (dynhash_find(contig_list, seq->name, NULL, NULL)) {
 			fprintf(stderr, "error: contig [%s] occurs multiple "
 			    "times in the read input files\n", seq->name);
 			exit(1);
 		}
 
-		if (lookup_add(contig_list, seq->name, seq) == false) {
+		if (dynhash_add(contig_list, seq->name, seq) == false) {
 			fprintf(stderr, "error: failed to add contig to list - "
 			    "probably out of memory\n");
 			exit(1);
@@ -207,7 +207,7 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 	assert(seq->sequence_len < maxlen);
 	assert(seq->sequence_len == offset);
-	assert(base >= 0 && base <= 5);
+	assert(base >= 0 && base <= 15);
 
 	bitfield_append(seq->sequence, seq->sequence_len++, base);
 	ncontig_bases++;
@@ -292,14 +292,14 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		memset(read, 0, sizeof(read[0]) * BPTO32BW(MAX_READ_LEN));
 		read_len = 0;
 
-		/* add to our lookup */
-		if (lookup_find(read_list, seq->name, NULL, NULL)) {
+		/* add to our dynhash */
+		if (dynhash_find(read_list, seq->name, NULL, NULL)) {
 			fprintf(stderr, "error: read [%s] occurs multiple "
 			    "times in the read input files\n", seq->name);
 			exit(1);
 		}
 
-		if (lookup_add(read_list, seq->name, seq) == false) {
+		if (dynhash_add(read_list, seq->name, seq) == false) {
 			fprintf(stderr, "error: failed to add read to list - "
 			    "probably out of memory\n");
 			exit(1);
@@ -308,7 +308,7 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 	assert(seq != NULL);
 	assert(read_len < MAX_READ_LEN);
-	assert(base >= 0 && base <= 5);
+	assert(base >= 0 && base <= 15);
 
 	bitfield_append(read, read_len++, base);
 	longest_read_len = MAX(longest_read_len, read_len);
@@ -340,7 +340,7 @@ load_reads_file(char *dir, char *file, void *arg)
 	}
 }
 
-static unsigned int
+static uint32_t
 keyhasher(void *k)
 {
 
@@ -365,14 +365,14 @@ print_alignments_helper(struct fpo *fpo, bool revcmpl)
 	uint32_t genome_start, genome_len;
 
 	for (; fpo != NULL; fpo = fpo->next) {
-		if (lookup_find(read_list, fpo->input.read, NULL, (void *)&read)
-		    == false) {
+		if (dynhash_find(read_list, fpo->input.read, NULL,
+		    (void *)&read) == false) {
 			fprintf(stderr, "error: read [%s] is missing\n",
 			    fpo->input.read);
 			exit(1);
 		}
 
-		if (lookup_find(contig_list, fpo->input.genome, NULL,
+		if (dynhash_find(contig_list, fpo->input.genome, NULL,
 		    (void *)&contig) == false) {
 			fprintf(stderr, "error: contig [%s] is missing\n",
 			    fpo->input.genome);
@@ -568,8 +568,8 @@ main(int argc, char **argv)
 	}
 	fputc('\n', stderr);
 
-	read_list   = lookup_create(keyhasher, keycomparer, false);
-	contig_list = lookup_create(keyhasher, keycomparer, false);
+	read_list   = dynhash_create(keyhasher, keycomparer);
+	contig_list = dynhash_create(keyhasher, keycomparer);
 	if (read_list == NULL || contig_list == NULL) {
 		fprintf(stderr, "error: failed to allocate read and contig "
 		    "lists\n");
@@ -588,12 +588,12 @@ main(int argc, char **argv)
 	fprintf(stderr, "Loading genome contig file(s)...\n");
 	iter_reg_files(genomedir, load_genome_file, NULL);
 	fprintf(stderr, "Loaded %u genomic contigs (%" PRIu64 " total "
-	    "bases)\n", lookup_count(contig_list), ncontig_bases);
+	    "bases)\n", dynhash_count(contig_list), ncontig_bases);
 
 	fprintf(stderr, "Loading read file(s)...\n");
 	iter_reg_files(readsdir, load_reads_file, NULL);
 	fprintf(stderr, "Loaded %u %s reads (%" PRIu64 " total bases)\n",
-	    lookup_count(read_list),
+	    dynhash_count(read_list),
 	    (use_colours) ? "colourspace" : "letterspace", nread_bases);
 
 	print_alignments();

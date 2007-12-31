@@ -364,7 +364,7 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 		exit(1);
 	}
 
-	assert(base >= 0 && base <= 5);
+	assert(base >= 0 && base <= 15);
 	assert(offset == genome_len);
 
 	if (use_colours) {

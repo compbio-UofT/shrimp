@@ -17,15 +17,15 @@
 
 #include "../common/sw-full-common.h"
 #include "../common/input.h"
-#include "../common/lookup.h"
+#include "../common/dynhash.h"
 #include "../common/util.h"
 #include "../common/version.h"
 
 #include "probcalc.h"
 
-static lookup_t read_list;		/* list of reads and top matches */
-static lookup_t contig_cache;		/* contig name cache */
-static lookup_t read_seq_cache;		/* read sequence cache */
+static dynhash_t read_list;		/* list of reads and top matches */
+static dynhash_t contig_cache;		/* contig name cache */
+static dynhash_t read_seq_cache;	/* read sequence cache */
 
 static bool Bflag = false;		/* print a progress bar */
 static bool Rflag = false;		/* include read sequence in output */
@@ -78,7 +78,7 @@ static int	sort_field		= SORT_PCHANCE;
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
 
-static unsigned int
+static uint32_t
 keyhasher(void *k)
 {
 	
@@ -166,13 +166,13 @@ read_file(const char *dir, const char *file)
 			if (input.read_seq != NULL)
 				free(input.read_seq);
 			input.read_seq = NULL;
-		} else {
-			if (lookup_find(read_seq_cache, input.read_seq,
+		} else if (input.read_seq != NULL) {
+			if (dynhash_find(read_seq_cache, input.read_seq,
 			    (void *)&key, NULL)) {
 				free(input.read_seq);
 				input.read_seq = key;
 			} else {
-				if (lookup_add(read_seq_cache, input.read_seq,
+				if (dynhash_add(read_seq_cache, input.read_seq,
 				    NULL) == false) {
 					fprintf(stderr, "error: failed to add "
 					    "to read_seq cache (%d) - probably "
@@ -185,12 +185,12 @@ read_file(const char *dir, const char *file)
 		/*
 		 * Cache the contig names similarly, so we don't waste memory.
 		 */
-		if (lookup_find(contig_cache, input.genome, (void *)&key,
+		if (dynhash_find(contig_cache, input.genome, (void *)&key,
 		    NULL)) {
 			free(input.genome);
 			input.genome = key;
 		} else {
-			if (lookup_add(contig_cache, input.genome,
+			if (dynhash_add(contig_cache, input.genome,
 			    NULL) == false) {
 				fprintf(stderr, "error: failed to add to "
 				    "contig cache (%d) - probably out of "
@@ -201,7 +201,7 @@ read_file(const char *dir, const char *file)
 
 		total_alignments++;
 
-		if (lookup_find(read_list, input.read, (void *)&key,
+		if (dynhash_find(read_list, input.read, (void *)&key,
 		    (void *)&ri)) {
 			/* use only one read name string to save space */
 			free(input.read);
@@ -213,23 +213,22 @@ read_file(const char *dir, const char *file)
 		} else {
 			total_unique_reads++;
 
-			/* alloc, init, insert in lookup */
+			/* alloc, init, insert in dynhash */
 			ri = xmalloc(sizeof(*ri) +
 			    sizeof(ri->top_matches[0]) * (top_matches + 1));
 			memset(ri, 0, sizeof(*ri) +
 			    sizeof(ri->top_matches[0]) * (top_matches + 1));
 
 			ri->name = input.read;
-
 			ri->top_matches[0].score = top_matches;
 			for (i = 1; i <= top_matches; i++)
 				ri->top_matches[i].score = 0x80000000 + i;
 
 			save_match(ri, &input);
 
-			if (lookup_add(read_list, ri->name, ri) == false) {
-				fprintf(stderr, "error: failed to add to lookup"
-				    " - probably out of memory\n");
+			if (dynhash_add(read_list, ri->name, ri) == false) {
+				fprintf(stderr, "error: failed to add to "
+				    "dynhash - probably out of memory\n");
 				exit(1);
 			}
 		}
@@ -371,6 +370,8 @@ rspvcmp(const void *a, const void *b)
 		cmp_b = rspva->normodds;
 		break;
 	default:
+		/* shut up, gcc */
+		cmp_a = cmp_b = 0;
 		assert(0);
 	}
 
@@ -482,16 +483,23 @@ calc_probs(void *arg, void *key, void *val)
 	}
 }
 
+static unsigned int cleanup_cb_called = 0;
+
 static void
 cleanup_cb(void *arg, void *key, void *val)
 {
-	bool ret;
 
-	ret = lookup_remove(arg, key, NULL, NULL);
+	/* shut up, icc */
+	(void)arg;
+
+	cleanup_cb_called++;
 	free(key);
-	free(val);
-
-	assert(ret);
+	if (val != NULL) {
+		assert(arg == read_list);
+		free(val);
+	} else {
+		assert(arg == read_seq_cache);
+	}
 }
 
 /* Remove everything from read_list and read_seq_cache. */
@@ -499,11 +507,27 @@ static void
 cleanup()
 {
 
-	lookup_iterate(read_list, cleanup_cb, read_list);
-	lookup_iterate(read_seq_cache, cleanup_cb, read_seq_cache);
+	cleanup_cb_called = 0;
+	dynhash_iterate(read_list, cleanup_cb, read_list);
+	assert(dynhash_count(read_list) == cleanup_cb_called);
+	dynhash_destroy(read_list);
 
-	assert(lookup_count(read_list) == 0);
-	assert(lookup_count(read_seq_cache) == 0);
+	read_list = dynhash_create(keyhasher, keycomparer);
+	if (read_list == NULL) {
+		fprintf(stderr, "error: failed to allocate read_list\n");
+		exit(1);
+	}
+
+	cleanup_cb_called = 0;
+	dynhash_iterate(read_seq_cache, cleanup_cb, read_seq_cache);
+	assert(dynhash_count(read_seq_cache) == cleanup_cb_called);
+	dynhash_destroy(read_seq_cache);
+
+	read_seq_cache = dynhash_create(keyhasher, keycomparer);
+	if (read_seq_cache == NULL) {
+		fprintf(stderr, "error: failed to allocate read_seq_cache\n");
+		exit(1);
+	}
 }
 
 static void
@@ -573,7 +597,7 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 	    "of memory!\n\n");
 
 	i = bytes = 0;
-	fprintf(stderr, "Parsing %" PRIu64 " files...\n", files);
+	fprintf(stderr, "Parsing %" PRIu64 " file(s)...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	while (1) {
 		de = readdir(dp);
@@ -589,7 +613,7 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 		PROGRESS_BAR(stderr, i, files, 100);
 	}
 	PROGRESS_BAR(stderr, files, files, 100);
-	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
 	    (double)bytes / (1024 * 1024), i);
 
 	/*
@@ -599,8 +623,14 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 	fprintf(stderr, "\nCalculating top match rates...\n");
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	memset(&rates, 0, sizeof(rates));
-	lookup_iterate(read_list, calc_rates, &rates);
+	dynhash_iterate(read_list, calc_rates, &rates);
 	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
+
+	if (total_unique_reads == 0) {
+		fprintf(stderr, "error: no matches were found in input "
+		    "file(s)\n");
+		exit(1);
+	}
 
 	ratestats(&rates);
 
@@ -610,7 +640,7 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 	 */
 	fprintf(stderr, "\nGenerating output...\n");
 	PROGRESS_BAR(stderr, 0, 0, 10);
-	lookup_iterate(read_list, calc_probs, &rates);
+	dynhash_iterate(read_list, calc_probs, &rates);
 	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
 	if (Bflag)
 		putc('\n', stderr);
@@ -637,7 +667,7 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 
 	i = bytes = 0;
 	memset(&rates, 0, sizeof(rates));
-	fprintf(stderr, "PASS 1: Parsing %" PRIu64 " files to calculate "
+	fprintf(stderr, "PASS 1: Parsing %" PRIu64 " file(s) to calculate "
 	    "rates...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	while (1) {
@@ -652,17 +682,23 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		}
 
 		/* iterate over what's been read and free stored data */
-		lookup_iterate(read_list, calc_rates, &rates);
+		dynhash_iterate(read_list, calc_rates, &rates);
 		cleanup();
 
 		PROGRESS_BAR(stderr, i, files, 100);
 	}
 	PROGRESS_BAR(stderr, files, files, 100);
-	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
 	    (double)bytes / (1024 * 1024), i);
 
 	/* restore desired top matches */
 	top_matches = tmp_top_matches;
+
+	if (total_unique_reads == 0) {
+		fprintf(stderr, "error: no matches were found in input "
+		    "file(s)\n");
+		exit(1);
+	}
 
 	ratestats(&rates);
 
@@ -672,7 +708,7 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 	 */
 	rewinddir(dp);
 
-	fprintf(stderr, "\nPASS 2: Parsing %" PRIu64 " files to calculate "
+	fprintf(stderr, "\nPASS 2: Parsing %" PRIu64 " file(s) to calculate "
 	    "probabilities...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	i = bytes = 0;
@@ -688,13 +724,13 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		}
 
 		/* iterate over what's been read and free stored data */
-		lookup_iterate(read_list, calc_probs, &rates);
+		dynhash_iterate(read_list, calc_probs, &rates);
 		cleanup();
 
 		PROGRESS_BAR(stderr, i, files, 100);
 	}
 	PROGRESS_BAR(stderr, files, files, 100);
-	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " files.\n",
+	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
 	    (double)bytes / (1024 * 1024), i);
 }
 
@@ -793,19 +829,19 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "\n");
 	
-	read_list = lookup_create(keyhasher, keycomparer, false);
+	read_list = dynhash_create(keyhasher, keycomparer);
 	if (read_list == NULL) {
 		fprintf(stderr, "error: failed to allocate read_list\n");
 		exit(1);
 	}
 
-	contig_cache = lookup_create(keyhasher, keycomparer, false);
+	contig_cache = dynhash_create(keyhasher, keycomparer);
 	if (contig_cache == NULL) {
 		fprintf(stderr, "error: failed to allocate contig_cache\n");
 		exit(1);
 	}
 
-	read_seq_cache = lookup_create(keyhasher, keycomparer, false);
+	read_seq_cache = dynhash_create(keyhasher, keycomparer);
 	if (read_seq_cache == NULL) {
 		fprintf(stderr, "error: failed to allocate read_seq_cache\n");
 		exit(1);

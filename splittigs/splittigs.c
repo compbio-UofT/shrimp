@@ -85,7 +85,8 @@ main(int argc, char **argv)
 
 	if (nfiles != 0) {
 		fprintf(stderr, "------------------------------------------\n");
-		fprintf(stderr, "created %d individual contig files\n", nfiles);
+		fprintf(stderr, "created %d individual contig file(s)\n",
+		    nfiles);
 		fprintf(stderr, "------------------------------------------\n");
 	}
 

@@ -9,11 +9,11 @@ all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
 # rmapper/
 #
 
-bin/rmapper-cs: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
+bin/rmapper-cs: rmapper/rmapper.c common/fasta.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
 
-bin/rmapper-ls: rmapper/rmapper.c common/fasta-cs.o common/sw-vector.o \
+bin/rmapper-ls: rmapper/rmapper.c common/fasta.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
@@ -31,7 +31,7 @@ bin/colourise/fasta.o: colourise/fasta.c colourise/fasta.h
 # probcalc 
 #
 
-bin/probcalc: probcalc/probcalc.c common/lookup.o common/red_black_tree.o \
+bin/probcalc: probcalc/probcalc.c common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
@@ -39,14 +39,14 @@ bin/probcalc: probcalc/probcalc.c common/lookup.o common/red_black_tree.o \
 # prettyprint
 #
 
-bin/prettyprint-cs: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
-    common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
-    common/input.o common/output.o common/util.o
+bin/prettyprint-cs: prettyprint/prettyprint.c common/fasta.o common/dynhash.o \
+    common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
+    common/util.o
 	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
 
-bin/prettyprint-ls: prettyprint/prettyprint.c common/fasta.o common/lookup.o \
-    common/red_black_tree.o common/sw-full-cs.o common/sw-full-ls.o \
-    common/input.o common/output.o common/util.o
+bin/prettyprint-ls: prettyprint/prettyprint.c common/fasta.o common/dynhash.o \
+    common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
+    common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
@@ -74,16 +74,10 @@ bin/splittigs: splittigs/splittigs.c
 # common/
 #
 
-common/fasta-cs.o: common/fasta.c common/fasta.h
+common/fasta.o: common/fasta.c common/fasta.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-common/fasta-ls.o: common/fasta.c common/fasta.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-common/lookup.o: common/lookup.c common/lookup.h
-	$(CC) $(CFLAGS) -c -o $@ $<
-
-common/red_black_tree.o: common/red_black_tree.c common/red_black_tree.h
+common/dynhash.o: common/dynhash.c common/dynhash.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 common/input.o: common/input.c common/input.h
