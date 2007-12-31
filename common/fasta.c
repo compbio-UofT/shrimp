@@ -62,12 +62,25 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 		translate['3'] = BASE_3;
 		translate['4'] = BASE_N;
 		translate['N'] = BASE_N;
+		translate['X'] = BASE_X;
 	} else {	
 		translate['A'] = BASE_A;
 		translate['C'] = BASE_C;
 		translate['G'] = BASE_G;
 		translate['T'] = BASE_T;
+		translate['U'] = BASE_U;
+		translate['M'] = BASE_M;
+		translate['R'] = BASE_R;
+		translate['W'] = BASE_W;
+		translate['S'] = BASE_S;
+		translate['Y'] = BASE_Y;
+		translate['K'] = BASE_K;
+		translate['V'] = BASE_V;
+		translate['H'] = BASE_H;
+		translate['D'] = BASE_D;
+		translate['B'] = BASE_B;
 		translate['N'] = BASE_N;
+		translate['X'] = BASE_X;
 	}
 
 	len = 0;
@@ -119,7 +132,10 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 				exit(1);
 			}
 
-			assert(a >= 0 && a <= 7);
+			if (s == COLOUR_SPACE)
+				assert(a >= BASE_CS_MIN && a <= BASE_CS_MAX);
+			else
+				assert(a >= BASE_LS_MIN && a <= BASE_LS_MAX);
 
 			bf(a, len, isnewentry, name, initbp);
 			isnewentry = 0;
@@ -133,4 +149,25 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 	fclose(fp);
 
 	return (len);
+}
+
+/*
+ * Give BASE_x, return the appropriate character.
+ *
+ * NB: Since we're limited to 4-bits, BASE_X returns 'N'.
+ */
+char
+base_translate(int base, bool use_colours)
+{
+	char cstrans[] = { '0', '1', '2', '3', 'N' };
+	char lstrans[] = { 'A', 'C', 'G', 'T', 'U', 'M', 'R', 'W',
+			   'S', 'Y', 'K', 'V', 'H', 'D', 'B', 'N' };
+
+	if (use_colours) {
+		assert(base >= BASE_CS_MIN && base <= BASE_CS_MAX);
+		return (cstrans[base]);
+	} else {
+		assert(base >= BASE_LS_MIN && base <= BASE_LS_MAX);
+		return (lstrans[base]);
+	}
 }

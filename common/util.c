@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -90,10 +91,10 @@ xstrdup(const char *str)
 	return (dup);
 }
 
-unsigned int
+uint32_t
 hash_string(const char *x)
 {
-	unsigned int hash = 0;
+	uint32_t hash = 0;
 
 	while (*x != '\0')
 		hash = 31 * hash + *x++;

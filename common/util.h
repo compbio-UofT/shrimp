@@ -16,7 +16,7 @@ double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
 void	       *xmalloc(size_t);
 char	       *xstrdup(const char *);
-unsigned int	hash_string(const char *);
+uint32_t	hash_string(const char *);
 double		ls_factorial(u_int);
 double		ls_choose(int64_t, int64_t);
 char	       *trim_brackets(char *);
@@ -33,6 +33,10 @@ static inline int
 complement_base(int base)
 {
 	int cmpl[5] = { 3, 2, 1, 0, 4 }; /* A->T, G->C, G->C, T->A, N->N */
+
+	/* XXX - convert anything non-{A,C,G,T} to N */
+	if (base > 4)
+		base = 4;
 
 	assert(base >= 0 && base <= 5);
 
@@ -66,8 +70,14 @@ lstocs(int first_letter, int second_letter)
 		{ 4, 4, 4, 4, 4 }
 	};
 
-	assert(first_letter  >= 0 && first_letter  <= 4);
-	assert(second_letter >= 0 && second_letter <= 4);
+	assert(first_letter  >= 0 && first_letter  <= 15);
+	assert(second_letter >= 0 && second_letter <= 15);
+
+	/* XXX - convert anything non-{A,C,G,T} to N */
+	if (first_letter > 4)
+		first_letter = 4;
+	if (second_letter > 4)
+		second_letter = 4;
 
 	return (colourmat[first_letter][second_letter]);
 }

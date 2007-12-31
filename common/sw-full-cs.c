@@ -696,8 +696,6 @@ pretty_print(int i, int j, int k)
 {
 	char *d, *q;
 	int l;
-	char utranslate[5] = { 'A', 'C', 'G', 'T', 'N' };
-	char ltranslate[5] = { 'a', 'c', 'g', 't', 'n' };
 
 	d = dbalign;
 	q = qralign;
@@ -706,59 +704,79 @@ pretty_print(int i, int j, int k)
 		switch (BT_TYPE(backtrace[l])) {
 		case BACK_A_DELETION:
 			*d++ = '-';
-			*q++ = utranslate[(int)qr[0][i++]];
+			if (BT_ISCROSSOVER(backtrace[l]))
+				*q++ = (char)tolower((int)base_translate(
+				    qr[0][i++], false));
+			else	
+			        *q++ = base_translate(qr[0][i++], false);
 			break;
 
 		case BACK_B_DELETION:
 			*d++ = '-';
-			*q++ = utranslate[(int)qr[1][i++]];
+			if (BT_ISCROSSOVER(backtrace[l]))
+				*q++ = (char)tolower((int)base_translate(
+				    qr[1][i++], false));
+			else	
+			        *q++ = base_translate(qr[1][i++], false);
 			break;
 
 		case BACK_C_DELETION:
 			*d++ = '-';
-			*q++ = utranslate[(int)qr[2][i++]];
+			if (BT_ISCROSSOVER(backtrace[l]))
+				*q++ = (char)tolower((int)base_translate(
+				    qr[2][i++], false));
+			else	
+			        *q++ = base_translate(qr[2][i++], false);
 			break;
 
 		case BACK_D_DELETION:
 			*d++ = '-';
-			*q++ = utranslate[(int)qr[3][i++]];
+			if (BT_ISCROSSOVER(backtrace[l]))
+				*q++ = (char)tolower((int)base_translate(
+				    qr[3][i++], false));
+			else	
+			        *q++ = base_translate(qr[3][i++], false);
 			break;
 
 		case BACK_INSERTION:
-			*d++ = utranslate[(int)db[j++]];
+			*d++ = base_translate(db[j++], false);
 			*q++ = '-';
 			break;
 
 		case BACK_A_MATCH_MISMATCH:
-			*d++ = utranslate[(int)db[j++]];
+			*d++ = base_translate(db[j++], false);
 			if (BT_ISCROSSOVER(backtrace[l]))
-				*q++ = ltranslate[(int)qr[0][i++]];
-			else
-				*q++ = utranslate[(int)qr[0][i++]];
+				*q++ = (char)tolower((int)base_translate(
+				    qr[0][i++], false));
+			else	
+			        *q++ = base_translate(qr[0][i++], false);
 			break;
 
 		case BACK_B_MATCH_MISMATCH:
-			*d++ = utranslate[(int)db[j++]];
+			*d++ = base_translate(db[j++], false);
 			if (BT_ISCROSSOVER(backtrace[l]))
-				*q++ = ltranslate[(int)qr[1][i++]];
-			else
-				*q++ = utranslate[(int)qr[1][i++]];
+				*q++ = (char)tolower((int)base_translate(
+				    qr[1][i++], false));
+			else	
+			        *q++ = base_translate(qr[1][i++], false);
 			break;
 
 		case BACK_C_MATCH_MISMATCH:
-			*d++ = utranslate[(int)db[j++]];
+			*d++ = base_translate(db[j++], false);
 			if (BT_ISCROSSOVER(backtrace[l]))
-				*q++ = ltranslate[(int)qr[2][i++]];
-			else
-				*q++ = utranslate[(int)qr[2][i++]];
+				*q++ = (char)tolower((int)base_translate(
+				    qr[2][i++], false));
+			else	
+			        *q++ = base_translate(qr[2][i++], false);
 			break;
 
 		case BACK_D_MATCH_MISMATCH:
-			*d++ = utranslate[(int)db[j++]];
+			*d++ = base_translate(db[j++], false);
 			if (BT_ISCROSSOVER(backtrace[l]))
-				*q++ = ltranslate[(int)qr[3][i++]];
-			else
-				*q++ = utranslate[(int)qr[3][i++]];
+				*q++ = (char)tolower((int)base_translate(
+				    qr[3][i++], false));
+			else	
+			        *q++ = base_translate(qr[3][i++], false);
 			break;
 	
 		default:

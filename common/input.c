@@ -21,12 +21,12 @@ strtrim(char *str)
 
 	assert(str != NULL);
 
-	while (isspace(*str) && *str != '\0')
+	while (isspace((int)*str) && *str != '\0')
 		str++;
 
 	ret = str;
 
-	while (!isspace(*str) && *str != '\0')
+	while (!isspace((int)*str) && *str != '\0')
 		str++;
 	
 	*str = '\0';
@@ -49,7 +49,7 @@ parse_keyvalue(char *str, char **key, char **val)
 
 	assert(str != NULL && key != NULL && val != NULL);
 
-	while (isspace(*str) && *str != '\0')
+	while (isspace((int)*str) && *str != '\0')
 		str++;
 
 	if (*str == '\0')
@@ -65,7 +65,7 @@ parse_keyvalue(char *str, char **key, char **val)
 
 	*str++ = '\0';
 
-	while (isspace(*str) && *str != '\0')
+	while (isspace((int)*str) && *str != '\0')
 		str++;
 
 	if (*str == '"') {
@@ -94,7 +94,7 @@ parse_keyvalue(char *str, char **key, char **val)
 	} else {
 		*val = str;
 
-		while (!isspace(*str) && *str != '\0')
+		while (!isspace((int)*str) && *str != '\0')
 			str++;
 
 		*str = '\0';
@@ -271,11 +271,11 @@ input_parseline(FILE *fp, struct input *inp)
 				if (buf[i] == '=' && i > 0 &&
 				    buf[i-1] != '\\') {
 					while (--i >= 0) {
-						if (!isspace(buf[i]))
+						if (!isspace((int)buf[i]))
 							break;
 					}
 					while (--i >= 0) {
-						if (isspace(buf[i]))
+						if (isspace((int)buf[i]))
 							break;
 					}
 					if (i < 0)

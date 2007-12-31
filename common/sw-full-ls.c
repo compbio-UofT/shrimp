@@ -15,10 +15,10 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "../common/fasta.h"
+#include "../common/sw-full-common.h"
+#include "../common/sw-full-ls.h"
 #include "../common/util.h"
-
-#include "sw-full-common.h"
-#include "sw-full-ls.h"
 
 struct swcell {
 	int score_north;
@@ -298,7 +298,6 @@ pretty_print(int i, int j, int k)
 {
 	char *d, *q;
 	int l, done;
-	char translate[5] = { 'A', 'C', 'G', 'T', 'N' };
 
 	d = dbalign;
 	q = qralign;
@@ -308,17 +307,17 @@ pretty_print(int i, int j, int k)
 		switch (backtrace[l]) {
 		case BACK_DELETION:
 			*d++ = '-';
-			*q++ = (char)(translate[(int)qr[i++]]);
+			*q++ = base_translate(qr[i++], false);
 			break;
 
 		case BACK_INSERTION:
-			*d++ = (char)(translate[(int)db[j++]]);
+			*d++ = base_translate(db[j++], false);
 			*q++ = '-';
 			break;
 
 		case BACK_MATCH_MISMATCH:
-			*d++ = (char)(translate[(int)db[j++]]);
-			*q++ = (char)(translate[(int)qr[i++]]);
+			*d++ = base_translate(db[j++], false);
+			*q++ = base_translate(qr[i++], false);
 			break;
 
 		default:
