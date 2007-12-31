@@ -15,10 +15,10 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "../common/util.h"
-
+#include "../common/fasta.h"
 #include "sw-full-common.h"
 #include "sw-full-cs.h"
+#include "../common/util.h"
 
 struct swcell {
 	int score_n;
@@ -162,10 +162,15 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 	ge = gap_ext;
 
 	for (i = 0; i < 4; i++) {
+ 	        if (i != 0)
+ 		        resetval = xover_penalty;
+		else
+		        resetval = 0;
+
 		for (j = -1; j < lenb; j++) {
-			SWM_x(i, j, -1).score_nw = 0;
-			SWM_x(i, j, -1).score_n = -go;
-			SWM_x(i, j, -1).score_w = -go;
+			SWM_x(i, j, -1).score_nw = resetval;
+			SWM_x(i, j, -1).score_n = -go + resetval;
+			SWM_x(i, j, -1).score_w = -go + resetval;
 
 			SWM_x(i, j, -1).back_nw = 0;
 			SWM_x(i, j, -1).back_n = 0;
@@ -173,9 +178,9 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 		}
 
 		for (j = -1; j < lena; j++) {
-			SWM_x(i, -1, j).score_nw = 0;
-			SWM_x(i, -1, j).score_n  = -go;
-			SWM_x(i, -1, j).score_w  = -go;
+			SWM_x(i, -1, j).score_nw = resetval;
+			SWM_x(i, -1, j).score_n  = -go + resetval;
+			SWM_x(i, -1, j).score_w  = -go + resetval;
 
 			SWM_x(i, -1, j).back_nw = 0;
 			SWM_x(i, -1, j).back_n = 0;
@@ -212,8 +217,6 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 				/* check neighbours' NW */
 				for (l = 0; l < 3; l++) {
 					n = neighbours[k][l];
-					ms = (db[j] == qr[n][i]) ?
-					    match : mismatch;
 
 					if (SWM_x(n, i-1, j-1).score_nw + ms +
 					    xover_penalty > tmp) {
@@ -403,10 +406,13 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 static int
 do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 {
-	int off, from, fromscore, done;
+	int off, from, fromscore;
+
+	off = (dblen + qrlen) - 1;
 
 	from = SWM_x(k, i, j).back_nw;
 	fromscore = SWM_x(k, i, j).score_nw;
+
 	if (SWM_x(k, i, j).score_w > fromscore) {
 		from = SWM_x(k, i, j).back_w;
 		fromscore = SWM_x(k, i, j).score_w;
@@ -415,15 +421,9 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		from = SWM_x(k, i, j).back_n;
 
 	/* fill out the backtrace */
-	done = 0;
-	off = (dblen + qrlen) - 1;
-	while (i >= 0 && j >= 0 && !done) {
-		assert(off >= 0);
 
-		if (SWM_x(k, i, j).score_n <= 0 &&
-		    SWM_x(k, i, j).score_nw <= 0 &&
-		    SWM_x(k, i, j).score_w <= 0)
-			break;
+	while (i >= 0 && j >= 0) {
+		assert(off >= 0);
 
 		/* common operations first */
 		switch (from) {
@@ -447,7 +447,6 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		case FROM_C_WEST_NORTHWEST:
 		case FROM_D_WEST_WEST:
 		case FROM_D_WEST_NORTHWEST:
-			backtrace[off] = BACK_INSERTION;
 			sfr->insertions++;
 			sfr->genome_start = j--;
 			break;
@@ -480,22 +479,28 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		switch (from) {
 		case FROM_A_NORTH_NORTH:
 		case FROM_A_NORTH_NORTHWEST:
-			backtrace[off] = BACK_A_DELETION;
-			break;
-
 		case FROM_B_NORTH_NORTH:
 		case FROM_B_NORTH_NORTHWEST:
-			backtrace[off] = BACK_B_DELETION;
-			break;
-
 		case FROM_C_NORTH_NORTH:
 		case FROM_C_NORTH_NORTHWEST:
-			backtrace[off] = BACK_C_DELETION;
-			break;
-
 		case FROM_D_NORTH_NORTH:
 		case FROM_D_NORTH_NORTHWEST:
-			backtrace[off] = BACK_D_DELETION;
+			switch(k) {
+			case 0:
+				backtrace[off]= BACK_A_DELETION;
+				break;
+			case 1:
+				backtrace[off]= BACK_B_DELETION;
+				break;
+			case 2:
+				backtrace[off]= BACK_C_DELETION;
+				break;
+			case 3:
+				backtrace[off]= BACK_D_DELETION;
+				break;
+			default:
+				assert(0);
+			}
 			break;
 
 		case FROM_A_WEST_WEST:
@@ -513,80 +518,31 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 		case FROM_A_NORTHWEST_NORTH:
 		case FROM_A_NORTHWEST_NORTHWEST:
 		case FROM_A_NORTHWEST_WEST:
-			backtrace[off] = BACK_A_MATCH_MISMATCH;
-			break;
-
 		case FROM_B_NORTHWEST_NORTH:
 		case FROM_B_NORTHWEST_NORTHWEST:
 		case FROM_B_NORTHWEST_WEST:
-			backtrace[off] = BACK_B_MATCH_MISMATCH;
-			break;
-
 		case FROM_C_NORTHWEST_NORTH:
 		case FROM_C_NORTHWEST_NORTHWEST:
 		case FROM_C_NORTHWEST_WEST:
-			backtrace[off] = BACK_C_MATCH_MISMATCH;
-			break;
-
 		case FROM_D_NORTHWEST_NORTH:
 		case FROM_D_NORTHWEST_NORTHWEST:
 		case FROM_D_NORTHWEST_WEST:
-			backtrace[off] = BACK_D_MATCH_MISMATCH;
-			break;
-
-		default:
-			assert(0);
-		}
-
-		/* continue backtrace (nb: i and j have already been changed) */
-		switch (from) {
-		case FROM_A_NORTH_NORTH:
-		case FROM_B_NORTH_NORTH:
-		case FROM_C_NORTH_NORTH:
-		case FROM_D_NORTH_NORTH:
-			from = SWM_x(k, i, j).back_n;
-			break;
-
-		case FROM_A_NORTH_NORTHWEST:
-		case FROM_B_NORTH_NORTHWEST:
-		case FROM_C_NORTH_NORTHWEST:
-		case FROM_D_NORTH_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
-			break;
-
-		case FROM_A_WEST_WEST:
-		case FROM_B_WEST_WEST:
-		case FROM_C_WEST_WEST:
-		case FROM_D_WEST_WEST:
-			from = SWM_x(k, i, j).back_w;
-			break;
-
-		case FROM_A_WEST_NORTHWEST:
-		case FROM_B_WEST_NORTHWEST:
-		case FROM_C_WEST_NORTHWEST:
-		case FROM_D_WEST_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
-			break;
-
-		case FROM_A_NORTHWEST_NORTH:
-		case FROM_B_NORTHWEST_NORTH:
-		case FROM_C_NORTHWEST_NORTH:
-		case FROM_D_NORTHWEST_NORTH:
-			from = SWM_x(k, i, j).back_n;
-			break;
-
-		case FROM_A_NORTHWEST_NORTHWEST:
-		case FROM_B_NORTHWEST_NORTHWEST:
-		case FROM_C_NORTHWEST_NORTHWEST:
-		case FROM_D_NORTHWEST_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
-			break;
-
-		case FROM_A_NORTHWEST_WEST:
-		case FROM_B_NORTHWEST_WEST:
-		case FROM_C_NORTHWEST_WEST:
-		case FROM_D_NORTHWEST_WEST:
-			from = SWM_x(k, i, j).back_w;
+			switch(k) {
+			case 0:
+				backtrace[off] = BACK_A_MATCH_MISMATCH;
+				break;
+			case 1:
+				backtrace[off] = BACK_B_MATCH_MISMATCH;
+				break;
+			case 2:
+				backtrace[off] = BACK_C_MATCH_MISMATCH;
+				break;
+			case 3:
+				backtrace[off] = BACK_D_MATCH_MISMATCH;
+				break;
+			default:
+				assert(0);
+			}
 			break;
 
 		default:
@@ -652,11 +608,71 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 			break;
 
 		default:
-			done = 1;
+		  assert(0);
+		}
+
+
+		/*
+		 * Continue backtrace (nb: i,j and k have already been changed).
+		 */
+		switch (from) {
+		case FROM_A_NORTH_NORTH:
+		case FROM_B_NORTH_NORTH:
+		case FROM_C_NORTH_NORTH:
+		case FROM_D_NORTH_NORTH:
+			from = SWM_x(k, i, j).back_n;
 			break;
+
+		case FROM_A_NORTH_NORTHWEST:
+		case FROM_B_NORTH_NORTHWEST:
+		case FROM_C_NORTH_NORTHWEST:
+		case FROM_D_NORTH_NORTHWEST:
+			from = SWM_x(k, i, j).back_nw;
+			break;
+
+		case FROM_A_WEST_WEST:
+		case FROM_B_WEST_WEST:
+		case FROM_C_WEST_WEST:
+		case FROM_D_WEST_WEST:
+			from = SWM_x(k, i, j).back_w;
+			break;
+
+		case FROM_A_WEST_NORTHWEST:
+		case FROM_B_WEST_NORTHWEST:
+		case FROM_C_WEST_NORTHWEST:
+		case FROM_D_WEST_NORTHWEST:
+			from = SWM_x(k, i, j).back_nw;
+			break;
+
+		case FROM_A_NORTHWEST_NORTH:
+		case FROM_B_NORTHWEST_NORTH:
+		case FROM_C_NORTHWEST_NORTH:
+		case FROM_D_NORTHWEST_NORTH:
+			from = SWM_x(k, i, j).back_n;
+			break;
+
+		case FROM_A_NORTHWEST_NORTHWEST:
+		case FROM_B_NORTHWEST_NORTHWEST:
+		case FROM_C_NORTHWEST_NORTHWEST:
+		case FROM_D_NORTHWEST_NORTHWEST:
+			from = SWM_x(k, i, j).back_nw;
+			break;
+
+		case FROM_A_NORTHWEST_WEST:
+		case FROM_B_NORTHWEST_WEST:
+		case FROM_C_NORTHWEST_WEST:
+		case FROM_D_NORTHWEST_WEST:
+			from = SWM_x(k, i, j).back_w;
+			break;
+
+		default:
+			assert(0);
 		}
 
 		off--;
+
+		if (from == 0)
+			break;		  
 	}
 
 	off++;
