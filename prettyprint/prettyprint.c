@@ -91,8 +91,8 @@ iter_reg_files(char *dir, void (*fh)(char *, char *, void *), void *arg)
 		if (de == NULL)
 			break;
 
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, "..")) {
+		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
+		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			fh(dir, de->d_name, arg);
 			files++;
 		}

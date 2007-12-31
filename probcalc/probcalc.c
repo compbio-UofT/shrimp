@@ -604,8 +604,8 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, "..")) {
+		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
+		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			bytes += read_file(dir, de->d_name);
 			i++;
 		}
@@ -675,8 +675,8 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, "..")) {
+		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
+		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			bytes += read_file(dir, de->d_name);
 			i++;
 		}
@@ -717,8 +717,8 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, "..")) {
+		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
+		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			bytes += read_file(dir, de->d_name);
 			i++;
 		}
@@ -865,8 +865,8 @@ main(int argc, char **argv)
 		if (de == NULL)
 			break;
 
-		if (de->d_type == DT_REG && strcmp(de->d_name, ".") &&
-		    strcmp(de->d_name, ".."))
+		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
+		    strcmp(de->d_name, ".") && strcmp(de->d_name, ".."))
 			files++;
 	}
 
