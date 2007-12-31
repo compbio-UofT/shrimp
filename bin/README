@@ -3,6 +3,8 @@ $Id$
 Program			Function	
 -------			--------
 colourise		convert letterspace fasta files to colourspace
+mergehits-cs		merge all hits into one line per read (colour space)
+mergehits-ls		merge all hits into one line per read (letter space)
 probcalc		parse rmapper output (non-pretty-printed output)
 prettyprint-cs		pretty print alignments from rmapper/probcalc (c. space)
 prettyprint-ls		pretty print alignments from rmapper/probcalc (l. space)

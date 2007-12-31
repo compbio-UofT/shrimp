@@ -3,7 +3,8 @@ CFLAGS=-Wall -Werror -O3 -mmmx -msse -msse2 -static
 LDFLAGS=-lm
 
 all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
-    bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads bin/splittigs
+    bin/prettyprint-cs bin/prettyprint-ls bin/mergehits-cs bin/mergehits-ls \
+    bin/revcmpl bin/splitreads bin/splittigs
 
 #
 # rmapper/
@@ -47,6 +48,18 @@ bin/prettyprint-cs: prettyprint/prettyprint.c common/fasta.o common/dynhash.o \
 bin/prettyprint-ls: prettyprint/prettyprint.c common/fasta.o common/dynhash.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
     common/util.o
+	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
+
+#
+# mergehits
+#
+
+bin/mergehits-cs: mergehits/mergehits.c common/fasta.o common/dynhash.o \
+    common/input.o common/output.o common/util.o
+	$(CC) $(CFLAGS) -DUSE_COLOURS -o $@ $+ $(LDFLAGS)
+
+bin/mergehits-ls: mergehits/mergehits.c common/fasta.o common/dynhash.o \
+    common/input.o common/output.o common/util.o
 	$(CC) $(CFLAGS) -o $@ $+ $(LDFLAGS)
 
 #
@@ -104,7 +117,7 @@ common/util.o: common/util.c common/util.h
 
 clean:
 	rm -f bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
-	    bin/prettyprint-cs bin/prettyprint-ls bin/revcmpl bin/splitreads \
-	    bin/splittigs
+	    bin/prettyprint-cs bin/prettyprint-ls bin/mergehits-cs \
+	    bin/mergehits-ls bin/revcmpl bin/splitreads bin/splittigs
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
