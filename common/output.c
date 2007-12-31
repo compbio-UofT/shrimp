@@ -15,7 +15,7 @@
 #include "../common/output.h"
 #include "../common/util.h"
 
-static char *
+char *
 readtostr(uint32_t *read, u_int len, bool use_colours, int initbp)
 {
 	static char *buf;
