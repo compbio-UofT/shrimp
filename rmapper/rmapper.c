@@ -49,6 +49,7 @@ static u_int sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static uint32_t *genome;
 static uint32_t	 genome_len;
 static char     *contig_name;			/* name of contig in genome */
+static uint32_t  ncontigs;			/* number of contigs read */
 
 /*
  * Genomic sequence, in letter space, stored in 32-bit words, first is in LSB
@@ -86,6 +87,14 @@ const bool use_colours = false;
 
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
+
+/*
+ * Callsback to kludge in multiple contig per file support. Doing this right
+ * would require an API change, which I don't have time for now. This is
+ * seriously ugly... I apologise.
+ */
+static void (*genome_contig_cb)(void *);
+static void  *genome_contig_cb_arg;
 
 static size_t
 power(size_t base, size_t exp)
@@ -320,11 +329,13 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 {
 	static bool first = true;
 	static int lastbp;
+	static size_t allocated;	/* base pairs allocated for */
 
 	/* shut up icc */
 	(void)name;
 	(void)lastbp;
 	(void)initbp;
+	(void)offset;
 
 	if (base == FASTA_DEALLOC)
 		return;
@@ -334,48 +345,70 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 		first = true;
 		if (genome != NULL)
 			free(genome);
-		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(offset));
+
+		/* start with a small allocation: 1 word's worth */
+		allocated = 8;
+
+		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(allocated));
 		genome_len = 0;
-		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(offset));
+		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
 
 		if (use_colours) {
 			if (genome_ls != NULL)
 				free(genome_ls);
 			genome_ls =
-			    xmalloc(sizeof(genome_ls[0]) * BPTO32BW(offset));
+			    xmalloc(sizeof(genome_ls[0]) * BPTO32BW(allocated));
 			memset(genome_ls, 0,
-			    sizeof(genome_ls[0]) * BPTO32BW(offset));
+			    sizeof(genome_ls[0]) * BPTO32BW(allocated));
 			lastbp = BASE_T;
 		}
 		return;
 	}
 
-	if (first) {
+	if (isnewentry && !first) {
+		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
+		    genome_len, contig_name);
+		genome_contig_cb(genome_contig_cb_arg);
+		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
+		if (use_colours)
+			memset(genome_ls, 0, sizeof(genome_ls[0]) * BPTO32BW(allocated));
+		genome_len = 0;
+		lastbp = BASE_T;
+	}
+
+	if (first || isnewentry) {
 		if (contig_name != NULL)
 			free(contig_name);
 		contig_name = xstrdup(name);
 	}
 
-	if (isnewentry && !first) {
-		fprintf(stderr, "error: genome file consists of more than one "
-		    "contig!\n");
-		fprintf(stderr, "       rmapper expects one contig per fasta "
-		    "file - use 'splittigs' to break files up.\n");
-		exit(1);
-	}
-
 	assert(base >= 0 && base <= 15);
-	assert(offset == genome_len);
+
+	/*
+	 * Make more room, if necessary. Grow quickly at first, then slow down
+	 * so as not to overshoot too much.
+	 */
+	if (genome_len == allocated) {
+		if (BPTO32BW(allocated) * sizeof(genome[0]) > 64 * 1024 * 1024)
+			allocated = (allocated * 4) / 3;	
+		else
+			allocated *= 2;
+
+		genome = xrealloc(genome,
+		    sizeof(genome[0]) * BPTO32BW(allocated));
+		if (use_colours)
+			genome_ls = xrealloc(genome_ls,
+			    sizeof(genome[0]) * BPTO32BW(allocated));
+	}
 
 	if (use_colours) {
-		bitfield_append(genome, offset, lstocs(lastbp, base));
-		genome_len++;
-		bitfield_append(genome_ls, offset, base);
+		bitfield_append(genome, genome_len, lstocs(lastbp, base));
+		bitfield_append(genome_ls, genome_len, base);
 		lastbp = base;
 	} else {
-		bitfield_append(genome, offset, base);
-		genome_len++;
+		bitfield_append(genome, genome_len, base);
 	}
+	genome_len++;
 
 	first = false;
 }
@@ -387,9 +420,11 @@ load_genome(const char *file)
 
 	ret = load_fasta(file, load_genome_helper, LETTER_SPACE);
 
-	if (ret != -1)
-		fprintf(stderr, "Loaded %u letters from contig \"%s\" [%s]\n",
-		    (unsigned int)ret, contig_name, file);
+	if (ret != -1) {
+		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
+		    genome_len, contig_name);
+		genome_contig_cb(genome_contig_cb_arg);
+	}
 
 	return (ret == -1);
 }
@@ -562,7 +597,7 @@ load_reads(const char *file)
 		ret = load_fasta(file, load_reads_helper, LETTER_SPACE);
 
 	if (ret != -1)
-		fprintf(stderr, "Loaded %u %s in %u reads (%u kmers)\n",
+		fprintf(stderr, "- Loaded %u %s in %u reads (%u kmers)\n",
 		    (unsigned int)ret, (use_colours) ? "colours" : "letters",
 		    nreads, nkmers);
 
@@ -628,6 +663,28 @@ generate_output(struct re_score *rs, bool revcmpl)
 	}
 }
 
+static void
+final_pass_contig(void *arg)
+{
+	static int i = 0;
+
+	struct {
+		struct re_score *scores;
+		struct re_score *revcmpl_scores;
+	} *contig_list = arg;
+
+	assert(i >= 0 && i < ncontigs);
+
+	generate_output(contig_list[i].scores, false);
+	if (use_colours)
+		reverse_complement(genome_ls, genome, genome_len);
+	else
+		reverse_complement(genome, NULL, genome_len);
+	generate_output(contig_list[i].revcmpl_scores, true);
+
+	i++;
+}
+
 static int
 final_pass(char **files, int nfiles)
 {
@@ -638,8 +695,8 @@ final_pass(char **files, int nfiles)
 	struct read_elem *re;
 	int i, hits = 0;
 
-	contig_list = xmalloc(sizeof(*contig_list) * nfiles);
-	memset(contig_list, 0, sizeof(*contig_list) * nfiles);
+	contig_list = xmalloc(sizeof(*contig_list) * ncontigs);
+	memset(contig_list, 0, sizeof(*contig_list) * ncontigs);
 
 	/* For each contig, generate a linked list of hits from it. */
 	for (re = reads; re != NULL; re = re->next) {
@@ -654,7 +711,7 @@ final_pass(char **files, int nfiles)
 			if (re->scores[i].score < 0)
 				continue;
 
-			assert(cn >= 0 && cn < nfiles);
+			assert(cn >= 0 && cn < ncontigs);
 			assert(re->scores[i].parent == NULL);
 			assert(re->scores[i].next == NULL);
 			assert(re->scores[i].score >= sw_vect_threshold);
@@ -674,20 +731,19 @@ final_pass(char **files, int nfiles)
 	}
 
 	/* Now, do a final s-w for all reads of each contig and output them. */
+	genome_contig_cb = final_pass_contig;
+	genome_contig_cb_arg = contig_list;
 	for (i = 0; i < nfiles; i++) {
+		fprintf(stderr, "- Processing contig file [%s] (%d of %d)\n",
+		    files[i], i + 1, nfiles);
 		if (load_genome(files[i])) {
 			fprintf(stderr, "error: failed to reload genome file "
 			    "[%s] for final pass\n", files[i]);
 			exit(1);
 		}
-		
-		generate_output(contig_list[i].scores, false);
-		if (use_colours)
-			reverse_complement(genome_ls, genome, genome_len);
-		else
-			reverse_complement(genome, NULL, genome_len);
-		generate_output(contig_list[i].revcmpl_scores, true);
 	}
+	genome_contig_cb = NULL;
+	genome_contig_cb_arg = NULL;
 
 	free(contig_list);
 
@@ -717,61 +773,90 @@ valid_spaced_seed()
 	return (1);
 }
 
+struct scan_genomes_args {
+	struct timeval *tv1, *tv2;
+	double *stime, *ltime, *rtime;
+	char *file;
+};
+
+static void
+scan_genomes_contig(void *arg)
+{
+	struct scan_genomes_args *args = arg;
+
+	gettimeofday(args->tv2, NULL);
+
+	*args->ltime += ((double)args->tv2->tv_sec +
+	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
+	    (double)args->tv1->tv_usec / 1.0e6);
+
+	/*
+	 * Do it forwards.
+	 */
+	gettimeofday(args->tv1, NULL);
+	scan(ncontigs, false);
+	gettimeofday(args->tv2, NULL);
+
+	*args->stime += ((double)args->tv2->tv_sec +
+	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
+	    (double)args->tv1->tv_usec / 1.0e6);
+
+	/*
+	 * Do it reverse-complementwards.
+	 */
+	fprintf(stderr, "    - Processing reverse complement\n");
+
+	gettimeofday(args->tv1, NULL);
+	if (use_colours)
+		reverse_complement(genome_ls, genome, genome_len);
+	else
+		reverse_complement(genome, NULL, genome_len);
+	gettimeofday(args->tv2, NULL);
+
+	*args->rtime += ((double)args->tv2->tv_sec +
+	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
+	    (double)args->tv1->tv_usec / 1.0e6);
+
+	gettimeofday(args->tv1, NULL);
+	scan(ncontigs, true);
+	gettimeofday(args->tv2, NULL);
+
+	*args->stime += ((double)args->tv2->tv_sec +
+	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
+	    (double)args->tv1->tv_usec / 1.0e6);
+
+	ncontigs++;
+}
+
 static int
 scan_genomes(char **files, int nfiles, double *scantime, double *loadtime,
     double *revcmpltime)
 {
+	struct scan_genomes_args args;
 	struct timeval tv1, tv2;
 	double stime, ltime, rtime;
 	int i;
 
 	stime = ltime = rtime = 0;
+	args.tv1 = &tv1;
+	args.tv2 = &tv2;
+	args.stime = &stime;
+	args.ltime = &ltime;
+	args.rtime = &rtime;
 
+	genome_contig_cb = scan_genomes_contig;
+	genome_contig_cb_arg = &args;
 	for (i = 0; i < nfiles; i++) {
-		fprintf(stderr, "Processing contig file [%s] (%d of %d)\n",
+		fprintf(stderr, "- Processing contig file [%s] (%d of %d)\n",
 		    files[i], i + 1, nfiles);
 
+		args.file = files[i];
 		gettimeofday(&tv1, NULL);
 		if (load_genome(files[i]))
 			return (1);
-		gettimeofday(&tv2, NULL);
-
-		ltime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
-		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
-
-		/*
-		 * Do it forwards.
-		 */
-		gettimeofday(&tv1, NULL);
-		scan(i, false);
-		gettimeofday(&tv2, NULL);
-
-		stime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
-		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
-
-		/*
-		 * Do it reverse-complementwards.
-		 */
-		fprintf(stderr, "Processing reverse complement of contig file "
-		    "[%s] (%d of %d)\n", files[i], i + 1, nfiles);
-
-		gettimeofday(&tv1, NULL);
-		if (use_colours)
-			reverse_complement(genome_ls, genome, genome_len);
-		else
-			reverse_complement(genome, NULL, genome_len);
-		gettimeofday(&tv2, NULL);
-
-		rtime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
-		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
-
-		gettimeofday(&tv1, NULL);
-		scan(i, true);
-		gettimeofday(&tv2, NULL);
-
-		stime += ((double)tv2.tv_sec + (double)tv2.tv_usec / 1.0e6) -
-		    ((double)tv1.tv_sec + (double)tv1.tv_usec / 1.0e6);
 	}
+	genome_contig_cb = NULL;
+	genome_contig_cb_arg = NULL;
 
 	if (scantime != NULL)
 		*scantime = stime;
@@ -1075,7 +1160,7 @@ main(int argc, char **argv)
 	if (scan_genomes(genome_files, ngenome_files, &stime, &ltime, &rtime))
 		exit(1);
 
-	fprintf(stderr, "Generating output...\n");
+	fprintf(stderr, "\nGenerating output...\n");
 	final_pass(genome_files, ngenome_files);
 
 	reads_matched = total_matches = 0;
