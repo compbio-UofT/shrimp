@@ -919,8 +919,9 @@ usage(char *progname)
 	    DEF_MAX_READ_LEN);
 
 	fprintf(stderr,
-	    "    -d    Kmer Std. Deviation Limit               (default: %d)\n",
-	    DEF_KMER_STDDEV_LIMIT);
+	    "    -d    Kmer Std. Deviation Limit               (default: %d%s)"
+	    "\n", DEF_KMER_STDDEV_LIMIT,
+	    (DEF_KMER_STDDEV_LIMIT < 0) ? " [None]" : "");
 
 	fprintf(stderr,
 	    "    -m    S-W Match Value                         (default: %d)\n",
