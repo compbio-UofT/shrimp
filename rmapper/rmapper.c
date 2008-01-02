@@ -521,6 +521,17 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
 
+	if (re->read_len > window_len) {
+		static bool warned = false;
+
+		if (!warned) {
+			fprintf(stderr, "WARNING: Read length greater than "
+			    "window length (%u)! This is probably not what you "
+			    "want!\n\n", window_len);
+			warned = true;
+		}
+	}
+
 	/*
 	 * For simplicity we throw out the first kmer when in colour space. If
 	 * we did not do so, we'd run into a ton of colour-letter space
