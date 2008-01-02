@@ -371,7 +371,8 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 		genome_contig_cb(genome_contig_cb_arg);
 		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
 		if (use_colours)
-			memset(genome_ls, 0, sizeof(genome_ls[0]) * BPTO32BW(allocated));
+			memset(genome_ls, 0,
+			    sizeof(genome_ls[0]) * BPTO32BW(allocated));
 		genome_len = 0;
 		lastbp = BASE_T;
 	}
