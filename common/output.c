@@ -89,7 +89,11 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 		lspre = xmalloc(read_start + 1);
 		mpre = xmalloc(read_start + 1);
 		for (j = 0; j < read_start; j++) {
-			gpre[j] = '-';
+			if (genome_start + j > read_start)
+				gpre[j] = base_translate(EXTRACT(genome,
+				    genome_start - read_start + j), false);
+			else
+				gpre[j] = '-';
 			lspre[j] = '-';
 			mpre[j] = ' ';
 		}
@@ -99,7 +103,11 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 		gpost = xmalloc(readlen - read_end);
 		lspost = xmalloc(readlen - read_end);
 		for (j = 0; j < (readlen - read_end - 1); j++) {
-			gpost[j] = '-';
+			if (genome_end + 1 + j < genome_len)
+				gpost[j] = base_translate(EXTRACT(genome,
+				    genome_end + 1 + j), false);
+			else
+				gpost[j] = '-';
 			lspost[j] = '-';
 		}
 		gpost[j] = lspost[j] = '\0';
