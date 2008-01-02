@@ -148,41 +148,31 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
     int initbp)
 {
 	static struct sequence *seq;
-	static int first = 1;
 	static ssize_t maxlen;
+	static uint32_t allocated;
 
 	/* handle initial call to alloc resources */
 	if (base == FASTA_ALLOC) {
 		assert(seq == NULL);
-		first = 1;
-		seq = xmalloc(sizeof(*seq));
-		seq->sequence = xmalloc(sizeof(seq->sequence[0]) *
-		    BPTO32BW(offset));
-		memset(seq->sequence, 0, sizeof(seq->sequence[0]) *
-		    BPTO32BW(offset));
-		seq->sequence_len = 0;
-		seq->name = NULL;
-		seq->revcmpl = false;
 		maxlen = offset;
-
 		return;
 	} else if (base == FASTA_DEALLOC) {
 		seq = NULL;
 		return;
 	}
 
-	assert(seq != NULL);
-
-	if (isnewentry && !first) {
-		fprintf(stderr, "error: genome file consists of more than "
-		    "one contig [%s]!\n", name);
-		fprintf(stderr, "       prettyprint expects one contig per "
-		    "fasta file - use 'splittigs' to break files up.\n");
-		exit(1);
-	}
-
 	if (isnewentry) {
-		assert(seq->name == NULL);
+		/* start with a small allocation: 1 word's worth */
+		allocated = 8;
+
+		seq = xmalloc(sizeof(*seq));
+		seq->sequence = xmalloc(sizeof(seq->sequence[0]) *
+		    BPTO32BW(allocated));
+		memset(seq->sequence, 0, sizeof(seq->sequence[0]) *
+		    BPTO32BW(allocated));
+		seq->sequence_len = 0;
+		seq->name = NULL;
+		seq->revcmpl = false;
 		seq->name = xstrdup(name);
 		seq->initbp = initbp;
 
@@ -200,13 +190,25 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		}
 	}
 
-	first = 0;
+	/*
+	 * Make more room, if necessary. Grow quickly at first, then slow down
+	 * so as not to overshoot too much.
+	 */
+	if (seq->sequence_len == allocated) {
+		if (BPTO32BW(allocated) * sizeof(seq->sequence[0]) >
+		    64 * 1024 * 1024)
+			allocated = (allocated * 4) / 3;	
+		else
+			allocated *= 2;
+
+		seq->sequence = xrealloc(seq->sequence,
+		    sizeof(seq->sequence[0]) * BPTO32BW(allocated));
+	}
 
 	/* shut up, icc */
 	(void)maxlen;
 
 	assert(seq->sequence_len < maxlen);
-	assert(seq->sequence_len == offset);
 	assert(base >= 0 && base <= 15);
 
 	bitfield_append(seq->sequence, seq->sequence_len++, base);
