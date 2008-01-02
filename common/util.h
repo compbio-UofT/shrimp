@@ -15,6 +15,7 @@ uint64_t	rdtsc(void);
 double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
 void	       *xmalloc(size_t);
+void	       *xrealloc(void *, size_t);
 char	       *xstrdup(const char *);
 uint32_t	hash_string(const char *);
 double		ls_factorial(u_int);
