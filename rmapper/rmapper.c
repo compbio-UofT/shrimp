@@ -222,6 +222,27 @@ readmap_prune()
 	}
 }
 
+/* reset the fields used by scan() for each read */
+static void
+reset_reads()
+{
+	struct read_node *rn;
+	struct read_elem *re;
+	uint32_t i, j;
+
+	j = power(4, strchrcnt(spaced_seed, '1'));
+
+	for (i = 0; i < j; i++) {
+		for (rn = readmap[i]; rn != NULL; rn = rn->next) {
+			re = rn->read;
+			re->last_swhit_idx = -1;
+			re->prev_hit = 0;
+			re->next_hit = 0;
+			memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
+		}
+	}
+}
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan(int contig_num, bool revcmpl)
@@ -277,7 +298,8 @@ scan(int contig_num, bool revcmpl)
 			re->next_hit = (re->next_hit + 1) % num_matches;
 
 			if ((idx - re->hits[re->next_hit]) < window_len &&
-			    (i - re->last_swhit_idx) >= window_len &&
+			    (re->last_swhit_idx == -1 ||
+			     (i - re->last_swhit_idx) >= window_len) &&
 			    re->hits[re->next_hit] != -1) {
 				if (i < window_len)
 					goff = 0;
@@ -482,6 +504,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		    (sizeof(re->hits[0]) * num_matches);
 		re = xmalloc(len);
 		memset(re, 0, len);
+		re->last_swhit_idx = -1;
 
 		re->name = strdup(name);
 		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
@@ -807,6 +830,7 @@ scan_genomes_contig(void *arg)
 	 */
 	gettimeofday(args->tv1, NULL);
 	scan(ncontigs, false);
+	reset_reads();
 	gettimeofday(args->tv2, NULL);
 
 	*args->stime += ((double)args->tv2->tv_sec +
@@ -831,6 +855,7 @@ scan_genomes_contig(void *arg)
 
 	gettimeofday(args->tv1, NULL);
 	scan(ncontigs, true);
+	reset_reads();
 	gettimeofday(args->tv2, NULL);
 
 	*args->stime += ((double)args->tv2->tv_sec +
