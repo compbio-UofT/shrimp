@@ -61,6 +61,27 @@ strchrcnt(const char *str, const char c)
 	return (i);
 }
 
+bool
+is_number(const char *str)
+{
+
+	while (*str != '\0')
+		if (!isdigit((int)*str++))
+			return (false);
+
+	return (true);
+}
+
+void
+xstat(const char *path, struct stat *sbp)
+{
+	
+	if (stat(path, sbp) != 0) {
+		fprintf(stderr, "error: failed to stat [%s]\n", path);
+		exit(1);
+	}
+}
+
 void *
 xmalloc(size_t size)
 {
@@ -359,4 +380,80 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 			lastbp = base;
 		}
 	}
+}
+
+/*
+ * Given a path, if it's a regular file (or symlink to one), call fh on it.
+ * If it's a directory, call fh on all regular files within it (or symlinks to
+ * regular files).
+ *
+ * Returns the number of files fh was called on.
+ */
+uint64_t
+file_iterator(char *path, void (*fh)(char *, struct stat *, void *),
+    void *arg)
+{
+	char fpath[2048];
+	struct stat sb;
+	DIR *dp;
+	struct dirent *de;
+	uint64_t files;
+
+	/* is a regular file... */
+	xstat(path, &sb);
+	if (S_ISREG(sb.st_mode)) {
+		fh(path, &sb, arg);
+		return (1);
+	}
+
+	/* is (hopefully) a directory... */
+	dp = opendir(path);
+	if (dp == NULL) {
+		fprintf(stderr, "error: failed to open directory [%s]: %s\n",
+		    path, strerror(errno));
+		exit(1);
+	}
+
+	files = 0;
+	while (1) {
+		de = readdir(dp);
+		if (de == NULL)
+			break;
+
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		strcpy(fpath, path);
+		if (fpath[strlen(path) - 1] != '/')
+			strcat(fpath, "/");
+		strcat(fpath, de->d_name);
+
+		/* ensure it's a regular file or link to one */
+		xstat(fpath, &sb);
+		if (S_ISREG(sb.st_mode)) {
+			fh(fpath, &sb, arg);
+			files++;
+		} else {
+			fprintf(stderr, "warning: [%s] is neither a regular "
+			    "file, nor a link to one; skipping...", fpath);
+			continue;
+		}
+	}
+
+	closedir(dp);
+
+	return (files);
+}
+
+uint64_t
+file_iterator_n(char **paths, int npaths,
+    void (*fh)(char *, struct stat *, void *), void *arg)
+{
+	uint64_t files;
+	int i;
+
+	for (i = files = 0; i < npaths; i++)
+		files += file_iterator(paths[i], fh, arg);
+
+	return (files);
 }

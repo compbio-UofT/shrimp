@@ -1,6 +1,12 @@
 /*	$Id$	*/
 
 #include <assert.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <unistd.h>
+
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
@@ -14,6 +20,8 @@
 uint64_t	rdtsc(void);
 double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
+bool		is_number(const char *);
+void		xstat(const char *, struct stat *);
 void	       *xmalloc(size_t);
 void	       *xrealloc(void *, size_t);
 char	       *xstrdup(const char *);
@@ -25,6 +33,10 @@ void		bitfield_prepend(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
 void		reverse_complement(uint32_t *, uint32_t *, uint32_t);
+uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
+		    void *);
+uint64_t	file_iterator_n(char **, int,
+		    void (*)(char *, struct stat *, void *), void *);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;
