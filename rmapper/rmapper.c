@@ -209,8 +209,8 @@ readmap_prune()
 		stddev += pow((double)readmap_len[i] - mean, 2);
 	stddev = sqrt(stddev / j);
 
-	fprintf(stderr, "Pruning kmers... (mean: %f, stddev: %f, "
-	    "stddev limit: +/- %f)\n", mean, stddev,
+	fprintf(stderr, "- Pruning kmers: mean: %f, stddev: %f, "
+	    "stddev limit: +/- %f\n", mean, stddev,
 	    kmer_stddev_limit * stddev);
 	if (mean < 1.0)
 		fprintf(stderr, "WARNING: low mean - are you sure you want to "
