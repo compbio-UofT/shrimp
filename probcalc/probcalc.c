@@ -58,6 +58,14 @@ struct readstatspval {
 	double            normodds;
 };
 
+struct pass_cb {
+	struct rates	rates;
+	uint64_t	nbytes;
+	uint64_t	nfiles;
+	uint64_t	total_files;
+	int		pass;
+};
+
 enum {
 	SORT_PCHANCE = 1,
 	SORT_PGENOME,
@@ -564,6 +572,17 @@ ratestats(struct rates *rates)
 	fprintf(stderr, "    match rate:         %.10f\n", rates->mrate);
 }
 
+static void
+single_pass_cb(char *path, struct stat *sb, void *arg)
+{
+	struct pass_cb *pcb = arg;
+
+	read_file(path);
+	pcb->nbytes += sb->st_size;
+	pcb->nfiles++;
+	PROGRESS_BAR(stderr, pcb->nfiles, pcb->total_files, 100);
+}
+
 /*
  * Do everything in one pass, saving it all in memory. This is potentially
  * much faster (factor of two or so), but can eat a ton of memory.
@@ -572,54 +591,22 @@ ratestats(struct rates *rates)
  * are in the same file.
  */
 static void
-do_single_pass(char *dir, DIR *dp, uint64_t files)
+do_single_pass(char **objs, int nobjs, uint64_t files)
 {
-	char fpath[2048];
 	struct rates rates;
-	struct stat sb;
-	struct dirent *de;
-	uint64_t i, bytes;
+	struct pass_cb pcb;
 
 	fprintf(stderr, "warning: single pass mode may consume a large amount "
 	    "of memory!\n\n");
 
-	i = bytes = 0;
+	memset(&pcb, 0, sizeof(pcb));
+	pcb.total_files = files;
 	fprintf(stderr, "Parsing %" PRIu64 " file(s)...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-
-		fpath[0] = '\0';
-		strcpy(fpath, dir);
-		strcat(fpath, "/");
-		strcat(fpath, de->d_name);
-
-		/* ensure it's a regular file or link to one */
-		if (stat(fpath, &sb) == -1) {
-			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
-			    fpath, strerror(errno));
-			exit(1);
-		}
-
-		if (S_ISREG(sb.st_mode)) {
-			read_file(fpath);
-			bytes += sb.st_size;
-			i++;
-		} else {
-			fprintf(stderr, "warning: [%s] is neither a regular "
-			    "file, nor a link to one; skipping...", fpath);
-		}
-
-		PROGRESS_BAR(stderr, i, files, 100);
-	}
+	file_iterator_n(objs, nobjs, single_pass_cb, &pcb);
 	PROGRESS_BAR(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
-	    (double)bytes / (1024 * 1024), i);
+	    (double)pcb.nbytes / (1024 * 1024), pcb.nfiles);
 
 	/*
 	 * First iterative pass: calculate rates for top matches of reads.
@@ -651,6 +638,25 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 		putc('\n', stderr);
 }
 
+static void
+double_pass_cb(char *path, struct stat *sb, void *arg)
+{
+	struct pass_cb *pcb = arg;
+
+	read_file(path);
+	pcb->nbytes += sb->st_size;
+	pcb->nfiles++;
+	PROGRESS_BAR(stderr, pcb->nfiles, pcb->total_files, 100);
+
+	/* iterate over what's been read and free stored data */
+	assert(pcb->pass == 1 || pcb->pass == 2);
+	if (pcb->pass == 1)
+		dynhash_iterate(read_list, calc_rates, &pcb->rates);
+	else
+		dynhash_iterate(read_list, calc_probs, &pcb->rates);
+	cleanup();
+}
+
 /*
  * Do everything in two passes, once per file to calculate rates, and another
  * time per file to do the probability calculations.
@@ -659,63 +665,29 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
  * the same file.
  */
 static void
-do_double_pass(char *dir, DIR *dp, uint64_t files)
+do_double_pass(char **objs, int nobjs, uint64_t files)
 {
-	char fpath[2048];
-	struct rates rates;
-	struct stat sb;
-	struct dirent *de;
-	uint64_t i, bytes;
+	struct pass_cb pcb;
 	int tmp_top_matches;
 
 	/* only need best match for calculating rates */
 	tmp_top_matches = top_matches;
 	top_matches = 1;
 
-	i = bytes = 0;
-	memset(&rates, 0, sizeof(rates));
+	/*
+	 * First iterative pass: Calculate rates.
+	 */
+	memset(&pcb, 0, sizeof(pcb));
+	pcb.pass = 1;
+	pcb.total_files = files;
+
 	fprintf(stderr, "PASS 1: Parsing %" PRIu64 " file(s) to calculate "
 	    "rates...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-
-		fpath[0] = '\0';
-		strcpy(fpath, dir);
-		strcat(fpath, "/");
-		strcat(fpath, de->d_name);
-
-		/* ensure it's a regular file or link to one */
-		if (stat(fpath, &sb) == -1) {
-			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
-			    fpath, strerror(errno));
-			exit(1);
-		}
-
-		if (S_ISREG(sb.st_mode)) {
-			read_file(fpath);
-			bytes += sb.st_size;
-			i++;
-
-			/* iterate over what's been read and free stored data */
-			dynhash_iterate(read_list, calc_rates, &rates);
-			cleanup();
-		} else {
-			fprintf(stderr, "warning: [%s] is neither a regular "
-			    "file, nor a link to one; skipping...", fpath);
-			continue;
-		}
-
-		PROGRESS_BAR(stderr, i, files, 100);
-	}
+	file_iterator_n(objs, nobjs, double_pass_cb, &pcb);
 	PROGRESS_BAR(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
-	    (double)bytes / (1024 * 1024), i);
+	    (double)pcb.nbytes / (1024 * 1024), pcb.nfiles);
 
 	/* restore desired top matches */
 	top_matches = tmp_top_matches;
@@ -726,57 +698,34 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		exit(1);
 	}
 
-	ratestats(&rates);
+	ratestats(&pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
 	 * alignments.
 	 */
-	rewinddir(dp);
+	pcb.pass = 2;
+	pcb.nbytes = pcb.nfiles = 0;
 
 	fprintf(stderr, "\nPASS 2: Parsing %" PRIu64 " file(s) to calculate "
 	    "probabilities...\n", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
-	i = bytes = 0;
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-
-		fpath[0] = '\0';
-		strcpy(fpath, dir);
-		strcat(fpath, "/");
-		strcat(fpath, de->d_name);
-
-		/* ensure it's a regular file or link to one */
-		if (stat(fpath, &sb) == -1) {
-			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
-			    fpath, strerror(errno));
-			exit(1);
-		}
-
-		if (S_ISREG(sb.st_mode)) {
-			read_file(fpath);
-			bytes += sb.st_size;
-			i++;
-
-			/* iterate over what's been read and free stored data */
-			dynhash_iterate(read_list, calc_probs, &rates);
-			cleanup();
-		} else {
-			fprintf(stderr, "warning: [%s] is neither a regular "
-			    "file, nor a link to one; skipping...", fpath);
-			continue;
-		}
-
-		PROGRESS_BAR(stderr, i, files, 100);
-	}
+	file_iterator_n(objs, nobjs, double_pass_cb, &pcb);
 	PROGRESS_BAR(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
-	    (double)bytes / (1024 * 1024), i);
+	    (double)pcb.nbytes / (1024 * 1024), pcb.nfiles);
+}
+
+static void
+count_files(char *path, struct stat *sb, void *arg)
+{
+	uint64_t *i = arg;
+
+	/* shut up, icc */
+	(void)path;
+	(void)sb;
+
+	(*i)++;
 }
 
 static void
@@ -791,17 +740,16 @@ usage(char *progname)
 	fprintf(stderr, "usage: %s [-n normodds_cutoff] [-o pgenome_cutoff] "
 	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
 	    "[-t top_matches] [-B] [-R] [-S] "
-	    "total_genome_len results_directory\n", progname);
+	    "total_genome_len results_dir1|results_file1 "
+	    "results_dir2|results_file2 ...\n", progname);
 	exit(1);
 }
 
 int
 main(int argc, char **argv)
 {
-	DIR *dp;
-	struct dirent *de;
-	char *progname, *dir;
-	uint64_t files;
+	char *progname;
+	uint64_t total_files;
 	int ch;
 
 	fprintf(stderr, "--------------------------------------------------"
@@ -855,11 +803,19 @@ main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	if (argc != 2)
+	if (argc < 2)
 		usage(progname);
+	
+	if (!is_number(argv[0])) {
+		fprintf(stderr, "error: expected a number for genome length "
+		    "(got: %s)\n", argv[0]);
+		usage(progname);
+	}
 
 	genome_len = strtoul(argv[0], NULL, 0);
-	dir = argv[1];
+
+	argc--;
+	argv++;
 
 	fprintf(stderr, "\nSettings:\n");
 	fprintf(stderr, "    Normodds Cutoff:  < %f\n", normodds_cutoff);
@@ -892,37 +848,18 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	/*
-	 * Our parameter is a directory, since we may have tons of files -
-	 * more than can fit in argv[].
-	 */
-	dp = opendir(dir);
-	if (dp == NULL) {
-		fprintf(stderr, "error: failed to open directory [%s]: %s\n",
-		    dir, strerror(errno));
+	total_files = 0;
+	file_iterator_n(argv, argc, count_files, &total_files);
+
+	if (total_files == 0) {
+		fprintf(stderr, "error: no files found to parse!\n");
 		exit(1);
 	}
 
-	/* count number of entries */
-	files = 0;
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
-		    strcmp(de->d_name, ".") && strcmp(de->d_name, ".."))
-			files++;
-	}
-
-	rewinddir(dp);
-
 	if (Sflag)
-		do_single_pass(dir, dp, files);
+		do_single_pass(argv, argc, total_files);
 	else
-		do_double_pass(dir, dp, files);
-
-	closedir(dp);
+		do_double_pass(argv, argc, total_files);
 
 	return (0);
 }
