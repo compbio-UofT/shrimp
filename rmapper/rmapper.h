@@ -2,21 +2,22 @@
 
 extern const bool use_colours;
 
-#define DEF_SPACED_SEED		"11110111"
+/* default parameters - optimised for human */
+#define DEF_SPACED_SEED		"1111101111"
 #define DEF_WINDOW_LEN		30
 #define DEF_NUM_MATCHES		2
 #define DEF_TABOO_LEN		4
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	64
-#define DEF_KMER_STDDEV_LIMIT	-1
+#define DEF_KMER_STDDEV_LIMIT	5
 
 #define DEF_MATCH_VALUE		100
-#define DEF_MISMATCH_VALUE	-70
-#define DEF_GAP_OPEN		-100
+#define DEF_MISMATCH_VALUE	-150
+#define DEF_GAP_OPEN		-300
 #define DEF_GAP_EXTEND		-70
-#define DEF_XOVER_PENALTY	-200
-#define DEF_SW_VECT_THRESHOLD	1875	/* == DEF_SW_FULL_THRESHOLD in lspace */
-#define DEF_SW_FULL_THRESHOLD	1975
+#define DEF_XOVER_PENALTY	-120
+#define DEF_SW_VECT_THRESHOLD	1500	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_FULL_THRESHOLD	1700
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
