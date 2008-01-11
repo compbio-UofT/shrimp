@@ -481,7 +481,7 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [parameters] [options] output_file "
+	fprintf(stderr, "usage: %s [parameters] [options] shrimp_results_file "
 	    "genome_dir reads_dir\n", progname);
 
 	fprintf(stderr, "Parameters:\n");

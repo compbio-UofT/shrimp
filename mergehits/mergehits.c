@@ -328,7 +328,8 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [-R reads_dir] output_file\n", progname);
+	fprintf(stderr, "usage: %s [-R reads_dir] shrimp_results_file\n",
+	    progname);
 
 	exit(1);
 }
