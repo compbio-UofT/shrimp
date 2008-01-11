@@ -54,58 +54,6 @@ static bool Rflag = false;		/* don't output read sequence */
 
 #define MAX_READ_LEN	5000		/* ridiculously high upper bound */
 
-static uint64_t
-iter_reg_files(char *dir, void (*fh)(char *, void *), void *arg)
-{
-	char fpath[2048];
-	struct stat sb;
-	DIR *dp;
-	struct dirent *de;
-	uint64_t files;
-
-	dp = opendir(dir);
-	if (dp == NULL) {
-		fprintf(stderr, "error: failed to open directory [%s]: %s\n",
-		    dir, strerror(errno));
-		exit(1);
-	}
-
-	files = 0;
-	while (1) {
-		de = readdir(dp);
-		if (de == NULL)
-			break;
-
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-
-		fpath[0] = '\0';
-		strcpy(fpath, dir);
-		strcat(fpath, "/");
-		strcat(fpath, de->d_name);
-
-		/* ensure it's a regular file or link to one */
-		if (stat(fpath, &sb) == -1) {
-			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
-			    fpath, strerror(errno));
-			exit(1);
-		}
-
-		if (S_ISREG(sb.st_mode)) {
-			fh(fpath, arg);
-			files++;
-		} else {
-			fprintf(stderr, "warning: [%s] is neither a regular "
-			    "file, nor a link to one; skipping...", fpath);
-			continue;
-		}
-	}
-
-	closedir(dp);
-
-	return (files);
-}
-
 static void
 load_output_file(char *file)
 {
@@ -116,8 +64,8 @@ load_output_file(char *file)
 
 	fp = fopen(file, "r");
 	if (fp == NULL) {
-		fprintf(stderr, "error: failed to open probcalc/rmapper "
-			"output file [%s]: %s\n", file, strerror(errno));
+		fprintf(stderr, "error: failed to open shrimp output file "
+		    "[%s]: %s\n", file, strerror(errno));
 		exit(1);
 	}
 
@@ -246,11 +194,12 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 }
 
 static void
-load_reads_file(char *fpath, void *arg)
+load_reads_file(char *fpath, struct stat *sb, void *arg)
 {
 	ssize_t ret;
 
 	/* shut up, icc */
+	(void)sb;
 	(void)arg;
 
 	if (use_colours)
@@ -328,7 +277,7 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [-R reads_dir] shrimp_results_file\n",
+	fprintf(stderr, "usage: %s [-R reads_dir] shrimp_output_file\n",
 	    progname);
 
 	exit(1);
@@ -338,6 +287,7 @@ int
 main(int argc, char **argv)
 {
 	char *fpout, *readsdir, *progname;
+	struct stat sb;
 	int ch;
 
 	/* shut up, gcc */
@@ -376,14 +326,21 @@ main(int argc, char **argv)
 
 	fpout = argv[0];
 
-	fprintf(stderr, "Loading output file...\n");
+	xstat(fpout, &sb);
+	if (!S_ISREG(sb.st_mode)) {
+		fprintf(stderr, "error: cannot open shrimp output file [%s]: "
+		    "not a regular file or symlink to a regular file.\n",fpout);
+		exit(1);
+	}
+
+	fprintf(stderr, "Loading shrimp output file...\n");
 	load_output_file(fpout);
-	fprintf(stderr, "Loaded %" PRIu64 " alignments from rmapper/probcalc "
-	    "output\n", nalignments);
+	fprintf(stderr, "Loaded %" PRIu64 " alignments from shrimp output\n",
+	    nalignments);
 
 	if (Rflag) {
 		fprintf(stderr, "Loading read file(s)...\n");
-		iter_reg_files(readsdir, load_reads_file, NULL);
+		file_iterator(readsdir, load_reads_file, NULL);
 	}
 
 	print_alignments();
