@@ -72,8 +72,10 @@ static bool Rflag = false;		/* don't output read sequence */
 #define MAX_READ_LEN	5000		/* ridiculously high upper bound */
 
 static uint64_t
-iter_reg_files(char *dir, void (*fh)(char *, char *, void *), void *arg)
+iter_reg_files(char *dir, void (*fh)(char *, void *), void *arg)
 {
+	char fpath[2048];
+	struct stat sb;
 	DIR *dp;
 	struct dirent *de;
 	uint64_t files;
@@ -91,10 +93,28 @@ iter_reg_files(char *dir, void (*fh)(char *, char *, void *), void *arg)
 		if (de == NULL)
 			break;
 
-		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
-		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			fh(dir, de->d_name, arg);
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		fpath[0] = '\0';
+		strcpy(fpath, dir);
+		strcat(fpath, "/");
+		strcat(fpath, de->d_name);
+
+		/* ensure it's a regular file or link to one */
+		if (stat(fpath, &sb) == -1) {
+			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
+			    fpath, strerror(errno));
+			exit(1);
+		}
+
+		if (S_ISREG(sb.st_mode)) {
+			fh(fpath, arg);
 			files++;
+		} else {
+			fprintf(stderr, "warning: [%s] is neither a regular "
+			    "file, nor a link to one; skipping...", fpath);
+			continue;
 		}
 	}
 
@@ -216,17 +236,12 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 }
 
 static void
-load_genome_file(char *dir, char *file, void *arg)
+load_genome_file(char *fpath, void *arg)
 {
-	char fpath[2048];
 	ssize_t ret;
 
 	/* shut up, icc */
 	(void)arg;
-
-	strcpy(fpath, dir);
-	strcat(fpath, "/");
-	strcat(fpath, file);
 
 	ret = load_fasta(fpath, load_genome_file_helper, LETTER_SPACE);
 
@@ -318,17 +333,12 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 }
 
 static void
-load_reads_file(char *dir, char *file, void *arg)
+load_reads_file(char *fpath, void *arg)
 {
-	char fpath[2048];
 	ssize_t ret;
 
 	/* shut up, icc */
 	(void)arg;
-
-	strcpy(fpath, dir);
-	strcat(fpath, "/");
-	strcat(fpath, file);
 
 	if (use_colours)
 		ret = load_fasta(fpath, load_reads_file_helper, COLOUR_SPACE);

@@ -133,21 +133,14 @@ save_match(struct readinfo *ri, struct input *input)
 }
 
 /* Returns the number of bytes read */
-static uint64_t
-read_file(const char *dir, const char *file)
+static void
+read_file(const char *fpath)
 {
-	char fpath[2048];
 	struct input input;
-	struct stat sb;
 	struct readinfo *ri;
 	char *key;
 	FILE *fp;
 	int i;
-
-	fpath[0] = '\0';
-	strcpy(fpath, dir);
-	strcat(fpath, "/");
-	strcat(fpath, file);
 
 	fp = fopen(fpath, "r");
 	if (fp == NULL) {
@@ -234,15 +227,7 @@ read_file(const char *dir, const char *file)
 		}
 	}
 
-	if (fstat(fileno(fp), &sb) == -1) {
-		fprintf(stderr, "error: failed to stat file [%s]: %s\n",
-		    fpath, strerror(errno));
-		exit(1);
-	}
-
 	fclose(fp);
-
-	return (sb.st_size);
 }
 
 static double
@@ -589,7 +574,9 @@ ratestats(struct rates *rates)
 static void
 do_single_pass(char *dir, DIR *dp, uint64_t files)
 {
+	char fpath[2048];
 	struct rates rates;
+	struct stat sb;
 	struct dirent *de;
 	uint64_t i, bytes;
 
@@ -604,10 +591,28 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
-		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			bytes += read_file(dir, de->d_name);
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		fpath[0] = '\0';
+		strcpy(fpath, dir);
+		strcat(fpath, "/");
+		strcat(fpath, de->d_name);
+
+		/* ensure it's a regular file or link to one */
+		if (stat(fpath, &sb) == -1) {
+			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
+			    fpath, strerror(errno));
+			exit(1);
+		}
+
+		if (S_ISREG(sb.st_mode)) {
+			read_file(fpath);
+			bytes += sb.st_size;
 			i++;
+		} else {
+			fprintf(stderr, "warning: [%s] is neither a regular "
+			    "file, nor a link to one; skipping...", fpath);
 		}
 
 		PROGRESS_BAR(stderr, i, files, 100);
@@ -656,7 +661,9 @@ do_single_pass(char *dir, DIR *dp, uint64_t files)
 static void
 do_double_pass(char *dir, DIR *dp, uint64_t files)
 {
+	char fpath[2048];
 	struct rates rates;
+	struct stat sb;
 	struct dirent *de;
 	uint64_t i, bytes;
 	int tmp_top_matches;
@@ -675,15 +682,34 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
-		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			bytes += read_file(dir, de->d_name);
-			i++;
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		fpath[0] = '\0';
+		strcpy(fpath, dir);
+		strcat(fpath, "/");
+		strcat(fpath, de->d_name);
+
+		/* ensure it's a regular file or link to one */
+		if (stat(fpath, &sb) == -1) {
+			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
+			    fpath, strerror(errno));
+			exit(1);
 		}
 
-		/* iterate over what's been read and free stored data */
-		dynhash_iterate(read_list, calc_rates, &rates);
-		cleanup();
+		if (S_ISREG(sb.st_mode)) {
+			read_file(fpath);
+			bytes += sb.st_size;
+			i++;
+
+			/* iterate over what's been read and free stored data */
+			dynhash_iterate(read_list, calc_rates, &rates);
+			cleanup();
+		} else {
+			fprintf(stderr, "warning: [%s] is neither a regular "
+			    "file, nor a link to one; skipping...", fpath);
+			continue;
+		}
 
 		PROGRESS_BAR(stderr, i, files, 100);
 	}
@@ -717,15 +743,34 @@ do_double_pass(char *dir, DIR *dp, uint64_t files)
 		if (de == NULL)
 			break;
 
-		if ((de->d_type == DT_REG || de->d_type == DT_LNK) &&
-		    strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			bytes += read_file(dir, de->d_name);
-			i++;
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+
+		fpath[0] = '\0';
+		strcpy(fpath, dir);
+		strcat(fpath, "/");
+		strcat(fpath, de->d_name);
+
+		/* ensure it's a regular file or link to one */
+		if (stat(fpath, &sb) == -1) {
+			fprintf(stderr, "error: failed to stat file [%s]: %s\n",
+			    fpath, strerror(errno));
+			exit(1);
 		}
 
-		/* iterate over what's been read and free stored data */
-		dynhash_iterate(read_list, calc_probs, &rates);
-		cleanup();
+		if (S_ISREG(sb.st_mode)) {
+			read_file(fpath);
+			bytes += sb.st_size;
+			i++;
+
+			/* iterate over what's been read and free stored data */
+			dynhash_iterate(read_list, calc_probs, &rates);
+			cleanup();
+		} else {
+			fprintf(stderr, "warning: [%s] is neither a regular "
+			    "file, nor a link to one; skipping...", fpath);
+			continue;
+		}
 
 		PROGRESS_BAR(stderr, i, files, 100);
 	}
