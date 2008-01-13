@@ -192,6 +192,7 @@ static void
 readmap_prune()
 {
 	double mean, stddev;
+	uint64_t pruned = 0;
 	uint32_t i, j;
 
 	if (kmer_stddev_limit < 0)
@@ -209,17 +210,21 @@ readmap_prune()
 		stddev += pow((double)readmap_len[i] - mean, 2);
 	stddev = sqrt(stddev / j);
 
-	fprintf(stderr, "- Pruning kmers: mean: %f, stddev: %f, "
-	    "stddev limit: +/- %f\n", mean, stddev,
+	fprintf(stderr, "- Pruning kmers; mu: %f, sigma: %f, "
+	    "sigma limit: +/- %f\n", mean, stddev,
 	    kmer_stddev_limit * stddev);
 	if (mean < 1.0)
 		fprintf(stderr, "WARNING: low mean - are you sure you want to "
 		    "prune kmers?\n");
 
 	for (i = 0; i < j; i++) {
-		if (readmap_len[i] > mean + (kmer_stddev_limit * stddev))
+		if (readmap_len[i] > mean + (kmer_stddev_limit * stddev)) {
 			readmap[i] = NULL;
+			pruned++;
+		}
 	}
+
+	fprintf(stderr, "  - Pruned %" PRIu64 " kmer(s)\n", pruned);
 }
 
 /* reset the fields used by scan() for each read */
