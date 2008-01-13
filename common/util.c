@@ -77,7 +77,8 @@ xstat(const char *path, struct stat *sbp)
 {
 	
 	if (stat(path, sbp) != 0) {
-		fprintf(stderr, "error: failed to stat [%s]\n", path);
+		fprintf(stderr, "error: failed to stat [%s]:\n", path,
+		    strerror(errno));
 		exit(1);
 	}
 }
