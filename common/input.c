@@ -147,7 +147,7 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 	switch (key[0]) {
 	case 'd':
 		if (strcmp(key, "dels") == 0)
-			inp->deletions = strtoul(val, NULL, 0);
+			inp->deletions = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
@@ -169,14 +169,14 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 
 	case 'i':
 		if (strcmp(key, "ins") == 0)
-			inp->insertions = strtoul(val, NULL, 0);
+			inp->insertions = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
 
 	case 'm':
 		if (strcmp(key, "match") == 0)
-			inp->matches = strtoul(val, NULL, 0);
+			inp->matches = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
@@ -206,11 +206,11 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 		else if (strcmp(key, "r_seq") == 0)
 			inp->read_seq = xstrdup(val);
 		else if (strcmp(key, "r_start") == 0)
-			inp->read_start = strtoul(val, NULL, 0) - 1;
+			inp->read_start = (uint16_t)(strtoul(val, NULL, 0) - 1);
 		else if (strcmp(key, "r_end") == 0)
-			inp->read_end = strtoul(val, NULL, 0) - 1;
+			inp->read_end = (uint16_t)(strtoul(val, NULL, 0) - 1);
 		else if (strcmp(key, "r_len") == 0)
-			inp->read_length = strtoul(val, NULL, 0);
+			inp->read_length = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
@@ -219,14 +219,14 @@ handle_keyvalue(struct input *inp, char *key, char *val)
 		if (strcmp(key, "score") == 0)
 			inp->score = strtoul(val, NULL, 0);
 		else if (strcmp(key, "subs") == 0)
-			inp->mismatches = strtoul(val, NULL, 0);
+			inp->mismatches = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
 
 	case 'x':
 		if (strcmp(key, "xovers") == 0)
-			inp->crossovers = strtoul(val, NULL, 0);
+			inp->crossovers = (uint16_t)strtoul(val, NULL, 0);
 		else
 			error = true;
 		break;
