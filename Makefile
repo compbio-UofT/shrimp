@@ -1,5 +1,5 @@
 # $Id$
-CFLAGS=-Wall -Werror -O3 -mmmx -msse -msse2 -static
+CFLAGS=-Wall -Werror -O3 -mmmx -msse -msse2 -DSHRIMP_BUGS=OFF -static
 LDFLAGS=-lm
 
 all: bin/rmapper-cs bin/rmapper-ls bin/colourise bin/probcalc \
