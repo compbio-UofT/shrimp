@@ -1,8 +1,31 @@
 $Id$
 
-1.0.3: November ?, 2007
-	- Added -S flag to probcalc and made double pass mode the default.
+1.0.4: January 24, 2008
+	- Changed rmapper default parameters to be more appropriate for the
+	  human genome.
+	- Applied fixes to the full colourspace Smith-Waterman algorithm. In
+	  some cases we were not tracing back into the proper matrix. Initial
+	  crossovers are now charged.
+	- Added Phil Lacroute's mergehits utility.
+	- Taught rmapper and prettyprint to handle multiple contigs per genome
+	  file.
+	- Fixed a minor bug that would miss hits within the first window of a
+	  contig.
+	- Fixed a bug in probcalc that would recalculate rates on non-regular
+	  files.
+	- Added surrounding bases to pretty-printed genome output.
+	- Taught probcalc and prettyprint to handle symlinks.
+	- Taught probcalc to accept multiple results arguments as both files and
+	  directories of files.
+	- Taught SHRiMP about wobble codes (by considering them as mismatches).
+	- Added -S flag to probcalc and made double pass mode the default (now
+	  probcalc uses much less memory at a higher runtime cost).
+	- Added -C and -F options to rmapper to specify the strand.
+	- Misc. portability and compilation fixes.
 	- Misc. documentation updates.
+
+1.0.3: Fall 2007
+	- Internal development version. S-W fixes and probcalc double pass.
 
 1.0.2: November 6, 2007
 	- Fix invalid assertion in common/output.c:output_pretty.
