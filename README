@@ -251,6 +251,16 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		it is not enabled by default and should only be used during
 		manual, interactive execution.
 
+		[ -C ]
+
+		Only process the negative strand of the genome (the reverse
+		`C'omplement). By default, both strands are scanned.
+
+		[ -F ]
+
+		Only process the positive strand of the genome (going
+		`F'orwards). By default, both strands are scanned.
+
 		[ -P ]
 
 		'rmapper' has two output formats. The first, and default,

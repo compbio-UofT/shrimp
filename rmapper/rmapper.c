@@ -70,6 +70,8 @@ static u_int	longest_read_len;		/* longest read we've seen */
 
 /* Flags */
 static int Bflag = false;			/* print a progress bar */
+static int Cflag = false;			/* do complement only */
+static int Fflag = false;			/* do positive (forward) only */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read seq to output */
 
@@ -715,12 +717,16 @@ final_pass_contig(void *arg)
 
 	assert(i >= 0 && i < ncontigs);
 
-	generate_output(contig_list[i].scores, false);
-	if (use_colours)
-		reverse_complement(genome_ls, genome, genome_len);
-	else
-		reverse_complement(genome, NULL, genome_len);
-	generate_output(contig_list[i].revcmpl_scores, true);
+	if (Fflag)
+		generate_output(contig_list[i].scores, false);
+
+	if (Cflag) {
+		if (use_colours)
+			reverse_complement(genome_ls, genome, genome_len);
+		else
+			reverse_complement(genome, NULL, genome_len);
+		generate_output(contig_list[i].revcmpl_scores, true);
+	}
 
 	i++;
 }
@@ -824,48 +830,56 @@ scan_genomes_contig(void *arg)
 {
 	struct scan_genomes_args *args = arg;
 
-	gettimeofday(args->tv2, NULL);
+	if (Fflag) {
+		gettimeofday(args->tv2, NULL);
 
-	*args->ltime += ((double)args->tv2->tv_sec +
-	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
-	    (double)args->tv1->tv_usec / 1.0e6);
+		*args->ltime += ((double)args->tv2->tv_sec +
+		    (double)args->tv2->tv_usec / 1.0e6) -
+		    ((double)args->tv1->tv_sec +
+		    (double)args->tv1->tv_usec / 1.0e6);
 
-	/*
-	 * Do it forwards.
-	 */
-	gettimeofday(args->tv1, NULL);
-	scan(ncontigs, false);
-	reset_reads();
-	gettimeofday(args->tv2, NULL);
+		/*
+		 * Do it forwards.
+		 */
+		gettimeofday(args->tv1, NULL);
+		scan(ncontigs, false);
+		reset_reads();
+		gettimeofday(args->tv2, NULL);
 
-	*args->stime += ((double)args->tv2->tv_sec +
-	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
-	    (double)args->tv1->tv_usec / 1.0e6);
+		*args->stime += ((double)args->tv2->tv_sec +
+		    (double)args->tv2->tv_usec / 1.0e6) -
+		    ((double)args->tv1->tv_sec +
+		    (double)args->tv1->tv_usec / 1.0e6);
+	}
 
-	/*
-	 * Do it reverse-complementwards.
-	 */
-	fprintf(stderr, "    - Processing reverse complement\n");
+	if (Cflag) {
+		/*
+		 * Do it reverse-complementwards.
+		 */
+		fprintf(stderr, "    - Processing reverse complement\n");
 
-	gettimeofday(args->tv1, NULL);
-	if (use_colours)
-		reverse_complement(genome_ls, genome, genome_len);
-	else
-		reverse_complement(genome, NULL, genome_len);
-	gettimeofday(args->tv2, NULL);
+		gettimeofday(args->tv1, NULL);
+		if (use_colours)
+			reverse_complement(genome_ls, genome, genome_len);
+		else
+			reverse_complement(genome, NULL, genome_len);
+		gettimeofday(args->tv2, NULL);
 
-	*args->rtime += ((double)args->tv2->tv_sec +
-	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
-	    (double)args->tv1->tv_usec / 1.0e6);
+		*args->rtime += ((double)args->tv2->tv_sec +
+		    (double)args->tv2->tv_usec / 1.0e6) -
+		    ((double)args->tv1->tv_sec +
+		    (double)args->tv1->tv_usec / 1.0e6);
 
-	gettimeofday(args->tv1, NULL);
-	scan(ncontigs, true);
-	reset_reads();
-	gettimeofday(args->tv2, NULL);
+		gettimeofday(args->tv1, NULL);
+		scan(ncontigs, true);
+		reset_reads();
+		gettimeofday(args->tv2, NULL);
 
-	*args->stime += ((double)args->tv2->tv_sec +
-	    (double)args->tv2->tv_usec / 1.0e6) - ((double)args->tv1->tv_sec +
-	    (double)args->tv1->tv_usec / 1.0e6);
+		*args->stime += ((double)args->tv2->tv_sec +
+		    (double)args->tv2->tv_usec / 1.0e6) -
+		    ((double)args->tv1->tv_sec +
+		    (double)args->tv1->tv_usec / 1.0e6);
+	}
 
 	ncontigs++;
 }
@@ -992,15 +1006,23 @@ usage(char *progname)
 	fprintf(stderr, "Options:\n");
 
 	fprintf(stderr,
-	    "    -B    Print Scan Progress Bar                 (default: "
+	    "    -B    Print Scan Progress Bar                       (default: "
 	    "disabled)\n"); 
 
 	fprintf(stderr,
-	    "    -P    Pretty Print Alignments                 (default: "
+	    "    -C    Only Process Negative Strand (Rev. Compl.)    (default: "
+	    "disabled)\n");
+
+	fprintf(stderr,
+	    "    -F    Only Process Positive Strand                  (default: "
+	    "disabled)\n");
+
+	fprintf(stderr,
+	    "    -P    Pretty Print Alignments                       (default: "
 	    "disabled)\n"); 
 
 	fprintf(stderr,
-	    "    -R    Print Reads in Output                   (default: "
+	    "    -R    Print Reads in Output                         (default: "
 	    "disabled)\n");
 
 	exit(1);
@@ -1026,9 +1048,9 @@ main(int argc, char **argv)
 	progname = argv[0];
 
 	if (use_colours)
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:BPR";
+		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:BCFPR";
 	else
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:BPR";
+		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:BCFPR";
 
 	while ((ch = getopt(argc, argv, optstr)) != -1) {
 		switch (ch) {
@@ -1079,6 +1101,22 @@ main(int argc, char **argv)
 		case 'B':
 			Bflag = true;
 			break;
+		case 'C':
+			if (Fflag) {
+				fprintf(stderr, "error: -C and -F are mutually "
+				    "exclusive\n");
+				exit(1);
+			}
+			Cflag = true;
+			break;
+		case 'F':
+			if (Cflag) {
+				fprintf(stderr, "error: -C and -F are mutually "
+				    "exclusive\n");
+				exit(1);
+			}
+			Fflag = true;
+			break;
 		case 'P':
 			Pflag = true;
 			break;
@@ -1101,6 +1139,9 @@ main(int argc, char **argv)
 	reads_file    = argv[0];
 	genome_files  = &argv[1];
 	ngenome_files = argc - 1;
+
+	if (!Cflag && !Fflag)
+		Cflag = Fflag = true;
 
 	if (!use_colours)
 		sw_vect_threshold = sw_full_threshold;
