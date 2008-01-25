@@ -126,9 +126,8 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			if (a == -1) {
 				fprintf(stderr, "error: invalid character (%c) "
 				    "in input file [%s]\n", buf[i], file);
-				fprintf(stderr, "       (Did you mixed up "
-				    "letter space and colour space "
-				    "binaries?)\n");
+				fprintf(stderr, "       (Did you mix up letter "
+				    "space and colour space binaries?)\n");
 				exit(1);
 			}
 
