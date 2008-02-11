@@ -99,12 +99,24 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			nl = strchr(name, '\n');
 			if (nl != NULL)
 				*nl = '\0';
+
+			/* strip extra whitespace (e.g. dos newlines) */
+			i = strlen(name) - 1;
+			while (i >= 0) {
+				if (!isspace(name[i]))
+					break;
+				name[i] = '\0';
+			}
+
 			isnewentry = 1;
 			continue;
 		}
 
 		for (i = 0; buf[i] != '\n' && buf[i] != '\0'; i++) {
 			int a;
+
+			if (isspace(buf[i]))
+				continue;
 
 			buf[i] = (char)toupper((int)buf[i]);
 
@@ -124,8 +136,12 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 
 			a = translate[(int)buf[i]];
 			if (a == -1) {
-				fprintf(stderr, "error: invalid character (%c) "
-				    "in input file [%s]\n", buf[i], file);
+				fprintf(stderr, "error: invalid character ");
+				if (isprint(buf[i]))
+					fprintf(stderr, "(%c) ", buf[i]);
+				else
+					fprintf(stderr, "(0x%x) ", buf[i]);
+				fprintf(stderr, "in input file [%s]\n", file);
 				fprintf(stderr, "       (Did you mix up letter "
 				    "space and colour space binaries?)\n");
 				exit(1);
