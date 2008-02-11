@@ -32,5 +32,6 @@ IMPORTANT NOTES FOR MAC OS X USERS:
     occur. Apple either doesn't ship some or all static libraries, or there are
     other things going on in Appleland that I don't understand.
 
-    Also, Mac OS X icc users may need to provide the addition '-wd269' to avoid
-    icc's complaints regarding Apple's strange PRIu64 and PRId64 defintions.
+    Also, Mac OS X icc users may need to provide the additional '-wd269' flag to
+    avoid icc's complaints regarding Apple's strange PRIu64 and PRId64
+    definitions.
