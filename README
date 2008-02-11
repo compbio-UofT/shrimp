@@ -481,7 +481,8 @@ genome, and the normalized odds.
 To compute the probability that a hit happened by chance (p_chance), we compute 
 the probability that a match equally good or better would occur in a genome of 
 equal length where at every position each nucleotide can be randomly selected 
-with probability 0.25. To compute this we compute the number of k-mer strings that have fewer then the observed number changes. In the case of mismatches and
+with probability 0.25. To compute this we compute the number of k-mer strings
+that have fewer then the observed number changes. In the case of mismatches and
 (for colour-space) crossovers, the number of such strings is:
 $(length choose mismatches) * 4^(mismatches+crossovers)$, as any letter can be
 put in place the position where the mismatch occured, and get an as-good, or
