@@ -9,7 +9,7 @@ extern const bool use_colours;
 #define DEF_TABOO_LEN		4
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	64
-#define DEF_KMER_STDDEV_LIMIT	5
+#define DEF_KMER_STDDEV_LIMIT	-1
 
 #define DEF_MATCH_VALUE		100
 #define DEF_MISMATCH_VALUE	-150
