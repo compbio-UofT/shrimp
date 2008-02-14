@@ -87,7 +87,7 @@ contig), both in the present working directory.
   4)  splitreads 1000 ../reads.csfasta
   5)  cd ..
   6)  rmapper-cs -s 11110111 -n 2 -t 4 -w 28 -o 10 -r 25 -m 100 -i -70 -g -100 \
-          -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta
+          -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta \
          ciona.fasta > results/ciona.0_to_999.out
   7)  probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
   8)  prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
