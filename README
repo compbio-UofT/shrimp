@@ -59,6 +59,13 @@ their reverse-complements) in one invocation. Parallelism can be achieved by
 splitting the set of reads into N chunks, where N is the desired level of
 parallelism.
 
+It is important to note that 'rmapper' is always given a reference genome in
+letter-space, regardless of whether the reads are in letter-space or AB SOLiD's
+colour-space representation. For letter-space reads, use 'rmapper-ls' and for
+colour-space reads, 'rmapper-cs'. Other SHRiMP utilities that make assumptions
+about the input read format come in pairs, i.e. 'foo-ls' and 'foo-cs', for
+letters and colours, respectively.
+
 Once 'rmapper' has been run, the standard output format of all alignments
 may be parsed via the 'probcalc' program. This code analyses all alignment
 output, saving the top 'n' matches per read, and calculates the probability of
