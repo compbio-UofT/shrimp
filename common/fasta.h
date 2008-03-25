@@ -16,17 +16,17 @@
 #define BASE_T		3		/* Thymine */
 #define BASE_U		4		/* Uracil */
 #define BASE_M		5		/* A or C */
-#define BASE_R		6		/* A or G */
+#define BASE_R		6		/* A or G (Purine) */
 #define BASE_W		7		/* A or T */
 #define BASE_S		8		/* C or G */
-#define BASE_Y		9		/* C or T */
+#define BASE_Y		9		/* C or T (Pyrimidine) */
 #define BASE_K		10		/* G or T */
-#define BASE_V		11		/* A or C or G */
-#define BASE_H		12		/* A or C or T */
-#define BASE_D		13		/* A or G or T */
-#define BASE_B		14		/* C or G or T */
-#define BASE_X		15		/* G or A or T or C */
-#define BASE_N		15		/* G or A or T or C */
+#define BASE_V		11		/* A or C or G (not T) */
+#define BASE_H		12		/* A or C or T (not G) */
+#define BASE_D		13		/* A or G or T (not C) */
+#define BASE_B		14		/* C or G or T (not A) */
+#define BASE_X		15		/* G or A or T or C (any base) */
+#define BASE_N		15		/* G or A or T or C (any base) */
 
 #define BASE_LS_MIN	BASE_A
 #define BASE_LS_MAX	BASE_N
