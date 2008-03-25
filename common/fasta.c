@@ -15,12 +15,12 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
-#include "fasta.h"
+#include "../common/fasta.h"
 
 ssize_t
 load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 {
-	char buf[512], name[512];
+	char buf[4096], name[512];
 	char translate[256];
 
 	struct stat sb;
@@ -62,6 +62,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 		translate['3'] = BASE_3;
 		translate['4'] = BASE_N;
 		translate['N'] = BASE_N;
+		translate['.'] = BASE_N;
 		translate['X'] = BASE_X;
 	} else {	
 		translate['A'] = BASE_A;
@@ -80,6 +81,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 		translate['D'] = BASE_D;
 		translate['B'] = BASE_B;
 		translate['N'] = BASE_N;
+		translate['.'] = BASE_N;
 		translate['X'] = BASE_X;
 	}
 
@@ -103,7 +105,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			/* strip extra whitespace (e.g. dos newlines) */
 			i = strlen(name) - 1;
 			while (i >= 0) {
-				if (!isspace(name[i]))
+				if (!isspace((int)name[i]))
 					break;
 				name[i] = '\0';
 			}
@@ -115,7 +117,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 		for (i = 0; buf[i] != '\n' && buf[i] != '\0'; i++) {
 			int a;
 
-			if (isspace(buf[i]))
+			if (isspace((int)buf[i]))
 				continue;
 
 			buf[i] = (char)toupper((int)buf[i]);
@@ -137,7 +139,7 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			a = translate[(int)buf[i]];
 			if (a == -1) {
 				fprintf(stderr, "error: invalid character ");
-				if (isprint(buf[i]))
+				if (isprint((int)buf[i]))
 					fprintf(stderr, "(%c) ", buf[i]);
 				else
 					fprintf(stderr, "(0x%x) ", buf[i]);
