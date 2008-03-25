@@ -754,8 +754,8 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "probcalc. (SHRiMP version %s)\n",
-	    SHRIMP_VERSION_STRING);
+	fprintf(stderr, "probcalc. (SHRiMP %s [%s])\n",
+	    SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 

@@ -475,8 +475,9 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "prettyprint: %s SPACE. (SHRiMP version %s)\n",
-	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING);
+	fprintf(stderr, "prettyprint: %s SPACE. (SHRiMP %s [%s])\n",
+	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING,
+	    get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 
