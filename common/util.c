@@ -13,8 +13,8 @@
 #include <sys/time.h>
 #include <sys/types.h>
 
-#include "fasta.h"
-#include "util.h"
+#include "../common/fasta.h"
+#include "../common/util.h"
 
 uint64_t
 rdtsc() {
@@ -169,7 +169,7 @@ ls_factorial(u_int n)
 	if (n <= 20)
 		return log (fact[n]);
 
-	a = log( sqrt(2 * M_PI * n));
+	a = log(sqrt(2 * M_PI * n));
 	b = n * log(n / M_E);
 
 	return (a + b);
@@ -240,7 +240,7 @@ bitfield_append(uint32_t *bf, uint32_t entries, uint32_t val)
 }
 
 void
-progress_bar(FILE *output, uint64_t at, uint64_t of, uint incr)
+progress_bar(FILE *out, uint64_t at, uint64_t of, uint incr)
 {
 	static int lastperc, beenhere;
 	static char whirly = '\\';
@@ -297,8 +297,14 @@ progress_bar(FILE *output, uint64_t at, uint64_t of, uint incr)
 	}
 	progbuf[51] = '\0';
 
-	fprintf(output, "\rProgress: [%s] %3d.%02d%%", progbuf, perc, dec);
-	fflush(output);
+	if (incr == 100)
+		fprintf(out, "\rProgress: [%s] %3d.%02d%%", progbuf, perc, dec);
+	else if (incr == 10)
+		fprintf(out, "\rProgress: [%s] %3d.%d%%", progbuf, perc, dec);
+	else
+		fprintf(out, "\rProgress: [%s] %3d%%", progbuf, perc);
+	
+	fflush(out);
 }
 
 static inline uint32_t
@@ -457,4 +463,25 @@ file_iterator_n(char **paths, int npaths,
 		files += file_iterator(paths[i], fh, arg);
 
 	return (files);
+}
+
+char *
+get_compiler()
+{
+	char *comp;
+
+#ifdef __GNUC__
+	if (strstr(__VERSION__, "Intel(R)"))
+		comp = "ICC " __VERSION__;
+	else
+		comp = "GCC " __VERSION__;
+#else
+ #ifdef __cplusplus
+	comp = "unknown C++";
+ #else
+	comp = "unknown C";
+ #endif
+#endif
+
+	return (comp);
 }

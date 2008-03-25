@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include "../common/fasta.h"
+
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
@@ -37,6 +39,7 @@ uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
 		    void (*)(char *, struct stat *, void *), void *);
+char *		get_compiler(void);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;
@@ -45,13 +48,26 @@ extern int   optind;
 static inline int
 complement_base(int base)
 {
-	int cmpl[5] = { 3, 2, 1, 0, 4 }; /* A->T, G->C, G->C, T->A, N->N */
+	static const int cmpl[16] = {
+		BASE_T,		/* A -> T */
+		BASE_G,		/* C -> G */
+		BASE_C,		/* G -> C */
+		BASE_A,		/* T -> A */
+		BASE_A,		/* U -> A */
+		BASE_K,		/* M -> K */
+		BASE_Y,		/* R -> Y */
+		BASE_W,		/* W -> W */
+		BASE_S,		/* S -> S */
+		BASE_R,		/* Y -> R */
+		BASE_M,		/* K -> M */
+		BASE_B,		/* V -> B */
+		BASE_D,		/* H -> D */
+		BASE_H,		/* D -> H */
+		BASE_V,		/* B -> V */
+		BASE_N,		/* X,N -> N */
+	};
 
-	/* XXX - convert anything non-{A,C,G,T} to N */
-	if (base > 4)
-		base = 4;
-
-	assert(base >= 0 && base <= 5);
+	assert(base >= BASE_LS_MIN && base <= BASE_LS_MAX);
 
 	return (cmpl[base]);
 }
@@ -75,22 +91,19 @@ cstols(int first_letter, int colour)
 static inline int
 lstocs(int first_letter, int second_letter)
 {
-	const int colourmat[5][5] = {
-		{ 0, 1, 2, 3, 4 },
-		{ 1, 0, 3, 2, 4 },
-		{ 2, 3, 0, 1, 4 },
-		{ 3, 2, 1, 0, 4 },
-		{ 4, 4, 4, 4, 4 }
+	const int colourmat[4][4] = {
+		{ 0, 1, 2, 3 },
+		{ 1, 0, 3, 2 },
+		{ 2, 3, 0, 1 },
+		{ 3, 2, 1, 0 },
 	};
 
 	assert(first_letter  >= 0 && first_letter  <= 15);
 	assert(second_letter >= 0 && second_letter <= 15);
 
 	/* XXX - convert anything non-{A,C,G,T} to N */
-	if (first_letter > 4)
-		first_letter = 4;
-	if (second_letter > 4)
-		second_letter = 4;
+	if (first_letter > BASE_T || second_letter > BASE_T)
+		return (BASE_N);
 
 	return (colourmat[first_letter][second_letter]);
 }
