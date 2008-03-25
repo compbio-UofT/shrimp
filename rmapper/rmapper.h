@@ -3,21 +3,22 @@
 extern const bool use_colours;
 
 /* default parameters - optimised for human */
-#define DEF_SPACED_SEED		"1111101111"
-#define DEF_WINDOW_LEN		30
+#define DEF_SPACED_SEED_CS	"1111101111"
+#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
+#define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
 #define DEF_NUM_MATCHES		2
 #define DEF_TABOO_LEN		4
 #define DEF_NUM_OUTPUTS		100
-#define DEF_MAX_READ_LEN	64
-#define DEF_KMER_STDDEV_LIMIT	-1
+#define DEF_MAX_READ_LEN	1000		/* high sanity mark */
+#define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */
 
 #define DEF_MATCH_VALUE		100
 #define DEF_MISMATCH_VALUE	-150
-#define DEF_GAP_OPEN		-300
+#define DEF_GAP_OPEN		-400
 #define DEF_GAP_EXTEND		-70
-#define DEF_XOVER_PENALTY	-120
-#define DEF_SW_VECT_THRESHOLD	1500	/* == DEF_SW_FULL_THRESHOLD in lspace */
-#define DEF_SW_FULL_THRESHOLD	1700
+#define DEF_XOVER_PENALTY	-140
+#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
@@ -45,6 +46,7 @@ struct read_elem {
 	uint32_t	 *read;			/* the read as a bitstring */
 	uint32_t	  read_len;
 	int		  initbp;		/* colour space init letter */
+	int		  window_len;		/* per-read window length */
 
 	int		  swhits;		/* num of hits with sw */
 	struct re_score  *scores;		/* top 'num_ouputs' scores */

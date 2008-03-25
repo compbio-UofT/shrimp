@@ -29,21 +29,27 @@
 #include "rmapper.h"
 
 /* External parameters */
-static char *spaced_seed	= DEF_SPACED_SEED;
-static u_int window_len		= DEF_WINDOW_LEN;
-static u_int num_matches	= DEF_NUM_MATCHES;
-static u_int taboo_len		= DEF_TABOO_LEN;
-static u_int num_outputs	= DEF_NUM_OUTPUTS;
-static u_int max_read_len	= DEF_MAX_READ_LEN;
-static int   kmer_stddev_limit  = DEF_KMER_STDDEV_LIMIT;
+static char    *spaced_seed		= NULL;		/* set dynamically */
+static double	window_len		= DEF_WINDOW_LEN;
+static u_int	num_matches		= DEF_NUM_MATCHES;
+static u_int	taboo_len		= DEF_TABOO_LEN;
+static u_int	num_outputs		= DEF_NUM_OUTPUTS;
+static u_int	max_read_len		= DEF_MAX_READ_LEN;
+static int	kmer_stddev_limit  	= DEF_KMER_STDDEV_LIMIT;
 
-static int   match_value	= DEF_MATCH_VALUE;
-static int   mismatch_value	= DEF_MISMATCH_VALUE;
-static int   gap_open		= DEF_GAP_OPEN;
-static int   gap_extend		= DEF_GAP_EXTEND;
-static int   xover_penalty	= DEF_XOVER_PENALTY;
-static u_int sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
-static u_int sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
+static int	match_value		= DEF_MATCH_VALUE;
+static int	mismatch_value		= DEF_MISMATCH_VALUE;
+static int	gap_open		= DEF_GAP_OPEN;
+static int	gap_extend		= DEF_GAP_EXTEND;
+static int	xover_penalty		= DEF_XOVER_PENALTY;
+static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
+static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
+
+/*
+ * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
+ * we'll set them negative to distinguish.
+ */
+#define IS_ABSOLUTE(x)	((x) < 0)
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t *genome;
@@ -80,6 +86,10 @@ static uint64_t shortest_scanned_kmer_list;
 static uint64_t longest_scanned_kmer_list;
 static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
+
+/* Misc stats */
+static uint64_t fasta_load_ticks;
+static uint64_t revcmpl_ticks;
 
 #ifdef USE_COLOURS
 const bool use_colours = true;
@@ -261,6 +271,7 @@ scan(int contig_num, bool revcmpl)
 	uint32_t base, skip, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
+	u_int thresh;
 
 	seed_span = strlen(spaced_seed);
 
@@ -304,19 +315,19 @@ scan(int contig_num, bool revcmpl)
 			re->prev_hit = re->next_hit;
 			re->next_hit = (re->next_hit + 1) % num_matches;
 
-			if ((idx - re->hits[re->next_hit]) < window_len &&
+			if ((idx - re->hits[re->next_hit]) < re->window_len &&
 			    (re->last_swhit_idx == -1 ||
-			     (i - re->last_swhit_idx) >= window_len) &&
+			     (i - re->last_swhit_idx) >= re->window_len) &&
 			    re->hits[re->next_hit] != -1) {
-				if (i < window_len)
+				if (i < re->window_len)
 					goff = 0;
 				else
-					goff = i - window_len;
+					goff = i - re->window_len;
 
-				if (goff + (window_len * 2) >= genome_len)
+				if (goff + (re->window_len * 2) >= genome_len)
 					glen = genome_len - goff;
 				else
-					glen = window_len * 2;
+					glen = re->window_len * 2;
 
 				if (use_colours) {
 					score = sw_vector(genome, goff, glen,
@@ -327,7 +338,15 @@ scan(int contig_num, bool revcmpl)
 					    re->read, re->read_len, NULL, -1);
 				}
 
-				if (score >= sw_vect_threshold) {
+				if (IS_ABSOLUTE(sw_vect_threshold)) {
+					thresh = (u_int)-sw_vect_threshold;
+				} else {
+					thresh = (u_int)floor(((double)
+					    (match_value * re->read_len) *
+					    (sw_vect_threshold / 100.0)));
+				}
+
+				if (score >= thresh) {
 					save_score(re, score, i, contig_num,
 					    revcmpl);
 					re->last_swhit_idx = i;
@@ -359,6 +378,8 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 	static bool first = true;
 	static int lastbp;
 	static size_t allocated;	/* base pairs allocated for */
+
+	uint64_t before;
 
 	/* shut up icc */
 	(void)name;
@@ -397,7 +418,9 @@ load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (isnewentry && !first) {
 		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
 		    genome_len, contig_name);
+		before = rdtsc();
 		genome_contig_cb(genome_contig_cb_arg);
+		fasta_load_ticks -= rdtsc() - before; /* XXX so ugly */
 		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
 		if (use_colours)
 			memset(genome_ls, 0,
@@ -447,8 +470,11 @@ static int
 load_genome(const char *file)
 {
 	ssize_t ret;
+	uint64_t before;
 
+	before = rdtsc();
 	ret = load_fasta(file, load_genome_helper, LETTER_SPACE);
+	fasta_load_ticks += rdtsc() - before;
 
 	if (ret != -1) {
 		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
@@ -507,6 +533,12 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	}
 
 	if (isnewentry) {
+		/* save some memory by shrinking the previous buffer */
+		if (re != NULL) {
+			re->read = xrealloc(re->read,
+			    BPTO32BW(re->read_len) * 4);
+		}
+
 		len = sizeof(struct read_elem) +
 		    (sizeof(re->hits[0]) * num_matches);
 		re = xmalloc(len);
@@ -550,17 +582,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	bitfield_append(re->read, re->read_len, base);
 	re->read_len++;
 	longest_read_len = MAX(re->read_len, longest_read_len);
-
-	if (re->read_len > window_len) {
-		static bool warned = false;
-
-		if (!warned) {
-			fprintf(stderr, "WARNING: Read length greater than "
-			    "window length (%u)! This is probably not what you "
-			    "want!\n\n", window_len);
-			warned = true;
-		}
-	}
 
 	/*
 	 * For simplicity we throw out the first kmer when in colour space. If
@@ -632,11 +653,14 @@ static int
 load_reads(const char *file)
 {
 	ssize_t ret;
+	uint64_t before;
 
+	before = rdtsc();
 	if (use_colours)
 		ret = load_fasta(file, load_reads_helper, COLOUR_SPACE);
 	else
 		ret = load_fasta(file, load_reads_helper, LETTER_SPACE);
+	fasta_load_ticks += rdtsc() - before;
 
 	if (ret != -1)
 		fprintf(stderr, "- Loaded %u %s in %u reads (%u kmers)\n",
@@ -655,21 +679,22 @@ generate_output(struct re_score *rs, bool revcmpl)
 	char *dbalign, *qralign;
 	struct read_elem *re;
 	uint32_t goff, glen;
+	u_int thresh;
 
 	for (; rs != NULL; rs = rs->next) {
 		re = rs->parent;
 
-		if (rs->index < window_len)
+		if (rs->index < re->window_len)
 			goff = 0;
 		else
-			goff = rs->index - window_len;
+			goff = rs->index - re->window_len;
 
 		assert(goff < genome_len);
 
-		if (goff + (window_len * 2) >= genome_len)
+		if (goff + (re->window_len * 2) >= genome_len)
 			glen = genome_len - goff;
 		else
-			glen = window_len * 2;
+			glen = re->window_len * 2;
 
 		if (use_colours) {
 			sw_full_cs(genome_ls, goff, glen, re->read,
@@ -680,7 +705,15 @@ generate_output(struct re_score *rs, bool revcmpl)
 			    rs->score, &dbalign, &qralign, &sfr);
 		}
 
-		if (sfr.score < sw_full_threshold)
+		if (IS_ABSOLUTE(sw_full_threshold)) {
+			thresh = (u_int)-sw_full_threshold;
+		} else {
+			thresh = (u_int)floor(((double)
+			    (match_value * re->read_len) *
+			    (sw_full_threshold / 100.0)));
+		}
+
+		if (sfr.score < thresh)
 			continue;
 
 		re->final_matches++;
@@ -721,10 +754,14 @@ final_pass_contig(void *arg)
 		generate_output(contig_list[i].scores, false);
 
 	if (Cflag) {
+		uint64_t before;
+
+		before = rdtsc();
 		if (use_colours)
 			reverse_complement(genome_ls, genome, genome_len);
 		else
 			reverse_complement(genome, NULL, genome_len);
+		revcmpl_ticks += rdtsc() - before;
 		generate_output(contig_list[i].revcmpl_scores, true);
 	}
 
@@ -853,16 +890,20 @@ scan_genomes_contig(void *arg)
 	}
 
 	if (Cflag) {
+		uint64_t before;
+
 		/*
 		 * Do it reverse-complementwards.
 		 */
 		fprintf(stderr, "    - Processing reverse complement\n");
 
 		gettimeofday(args->tv1, NULL);
+		before = rdtsc();
 		if (use_colours)
 			reverse_complement(genome_ls, genome, genome_len);
 		else
 			reverse_complement(genome, NULL, genome_len);
+		revcmpl_ticks += rdtsc() - before;
 		gettimeofday(args->tv2, NULL);
 
 		*args->rtime += ((double)args->tv2->tv_sec +
@@ -924,6 +965,30 @@ scan_genomes(char **files, int nfiles, double *scantime, double *loadtime,
 	return (0);
 }
 
+static u_int
+set_window_lengths()
+{
+	struct read_elem *re;
+	u_int max_window_len = 0;
+
+	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
+		fprintf(stderr, "WARNING: window length is < 100%% of read "
+		    "length - is this what you want?\n");
+	}
+
+	for (re = reads; re != NULL; re = re->next) {
+		if (IS_ABSOLUTE(window_len)) {
+			re->window_len = (u_int)-window_len;
+		} else {
+			re->window_len = (u_int)ceil(((double)(re->read_len *
+			    (window_len / 100.0))));
+		}
+		max_window_len = MAX(max_window_len, re->window_len);
+	}
+
+	return (max_window_len);
+}
+
 static void
 usage(char *progname)
 {
@@ -940,7 +1005,7 @@ usage(char *progname)
 
 	fprintf(stderr,
 	    "    -s    Spaced Seed                             (default: %s)\n",
-	    DEF_SPACED_SEED);
+	    (use_colours) ? DEF_SPACED_SEED_CS : DEF_SPACED_SEED_LS);
 
 	fprintf(stderr,
 	    "    -n    Seed Matches per Window                 (default: %d)\n",
@@ -951,8 +1016,8 @@ usage(char *progname)
 	    DEF_TABOO_LEN);
 
 	fprintf(stderr,
-	    "    -w    Seed Window Length                      (default: %d)\n",
-	    DEF_WINDOW_LEN);
+	    "    -w    Seed Window Length                      (default: "
+	    "%.02f%%)\n", DEF_WINDOW_LEN);
 
 	fprintf(stderr,
 	    "    -o    Maximum Hits per Read                   (default: %d)\n",
@@ -992,14 +1057,14 @@ usage(char *progname)
 	if (use_colours) {
 		fprintf(stderr,
 		    "    -h    S-W Full Hit Threshold                  "
-		    "(default: %d)\n", DEF_SW_FULL_THRESHOLD);
+		    "(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
 		fprintf(stderr,
 		    "    -v    S-W Vector Hit Threshold                "
-		    "(default: %d)\n", DEF_SW_VECT_THRESHOLD);
+		    "(default: %.02f%%)\n", DEF_SW_VECT_THRESHOLD);
 	} else {
 		fprintf(stderr,
 		    "    -h    S-W Hit Threshold                       "
-		    "(default: %d)\n", DEF_SW_FULL_THRESHOLD);
+		    "(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
 	}
 
 	fprintf(stderr, "\n");
@@ -1037,11 +1102,18 @@ main(int argc, char **argv)
 	double cellspersec, stime, ltime, rtime;
 	uint64_t invocs, cells, reads_matched, total_matches;
 	int ch, ret, ngenome_files;
+	u_int max_window_len;
+
+	if (use_colours)
+		spaced_seed = DEF_SPACED_SEED_CS;
+	else
+		spaced_seed = DEF_SPACED_SEED_LS;
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "rmapper: %s SPACE. (SHRiMP version %s)\n",
-	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING);
+	fprintf(stderr, "rmapper: %s SPACE. (SHRiMP %s [%s])\n",
+	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING,
+	    get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 
@@ -1064,7 +1136,14 @@ main(int argc, char **argv)
 			taboo_len = atoi(optarg);
 			break;
 		case 'w':
-			window_len = atoi(optarg);
+			window_len = atof(optarg);
+			if (window_len <= 0.0) {
+				fprintf(stderr, "error: invalid window "
+				    "length\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				window_len = -window_len;		//absol.
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
@@ -1092,11 +1171,25 @@ main(int argc, char **argv)
 			xover_penalty = atoi(optarg);
 			break;
 		case 'h':
-			sw_full_threshold = atoi(optarg);
+			sw_full_threshold = atof(optarg);
+			if (sw_full_threshold < 0.0) {
+				fprintf(stderr, "error: invalid s-w full "
+				    "hit threshold\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				sw_full_threshold = -sw_full_threshold;	//absol.
 			break;
 		case 'v':
 			assert(use_colours);
-			sw_vect_threshold = atoi(optarg);
+			sw_vect_threshold = atof(optarg);
+			if (sw_vect_threshold < 0.0) {
+				fprintf(stderr, "error: invalid s-w vector "
+				    "hit threshold\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				sw_vect_threshold = -sw_vect_threshold;	//absol.
 			break;
 		case 'B':
 			Bflag = true;
@@ -1151,18 +1244,14 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (window_len < 1 || window_len < strlen(spaced_seed)) {
-		fprintf(stderr, "error: invalid window length\n");
+	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
+		fprintf(stderr, "error: window length < 100%% "
+		    "of read length\n");
 		exit(1);
 	}
 
 	if (num_matches < 1) {
 		fprintf(stderr, "error: invalid number of matches\n");
-		exit(1);
-	}
-
-	if (taboo_len > window_len) {
-		fprintf(stderr, "error: invalid taboo length\n");
 		exit(1);
 	}
 
@@ -1181,6 +1270,17 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
+	if (!IS_ABSOLUTE(sw_full_threshold) && sw_full_threshold > 100.0) {
+		fprintf(stderr, "error: invalid s-w full hit threshold\n");
+		exit(1);
+	}
+
+	if (use_colours && !IS_ABSOLUTE(sw_vect_threshold) &&
+	    sw_vect_threshold > 100.0) {
+		fprintf(stderr, "error: invalid s-w full hit threshold\n");
+		exit(1);
+	}
+
 	fprintf(stderr, "Settings:\n");
 	fprintf(stderr, "    Spaced Seed:                %s\n", spaced_seed);
 	fprintf(stderr, "    Spaced Seed Span:           %u\n",
@@ -1189,7 +1289,15 @@ main(int argc, char **argv)
 	    strchrcnt(spaced_seed, '1'));
 	fprintf(stderr, "    Seed Matches per Window:    %u\n", num_matches);
 	fprintf(stderr, "    Seed Taboo Length:          %u\n", taboo_len);
-	fprintf(stderr, "    Seed Window Length:         %u\n", window_len);
+
+	if (IS_ABSOLUTE(window_len)) {
+		fprintf(stderr, "    Seed Window Length:         %u\n",
+		    (u_int)-window_len);
+	} else {
+		fprintf(stderr, "    Seed Window Length:         %.02f%%\n",
+		    window_len);
+	}
+
 	fprintf(stderr, "    Maximum Hits per Read:      %u\n", num_outputs);
 	fprintf(stderr, "    Maximum Read Length:        %u\n", max_read_len);
 	fprintf(stderr, "    Kmer Std. Deviation Limit:  %d%s\n",
@@ -1205,20 +1313,41 @@ main(int argc, char **argv)
 	}
 
 	if (use_colours) {
-		fprintf(stderr, "    S-W Vector Hit Threshold:   %u\n",
-		    sw_vect_threshold);
-		fprintf(stderr, "    S-W Full Hit Threshold:     %u\n",
-		    sw_full_threshold);
+		if (IS_ABSOLUTE(sw_vect_threshold)) {
+			fprintf(stderr, "    S-W Vector Hit Threshold:   %u\n",
+			    (u_int)-sw_vect_threshold);
+		} else {
+			fprintf(stderr, "    S-W Vector Hit Threshold:   "
+			    "%.02f%%\n", sw_vect_threshold);
+		}
+
+		if (IS_ABSOLUTE(sw_full_threshold)) {
+			fprintf(stderr, "    S-W Full Hit Threshold:     %u\n",
+			    (u_int)-sw_full_threshold);
+		} else {
+			fprintf(stderr, "    S-W Full Hit Threshold:     "
+			    "%.02f%%\n", sw_full_threshold);
+		}
 	} else {
-		fprintf(stderr, "    S-W Hit Threshold:          %u\n",
-		    sw_full_threshold);
+		if (IS_ABSOLUTE(sw_full_threshold)) {
+			fprintf(stderr, "    S-W Hit Threshold:          %u\n",
+			    (u_int)-sw_full_threshold);
+		} else {
+			fprintf(stderr, "    S-W Hit Threshold:          "
+			    "%.02f\n", sw_full_threshold);
+		}
 	}
 	fprintf(stderr, "\n");
 
 	if (load_reads(reads_file))
 		exit(1);
 
-	if (sw_vector_setup(window_len * 2, longest_read_len, gap_open,
+	fprintf(stderr, "  - Configuring window lengths...\n");
+	max_window_len = set_window_lengths();
+	fprintf(stderr, "  - Maximum window length: %u\n", max_window_len);
+		
+
+	if (sw_vector_setup(max_window_len * 2, longest_read_len, gap_open,
 	    gap_extend, match_value, mismatch_value, use_colours, false)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
@@ -1226,11 +1355,11 @@ main(int argc, char **argv)
 	}
 
 	if (use_colours) {
-		ret = sw_full_cs_setup(window_len * 2, longest_read_len,
+		ret = sw_full_cs_setup(max_window_len * 2, longest_read_len,
 		    gap_open, gap_extend, match_value, mismatch_value,
 		    xover_penalty, false);
 	} else {
-		ret = sw_full_ls_setup(window_len * 2, longest_read_len,
+		ret = sw_full_ls_setup(max_window_len * 2, longest_read_len,
 		    gap_open, gap_extend, match_value, mismatch_value, false);
 	}
 	if (ret) {
@@ -1292,6 +1421,13 @@ main(int argc, char **argv)
 	    (double)cells / 1.0e6);
 	fprintf(stderr, "        Cells per Second:       %.2f million\n",
 	    cellspersec / 1.0e6);
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    Miscellaneous:\n");
+	fprintf(stderr, "        Load Time:              %.2f seconds\n",
+	    (double)fasta_load_ticks / cpuhz());
+	fprintf(stderr, "        Revcmpl. Time:          %.2f seconds\n",
+	    (double)revcmpl_ticks / cpuhz());
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    General:\n");
