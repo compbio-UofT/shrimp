@@ -16,8 +16,8 @@
 #include <sys/time.h>
 
 #include "../common/fasta.h"
-#include "sw-full-common.h"
-#include "sw-full-cs.h"
+#include "../common/sw-full-common.h"
+#include "../common/sw-full-cs.h"
 #include "../common/util.h"
 
 struct swcell {
