@@ -1,5 +1,25 @@
 $Id$
 
+1.0.5: March 25, 2008
+	- Increased spaced seed weight by 2 for letter space, as 454 and
+	  Illumina/Solexa reads are generally longer than AB.
+	- Changed default gap open penalty from -300 to -400.
+	- Changed default crossover penalty from -120 to -140 (for ABI SOLiD).
+	- Disabled kmer pruning by default. This feature sometimes prunes too
+	  many kmers and confuses users. It still offers an important speed-up,
+	  but the user should be aware of (and responsible for) its use.
+	- Fixed handling of wobble codes on the negative strand.
+	- Handle `.' ambiguous bases as `N'.
+	- Fixed whitespace and MS-DOS newline fasta parsing problems affecting
+	  Illumina/Solexa and 454 users.
+	- Fixed wobble code handling for negative strands.
+	- Added read length relative parameters to rmapper. Now -h, -v, and -w
+	  can take either absolute or percentage arguments (differentiated by
+	  a '.' or '%' in the string). This allows more flexible score
+	  thresholding and windowing for input with differing read lengths
+	  (454, especially).
+	- Fixed a few GCC 4 compiler warnings.
+
 1.0.4: January 24, 2008
 	- Changed rmapper default parameters to be more appropriate for the
 	  human genome.
