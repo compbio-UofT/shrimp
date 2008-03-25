@@ -3,8 +3,12 @@ $Id$
 README for SHRiMP: SHort Read Mapping Package version 1.0.4
 http://compbio.cs.toronto.edu/shrimp
 
-Stephen Rumble (rumble at cs dot toronto dot edu)
-Michael Brudno (brudno at cs dot toronto dot edu)
+SHRiMP is brought to you by
+	Stephen Rumble
+	Michael Brudno
+	and contributors...
+
+The authors may be contacted at shrimp at cs dot toronto dot edu.
 
 --------------------------------------------------------------------------------
 Table of Contents
@@ -526,9 +530,14 @@ more distant one will lead to large discrepancies.
 The program website is 
     	http://compbio.cs.toronto.edu/shrimp
 
-The authors of this software may be contacted at the following e-mail addresses:
+The authors of this software may be contacted at the following e-mail address:
+	shrimp at cs dot toronto dot edu
+
+The individual authors' email addresses are:
 	brudno at cs dot toronto dot edu	(Michael Brudno)
 	rumble at cs dot toronto dot edu	(Stephen Rumble)
+However, we generally prefer that you use the shrimp@ address, unless you are
+trying to reach a specific person.
 
 
 --------------------------------------------------------------------------------
