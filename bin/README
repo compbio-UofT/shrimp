@@ -8,6 +8,7 @@ mergehits-ls		merge all hits into one line per read (letter space)
 prettyprint-cs		pretty print alignments from rmapper/probcalc (c. space)
 prettyprint-ls		pretty print alignments from rmapper/probcalc (l. space)
 probcalc		parse rmapper output (non-pretty-printed output)
+revcmpl			reverse-complement a contig (unused)
 rmapper-cs		colourspace read mapper
 rmapper-ls		letterspace read mapper
 splitreads		split fasta read files into smaller chunks
