@@ -65,9 +65,9 @@ static uint32_t  ncontigs;			/* number of contigs read */
 static uint32_t *genome_ls;
 
 /* Reads */
-static struct read_elem  *reads;		/* list of reads */
-static struct read_node **readmap;		/* kmer to read map */
-static uint32_t		 *readmap_len;		/* entries in each readmap[n] */
+static struct read_elem   *reads;		/* list of reads */
+static struct read_elem ***readmap;		/* kmer to read map */
+static uint32_t		  *readmap_len;		/* entries in each readmap[n] */
 
 static u_int	nreads;				/* total reads loaded */
 static u_int	nkmers;				/* total kmers of reads loaded*/
@@ -157,7 +157,7 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 {
 	struct re_score *scores;
 
-	scores = re->scores;
+	scores = re->ri->scores;
 
 	if (score < scores[1].score)
 		return;
@@ -243,20 +243,13 @@ readmap_prune()
 static void
 reset_reads()
 {
-	struct read_node *rn;
 	struct read_elem *re;
-	uint32_t i, j;
 
-	j = power(4, strchrcnt(spaced_seed, '1'));
-
-	for (i = 0; i < j; i++) {
-		for (rn = readmap[i]; rn != NULL; rn = rn->next) {
-			re = rn->read;
-			re->last_swhit_idx = -1;
-			re->prev_hit = 0;
-			re->next_hit = 0;
-			memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
-		}
+	for (re = reads; re != NULL; re = re->ri->next) {
+		re->last_swhit_idx = -1;
+		re->prev_hit = 0;
+		re->next_hit = 0;
+		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
 	}
 }
 
@@ -264,10 +257,9 @@ reset_reads()
 static void
 scan(int contig_num, bool revcmpl)
 {
-	struct read_node *rn;
-	struct read_elem *re;
+	struct read_elem **res, *re;
 	uint32_t *kmer;
-	uint32_t i, j, idx, mapidx;
+	uint32_t i, j, k, idx, mapidx;
 	uint32_t base, skip, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
@@ -303,17 +295,18 @@ scan(int contig_num, bool revcmpl)
 		mapidx = kmer_to_mapidx(kmer);
 		idx = i - (seed_span - 1);
 
-		j = 0;
-		for (rn = readmap[mapidx]; rn != NULL; rn = rn->next) {
-			re = rn->read;
+		res = readmap[mapidx];
+		if (res == NULL)
+			continue;
 
+		for (re = *res, j = k = 0; re != NULL; re = *(++res), k++) {
 			prevhit = re->hits[re->prev_hit];
 			if ((idx - prevhit) <= taboo_len && prevhit != -1)
 				continue;
 
 			re->hits[re->next_hit] = idx;
 			re->prev_hit = re->next_hit;
-			re->next_hit = (re->next_hit + 1) % num_matches;
+			re->next_hit = (uint8_t)((re->next_hit + 1) % num_matches);
 
 			if ((idx - re->hits[re->next_hit]) < re->window_len &&
 			    (re->last_swhit_idx == -1 ||
@@ -331,18 +324,18 @@ scan(int contig_num, bool revcmpl)
 
 				if (use_colours) {
 					score = sw_vector(genome, goff, glen,
-					    re->read, re->read_len,
-					    genome_ls, re->initbp);
+					    re->ri->read, re->ri->read_len,
+					    genome_ls, re->ri->initbp);
 				} else {
 					score = sw_vector(genome, goff, glen,
-					    re->read, re->read_len, NULL, -1);
+					    re->ri->read, re->ri->read_len, NULL, -1);
 				}
 
 				if (IS_ABSOLUTE(sw_vect_threshold)) {
 					thresh = (u_int)-sw_vect_threshold;
 				} else {
 					thresh = (u_int)floor(((double)
-					    (match_value * re->read_len) *
+					    (match_value * re->ri->read_len) *
 					    (sw_vect_threshold / 100.0)));
 				}
 
@@ -350,12 +343,14 @@ scan(int contig_num, bool revcmpl)
 					save_score(re, score, i, contig_num,
 					    revcmpl);
 					re->last_swhit_idx = i;
-					re->swhits++;
+					re->ri->swhits++;
 				}
 			}
 
 			j++;
 		}
+
+		assert(k == readmap_len[mapidx]);
 
 		kmer_list_entries_scanned += j;
 		shortest_scanned_kmer_list = MIN(shortest_scanned_kmer_list, j);
@@ -490,9 +485,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
     int initbp)
 {
 	static struct read_elem *re;
-	static uint32_t **past_kmers;
 	static uint32_t *kmer;
-	static uint32_t cnt, npast_kmers, skip;
+	static uint32_t cnt, skip;
 
 	size_t len;
 	int i, seed_span, seed_weight;
@@ -509,17 +503,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (kmer == NULL)
 		kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 
-	if (past_kmers == NULL) {
-		len = sizeof(past_kmers[0]) * (max_read_len - seed_span + 1);
-		past_kmers = xmalloc(len);
-
-		len = sizeof(kmer[0]) * BPTO32BW(seed_span);
-		for (i = 0; i < (max_read_len - seed_span + 1); i++) {
-			past_kmers[i] = xmalloc(len);
-			memset(past_kmers[i], 0, len);
-		}
-	}
-
 	/* handle initial call to alloc resources */
 	if (base == FASTA_ALLOC) {
 		len = sizeof(readmap[0]) * power(4, seed_weight);
@@ -535,8 +518,8 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	if (isnewentry) {
 		/* save some memory by shrinking the previous buffer */
 		if (re != NULL) {
-			re->read = xrealloc(re->read,
-			    BPTO32BW(re->read_len) * 4);
+			re->ri->read = xrealloc(re->ri->read,
+			    BPTO32BW(re->ri->read_len) * 4);
 		}
 
 		len = sizeof(struct read_elem) +
@@ -545,43 +528,46 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		memset(re, 0, len);
 		re->last_swhit_idx = -1;
 
-		re->name = strdup(name);
+		re->ri = xmalloc(sizeof(*re->ri));
+		memset(re->ri, 0, sizeof(*re->ri));
+
+		re->ri->name = strdup(name);
 		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
 
-		len = sizeof(re->read[0]) * BPTO32BW(max_read_len);
-		re->read = xmalloc(len);
-		memset(re->read, 0, len);
+		len = sizeof(re->ri->read[0]) * BPTO32BW(max_read_len);
+		re->ri->read = xmalloc(len);
+		memset(re->ri->read, 0, len);
 
 		len = sizeof(struct re_score) * (num_outputs + 1);
-		re->scores = xmalloc(len);
-		memset(re->scores, 0, len);
-		re->scores[0].score = num_outputs;
+		re->ri->scores = xmalloc(len);
+		memset(re->ri->scores, 0, len);
+		re->ri->scores[0].score = num_outputs;
 
 		/* init scores to negatives so we only need percolate down */
-		for (i = 1; i <= re->scores[0].score; i++)
-			re->scores[i].score = 0x80000000 + i;
+		for (i = 1; i <= re->ri->scores[0].score; i++)
+			re->ri->scores[i].score = 0x80000000 + i;
 
-		cnt = npast_kmers = skip = 0;
+		cnt = skip = 0;
 		memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
-		re->next = reads;
+		re->ri->next = reads;
 		reads = re;
 		nreads++;
 
-		re->initbp = initbp;
+		re->ri->initbp = initbp;
 	}
 
 	assert(re != NULL);
 
-	if (re->read_len == max_read_len) {
+	if (re->ri->read_len == max_read_len) {
 		fprintf(stderr, "error: read [%s] exceeds %u characters\n"
 		    "please increase the maximum read length parameter\n",
-		    re->name, max_read_len);
+		    re->ri->name, max_read_len);
 		exit(1);
 	}
 
-	bitfield_append(re->read, re->read_len, base);
-	re->read_len++;
-	longest_read_len = MAX(re->read_len, longest_read_len);
+	bitfield_append(re->ri->read, re->ri->read_len, base);
+	re->ri->read_len++;
+	longest_read_len = MAX(re->ri->read_len, longest_read_len);
 
 	/*
 	 * For simplicity we throw out the first kmer when in colour space. If
@@ -613,37 +599,19 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	}
 
 	if (++cnt >= seed_span) {
-		struct read_node *rn;
 		uint32_t mapidx;
-		bool unique = true;
 
-		/*
-		 * Ensure that this kmer is unique within the read. If it's
-		 * not, we don't want to point from one kmer to the same
-		 * read multiple times.
-		 *
-		 * This will only hit about 0.03% of 8mers in 24mer reads.
-	 	 */
-		assert(npast_kmers < (max_read_len - seed_span + 1));
+		mapidx = kmer_to_mapidx(kmer);
 
-		len = sizeof(kmer[0]) * BPTO32BW(seed_span);
-		for (i = 0; i < npast_kmers; i++) {
-			if (memcmp(kmer, past_kmers[i], len) == 0) {
-				unique = false;
-				break;
-			}
-		}
-
-		if (unique) {
-			rn = xmalloc(sizeof(struct read_node));
-
-			mapidx = kmer_to_mapidx(kmer);
-			
-			rn->read = re;
-			rn->next = readmap[mapidx];
-			readmap[mapidx] = rn;
+		/* Ensure that we map only once from any kmer to a certain read. */
+		if (readmap[mapidx] == NULL || readmap[mapidx][readmap_len[mapidx]-1]!= re) {
 			readmap_len[mapidx]++;
-			memcpy(past_kmers[npast_kmers++], kmer, len);
+
+			readmap[mapidx] = xrealloc(readmap[mapidx],
+			    (readmap_len[mapidx] + 1) * sizeof(struct read_elem *));
+			
+			readmap[mapidx][readmap_len[mapidx] - 1] = re;
+			readmap[mapidx][readmap_len[mapidx]] = NULL;
 			nkmers++;
 		}
 	}
@@ -697,11 +665,11 @@ generate_output(struct re_score *rs, bool revcmpl)
 			glen = re->window_len * 2;
 
 		if (use_colours) {
-			sw_full_cs(genome_ls, goff, glen, re->read,
-			    re->read_len, re->initbp, rs->score, &dbalign,
+			sw_full_cs(genome_ls, goff, glen, re->ri->read,
+			    re->ri->read_len, re->ri->initbp, rs->score, &dbalign,
 			    &qralign, &sfr);
 		} else {
-			sw_full_ls(genome, goff, glen, re->read, re->read_len,
+			sw_full_ls(genome, goff, glen, re->ri->read, re->ri->read_len,
 			    rs->score, &dbalign, &qralign, &sfr);
 		}
 
@@ -709,31 +677,31 @@ generate_output(struct re_score *rs, bool revcmpl)
 			thresh = (u_int)-sw_full_threshold;
 		} else {
 			thresh = (u_int)floor(((double)
-			    (match_value * re->read_len) *
+			    (match_value * re->ri->read_len) *
 			    (sw_full_threshold / 100.0)));
 		}
 
 		if (sfr.score < thresh)
 			continue;
 
-		re->final_matches++;
+		re->ri->final_matches++;
 
 		if (!firstcall)
 			fputc('\n', stdout);
 		firstcall = false;
 
-		output_normal(stdout, re->name, contig_name, &sfr, genome_len,
-		    goff, use_colours, re->read, re->read_len, re->initbp,
+		output_normal(stdout, re->ri->name, contig_name, &sfr, genome_len,
+		    goff, use_colours, re->ri->read, re->ri->read_len, re->ri->initbp,
 		    revcmpl, Rflag);
 		fputc('\n', stdout);
 
 		if (Pflag) {
 			fputc('\n', stdout);
-			output_pretty(stdout, re->name, contig_name, &sfr,
+			output_pretty(stdout, re->ri->name, contig_name, &sfr,
 			    dbalign, qralign,
 			    (use_colours) ? genome_ls : genome, genome_len,
-			    goff, use_colours, re->read, re->read_len,
-			    re->initbp, revcmpl);
+			    goff, use_colours, re->ri->read, re->ri->read_len,
+			    re->ri->initbp, revcmpl);
 		}
 	}
 }
@@ -782,34 +750,34 @@ final_pass(char **files, int nfiles)
 	memset(contig_list, 0, sizeof(*contig_list) * ncontigs);
 
 	/* For each contig, generate a linked list of hits from it. */
-	for (re = reads; re != NULL; re = re->next) {
-		if (re->swhits == 0)
+	for (re = reads; re != NULL; re = re->ri->next) {
+		if (re->ri->swhits == 0)
 			continue;
 
 		hits++;
 		
-		for (i = 1; i <= re->scores[0].score; i++) {
-			int cn = re->scores[i].contig_num;
+		for (i = 1; i <= re->ri->scores[0].score; i++) {
+			int cn = re->ri->scores[i].contig_num;
 
-			if (re->scores[i].score < 0)
+			if (re->ri->scores[i].score < 0)
 				continue;
 
 			assert(cn >= 0 && cn < ncontigs);
-			assert(re->scores[i].parent == NULL);
-			assert(re->scores[i].next == NULL);
-			assert(re->scores[i].score >= sw_vect_threshold);
+			assert(re->ri->scores[i].parent == NULL);
+			assert(re->ri->scores[i].next == NULL);
+			assert(re->ri->scores[i].score >= sw_vect_threshold);
 
-			if (re->scores[i].revcmpl) {
-				re->scores[i].next =
+			if (re->ri->scores[i].revcmpl) {
+				re->ri->scores[i].next =
 				    contig_list[cn].revcmpl_scores;
-				contig_list[cn].revcmpl_scores = &re->scores[i];
+				contig_list[cn].revcmpl_scores = &re->ri->scores[i];
 			} else {
-				re->scores[i].next =
+				re->ri->scores[i].next =
 				    contig_list[cn].scores;
-				contig_list[cn].scores = &re->scores[i];
+				contig_list[cn].scores = &re->ri->scores[i];
 			}
 
-			re->scores[i].parent = re;
+			re->ri->scores[i].parent = re;
 		}
 	}
 
@@ -976,11 +944,11 @@ set_window_lengths()
 		    "length - is this what you want?\n");
 	}
 
-	for (re = reads; re != NULL; re = re->next) {
+	for (re = reads; re != NULL; re = re->ri->next) {
 		if (IS_ABSOLUTE(window_len)) {
-			re->window_len = (u_int)-window_len;
+			re->window_len = (uint16_t)-window_len;
 		} else {
-			re->window_len = (u_int)ceil(((double)(re->read_len *
+			re->window_len = (uint16_t)ceil(((double)(re->ri->read_len *
 			    (window_len / 100.0))));
 		}
 		max_window_len = MAX(max_window_len, re->window_len);
@@ -1377,9 +1345,9 @@ main(int argc, char **argv)
 	final_pass(genome_files, ngenome_files);
 
 	reads_matched = total_matches = 0;
-	for (re = reads; re != NULL; re = re->next) {
-		reads_matched += (re->final_matches == 0) ? 0 : 1;
-		total_matches += re->final_matches;
+	for (re = reads; re != NULL; re = re->ri->next) {
+		reads_matched += (re->ri->final_matches == 0) ? 0 : 1;
+		total_matches += re->ri->final_matches;
 	}
 
 	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);

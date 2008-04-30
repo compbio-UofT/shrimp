@@ -40,27 +40,30 @@ struct re_score {
 	uint32_t	  index;
 };
 
-struct read_elem {
+/*
+ * Keep juicy bits of reads separate from the read structure itself. This significantly
+ * reduces the cache footprint due to reads during scan() and hence speeds things up
+ * enough to justify the ugliness.
+ */
+struct read_int {
 	char		 *name;
 	struct read_elem *next;			/* next in read list */
 	uint32_t	 *read;			/* the read as a bitstring */
 	uint32_t	  read_len;
 	int		  initbp;		/* colour space init letter */
-	int		  window_len;		/* per-read window length */
 
 	int		  swhits;		/* num of hits with sw */
 	struct re_score  *scores;		/* top 'num_ouputs' scores */
 	uint32_t	  final_matches;	/* num of final output matches*/
+};
+
+struct read_elem {
+	struct read_int  *ri;			/* pointer to the meat */
 
 	/* the following are used during scan() */
 	uint32_t	  last_swhit_idx;	/* index of last sw hit */
-	uint32_t	  prev_hit;		/* prev index in 'hits' */
-	uint32_t	  next_hit;		/* next index in 'hits' */
-	uint32_t	  hits[0];		/* size depends on num_matches*/
-};
-
-/* for kmer to read map */
-struct read_node {
-	struct read_elem *read;
-	struct read_node *next;
+	uint16_t	  window_len;		/* per-read window length */
+	uint8_t	  	  prev_hit;		/* prev index in 'hits' */
+	uint8_t		  next_hit;		/* next index in 'hits' */
+	uint32_t	  hits[0];		/* size depends on num_matches */
 };
