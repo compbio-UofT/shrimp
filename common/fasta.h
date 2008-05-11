@@ -29,7 +29,7 @@
 #define BASE_N		15		/* G or A or T or C (any base) */
 
 #define BASE_LS_MIN	BASE_A
-#define BASE_LS_MAX	BASE_N
+#define BASE_LS_MAX	BASE_B
 
 #define BASE_0		0
 #define BASE_1		1

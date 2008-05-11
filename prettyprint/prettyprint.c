@@ -363,7 +363,8 @@ print_alignments_helper(struct fpo *fpo, bool revcmpl)
 		} else {
 			sw_full_ls(contig->sequence, genome_start, genome_len,
 			    read->sequence, read->sequence_len,
-			    fpo->input.score, &dbalign, &qralign, &sfr);
+			    fpo->input.score, fpo->input.score, &dbalign,
+			    &qralign, &sfr);
 		}
 
 		if (sfr.score != fpo->input.score) {

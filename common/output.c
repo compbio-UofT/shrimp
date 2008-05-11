@@ -34,15 +34,10 @@ readtostr(uint32_t *read, u_int len, bool use_colours, int initbp)
 		buf[i++] = base_translate(initbp, false);
 
 	for (j = 0; j < len; j++) {
-		if (use_colours) {
-			assert((int)EXTRACT(read, j) >= BASE_CS_MIN);
-			assert((int)EXTRACT(read, j) <= BASE_CS_MAX);
+		if (use_colours)
 			buf[i + j] = base_translate(EXTRACT(read, j), true);
-		} else {
-			assert((int)EXTRACT(read, j) >= BASE_LS_MIN);
-			assert((int)EXTRACT(read, j) <= BASE_LS_MAX);
+		else
 			buf[i + j] = base_translate(EXTRACT(read, j), false); 
-		}
 	}
 
 	buf[i + j] = '\0';

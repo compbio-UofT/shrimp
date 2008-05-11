@@ -150,9 +150,11 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 			}
 
 			if (s == COLOUR_SPACE)
-				assert(a >= BASE_CS_MIN && a <= BASE_CS_MAX);
+				assert((a >= BASE_CS_MIN && a <= BASE_CS_MAX) ||
+				    (a == BASE_N || a == BASE_X));
 			else
-				assert(a >= BASE_LS_MIN && a <= BASE_LS_MAX);
+				assert((a >= BASE_LS_MIN && a <= BASE_LS_MAX) ||
+				    (a == BASE_N || a == BASE_X));
 
 			bf(a, len, isnewentry, name, initbp);
 			isnewentry = 0;
@@ -176,15 +178,22 @@ load_fasta(const char *file, void (*bf)(int, ssize_t, int, char *, int), int s)
 char
 base_translate(int base, bool use_colours)
 {
-	char cstrans[] = { '0', '1', '2', '3', 'N' };
+	/*
+	 * NB: colour-space only valid for 0-3 and BASE_N/BASE_X
+	 *     BASE_N is reported as a skipped cycle: '.' in CS.
+	 */
+	char cstrans[] = { '0', '1', '2', '3', '!', '@', '#', '$',
+			   '%', '^', '&', '*', '?', '~', ';', '.' };
 	char lstrans[] = { 'A', 'C', 'G', 'T', 'U', 'M', 'R', 'W',
 			   'S', 'Y', 'K', 'V', 'H', 'D', 'B', 'N' };
 
 	if (use_colours) {
-		assert(base >= BASE_CS_MIN && base <= BASE_CS_MAX);
+		assert((base >= BASE_CS_MIN && base <= BASE_CS_MAX) ||
+		    (base == BASE_N || base == BASE_X));
 		return (cstrans[base]);
 	} else {
-		assert(base >= BASE_LS_MIN && base <= BASE_LS_MAX);
+		assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
+		    (base == BASE_N || base == BASE_X));
 		return (lstrans[base]);
 	}
 }

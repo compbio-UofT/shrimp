@@ -13,6 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <xmmintrin.h>	// for _mm_prefetch
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -65,9 +67,9 @@ static uint32_t  ncontigs;			/* number of contigs read */
 static uint32_t *genome_ls;
 
 /* Reads */
-static struct read_elem   *reads;		/* list of reads */
-static struct read_elem ***readmap;		/* kmer to read map */
-static uint32_t		  *readmap_len;		/* entries in each readmap[n] */
+static struct read_elem      *reads;		/* list of reads */
+static struct readmap_entry **readmap;		/* kmer to read map */
+static uint32_t		     *readmap_len;	/* entries in each readmap[n] */
 
 static u_int	nreads;				/* total reads loaded */
 static u_int	nkmers;				/* total kmers of reads loaded*/
@@ -130,6 +132,8 @@ reheap(struct re_score *scores, int node)
 	struct re_score tmp;
 	int left, right, max;
 
+	assert(node >= 1 && node <= num_outputs);
+
 	left  = node * 2;
 	right = left + 1;
 	max   = node;
@@ -150,6 +154,28 @@ reheap(struct re_score *scores, int node)
 	}
 }
 
+/* percolate up in our min-heap */
+static void
+percolate_up(struct re_score *scores, int node)
+{
+	struct re_score tmp;
+	int parent;
+
+	assert(node >= 1 && node <= num_outputs);
+
+	if (node == 1)
+		return;
+
+	parent = node / 2;
+
+	if (scores[parent].score > scores[node].score) {
+		tmp = scores[node];
+		scores[node] = scores[parent];
+		scores[parent] = tmp;
+		percolate_up(scores, parent);
+	}
+}
+
 /* update our score min-heap */
 static void
 save_score(struct read_elem *re, int score, int index, int contig_num,
@@ -159,17 +185,30 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 
 	scores = re->ri->scores;
 
-	if (score < scores[1].score)
-		return;
+	if (scores[0].score == num_outputs) {
+		if (score < scores[1].score)
+			return;
 
-	scores[1].score = score;
-	scores[1].index = index;
-	scores[1].contig_num = contig_num;
-	scores[1].revcmpl = revcmpl;
-	reheap(scores, 1);
+		scores[1].score = score;
+		scores[1].index = index;
+		scores[1].contig_num = contig_num;
+		scores[1].revcmpl = revcmpl;
+		reheap(scores, 1);
+	} else {
+		int idx = 1 + scores[0].score++;
+
+		scores[idx].score = score;
+		scores[idx].index = index;
+		scores[idx].contig_num = contig_num;
+		scores[idx].revcmpl = revcmpl;
+		percolate_up(scores, idx);
+	} 
 }
 
-/* compress the given kmer into an index in 'readmap' according to the seed */
+/*
+ * Compress the given kmer into an index in 'readmap' according to the seed.
+ * While not optimal, this is only about 20% of the spaced seed scan time.
+ */
 static uint32_t
 kmer_to_mapidx(uint32_t *kmer)
 {
@@ -253,20 +292,47 @@ reset_reads()
 	}
 }
 
+/*
+ * Determine whether or not the kmer hits seen within this read
+ * were colinear.
+ */ 
+#if 0
+static int
+are_hits_colinear(struct read_elem *re)
+{
+	int i, prev, this;
+
+	this = prev = re->next_hit;
+	for (i = 1; i < num_matches; i++) {
+		this = (this + 1) % num_matches;
+
+		if (re->hits[prev].r_idx > re->hits[this].r_idx &&
+		    re->hits[prev].r_idx != -1 && re->hits[this].r_idx != -1) {
+			return (1);
+		}
+
+		prev = this;
+	}
+
+	return (1);
+}
+#endif
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan(int contig_num, bool revcmpl)
 {
-	struct read_elem **res, *re;
+	struct read_elem *re;
+	struct readmap_entry *rme1, *rme2;
 	uint32_t *kmer;
-	uint32_t i, j, k, idx, mapidx;
+	uint32_t i, j, k, pf, idx, mapidx, next_mapidx = 0;
 	uint32_t base, skip, score;
 	uint32_t goff, glen;
 	int prevhit, seed_span;
 	u_int thresh;
-
+uint64_t total_before, total_mapidx, total_sw, tmp64, total_savescore;
 	seed_span = strlen(spaced_seed);
-
+total_before = rdtsc(); total_mapidx = total_sw = total_savescore = 0;
 	PROGRESS_BAR(stderr, 0, 0, 10);
 
 	kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
@@ -279,7 +345,22 @@ scan(int contig_num, bool revcmpl)
 		PROGRESS_BAR(stderr, i, genome_len, 10);
 
 		base = EXTRACT(genome, i);
-		bitfield_prepend(kmer, seed_span, base);
+		if (i == (seed_span - 1)) {
+			bitfield_prepend(kmer, seed_span, base);
+tmp64 = rdtsc();
+			mapidx = kmer_to_mapidx(kmer);
+total_mapidx += rdtsc() - tmp64;
+		} else
+			mapidx = next_mapidx;
+
+		/* compute next kmer early and prefetch the readmap entry */
+		if ((i + 1) < genome_len) {
+			bitfield_prepend(kmer, seed_span, EXTRACT(genome, i + 1));
+tmp64 = rdtsc();
+			next_mapidx = kmer_to_mapidx(kmer);
+total_mapidx += rdtsc() - tmp64;
+			_mm_prefetch((const char *)&readmap[next_mapidx], _MM_HINT_NTA);
+		}
 
 		/*
 		 * Ignore kmers that contain an 'N'.
@@ -292,26 +373,34 @@ scan(int contig_num, bool revcmpl)
 			continue;
 		}
 
-		mapidx = kmer_to_mapidx(kmer);
 		idx = i - (seed_span - 1);
 
-		res = readmap[mapidx];
-		if (res == NULL)
+		rme1 = rme2 = readmap[mapidx];
+		if (rme1 == NULL)
 			continue;
 
-		for (re = *res, j = k = 0; re != NULL; re = *(++res), k++) {
-			prevhit = re->hits[re->prev_hit];
+		/* prefetch first 8 struct read_elem's */
+		for (pf = 0; rme2->re != NULL && pf < 8; pf++)
+			_mm_prefetch((const char *)(rme2++)->re, _MM_HINT_NTA);
+
+		for (re = rme1->re, j = k = 0; re != NULL; re = (++rme1)->re, k++) {
+			/* continue prefetching the struct read_elem's */
+			if (rme2->re != NULL)
+				_mm_prefetch((const char *)(rme2++)->re, _MM_HINT_NTA);
+
+			prevhit = re->hits[re->prev_hit].g_idx;
 			if ((idx - prevhit) <= taboo_len && prevhit != -1)
 				continue;
 
-			re->hits[re->next_hit] = idx;
+			re->hits[re->next_hit].g_idx = idx;
+			re->hits[re->next_hit].r_idx = rme1->idx;
 			re->prev_hit = re->next_hit;
 			re->next_hit = (uint8_t)((re->next_hit + 1) % num_matches);
 
-			if ((idx - re->hits[re->next_hit]) < re->window_len &&
+			if ((idx - re->hits[re->next_hit].g_idx) < re->window_len &&
 			    (re->last_swhit_idx == -1 ||
 			     (i - re->last_swhit_idx) >= re->window_len) &&
-			    re->hits[re->next_hit] != -1) {
+			    re->hits[re->next_hit].g_idx != -1) { // && are_hits_colinear(re)) {
 				if (i < re->window_len)
 					goff = 0;
 				else
@@ -322,6 +411,7 @@ scan(int contig_num, bool revcmpl)
 				else
 					glen = re->window_len * 2;
 
+tmp64 = rdtsc();
 				if (use_colours) {
 					score = sw_vector(genome, goff, glen,
 					    re->ri->read, re->ri->read_len,
@@ -330,7 +420,7 @@ scan(int contig_num, bool revcmpl)
 					score = sw_vector(genome, goff, glen,
 					    re->ri->read, re->ri->read_len, NULL, -1);
 				}
-
+total_sw += rdtsc() - tmp64;
 				if (IS_ABSOLUTE(sw_vect_threshold)) {
 					thresh = (u_int)-sw_vect_threshold;
 				} else {
@@ -338,10 +428,11 @@ scan(int contig_num, bool revcmpl)
 					    (match_value * re->ri->read_len) *
 					    (sw_vect_threshold / 100.0)));
 				}
-
+tmp64 = rdtsc();
 				if (score >= thresh) {
 					save_score(re, score, i, contig_num,
 					    revcmpl);
+total_savescore += rdtsc() - tmp64;
 					re->last_swhit_idx = i;
 					re->ri->swhits++;
 				}
@@ -364,6 +455,11 @@ scan(int contig_num, bool revcmpl)
 	}
 
 	free(kmer);
+
+fprintf(stderr, "SCAN   TOTAL: %" PRIu64 "\n", rdtsc() - total_before);
+fprintf(stderr, "MAPIDX TOTAL: %" PRIu64 "\n", total_mapidx);
+fprintf(stderr, "SW     TOTAL: %" PRIu64 "\n", total_sw);
+fprintf(stderr, "SAVESC TOTAL: %" PRIu64 "\n", total_savescore);
 }
 
 static void
@@ -489,7 +585,7 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 	static uint32_t cnt, skip;
 
 	size_t len;
-	int i, seed_span, seed_weight;
+	int seed_span, seed_weight;
 
 	/* shut up icc */
 	(void)offset;
@@ -541,11 +637,6 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 		len = sizeof(struct re_score) * (num_outputs + 1);
 		re->ri->scores = xmalloc(len);
 		memset(re->ri->scores, 0, len);
-		re->ri->scores[0].score = num_outputs;
-
-		/* init scores to negatives so we only need percolate down */
-		for (i = 1; i <= re->ri->scores[0].score; i++)
-			re->ri->scores[i].score = 0x80000000 + i;
 
 		cnt = skip = 0;
 		memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
@@ -603,15 +694,24 @@ load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 		mapidx = kmer_to_mapidx(kmer);
 
-		/* Ensure that we map only once from any kmer to a certain read. */
-		if (readmap[mapidx] == NULL || readmap[mapidx][readmap_len[mapidx]-1]!= re) {
+		/*
+		 * Ensure that we map only once from any kmer to a certain read.
+		 * If, however, we have multiple identical kmers for this read,
+		 * be sure to disable colinearity checking for simplicity.
+		 */
+		if (readmap[mapidx] == NULL || readmap[mapidx][readmap_len[mapidx]-1].re != re) {
 			readmap_len[mapidx]++;
 
 			readmap[mapidx] = xrealloc(readmap[mapidx],
-			    (readmap_len[mapidx] + 1) * sizeof(struct read_elem *));
+			    (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
 			
-			readmap[mapidx][readmap_len[mapidx] - 1] = re;
-			readmap[mapidx][readmap_len[mapidx]] = NULL;
+			readmap[mapidx][readmap_len[mapidx] - 1].re = re;
+			readmap[mapidx][readmap_len[mapidx] - 1].idx = cnt - seed_span;
+			readmap[mapidx][readmap_len[mapidx]].re = NULL;
+			readmap[mapidx][readmap_len[mapidx]].idx = -1;
+			nkmers++;
+		} else if (readmap[mapidx] != NULL && readmap[mapidx][readmap_len[mapidx]-1].re == re) {
+			readmap[mapidx][readmap_len[mapidx] - 1].idx = -1;
 			nkmers++;
 		}
 	}
@@ -664,21 +764,45 @@ generate_output(struct re_score *rs, bool revcmpl)
 		else
 			glen = re->window_len * 2;
 
-		if (use_colours) {
-			sw_full_cs(genome_ls, goff, glen, re->ri->read,
-			    re->ri->read_len, re->ri->initbp, rs->score, &dbalign,
-			    &qralign, &sfr);
-		} else {
-			sw_full_ls(genome, goff, glen, re->ri->read, re->ri->read_len,
-			    rs->score, &dbalign, &qralign, &sfr);
-		}
-
 		if (IS_ABSOLUTE(sw_full_threshold)) {
 			thresh = (u_int)-sw_full_threshold;
 		} else {
 			thresh = (u_int)floor(((double)
 			    (match_value * re->ri->read_len) *
 			    (sw_full_threshold / 100.0)));
+		}
+
+		/*
+		 * Hacky Optimisation:
+		 *   In letter-space, our full alignment will be the same as
+		 *   what our vector aligner detected. For this reason, we
+		 *   can call the vector aligner a few more times to home in
+		 *   on the alignment we want and reduce our genome length
+		 *   in the much slower, full aligner, providing a net win.
+		 */
+		if (!use_colours) {
+			uint32_t tryoff, trylen, score;
+
+			trylen = glen / 2;
+			tryoff = goff + trylen / 2;
+			assert(tryoff < (goff + glen));
+			score = sw_vector(genome, tryoff, trylen,
+			    re->ri->read, re->ri->read_len, NULL, -1);
+			if (score == rs->score) {
+				goff = tryoff;
+				glen = trylen;
+			}
+		}
+
+		if (use_colours) {
+			sw_full_cs(genome_ls, goff, glen, re->ri->read,
+			    re->ri->read_len, re->ri->initbp, thresh, &dbalign,
+			    &qralign, &sfr);
+		} else {
+			sw_full_ls(genome, goff, glen, re->ri->read,
+			    re->ri->read_len, thresh, rs->score, &dbalign,
+			    &qralign, &sfr);
+			assert(sfr.score == rs->score);
 		}
 
 		if (sfr.score < thresh)
@@ -759,8 +883,7 @@ final_pass(char **files, int nfiles)
 		for (i = 1; i <= re->ri->scores[0].score; i++) {
 			int cn = re->ri->scores[i].contig_num;
 
-			if (re->ri->scores[i].score < 0)
-				continue;
+			assert(re->ri->scores[i].score >= 0);
 
 			assert(cn >= 0 && cn < ncontigs);
 			assert(re->ri->scores[i].parent == NULL);
@@ -1316,7 +1439,8 @@ main(int argc, char **argv)
 		
 
 	if (sw_vector_setup(max_window_len * 2, longest_read_len, gap_open,
-	    gap_extend, match_value, mismatch_value, use_colours, false)) {
+	    gap_extend, gap_open, gap_extend, match_value, mismatch_value,
+	    use_colours, false)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
 		exit(1);

@@ -65,5 +65,18 @@ struct read_elem {
 	uint16_t	  window_len;		/* per-read window length */
 	uint8_t	  	  prev_hit;		/* prev index in 'hits' */
 	uint8_t		  next_hit;		/* next index in 'hits' */
-	uint32_t	  hits[0];		/* size depends on num_matches */
+	struct {
+		uint32_t  g_idx;		/* kmer index in genome */
+		uint32_t  r_idx;		/* kmer index in read */
+	} hits[0];				/* size depends on num_matches */
+};
+
+/*
+ * Each index of `readmap' points to an array of `readmap_entry' structures.
+ * These structures in turn point to all reads that contain the indexing kmer
+ * as well as track where in the read the kmer exists for colinearity checking.
+ */
+struct readmap_entry {
+	struct read_elem *re;		/* point to the read */
+	int		  idx;		/* kmer's index in the read sequence */
 };

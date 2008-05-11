@@ -21,69 +21,63 @@
 #include "../common/util.h"
 
 struct swcell {
-	int score_n;
-	int back_n;
+	struct {
+		int	score_n;
+		int	score_w;
+		int	score_nw;
 
-	int score_w;
-	int back_w;
-
-	int score_nw;
-	int back_nw;
+		int8_t	back_n;
+		int8_t	back_w;
+		int8_t	back_nw;
+	} from[4];
 };
 
-enum {
-	FROM_NORTH_NORTH = 0,
-	FROM_NORTH_NORTHWEST,
+#define FROM_A	0x00
+#define FROM_B	0x01 
+#define FROM_C	0x02
+#define FROM_D	0x03
 
-	FROM_WEST_NORTHWEST,
-	FROM_WEST_WEST,
+#define FROM_NORTH_NORTH		0x01
+#define FROM_NORTH_NORTHWEST		0x02
+#define FROM_WEST_NORTHWEST		0x03
+#define FROM_WEST_WEST			0x04
+#define FROM_NORTHWEST_NORTH		0x05
+#define FROM_NORTHWEST_NORTHWEST	0x06
+#define FROM_NORTHWEST_WEST		0x07
 
-	FROM_NORTHWEST_NORTH,
-	FROM_NORTHWEST_NORTHWEST,
-	FROM_NORTHWEST_WEST
-};
+#define FROM_x(_mat, _dir)		(int8_t)(((_dir) << 2) | (_mat))
 
-enum {
-	FROM_A_NORTH_NORTH = 1,
-	FROM_A_NORTH_NORTHWEST,
+#define FROM_A_NORTH_NORTH		FROM_x(FROM_A, FROM_NORTH_NORTH)
+#define FROM_A_NORTH_NORTHWEST		FROM_x(FROM_A, FROM_NORTH_NORTHWEST)
+#define	FROM_A_WEST_NORTHWEST		FROM_x(FROM_A, FROM_WEST_NORTHWEST)
+#define FROM_A_WEST_WEST		FROM_x(FROM_A, FROM_WEST_WEST)
+#define FROM_A_NORTHWEST_NORTH		FROM_x(FROM_A, FROM_NORTHWEST_NORTH)
+#define FROM_A_NORTHWEST_NORTHWEST	FROM_x(FROM_A, FROM_NORTHWEST_NORTHWEST)
+#define FROM_A_NORTHWEST_WEST		FROM_x(FROM_A, FROM_NORTHWEST_WEST)
 
-	FROM_A_WEST_NORTHWEST,
-	FROM_A_WEST_WEST,
+#define FROM_B_NORTH_NORTH		FROM_x(FROM_B, FROM_NORTH_NORTH)
+#define FROM_B_NORTH_NORTHWEST		FROM_x(FROM_B, FROM_NORTH_NORTHWEST)
+#define	FROM_B_WEST_NORTHWEST		FROM_x(FROM_B, FROM_WEST_NORTHWEST)
+#define FROM_B_WEST_WEST		FROM_x(FROM_B, FROM_WEST_WEST)
+#define FROM_B_NORTHWEST_NORTH		FROM_x(FROM_B, FROM_NORTHWEST_NORTH)
+#define FROM_B_NORTHWEST_NORTHWEST	FROM_x(FROM_B, FROM_NORTHWEST_NORTHWEST)
+#define FROM_B_NORTHWEST_WEST		FROM_x(FROM_B, FROM_NORTHWEST_WEST)
 
-	FROM_A_NORTHWEST_NORTH,
-	FROM_A_NORTHWEST_NORTHWEST,
-	FROM_A_NORTHWEST_WEST,
+#define FROM_C_NORTH_NORTH		FROM_x(FROM_C, FROM_NORTH_NORTH)
+#define FROM_C_NORTH_NORTHWEST		FROM_x(FROM_C, FROM_NORTH_NORTHWEST)
+#define	FROM_C_WEST_NORTHWEST		FROM_x(FROM_C, FROM_WEST_NORTHWEST)
+#define FROM_C_WEST_WEST		FROM_x(FROM_C, FROM_WEST_WEST)
+#define FROM_C_NORTHWEST_NORTH		FROM_x(FROM_C, FROM_NORTHWEST_NORTH)
+#define FROM_C_NORTHWEST_NORTHWEST	FROM_x(FROM_C, FROM_NORTHWEST_NORTHWEST)
+#define FROM_C_NORTHWEST_WEST		FROM_x(FROM_C, FROM_NORTHWEST_WEST)
 
-	FROM_B_NORTH_NORTH,
-	FROM_B_NORTH_NORTHWEST,
-
-	FROM_B_WEST_NORTHWEST,
-	FROM_B_WEST_WEST,
-
-	FROM_B_NORTHWEST_NORTH,
-	FROM_B_NORTHWEST_NORTHWEST,
-	FROM_B_NORTHWEST_WEST,
-
-	FROM_C_NORTH_NORTH,
-	FROM_C_NORTH_NORTHWEST,
-
-	FROM_C_WEST_NORTHWEST,
-	FROM_C_WEST_WEST,
-
-	FROM_C_NORTHWEST_NORTH,
-	FROM_C_NORTHWEST_NORTHWEST,
-	FROM_C_NORTHWEST_WEST,
-
-	FROM_D_NORTH_NORTH,
-	FROM_D_NORTH_NORTHWEST,
-
-	FROM_D_WEST_NORTHWEST,
-	FROM_D_WEST_WEST,
-
-	FROM_D_NORTHWEST_NORTH,
-	FROM_D_NORTHWEST_NORTHWEST,
-	FROM_D_NORTHWEST_WEST
-};
+#define FROM_D_NORTH_NORTH		FROM_x(FROM_D, FROM_NORTH_NORTH)
+#define FROM_D_NORTH_NORTHWEST		FROM_x(FROM_D, FROM_NORTH_NORTHWEST)
+#define	FROM_D_WEST_NORTHWEST		FROM_x(FROM_D, FROM_WEST_NORTHWEST)
+#define FROM_D_WEST_WEST		FROM_x(FROM_D, FROM_WEST_WEST)
+#define FROM_D_NORTHWEST_NORTH		FROM_x(FROM_D, FROM_NORTHWEST_NORTH)
+#define FROM_D_NORTHWEST_NORTHWEST	FROM_x(FROM_D, FROM_NORTHWEST_NORTHWEST)
+#define FROM_D_NORTHWEST_WEST		FROM_x(FROM_D, FROM_NORTHWEST_WEST)
 
 enum {
 	BACK_INSERTION = 1,
@@ -103,14 +97,12 @@ static int		dblen, qrlen;
 static int		gap_open, gap_ext;
 static int		match, mismatch;
 static int		xover_penalty;
-static struct swcell   *swmatrix[4];
+static struct swcell   *swmatrix;
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
 
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
-
-#define SWM_x(_x, _i, _j) swmatrix[(_x)][((_i) + 1) * (lena + 1) + (_j) + 1]
 
 #define BT_CROSSOVER		0x80
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
@@ -122,37 +114,12 @@ static uint64_t		swticks, swcells, swinvocs;
  * scan.
  */
 static int
-full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
+full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 {
-	int i, j, k, l, n, max_i, max_j, max_k;
-	int score, ms, go, ge, tmp, tmp2, resetval;
-	const int neighbours[4][3] = {
-		{ 1, 2, 3 },
-		{ 0, 2, 3 },
-		{ 0, 1, 3 },
-		{ 0, 1, 2 }
-	};
-	const int from[4][7] = {
-		{ FROM_A_NORTH_NORTH,		FROM_A_NORTH_NORTHWEST,
-		  FROM_A_WEST_NORTHWEST,	FROM_A_WEST_WEST,
-		  FROM_A_NORTHWEST_NORTH,	FROM_A_NORTHWEST_NORTHWEST,
-		  FROM_A_NORTHWEST_WEST },
-
-		{ FROM_B_NORTH_NORTH,		FROM_B_NORTH_NORTHWEST,
-		  FROM_B_WEST_NORTHWEST,	FROM_B_WEST_WEST,
-		  FROM_B_NORTHWEST_NORTH,	FROM_B_NORTHWEST_NORTHWEST,
-		  FROM_B_NORTHWEST_WEST },
-
-		{ FROM_C_NORTH_NORTH,		FROM_C_NORTH_NORTHWEST,
-		  FROM_C_WEST_NORTHWEST,	FROM_C_WEST_WEST,
-		  FROM_C_NORTHWEST_NORTH,	FROM_C_NORTHWEST_NORTHWEST,
-		  FROM_C_NORTHWEST_WEST },
-
-		{ FROM_D_NORTH_NORTH,		FROM_D_NORTH_NORTHWEST,
-		  FROM_D_WEST_NORTHWEST,	FROM_D_WEST_WEST,
-		  FROM_D_NORTHWEST_NORTH,	FROM_D_NORTHWEST_NORTHWEST,
-		  FROM_D_NORTHWEST_WEST }
-	};
+	int i, j, k, l, max_i, max_j, max_k;
+	int score, ms, go, ge, tmp, resetval;
+	int sw_band, ne_band;
+	int8_t tmp2;
 
 	/* shut up gcc */
 	max_i = max_j = max_k = j = 0;
@@ -161,35 +128,94 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 	go = gap_open;
 	ge = gap_ext;
 
-	for (i = 0; i < 4; i++) {
- 	        if (i != 0)
- 		        resetval = xover_penalty;
-		else
-		        resetval = 0;
+	for (j = 0; j < lena + 1; j++) {
+		int idx = j;
 
-		for (j = -1; j < lenb; j++) {
-			SWM_x(i, j, -1).score_nw = resetval;
-			SWM_x(i, j, -1).score_n = -go + resetval;
-			SWM_x(i, j, -1).score_w = -go + resetval;
+		swmatrix[idx].from[0].score_nw = 0;
+		swmatrix[idx].from[0].score_n  = -go;
+		swmatrix[idx].from[0].score_w  = -go;
+		swmatrix[idx].from[1].score_nw = xover_penalty;
+		swmatrix[idx].from[1].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[1].score_w  = -go + xover_penalty;
+		swmatrix[idx].from[2].score_nw = xover_penalty;
+		swmatrix[idx].from[2].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[2].score_w  = -go + xover_penalty;
+		swmatrix[idx].from[3].score_nw = xover_penalty;
+		swmatrix[idx].from[3].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[3].score_w  = -go + xover_penalty;
 
-			SWM_x(i, j, -1).back_nw = 0;
-			SWM_x(i, j, -1).back_n = 0;
-			SWM_x(i, j, -1).back_w = 0;
-		}
-
-		for (j = -1; j < lena; j++) {
-			SWM_x(i, -1, j).score_nw = resetval;
-			SWM_x(i, -1, j).score_n  = -go + resetval;
-			SWM_x(i, -1, j).score_w  = -go + resetval;
-
-			SWM_x(i, -1, j).back_nw = 0;
-			SWM_x(i, -1, j).back_n = 0;
-			SWM_x(i, -1, j).back_w = 0;
-		}
+		swmatrix[idx].from[0].back_nw = 0;
+		swmatrix[idx].from[0].back_n  = 0;
+		swmatrix[idx].from[0].back_w  = 0;
+		swmatrix[idx].from[1].back_nw = 0;
+		swmatrix[idx].from[1].back_n  = 0;
+		swmatrix[idx].from[1].back_w  = 0;
+		swmatrix[idx].from[2].back_nw = 0;
+		swmatrix[idx].from[2].back_n  = 0;
+		swmatrix[idx].from[2].back_w  = 0;
+		swmatrix[idx].from[3].back_nw = 0;
+		swmatrix[idx].from[3].back_n  = 0;
+		swmatrix[idx].from[3].back_w  = 0;
 	}
+
+	for (j = 0; j < lenb + 1; j++) {
+		int idx = j * (lena + 1);
+
+		swmatrix[idx].from[0].score_nw = 0;
+		swmatrix[idx].from[0].score_n  = -go;
+		swmatrix[idx].from[0].score_w  = -go;
+		swmatrix[idx].from[1].score_nw = xover_penalty;
+		swmatrix[idx].from[1].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[1].score_w  = -go + xover_penalty;
+		swmatrix[idx].from[2].score_nw = xover_penalty;
+		swmatrix[idx].from[2].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[2].score_w  = -go + xover_penalty;
+		swmatrix[idx].from[3].score_nw = xover_penalty;
+		swmatrix[idx].from[3].score_n  = -go + xover_penalty;
+		swmatrix[idx].from[3].score_w  = -go + xover_penalty;
+
+		swmatrix[idx].from[0].back_nw = 0;
+		swmatrix[idx].from[0].back_n  = 0;
+		swmatrix[idx].from[0].back_w  = 0;
+		swmatrix[idx].from[1].back_nw = 0;
+		swmatrix[idx].from[1].back_n  = 0;
+		swmatrix[idx].from[1].back_w  = 0;
+		swmatrix[idx].from[2].back_nw = 0;
+		swmatrix[idx].from[2].back_n  = 0;
+		swmatrix[idx].from[2].back_w  = 0;
+		swmatrix[idx].from[3].back_nw = 0;
+		swmatrix[idx].from[3].back_n  = 0;
+		swmatrix[idx].from[3].back_w  = 0;
+	}
+
+	/*
+	 * Figure out our band.
+	 *   We can actually skip computation of a significant number of
+	 *   cells, which could never be part of an alignment corresponding
+	 *   to our threshhold score.
+	 */
+	sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
+	ne_band = lena - (lenb - sw_band);
 
 	for (i = 0; i < lenb; i++) {
 		for (j = 0; j < lena; j++) {
+			struct swcell *cell_nw, *cell_n, *cell_w, *cell_cur;
+
+			cell_nw  = &swmatrix[i * (lena + 1) + j];
+			cell_n   = cell_nw + 1;
+			cell_w   = cell_nw + (lena + 1);
+			cell_cur = cell_w + 1;
+
+			/* banding */
+			if (i >= sw_band + j) {
+				memset(cell_cur, 0, sizeof(*cell_cur));
+				continue;
+			}
+			if (j >= ne_band + i) {
+				memset(cell_cur, 0, sizeof(*cell_cur));
+				break;
+			}
+
 			for (k = 0; k < 4; k++) {
 				if (k != 0)
 					resetval = xover_penalty;
@@ -201,58 +227,52 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 				 */
 				ms = (db[j] == qr[k][i]) ? match : mismatch;
 
-				tmp  = SWM_x(k, i-1, j-1).score_nw + ms;
-				tmp2 = from[k][FROM_NORTHWEST_NORTHWEST];
+				tmp  = cell_nw->from[k].score_nw + ms;
+				tmp2 = FROM_x(k, FROM_NORTHWEST_NORTHWEST);
 
-				if (SWM_x(k, i-1, j-1).score_n + ms > tmp) {
-					tmp  = SWM_x(k, i-1, j-1).score_n + ms;
-					tmp2 = from[k][FROM_NORTHWEST_NORTH];
+				if (cell_nw->from[k].score_n + ms > tmp) {
+					tmp  = cell_nw->from[k].score_n + ms;
+					tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
 				}
 
-				if (SWM_x(k, i-1, j-1).score_w + ms > tmp) {
-					tmp  = SWM_x(k, i-1, j-1).score_w + ms;
-					tmp2 = from[k][FROM_NORTHWEST_WEST];
+				if (cell_nw->from[k].score_w + ms > tmp) {
+					tmp  = cell_nw->from[k].score_w + ms;
+					tmp2 = FROM_x(k, FROM_NORTHWEST_WEST);
 				}
 
-				/* check neighbours' NW */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
+				/* check neighbours */
+				for (l = 0; l < 4; l++) {
+					if (l == k)
+						continue;
 
-					if (SWM_x(n, i-1, j-1).score_nw + ms +
+					/* northwest */
+					if (cell_nw->from[l].score_nw + ms +
 					    xover_penalty > tmp) {
 						tmp  =
-						    SWM_x(n, i-1, j-1).score_nw
+						    cell_nw->from[l].score_nw
 						    + ms + xover_penalty;
-						tmp2 = from[n][
-						    FROM_NORTHWEST_NORTHWEST];
+						tmp2 = FROM_x(l,
+						    FROM_NORTHWEST_NORTHWEST);
 					}
-				}
 
-				/* check neighbours' N */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
-
-					if (SWM_x(n, i-1, j-1).score_n + ms +
+					/* north */
+					if (cell_nw->from[l].score_n + ms +
 					    xover_penalty > tmp) {
 						tmp  =
-						    SWM_x(n, i-1, j-1).score_n
+						    cell_nw->from[l].score_n
 						    + ms + xover_penalty;
-						tmp2 = from[n][
-						    FROM_NORTHWEST_NORTH];
+						tmp2 = FROM_x(l,
+						    FROM_NORTHWEST_NORTH);
 					}
-				}
 
-				/* check neighbour's W */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
-
-					if (SWM_x(n, i-1, j-1).score_w + ms +
+					/* west */
+					if (cell_nw->from[l].score_w + ms +
 					    xover_penalty > tmp) {
 						tmp  =
-						    SWM_x(n, i-1, j-1).score_w
+						    cell_nw->from[l].score_w
 						    + ms + xover_penalty;
-						tmp2 = from[n][
-						    FROM_NORTHWEST_WEST];
+						tmp2 = FROM_x(l,
+						    FROM_NORTHWEST_WEST);
 					}
 				}
 
@@ -261,132 +281,99 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 					tmp2 = 0;
 				}
 
-				SWM_x(k, i, j).score_nw = tmp;
-				SWM_x(k, i, j).back_nw  = tmp2;
+				cell_cur->from[k].score_nw = tmp;
+				cell_cur->from[k].back_nw  = tmp2;
 
 
 				/*
 				 * north
 				 */
-				tmp  = SWM_x(k, i-1, j).score_nw - go - ge;
-				tmp2 = from[k][FROM_NORTH_NORTHWEST];
+				tmp  = cell_n->from[k].score_nw - go - ge;
+				tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 
-				if (SWM_x(k, i-1, j).score_n - ge > tmp) {
-					tmp  = SWM_x(k, i-1, j).score_n - ge;
-					tmp2 = from[k][FROM_NORTH_NORTH];
+				if (cell_n->from[k].score_n - ge > tmp) {
+					tmp  = cell_n->from[k].score_n - ge;
+					tmp2 = FROM_x(k, FROM_NORTH_NORTH);
 				}
 
-				/* check neighbours' NW */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
+				/* check neighbours */
+				for (l = 0; l < 4; l++) {
+					if (l == k)
+						continue;
 
-					if (SWM_x(n, i-1, j).score_nw - go - ge
+					/* northwest */
+					if (cell_n->from[l].score_nw - go - ge
 					    + xover_penalty > tmp) {
 						tmp  =
-						    SWM_x(n, i-1, j).score_nw
+						    cell_n->from[l].score_nw
 						    - go - ge + xover_penalty;
-						tmp2 = from[n][
-						    FROM_NORTH_NORTHWEST];
+						tmp2 = FROM_x(l,
+						    FROM_NORTH_NORTHWEST);
 					}
-				}
 
-				/* check neighbours' N */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
-
-					if (SWM_x(n, i-1, j).score_n - ge
+					/* north */
+					if (cell_n->from[l].score_n - ge
 					    + xover_penalty > tmp) {
 						tmp  =
-						    SWM_x(n, i-1, j).score_n
+						    cell_n->from[l].score_n
 						    - ge + xover_penalty;
-						tmp2 = from[n][
-						    FROM_NORTH_NORTH];
+						tmp2 = FROM_x(l,
+						    FROM_NORTH_NORTH);
 					}
 				}
-
 
 				if (tmp <= resetval) {
 					tmp = resetval;
 					tmp2 = 0;
 				}
 					
-				SWM_x(k, i, j).score_n = tmp;
-				SWM_x(k, i, j).back_n  = tmp2;
+				cell_cur->from[k].score_n = tmp;
+				cell_cur->from[k].back_n  = tmp2;
 
 				
 				/*
 				 * west
 				 */
-				tmp  = SWM_x(k, i, j-1).score_nw - go - ge;
-				tmp2 = from[k][FROM_WEST_NORTHWEST];
+				tmp  = cell_w->from[k].score_nw - go - ge;
+				tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 
-				if (SWM_x(k, i, j-1).score_w - ge > tmp) {
-					tmp  = SWM_x(k, i, j-1).score_w - ge;
-					tmp2 = from[k][FROM_WEST_WEST];
+				if (cell_w->from[k].score_w - ge > tmp) {
+					tmp  = cell_w->from[k].score_w - ge;
+					tmp2 = FROM_x(k, FROM_WEST_WEST);
 				}
 
-/* it doesn't make sense to cross over on a genomic gap */
-#if 0
-				/* check neighbours' NW */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
+				/*
+				 * NB: It doesn't make sense to cross over on a
+				 *     genomic gap, so we won't.
+				 */
 
-					if (SWM_x(n, i, j-1).score_nw - go - ge
-					    + xover_penalty > tmp) {
-						tmp  =
-						    SWM_x(n, i, j-1).score_nw
-						    - go - ge + xover_penalty;
-						tmp2 = from[n][
-						    FROM_WEST_NORTHWEST];
-					}
-				}
-
-				/* check neighbours' W */
-				for (l = 0; l < 3; l++) {
-					n = neighbours[k][l];
-
-					if (SWM_x(n, i, j-1).score_w - ge
-					    + xover_penalty > tmp) {
-						tmp  =
-						    SWM_x(n, i-1, j-1).score_w
-						    - ge + xover_penalty;
-						tmp2 = from[n][
-						    FROM_WEST_WEST];
-					}
-				}
-#endif
 				if (tmp <= resetval) {
 					tmp = resetval;
 					tmp2 = 0;
 				}
 
-				SWM_x(k, i, j).score_w = tmp;
-				SWM_x(k, i, j).back_w  = tmp2;
+				cell_cur->from[k].score_w = tmp;
+				cell_cur->from[k].back_w  = tmp2;
 
 
 				/*
 				 * max score
 				 */
-				if (SWM_x(k, i, j).score_nw > score) {
-					score = SWM_x(k, i, j).score_nw;
+				if (cell_cur->from[k].score_nw > score) {
+					score = cell_cur->from[k].score_nw;
 					max_i = i, max_j = j, max_k = k;
 				}
-				if (SWM_x(k, i, j).score_n > score) {
-					score = SWM_x(k, i, j).score_n;
+				if (cell_cur->from[k].score_n > score) {
+					score = cell_cur->from[k].score_n;
 					max_i = i, max_j = j, max_k = k;
 				}
-				if (SWM_x(k, i, j).score_w > score) {
-					score = SWM_x(k, i, j).score_w;
+				if (cell_cur->from[k].score_w > score) {
+					score = cell_cur->from[k].score_w;
 					max_i = i, max_j = j, max_k = k;
 				}
 			}
 		}
 	}
-
-	// not necessarily true, but typically so, and should be close
-	// if not. can we define a correct assertion here?
-	//assert(score >= maxscore);
-	(void)maxscore;
 
 	*iret = max_i;
 	*jret = max_j;
@@ -406,24 +393,30 @@ full_sw(int lena, int lenb, int maxscore, int *iret, int *jret, int *kret)
 static int
 do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 {
+	struct swcell *cell;
 	int off, from, fromscore;
 
 	off = (dblen + qrlen) - 1;
 
-	from = SWM_x(k, i, j).back_nw;
-	fromscore = SWM_x(k, i, j).score_nw;
+	cell = &swmatrix[(i + 1) * (lena + 1) + j + 1];
 
-	if (SWM_x(k, i, j).score_w > fromscore) {
-		from = SWM_x(k, i, j).back_w;
-		fromscore = SWM_x(k, i, j).score_w;
+	from = cell->from[k].back_nw;
+	fromscore = cell->from[k].score_nw;
+
+	if (cell->from[k].score_w > fromscore) {
+		from = cell->from[k].back_w;
+		fromscore = cell->from[k].score_w;
 	}
-	if (SWM_x(k, i, j).score_n > fromscore)
-		from = SWM_x(k, i, j).back_n;
+	if (cell->from[k].score_n > fromscore)
+		from = cell->from[k].back_n;
+
+	assert(from != 0);
 
 	/* fill out the backtrace */
-
 	while (i >= 0 && j >= 0) {
 		assert(off >= 0);
+
+		cell = NULL;
 
 		/* common operations first */
 		switch (from) {
@@ -472,6 +465,7 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 			break;
 
 		default:
+			fprintf(stderr, "INTERNAL ERROR: from = %d\n", from);
 			assert(0);
 		}
 
@@ -499,6 +493,7 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 				backtrace[off]= BACK_D_DELETION;
 				break;
 			default:
+				fprintf(stderr, "INTERNAL ERROR: k = %d\n", k);
 				assert(0);
 			}
 			break;
@@ -541,11 +536,13 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 				backtrace[off] = BACK_D_MATCH_MISMATCH;
 				break;
 			default:
+				fprintf(stderr, "INTERNAL ERROR: k = %d\n", k);
 				assert(0);
 			}
 			break;
 
 		default:
+			fprintf(stderr, "INTERNAL ERROR: from = %d\n", from);
 			assert(0);
 		}
 
@@ -608,64 +605,68 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 			break;
 
 		default:
-		  assert(0);
+			fprintf(stderr, "INTERNAL ERROR: from = %d\n", from);
+			assert(0);
 		}
 
 
 		/*
 		 * Continue backtrace (nb: i,j and k have already been changed).
 		 */
+		cell = &swmatrix[(i + 1) * (lena + 1) + j + 1];
+
 		switch (from) {
 		case FROM_A_NORTH_NORTH:
 		case FROM_B_NORTH_NORTH:
 		case FROM_C_NORTH_NORTH:
 		case FROM_D_NORTH_NORTH:
-			from = SWM_x(k, i, j).back_n;
+			from = cell->from[k].back_n;
 			break;
 
 		case FROM_A_NORTH_NORTHWEST:
 		case FROM_B_NORTH_NORTHWEST:
 		case FROM_C_NORTH_NORTHWEST:
 		case FROM_D_NORTH_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
+			from = cell->from[k].back_nw;
 			break;
 
 		case FROM_A_WEST_WEST:
 		case FROM_B_WEST_WEST:
 		case FROM_C_WEST_WEST:
 		case FROM_D_WEST_WEST:
-			from = SWM_x(k, i, j).back_w;
+			from = cell->from[k].back_w;
 			break;
 
 		case FROM_A_WEST_NORTHWEST:
 		case FROM_B_WEST_NORTHWEST:
 		case FROM_C_WEST_NORTHWEST:
 		case FROM_D_WEST_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
+			from = cell->from[k].back_nw;
 			break;
 
 		case FROM_A_NORTHWEST_NORTH:
 		case FROM_B_NORTHWEST_NORTH:
 		case FROM_C_NORTHWEST_NORTH:
 		case FROM_D_NORTHWEST_NORTH:
-			from = SWM_x(k, i, j).back_n;
+			from = cell->from[k].back_n;
 			break;
 
 		case FROM_A_NORTHWEST_NORTHWEST:
 		case FROM_B_NORTHWEST_NORTHWEST:
 		case FROM_C_NORTHWEST_NORTHWEST:
 		case FROM_D_NORTHWEST_NORTHWEST:
-			from = SWM_x(k, i, j).back_nw;
+			from = cell->from[k].back_nw;
 			break;
 
 		case FROM_A_NORTHWEST_WEST:
 		case FROM_B_NORTHWEST_WEST:
 		case FROM_C_NORTHWEST_WEST:
 		case FROM_D_NORTHWEST_WEST:
-			from = SWM_x(k, i, j).back_w;
+			from = cell->from[k].back_w;
 			break;
 
 		default:
+			fprintf(stderr, "INTERNAL ERROR: from = %d\n", from);
 			assert(0);
 		}
 
@@ -780,7 +781,7 @@ pretty_print(int i, int j, int k)
 			break;
 	
 		default:
-			printf("%x\n", backtrace[l]);
+			fprintf(stderr, "INTERNAL ERROR: backtrace[l] = 0x%x\n", backtrace[l]);
 			assert(0);
 		}
 	}
@@ -806,12 +807,10 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 			return (1);
 	}
 
-	for (i = 0; i < 4; i++) {
-		swmatrix[i] = malloc((dblen + 1) * (qrlen + 1) *
-		    sizeof(swmatrix[0][0]));
-		if (swmatrix[i] == NULL)
-			return (1);
-	}
+	swmatrix = malloc((dblen + 1) * (qrlen + 1) *
+	    sizeof(swmatrix[0]));
+	if (swmatrix == NULL)
+		return (1);
 
 	backtrace = malloc((dblen + qrlen) * sizeof(backtrace[0]));
 	if (backtrace == NULL)
@@ -859,7 +858,7 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
-    int initbp, int maxscore, char **dbalignp, char **qralignp,
+    int initbp, int threshscore, char **dbalignp, char **qralignp,
     struct sw_full_results *sfr)
 {
 	struct sw_full_results scratch;
@@ -901,12 +900,19 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 		int letter = (i + initbp) % 4;
 
 		for (j = 0; j < rlen; j++) {
-			qr[i][j] = (int8_t)cstols(letter, EXTRACT(read, j));
-			letter = qr[i][j];
+			int base = EXTRACT(read, j);
+
+			if (base == BASE_N || base == BASE_X) {
+				qr[i][j] = BASE_N;
+				letter = (i + initbp) % 4;
+			} else {
+				qr[i][j] = (int8_t)cstols(letter, base);
+				letter = qr[i][j];
+			}
 		}
 	}
 
-	sfr->score = full_sw(glen, rlen, maxscore, &i, &j, &k);
+	sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k);
 	k = do_backtrace(glen, i, j, k, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;

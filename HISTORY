@@ -1,5 +1,11 @@
 $Id$
 
+1.1.0: May ??, 2008
+	- Fixed missed cycle handling in SOLiD reads.
+	- Various Speed Improvements.
+	- Initial DAG aligner implementation for Helicos Single-Molecule
+	  Sequencing.
+
 1.0.5: March 25, 2008
 	- Increased spaced seed weight by 2 for letter space, as 454 and
 	  Illumina/Solexa reads are generally longer than AB.
