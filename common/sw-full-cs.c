@@ -796,31 +796,31 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 	int i;
 
 	dblen = _dblen;
-	db = malloc(dblen * sizeof(db[0]));
+	db = (int8_t *)malloc(dblen * sizeof(db[0]));
 	if (db == NULL)
 		return (1);
 
 	qrlen = _qrlen;
 	for (i = 0; i < 4; i++) {
-		qr[i] = malloc(qrlen * sizeof(qr[0]));
+		qr[i] = (int8_t *)malloc(qrlen * sizeof(qr[0]));
 		if (qr[i] == NULL)
 			return (1);
 	}
 
-	swmatrix = malloc((dblen + 1) * (qrlen + 1) *
+	swmatrix = (struct swcell *)malloc((dblen + 1) * (qrlen + 1) *
 	    sizeof(swmatrix[0]));
 	if (swmatrix == NULL)
 		return (1);
 
-	backtrace = malloc((dblen + qrlen) * sizeof(backtrace[0]));
+	backtrace = (uint8_t *)malloc((dblen + qrlen) * sizeof(backtrace[0]));
 	if (backtrace == NULL)
 		return (1);
 
-	dbalign = malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
+	dbalign = (char *)malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
 	if (dbalign == NULL)
 		return (1);
 
-	qralign = malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
+	qralign = (char *)malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
 	if (qralign == NULL)
 		return (1);
 

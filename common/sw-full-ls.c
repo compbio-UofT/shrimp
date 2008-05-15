@@ -45,7 +45,8 @@ struct swcell {
 static int		initialised;
 static int8_t	       *db, *qr;
 static int		dblen, qrlen;
-static int		gap_open, gap_ext;
+static int		a_gap_open, a_gap_ext;
+static int		b_gap_open, b_gap_ext;
 static int		match, mismatch;
 static struct swcell   *swmatrix;
 static int8_t	       *backtrace;
@@ -59,15 +60,17 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 {
 	int i, j;
 	int sw_band, ne_band;
-	int score, ms, go, ge, tmp;
+	int score, ms, a_go, a_ge, b_go, b_ge, tmp;
 	int8_t tmp2;
 
 	/* shut up gcc */
 	j = 0;
 
 	score = 0;
-	go = gap_open;
-	ge = gap_ext;
+	a_go = a_gap_open;
+	a_ge = a_gap_ext;
+	b_go = b_gap_open;
+	b_ge = b_gap_ext;
 
 	for (i = 0; i < lena + 1; i++) {
 		int idx = i;
@@ -85,8 +88,8 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 		int idx = i * (lena + 1);
 
 		swmatrix[idx].score_northwest = 0;
-		swmatrix[idx].score_north = -go;
-		swmatrix[idx].score_west = -go;
+		swmatrix[idx].score_north = -a_go;
+		swmatrix[idx].score_west = -a_go;
 
 		swmatrix[idx].back_northwest = 0;
 		swmatrix[idx].back_north = 0;
@@ -149,11 +152,11 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 			/*
 			 * north
 			 */
-			tmp  = cell_n->score_northwest - go - ge;
+			tmp  = cell_n->score_northwest - b_go - b_ge;
 			tmp2 = FROM_NORTH_NORTHWEST;
 
-			if (cell_n->score_north - ge > tmp) {
-				tmp  = cell_n->score_north - ge;
+			if (cell_n->score_north - b_ge > tmp) {
+				tmp  = cell_n->score_north - b_ge;
 				tmp2 = FROM_NORTH_NORTH;
 			}
 
@@ -167,11 +170,11 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 			/*
 			 * west
 			 */
-			tmp  = cell_w->score_northwest - go - ge;
+			tmp  = cell_w->score_northwest - a_go - a_ge;
 			tmp2 = FROM_WEST_NORTHWEST;
 
-			if (cell_w->score_west - ge > tmp) {
-				tmp  = cell_w->score_west - ge;
+			if (cell_w->score_west - a_ge > tmp) {
+				tmp  = cell_w->score_west - a_ge;
 				tmp2 = FROM_WEST_WEST;
 			}
 
@@ -196,7 +199,7 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 		if (score == maxscore)
 			break;
 	}
-
+if (score != maxscore) fprintf(stderr, "WANTED: %d, FOUND: %d\n", maxscore, score);
 	*iret = i;
 	*jret = j;
 
@@ -361,38 +364,41 @@ pretty_print(int i, int j, int k)
 }
 
 int
-sw_full_ls_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-    int _match, int _mismatch, bool reset_stats)
+sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
+    int _b_gap_open, int _b_gap_ext, int _match, int _mismatch,
+    bool reset_stats)
 {
 
 	dblen = _dblen;
-	db = malloc(dblen * sizeof(db[0]));
+	db = (int8_t *)malloc(dblen * sizeof(db[0]));
 	if (db == NULL)
 		return (1);
 
 	qrlen = _qrlen;
-	qr = malloc(qrlen * sizeof(qr[0]));
+	qr = (int8_t *)malloc(qrlen * sizeof(qr[0]));
 	if (qr == NULL)
 		return (1);
 
-	swmatrix = malloc((dblen + 1) * (qrlen + 1) * sizeof(swmatrix[0]));
+	swmatrix = (struct swcell *)malloc((dblen + 1) * (qrlen + 1) * sizeof(swmatrix[0]));
 	if (swmatrix == NULL)
 		return (1);
 
-	backtrace = malloc((dblen + qrlen) * sizeof(backtrace[0]));
+	backtrace = (int8_t *)malloc((dblen + qrlen) * sizeof(backtrace[0]));
 	if (backtrace == NULL)
 		return (1);
 
-	dbalign = malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
+	dbalign = (char *)malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
 	if (dbalign == NULL)
 		return (1);
 
-	qralign = malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
+	qralign = (char *)malloc((dblen + qrlen + 1) * sizeof(dbalign[0]));
 	if (qralign == NULL)
 		return (1);
 
-	gap_open = -(_gap_open);
-	gap_ext = -(_gap_ext);
+	a_gap_open = -(_a_gap_open);
+	a_gap_ext = -(_a_gap_ext);
+	b_gap_open = -(_b_gap_open);
+	b_gap_ext = -(_b_gap_ext);
 	match = _match;
 	mismatch = _mismatch;
 

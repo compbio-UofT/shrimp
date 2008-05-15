@@ -24,7 +24,7 @@ readtostr(uint32_t *read, u_int len, bool use_colours, int initbp)
 	if (buflen < len) {
 		if (buf != NULL)
 			free(buf);
-		buf = xmalloc(len + 1);
+		buf = (char *)xmalloc(len + 1);
 		buflen = len + 1;
 	}
 
@@ -80,9 +80,9 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 
 	gpre = gpost = lspre = lspost = mpre = nospace;
 	if (read_start > 0) {
-		gpre = xmalloc(read_start + 1);
-		lspre = xmalloc(read_start + 1);
-		mpre = xmalloc(read_start + 1);
+		gpre  = (char *)xmalloc(read_start + 1);
+		lspre = (char *)xmalloc(read_start + 1);
+		mpre  = (char *)xmalloc(read_start + 1);
 		for (j = 0; j < read_start; j++) {
 			if (genome_start + j > read_start)
 				gpre[j] = base_translate(EXTRACT(genome,
@@ -95,8 +95,8 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 		gpre[j] = lspre[j] = mpre[j] = '\0';
 	}
 	if (read_end < (readlen - 1)) {
-		gpost = xmalloc(readlen - read_end);
-		lspost = xmalloc(readlen - read_end);
+		gpost  = (char *)xmalloc(readlen - read_end);
+		lspost = (char *)xmalloc(readlen - read_end);
 		for (j = 0; j < (readlen - read_end - 1); j++) {
 			if (genome_end + 1 + j < genome_len)
 				gpost[j] = base_translate(EXTRACT(genome,
@@ -192,7 +192,7 @@ escapestr(const char *str)
 	if (!escape)
 		return (NULL);
 
-	buf = xmalloc(len);
+	buf = (char *)xmalloc(len);
 
 	for (i = j = 0; str[i] != '\0'; i++, j++) {
 		if (str[i] == '=' || str[i] == '"')

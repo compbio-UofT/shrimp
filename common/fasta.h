@@ -1,5 +1,8 @@
 /*	$Id$	*/
 
+#ifndef _FASTA_H_
+#define _FASTA_H_
+
 #define LETTER_SPACE	1
 #define COLOUR_SPACE	2
 
@@ -39,9 +42,21 @@
 #define BASE_CS_MIN	BASE_0
 #define BASE_CS_MAX	BASE_3
 
-/* overrides for the base argument to indicate beginning and end of file */
-#define FASTA_ALLOC	-1
-#define FASTA_DEALLOC	-2
+typedef struct _fasta_t {
+	FILE  *fp;
+	char  *file;
+	int    space;
+	char   buffer[65536];
+	char   translate[256];
+	bool   leftover;
+} * fasta_t;
 
-ssize_t load_fasta(const char *, void (*)(int, ssize_t, int, char *, int), int);
-char    base_translate(int, bool);
+fasta_t	  fasta_open(const char *, int);
+void	  fasta_close(fasta_t);
+bool	  fasta_get_next(fasta_t, char **, char **);
+int	  fasta_get_initial_base(fasta_t, char *);
+uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t);
+uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
+char      base_translate(int, bool);
+
+#endif

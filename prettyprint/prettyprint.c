@@ -86,7 +86,7 @@ load_output_file(char *file)
 	}
 
 	while (input_parseline(fp, &inp)) {
-		fpo = xmalloc(sizeof(*fpo));
+		fpo = (struct fpo *)xmalloc(sizeof(*fpo));
 		memcpy(&fpo->input, &inp, sizeof(fpo->input));
 		fpo->next = NULL;
 
@@ -133,8 +133,8 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		/* start with a small allocation: 1 word's worth */
 		allocated = 8;
 
-		seq = xmalloc(sizeof(*seq));
-		seq->sequence = xmalloc(sizeof(seq->sequence[0]) *
+		seq = (struct sequence *)xmalloc(sizeof(*seq));
+		seq->sequence = (uint32_t *)xmalloc(sizeof(seq->sequence[0]) *
 		    BPTO32BW(allocated));
 		memset(seq->sequence, 0, sizeof(seq->sequence[0]) *
 		    BPTO32BW(allocated));
@@ -169,7 +169,7 @@ load_genome_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		else
 			allocated *= 2;
 
-		seq->sequence = xrealloc(seq->sequence,
+		seq->sequence = (uint32_t *)xrealloc(seq->sequence,
 		    sizeof(seq->sequence[0]) * BPTO32BW(allocated));
 	}
 
@@ -217,7 +217,7 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 		assert(seq == NULL);
 
 		if (read == NULL) {
-			read = xmalloc(sizeof(read[0]) *
+			read = (uint32_t *)xmalloc(sizeof(read[0]) *
 			    BPTO32BW(MAX_READ_LEN));
 			memset(read, 0, sizeof(read[0]) *
                             BPTO32BW(MAX_READ_LEN));
@@ -228,7 +228,7 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 	} else if (base == FASTA_DEALLOC) {
 		assert(read != NULL);
 		if (seq != NULL) {
-			seq->sequence = xmalloc(sizeof(seq->sequence[0]) *
+			seq->sequence = (uint32_t *)xmalloc(sizeof(seq->sequence[0]) *
 			    BPTO32BW(read_len));
 			memcpy(seq->sequence, read,
 			    sizeof(seq->sequence[0]) * BPTO32BW(read_len));
@@ -243,13 +243,13 @@ load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
 
 	if (isnewentry) {
 		if (seq != NULL) {
-			seq->sequence = xmalloc(sizeof(seq->sequence[0]) *
+			seq->sequence = (uint32_t *)xmalloc(sizeof(seq->sequence[0]) *
 			    BPTO32BW(read_len));
 			memcpy(seq->sequence, read,
 			    sizeof(seq->sequence[0]) * BPTO32BW(read_len));
 			seq->sequence_len = read_len;
 		}
-		seq = xmalloc(sizeof(*seq));
+		seq = (struct sequence *)xmalloc(sizeof(*seq));
 		seq->name = xstrdup(name);
 		seq->sequence = NULL;
 		seq->sequence_len = 0;
@@ -328,14 +328,14 @@ print_alignments_helper(struct fpo *fpo, bool revcmpl)
 
 	for (; fpo != NULL; fpo = fpo->next) {
 		if (dynhash_find(read_list, fpo->input.read, NULL,
-		    (void *)&read) == false) {
+		    (void **)&read) == false) {
 			fprintf(stderr, "error: read [%s] is missing\n",
 			    fpo->input.read);
 			exit(1);
 		}
 
 		if (dynhash_find(contig_list, fpo->input.genome, NULL,
-		    (void *)&contig) == false) {
+		    (void **)&contig) == false) {
 			fprintf(stderr, "error: contig [%s] is missing\n",
 			    fpo->input.genome);
 			exit(1);
@@ -363,8 +363,8 @@ print_alignments_helper(struct fpo *fpo, bool revcmpl)
 		} else {
 			sw_full_ls(contig->sequence, genome_start, genome_len,
 			    read->sequence, read->sequence_len,
-			    fpo->input.score, fpo->input.score, &dbalign,
-			    &qralign, &sfr);
+			    fpo->input.score, fpo->input.score, &dbalign, &qralign,
+			    &sfr);
 		}
 
 		if (sfr.score != fpo->input.score) {
@@ -474,11 +474,12 @@ main(int argc, char **argv)
 	char *fpout, *readsdir, *genomedir, *progname, *optstr;
 	int ch;
 
+	set_mode_from_argv(argv);
+
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "prettyprint: %s SPACE. (SHRiMP %s [%s])\n",
-	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING,
-	    get_compiler());
+	fprintf(stderr, "prettyprint: %s SPACE.\nSHRiMP %s [%s]\n",
+	    get_mode_string(), SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 

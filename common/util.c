@@ -16,6 +16,36 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 
+shrimp_mode_t shrimp_mode = MODE_LETTER_SPACE;
+
+void
+set_mode_from_argv(char **argv)
+{
+
+	if (strstr(argv[0], "-dag") != NULL || strstr(argv[0], "-DAG") != NULL)
+		shrimp_mode = MODE_DAG_SPACE;
+	else if (strstr(argv[0], "-cs") != NULL || strstr(argv[0], "-CS") != NULL)
+		shrimp_mode = MODE_COLOUR_SPACE;
+	else
+		shrimp_mode = MODE_LETTER_SPACE;
+}
+
+const char *
+get_mode_string()
+{
+
+	switch (shrimp_mode) {
+	case MODE_COLOUR_SPACE:
+		return ("COLOUR SPACE (AB SOLiD)");
+	case MODE_LETTER_SPACE:
+		return ("LETTER SPACE (454,Illumina/Solexa,etc.)");
+	case MODE_DAG_SPACE:
+		return ("DAG SPACE (Helicos Single Molecule)");
+	}
+
+	return ("--bloody no idea!--");
+}
+
 uint64_t
 rdtsc() {
 	uint32_t lo, hi;
@@ -222,6 +252,17 @@ bitfield_prepend(uint32_t *bf, uint32_t entries, uint32_t val)
 	}
 
 	bf[i - 1] &= (0xffffffff >> (32 - (4 * (entries % 8))));
+}
+
+/*
+ * Insert the low 4 bits of 'val' into the bitfield in 'bf' at
+ * 'index', where 'index' is count at 4-bit fields.
+ */
+void
+bitfield_insert(uint32_t *bf, uint32_t index, uint32_t val)
+{
+
+	bitfield_append(bf, index, val);
 }
 
 /*
@@ -484,4 +525,50 @@ get_compiler()
 #endif
 
 	return (comp);
+}
+
+/* reverse the string `str' in place */
+char *
+strrev(char *str)
+{
+	char c;
+	int i, j;
+
+	j = strlen(str) - 1;
+	for (i = 0; i < j; i++, j--) {
+		c = str[j];
+		str[j] = str[i];
+		str[i] = c;
+	}
+
+	return (str);
+}
+
+/* trim whitespace in `str' in place at beginning and end */
+char *
+strtrim(char *str)
+{
+	char *ret;
+
+        assert(str != NULL);
+
+        while (isspace((int)*str) && *str != '\0')
+                str++;
+
+        ret = str;
+
+	if (*str != '\0') {
+		while (*str != '\0')
+			str++;
+
+		str--;
+		
+		while (isspace((int)*str))
+			str--;
+		str++;
+	}
+
+        *str = '\0';
+
+        return (ret);
 }

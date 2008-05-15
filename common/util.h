@@ -10,6 +10,14 @@
 
 #include "../common/fasta.h"
 
+enum shrimp_mode_t {
+	MODE_LETTER_SPACE = 1,
+	MODE_COLOUR_SPACE = 2,
+	MODE_DAG_SPACE    = 3
+};
+
+extern shrimp_mode_t shrimp_mode;
+
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
@@ -19,6 +27,8 @@
 #define EXTRACT(_genome, _i) (((_genome)[(_i) / 8] >> (4 * ((_i) % 8))) & 0xf)
 #define BPTO32BW(_x) (((_x) + 7) / 8)
 
+void		set_mode_from_argv(char **);
+const char     *get_mode_string(void);
 uint64_t	rdtsc(void);
 double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
@@ -32,6 +42,7 @@ double		ls_factorial(u_int);
 double		ls_choose(int64_t, int64_t);
 char	       *trim_brackets(char *);
 void		bitfield_prepend(uint32_t *, uint32_t, uint32_t);
+void		bitfield_insert(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
 void		reverse_complement(uint32_t *, uint32_t *, uint32_t);
@@ -39,7 +50,9 @@ uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
 		    void (*)(char *, struct stat *, void *), void *);
-char *		get_compiler(void);
+char           *get_compiler(void);
+char	       *strrev(char *);
+char	       *strtrim(char *);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;

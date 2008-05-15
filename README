@@ -1,6 +1,6 @@
 $Id$
 
-README for SHRiMP: SHort Read Mapping Package version 1.0.5
+README for SHRiMP: SHort Read Mapping Package version 1.1.0
 http://compbio.cs.toronto.edu/shrimp
 
 SHRiMP is brought to you by
@@ -557,4 +557,5 @@ Research Award (NSERC USRA).
 --------------------------------------------------------------------------------
 
 The following people helped make SHRiMP better:
-	- Phil Lacroute
+	- Phil Lacroute (mergehits, lots of testing, feedback and discussion)
+	- Vladimir Yanovsky (Helicos DAG aligner)

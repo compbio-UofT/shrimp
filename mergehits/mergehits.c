@@ -290,13 +290,15 @@ main(int argc, char **argv)
 	struct stat sb;
 	int ch;
 
+	set_mode_from_argv(argv);
+
 	/* shut up, gcc */
 	readsdir = NULL;
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "mergehits: %s SPACE. (SHRiMP %s [%s])\n",
-	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING,
+	fprintf(stderr, "mergehits: %s.\nSHRiMP %s [%s]\n",
+	    get_mode_string(), SHRIMP_VERSION_STRING,
 	    get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");

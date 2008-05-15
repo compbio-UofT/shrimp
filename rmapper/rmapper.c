@@ -20,6 +20,7 @@
 #include <sys/time.h>
 
 #include "../common/fasta.h"
+#include "../common/dag_glue.h"
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
 #include "../common/sw-full-ls.h"
@@ -31,7 +32,7 @@
 #include "rmapper.h"
 
 /* External parameters */
-static char    *spaced_seed		= NULL;		/* set dynamically */
+static char    *spaced_seed		= "0";
 static double	window_len		= DEF_WINDOW_LEN;
 static u_int	num_matches		= DEF_NUM_MATCHES;
 static u_int	taboo_len		= DEF_TABOO_LEN;
@@ -39,10 +40,26 @@ static u_int	num_outputs		= DEF_NUM_OUTPUTS;
 static u_int	max_read_len		= DEF_MAX_READ_LEN;
 static int	kmer_stddev_limit  	= DEF_KMER_STDDEV_LIMIT;
 
+static u_int	dag_epsilon		= DEF_DAG_EPSILON;
+static int	dag_read_match		= DEF_DAG_READ_MATCH;
+static int	dag_read_mismatch	= DEF_DAG_READ_MISMATCH;
+static int	dag_read_gap		= DEF_DAG_READ_GAP;
+
+static int	dag_ref_match		= DEF_DAG_REF_MATCH;
+static int 	dag_ref_mismatch	= DEF_DAG_REF_MISMATCH;
+static int	dag_ref_half_match	= DEF_DAG_REF_HALF_MATCH;
+static int	dag_ref_neither_match	= DEF_DAG_REF_NEITHER_MATCH;
+static int	dag_ref_match_deletion	= DEF_DAG_REF_MATCH_DELETION;
+static int	dag_ref_mismatch_deletion=DEF_DAG_REF_MISMATCH_DELETION;
+static int	dag_ref_error_insertion	= DEF_DAG_REF_ERROR_INSERTION;
+static double	dag_ref_weighted_thresh = DEF_DAG_REF_WEIGHTED_THRESHOLD;
+
 static int	match_value		= DEF_MATCH_VALUE;
 static int	mismatch_value		= DEF_MISMATCH_VALUE;
-static int	gap_open		= DEF_GAP_OPEN;
-static int	gap_extend		= DEF_GAP_EXTEND;
+static int	a_gap_open		= DEF_A_GAP_OPEN;
+static int	a_gap_extend		= DEF_A_GAP_EXTEND;
+static int	b_gap_open		= DEF_B_GAP_OPEN;
+static int	b_gap_extend		= DEF_B_GAP_EXTEND;
 static int	xover_penalty		= DEF_XOVER_PENALTY;
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
@@ -54,27 +71,26 @@ static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 #define IS_ABSOLUTE(x)	((x) < 0)
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
-static uint32_t *genome;
+static uint32_t *genome;			/* genome -- always in letter*/
+static uint32_t *genome_cs;			/* genome -- colourspace */
 static uint32_t	 genome_len;
 static char     *contig_name;			/* name of contig in genome */
 static uint32_t  ncontigs;			/* number of contigs read */
 
-/*
- * Genomic sequence, in letter space, stored in 32-bit words, first is in LSB
- *
- * NB: Colour space only
- */
-static uint32_t *genome_ls;
-
 /* Reads */
+#define OFFSET_TO_READ(_o)	\
+    (struct read_elem *)((char *)reads + (read_size * (_o)))
 static struct read_elem      *reads;		/* list of reads */
-static struct readmap_entry **readmap;		/* kmer to read map */
-static uint32_t		     *readmap_len;	/* entries in each readmap[n] */
+static uint32_t		      reads_allocated;	/* slots allocated for reads */
+static uint32_t		      read_size;	/* size of each read struct */
 
 static u_int	nreads;				/* total reads loaded */
 static u_int	nkmers;				/* total kmers of reads loaded*/
-
 static u_int	longest_read_len;		/* longest read we've seen */
+
+/* Kmer to read index */
+static struct readmap_entry **readmap;		/* kmer to read map */
+static uint32_t		     *readmap_len;	/* entries in each readmap[n] */
 
 /* Flags */
 static int Bflag = false;			/* print a progress bar */
@@ -93,22 +109,12 @@ static uint64_t kmer_list_entries_scanned;
 static uint64_t fasta_load_ticks;
 static uint64_t revcmpl_ticks;
 
-#ifdef USE_COLOURS
-const bool use_colours = true;
-#else
-const bool use_colours = false;
-#endif
-
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
 
-/*
- * Callsback to kludge in multiple contig per file support. Doing this right
- * would require an API change, which I don't have time for now. This is
- * seriously ugly... I apologise.
- */
-static void (*genome_contig_cb)(void *);
-static void  *genome_contig_cb_arg;
+#define FETCH_AHEAD 8
+#define PF_HINT _MM_HINT_T2
+#define USE_PREFETCH
 
 static size_t
 power(size_t base, size_t exp)
@@ -174,6 +180,25 @@ percolate_up(struct re_score *scores, int node)
 		scores[parent] = tmp;
 		percolate_up(scores, parent);
 	}
+}
+
+/* any excuse to have such a beautiful algorithm... */
+static void
+heapsort(struct re_score *scores)
+{
+	int i, tot;
+
+	for (i = tot = scores[0].score; i >= 1; i--) {
+		struct re_score tmp;
+
+		tmp = scores[i];
+		scores[i] = scores[1];
+		scores[1] = tmp;
+		scores[0].score--;
+		reheap(scores, 1);
+	}
+
+	scores[0].score = tot;
 }
 
 /* update our score min-heap */
@@ -282,15 +307,44 @@ readmap_prune()
 static void
 reset_reads()
 {
-	struct read_elem *re;
+	uint32_t i, j;
 
-	for (re = reads; re != NULL; re = re->ri->next) {
-		re->last_swhit_idx = -1;
+	for (i = 0; i < nreads; i++) {
+		struct read_elem *re = OFFSET_TO_READ(i);
+
+		re->last_swhit_idx = UINT32_MAX;
 		re->prev_hit = 0;
 		re->next_hit = 0;
-		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
+		for (j = 0; j < num_matches; j++)
+			re->hits[j].g_idx = re->hits[j].r_idx = UINT32_MAX;
 	}
 }
+
+static int
+get_sw_threshold(struct read_elem *re, double which, int readnum)
+{
+	int thresh;
+
+	assert(readnum == 1 || readnum == 2);
+
+	if (IS_ABSOLUTE(which)) {
+		thresh = (u_int)-which;
+	} else {
+		if (readnum == 1) {
+			thresh = (u_int)floor(((double)
+			    (match_value * re->ri->read1_len) *
+			    (which / 100.0)));
+		} else {
+			assert(shrimp_mode == MODE_DAG_SPACE);
+			thresh = (u_int)floor(((double)
+			    (match_value * re->ri->read2_len) *
+			    (which / 100.0)));
+		}
+	}
+
+	return (thresh);
+}
+
 
 /*
  * Determine whether or not the kmer hits seen within this read
@@ -307,7 +361,7 @@ are_hits_colinear(struct read_elem *re)
 		this = (this + 1) % num_matches;
 
 		if (re->hits[prev].r_idx > re->hits[this].r_idx &&
-		    re->hits[prev].r_idx != -1 && re->hits[this].r_idx != -1) {
+		    re->hits[prev].r_idx != UINT32_MAX && re->hits[this].r_idx != UINT32_MAX) {
 			return (1);
 		}
 
@@ -324,42 +378,46 @@ scan(int contig_num, bool revcmpl)
 {
 	struct read_elem *re;
 	struct readmap_entry *rme1, *rme2;
-	uint32_t *kmer;
+	uint32_t *kmer, *scan_genome;
 	uint32_t i, j, k, pf, idx, mapidx, next_mapidx = 0;
-	uint32_t base, skip, score;
-	uint32_t goff, glen;
-	int prevhit, seed_span;
+	uint32_t base, skip, score1, score2;
+	uint32_t goff, glen, prevhit;
+	int seed_span;
 	u_int thresh;
-uint64_t total_before, total_mapidx, total_sw, tmp64, total_savescore;
+
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+		scan_genome = genome_cs;
+	else
+		scan_genome = genome;
+
 	seed_span = strlen(spaced_seed);
-total_before = rdtsc(); total_mapidx = total_sw = total_savescore = 0;
+
 	PROGRESS_BAR(stderr, 0, 0, 10);
 
-	kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
+	kmer = (uint32_t *)xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 	memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
 	for (i = 0; i < seed_span - 1; i++)
-		bitfield_prepend(kmer, seed_span, EXTRACT(genome, i));
+		bitfield_prepend(kmer, seed_span, EXTRACT(scan_genome, i));
 
 	skip = 0;
 	for (i = seed_span - 1; i < genome_len; i++) {
 		PROGRESS_BAR(stderr, i, genome_len, 10);
 
-		base = EXTRACT(genome, i);
+		base = EXTRACT(scan_genome, i);
 		if (i == (seed_span - 1)) {
 			bitfield_prepend(kmer, seed_span, base);
-tmp64 = rdtsc();
 			mapidx = kmer_to_mapidx(kmer);
-total_mapidx += rdtsc() - tmp64;
 		} else
 			mapidx = next_mapidx;
 
 		/* compute next kmer early and prefetch the readmap entry */
 		if ((i + 1) < genome_len) {
-			bitfield_prepend(kmer, seed_span, EXTRACT(genome, i + 1));
-tmp64 = rdtsc();
+			int tmp = EXTRACT(scan_genome, i + 1);
+			bitfield_prepend(kmer, seed_span, tmp);
 			next_mapidx = kmer_to_mapidx(kmer);
-total_mapidx += rdtsc() - tmp64;
-			_mm_prefetch((const char *)&readmap[next_mapidx], _MM_HINT_NTA);
+#ifdef USE_PREFETCH
+			_mm_prefetch((const char *)&readmap[next_mapidx], PF_HINT);
+#endif
 		}
 
 		/*
@@ -376,31 +434,41 @@ total_mapidx += rdtsc() - tmp64;
 		idx = i - (seed_span - 1);
 
 		rme1 = rme2 = readmap[mapidx];
-		if (rme1 == NULL)
+		if (rme1 == NULL) {
+			kmer_lists_scanned++;
 			continue;
+		}
 
-		/* prefetch first 8 struct read_elem's */
-		for (pf = 0; rme2->re != NULL && pf < 8; pf++)
-			_mm_prefetch((const char *)(rme2++)->re, _MM_HINT_NTA);
+		/* prefetch first FETCH_AHEAD struct read_elem's */
+#ifdef USE_PREFETCH
+		for (pf = 0; rme2->offset != UINT32_MAX && pf < FETCH_AHEAD; pf++)
+			_mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), PF_HINT);
+#endif
 
-		for (re = rme1->re, j = k = 0; re != NULL; re = (++rme1)->re, k++) {
+		for (re = OFFSET_TO_READ(rme1->offset), j = k = 0;
+		     rme1->offset != UINT32_MAX;
+		     re = OFFSET_TO_READ((++rme1)->offset), k++) {
 			/* continue prefetching the struct read_elem's */
-			if (rme2->re != NULL)
-				_mm_prefetch((const char *)(rme2++)->re, _MM_HINT_NTA);
+#ifdef USE_PREFETCH
+			if (rme2->offset != UINT32_MAX)
+				_mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), PF_HINT);
+#endif
 
 			prevhit = re->hits[re->prev_hit].g_idx;
-			if ((idx - prevhit) <= taboo_len && prevhit != -1)
+			if ((idx - prevhit) <= taboo_len && prevhit != UINT32_MAX)
 				continue;
 
 			re->hits[re->next_hit].g_idx = idx;
-			re->hits[re->next_hit].r_idx = rme1->idx;
+			re->hits[re->next_hit].r_idx = rme1->r_idx;
 			re->prev_hit = re->next_hit;
 			re->next_hit = (uint8_t)((re->next_hit + 1) % num_matches);
 
 			if ((idx - re->hits[re->next_hit].g_idx) < re->window_len &&
-			    (re->last_swhit_idx == -1 ||
+			    (re->last_swhit_idx == UINT32_MAX ||
 			     (i - re->last_swhit_idx) >= re->window_len) &&
-			    re->hits[re->next_hit].g_idx != -1) { // && are_hits_colinear(re)) {
+			    re->hits[re->next_hit].g_idx != UINT32_MAX) { // && are_hits_colinear(re)) {
+				bool meets_thresh = false;
+
 				if (i < re->window_len)
 					goff = 0;
 				else
@@ -411,33 +479,44 @@ total_mapidx += rdtsc() - tmp64;
 				else
 					glen = re->window_len * 2;
 
-tmp64 = rdtsc();
-				if (use_colours) {
-					score = sw_vector(genome, goff, glen,
-					    re->ri->read, re->ri->read_len,
-					    genome_ls, re->ri->initbp);
-				} else {
-					score = sw_vector(genome, goff, glen,
-					    re->ri->read, re->ri->read_len, NULL, -1);
+				if (shrimp_mode == MODE_COLOUR_SPACE) {
+					score1 = sw_vector(scan_genome, goff, glen,
+					    re->ri->read1, re->ri->read1_len,
+					    genome, re->ri->initbp);
+					thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+					if (score1 >= thresh)
+						meets_thresh = true;
+				} else if (shrimp_mode == MODE_LETTER_SPACE) {
+					score1 = sw_vector(scan_genome, goff, glen,
+					    re->ri->read1, re->ri->read1_len, NULL, -1);
+					thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+					if (score1 >= thresh)
+						meets_thresh = true;
+				} else if (shrimp_mode == MODE_DAG_SPACE) {
+					score1 = sw_vector(scan_genome, goff, glen,
+					    re->ri->read1, re->ri->read1_len, NULL, -1);
+					thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+					if (score1 >= thresh) {
+						score2 = sw_vector(scan_genome, goff, glen,
+						    re->ri->read2, re->ri->read2_len, NULL, -1);
+						thresh = get_sw_threshold(re, sw_vect_threshold, 2);
+						if (score2 >= thresh) {
+							score1 = score1 * re->ri->read1_len;
+							score2 = score2 * re->ri->read2_len;
+							score1 = (score1 + score2) /
+							    (re->ri->read1_len + re->ri->read2_len);
+							meets_thresh = true;
+						}
+					}
 				}
-total_sw += rdtsc() - tmp64;
-				if (IS_ABSOLUTE(sw_vect_threshold)) {
-					thresh = (u_int)-sw_vect_threshold;
-				} else {
-					thresh = (u_int)floor(((double)
-					    (match_value * re->ri->read_len) *
-					    (sw_vect_threshold / 100.0)));
-				}
-tmp64 = rdtsc();
-				if (score >= thresh) {
-					save_score(re, score, i, contig_num,
+
+				if (meets_thresh) {
+					save_score(re, score1, i, contig_num,
 					    revcmpl);
-total_savescore += rdtsc() - tmp64;
 					re->last_swhit_idx = i;
 					re->ri->swhits++;
 				}
 			}
-
 			j++;
 		}
 
@@ -455,291 +534,310 @@ total_savescore += rdtsc() - tmp64;
 	}
 
 	free(kmer);
-
-fprintf(stderr, "SCAN   TOTAL: %" PRIu64 "\n", rdtsc() - total_before);
-fprintf(stderr, "MAPIDX TOTAL: %" PRIu64 "\n", total_mapidx);
-fprintf(stderr, "SW     TOTAL: %" PRIu64 "\n", total_sw);
-fprintf(stderr, "SAVESC TOTAL: %" PRIu64 "\n", total_savescore);
 }
 
-static void
-load_genome_helper(int base, ssize_t offset, int isnewentry, char *name,
-    int initbp)
+static struct read_elem *
+readalloc()
 {
-	static bool first = true;
-	static int lastbp;
-	static size_t allocated;	/* base pairs allocated for */
+	struct read_elem *re;
+	size_t bytes, prevbytes, i;
 
-	uint64_t before;
+	assert(nreads <= reads_allocated);
 
-	/* shut up icc */
-	(void)name;
-	(void)lastbp;
-	(void)initbp;
-	(void)offset;
+	if (nreads == reads_allocated) {
+		read_size = sizeof(*re) +
+		    (sizeof(re->hits[0]) * (num_matches));
 
-	if (base == FASTA_DEALLOC)
-		return;
-
-	/* handle initial call to alloc resources */
-	if (base == FASTA_ALLOC) {
-		first = true;
-		if (genome != NULL)
-			free(genome);
-
-		/* start with a small allocation: 1 word's worth */
-		allocated = 8;
-
-		genome = xmalloc(sizeof(genome[0]) * BPTO32BW(allocated));
-		genome_len = 0;
-		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
-
-		if (use_colours) {
-			if (genome_ls != NULL)
-				free(genome_ls);
-			genome_ls =
-			    xmalloc(sizeof(genome_ls[0]) * BPTO32BW(allocated));
-			memset(genome_ls, 0,
-			    sizeof(genome_ls[0]) * BPTO32BW(allocated));
-			lastbp = BASE_T;
-		}
-		return;
+		prevbytes = read_size * reads_allocated;
+		reads_allocated += 1000;
+		bytes = read_size * reads_allocated;
+		reads = (struct read_elem *)xrealloc(reads, bytes);
+		memset((char *)reads + prevbytes, 0, bytes - prevbytes);
 	}
 
-	if (isnewentry && !first) {
-		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
-		    genome_len, contig_name);
-		before = rdtsc();
-		genome_contig_cb(genome_contig_cb_arg);
-		fasta_load_ticks -= rdtsc() - before; /* XXX so ugly */
-		memset(genome, 0, sizeof(genome[0]) * BPTO32BW(allocated));
-		if (use_colours)
-			memset(genome_ls, 0,
-			    sizeof(genome_ls[0]) * BPTO32BW(allocated));
-		genome_len = 0;
-		lastbp = BASE_T;
-	}
+	re = OFFSET_TO_READ(nreads);
 
-	if (first || isnewentry) {
-		if (contig_name != NULL)
-			free(contig_name);
-		contig_name = xstrdup(name);
-	}
+	re->ri = (struct read_int *)xmalloc(sizeof(*re->ri));
+	memset(re->ri, 0, sizeof(*re->ri));
+	re->ri->offset = nreads;
 
-	assert(base >= 0 && base <= 15);
+	for (i = 0; i < num_matches; i++)
+		re->hits[i].g_idx = re->hits[i].r_idx = UINT32_MAX;
 
-	/*
-	 * Make more room, if necessary. Grow quickly at first, then slow down
-	 * so as not to overshoot too much.
-	 */
-	if (genome_len == allocated) {
-		if (BPTO32BW(allocated) * sizeof(genome[0]) > 64 * 1024 * 1024)
-			allocated = (allocated * 4) / 3;	
-		else
-			allocated *= 2;
+	bytes = sizeof(struct re_score) * (num_outputs + 1);
+	re->ri->scores = (struct re_score *)xmalloc(bytes);
+	memset(re->ri->scores, 0, bytes);
 
-		genome = xrealloc(genome,
-		    sizeof(genome[0]) * BPTO32BW(allocated));
-		if (use_colours)
-			genome_ls = xrealloc(genome_ls,
-			    sizeof(genome[0]) * BPTO32BW(allocated));
-	}
+	nreads++;
 
-	if (use_colours) {
-		bitfield_append(genome, genome_len, lstocs(lastbp, base));
-		bitfield_append(genome_ls, genome_len, base);
-		lastbp = base;
-	} else {
-		bitfield_append(genome, genome_len, base);
-	}
-	genome_len++;
-
-	first = false;
+	return (re);
 }
 
-static int
-load_genome(const char *file)
+static bool
+load_reads_lscs(const char *file)
 {
-	ssize_t ret;
-	uint64_t before;
-
-	before = rdtsc();
-	ret = load_fasta(file, load_genome_helper, LETTER_SPACE);
-	fasta_load_ticks += rdtsc() - before;
-
-	if (ret != -1) {
-		fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
-		    genome_len, contig_name);
-		genome_contig_cb(genome_contig_cb_arg);
-	}
-
-	return (ret == -1);
-}
-
-static void
-load_reads_helper(int base, ssize_t offset, int isnewentry, char *name,
-    int initbp)
-{
-	static struct read_elem *re;
-	static uint32_t *kmer;
-	static uint32_t cnt, skip;
-
-	size_t len;
-	int seed_span, seed_weight;
-
-	/* shut up icc */
-	(void)offset;
-
-	if (base == FASTA_DEALLOC)
-		return;
+	struct read_elem *re;
+	int seed_span;
+	char *name, *seq;
+	fasta_t fasta;
+	size_t len, seqlen, skip = 0;
+	ssize_t bases = 0;
+	int space;
 
 	seed_span = strlen(spaced_seed);
-	seed_weight = strchrcnt(spaced_seed, '1');
 
-	if (kmer == NULL)
-		kmer = xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
-
-	/* handle initial call to alloc resources */
-	if (base == FASTA_ALLOC) {
-		len = sizeof(readmap[0]) * power(4, seed_weight);
-		readmap = xmalloc(len);
-		memset(readmap, 0, len);
-
-		len = sizeof(readmap_len[0]) * power(4, seed_weight);
-		readmap_len = xmalloc(len);
-		memset(readmap_len, 0, len);
-		return;
+	if (shrimp_mode == MODE_LETTER_SPACE)
+		space = LETTER_SPACE;
+	else
+		space = COLOUR_SPACE;
+	fasta = fasta_open(file, space);
+	if (fasta == NULL) {
+		fprintf(stderr, "error: failed to open reads file [%s]\n",
+		    file);
+		return (false);
 	}
 
-	if (isnewentry) {
-		/* save some memory by shrinking the previous buffer */
-		if (re != NULL) {
-			re->ri->read = xrealloc(re->ri->read,
-			    BPTO32BW(re->ri->read_len) * 4);
+	fprintf(stderr, "- Loading reads...");
+
+	while (true) {
+		int i;
+		uint32_t *kmer;
+
+		if (Bflag && (nreads % 17) == 0) 
+			fprintf(stderr, "\r- Loading reads... %u", nreads);
+
+		if (!fasta_get_next(fasta, &name, &seq))
+			break;
+
+		seqlen = strlen(seq);
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			/* the sequence begins with the initial letter base */
+			assert(seqlen > 1);
+			seqlen--;
 		}
+		bases += seqlen;
 
-		len = sizeof(struct read_elem) +
-		    (sizeof(re->hits[0]) * num_matches);
-		re = xmalloc(len);
-		memset(re, 0, len);
-		re->last_swhit_idx = -1;
+		re = readalloc();
+		re->last_swhit_idx = UINT32_MAX;
+		re->ri->name = name;
+		re->ri->read1 = fasta_sequence_to_bitfield(fasta, seq);
+		re->ri->read1_len = seqlen;
+		longest_read_len = MAX(re->ri->read1_len, longest_read_len);
 
-		re->ri = xmalloc(sizeof(*re->ri));
-		memset(re->ri, 0, sizeof(*re->ri));
+		if (shrimp_mode == MODE_COLOUR_SPACE)
+			re->ri->initbp = fasta_get_initial_base(fasta, seq);
 
-		re->ri->name = strdup(name);
-		memset(re->hits, -1, sizeof(re->hits[0]) * num_matches);
+		kmer = (uint32_t *)xmalloc(BPTO32BW(seed_span));
+		memset(kmer, 0, BPTO32BW(seed_span));
 
-		len = sizeof(re->ri->read[0]) * BPTO32BW(max_read_len);
-		re->ri->read = xmalloc(len);
-		memset(re->ri->read, 0, len);
+		for (i = 0; i < seed_span - 1; i++)
+			bitfield_prepend(kmer, seed_span, EXTRACT(re->ri->read1, i));
 
-		len = sizeof(struct re_score) * (num_outputs + 1);
-		re->ri->scores = xmalloc(len);
-		memset(re->ri->scores, 0, len);
+		for (; i < seqlen; i++) {
+			int base;
+			uint32_t mapidx;
 
-		cnt = skip = 0;
-		memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
-		re->ri->next = reads;
-		reads = re;
-		nreads++;
+			base = EXTRACT(re->ri->read1, i);
+			bitfield_prepend(kmer, seed_span, base);
 
-		re->ri->initbp = initbp;
-	}
+			/*
+			 * Ignore kmers that contain an 'N'.
+			 */
+			if (base > 3)
+				skip = seed_span - 1;
 
-	assert(re != NULL);
+			if (skip > 0) {
+				skip--;
+				continue;
+			}
 
-	if (re->ri->read_len == max_read_len) {
-		fprintf(stderr, "error: read [%s] exceeds %u characters\n"
-		    "please increase the maximum read length parameter\n",
-		    re->ri->name, max_read_len);
-		exit(1);
-	}
+			/*
+			 * For simplicity we throw out the first kmer when in colour space. If
+			 * we did not do so, we'd run into a ton of colour-letter space
+			 * headaches. For instance, how should the first read kmer match
+			 * against a kmer from the genome? The first colour of the genome kmer
+			 * depends on the previous letter in the genome, so we may have a
+			 * matching read, but the colour representation doesn't agree due to
+			 * different initialising bases.
+			 *
+			 * If we wanted to be complete, we could compute the four permutations
+			 * and add them, but I'm not so sure that'd be a good idea. Perhaps
+			 * this should be investigated in the future.
+			 */
+			if (shrimp_mode == MODE_COLOUR_SPACE && i == seed_span - 1)
+				continue;
 
-	bitfield_append(re->ri->read, re->ri->read_len, base);
-	re->ri->read_len++;
-	longest_read_len = MAX(re->ri->read_len, longest_read_len);
+			mapidx = kmer_to_mapidx(kmer);
 
-	/*
-	 * For simplicity we throw out the first kmer when in colour space. If
-	 * we did not do so, we'd run into a ton of colour-letter space
-	 * headaches. For instance, how should the first read kmer match
-	 * against a kmer from the genome? The first colour of the genome kmer
-	 * depends on the previous letter in the genome, so we may have a
-	 * matching read, but the colour representation doesn't agree due to
-	 * different initialising bases.
-	 *
-	 * If we wanted to be complete, we could compute the four permutations
-	 * and add them, but I'm not so sure that'd be a good idea. Perhaps
-	 * this should be investigated in the future.
-	 */
-	if (use_colours && isnewentry)
-		return;
-
-	bitfield_prepend(kmer, seed_span, base);
-
-	/*
-	 * Ignore kmers that contain an 'N'.
-	 */
-	if (base > 3)
-		skip = seed_span - 1;
-
-	if (skip > 0) {
-		skip--;
-		return;
-	}
-
-	if (++cnt >= seed_span) {
-		uint32_t mapidx;
-
-		mapidx = kmer_to_mapidx(kmer);
-
-		/*
-		 * Ensure that we map only once from any kmer to a certain read.
-		 * If, however, we have multiple identical kmers for this read,
-		 * be sure to disable colinearity checking for simplicity.
-		 */
-		if (readmap[mapidx] == NULL || readmap[mapidx][readmap_len[mapidx]-1].re != re) {
-			readmap_len[mapidx]++;
-
-			readmap[mapidx] = xrealloc(readmap[mapidx],
-			    (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
+			/* permit only one kmer reference per read */
+			if (readmap[mapidx] != NULL &&
+			    readmap[mapidx][readmap_len[mapidx] - 1].offset == re->ri->offset)
+				continue;
 			
-			readmap[mapidx][readmap_len[mapidx] - 1].re = re;
-			readmap[mapidx][readmap_len[mapidx] - 1].idx = cnt - seed_span;
-			readmap[mapidx][readmap_len[mapidx]].re = NULL;
-			readmap[mapidx][readmap_len[mapidx]].idx = -1;
-			nkmers++;
-		} else if (readmap[mapidx] != NULL && readmap[mapidx][readmap_len[mapidx]-1].re == re) {
-			readmap[mapidx][readmap_len[mapidx] - 1].idx = -1;
+			readmap_len[mapidx]++;
+			readmap[mapidx] = (struct readmap_entry *)xrealloc(
+			    readmap[mapidx], (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
+			readmap[mapidx][readmap_len[mapidx] - 1].offset	= re->ri->offset;
+			readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= UINT32_MAX;
+			readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
+			readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
 			nkmers++;
 		}
+
+		free(seq);
+		free(kmer);
 	}
+	if (Bflag)
+		fprintf(stderr, "\r- Loading reads... %u\n", nreads);
+	else
+		fprintf(stderr, "\n");
+
+	fprintf(stderr, "- Loaded %u %s in %u reads (%u kmers)\n",
+	    (unsigned int)bases, (shrimp_mode == MODE_COLOUR_SPACE) ?
+	    "colours" : "letters", nreads, nkmers);
+
+	fasta_close(fasta);
+
+	return (true);
 }
 
-static int
+static bool
+load_reads_dag(const char *file)
+{
+	struct read_elem *re;
+	int seed_span;
+	char *name1, *name2, *seq1, *seq2;
+	fasta_t fasta;
+	size_t len, seq1len, seq2len;
+	ssize_t bases = 0;
+
+	seed_span = strlen(spaced_seed);
+
+	fasta = fasta_open(file, LETTER_SPACE);
+	if (fasta == NULL) {
+		fprintf(stderr, "error: failed to open reads file [%s]\n",
+		    file);
+		return (false);
+	}
+
+	fprintf(stderr, "- Loading read pairs...");
+
+	while (true) {
+		int i;
+		bool b1, b2;
+		char **kmers;
+
+		if (Bflag && (nreads % 17) == 0) 
+			fprintf(stderr, "\r- Loading read pairs... %u", nreads);
+
+		b1 = fasta_get_next(fasta, &name1, &seq1);
+		b2 = fasta_get_next(fasta, &name2, &seq2);
+
+		if (b1 == false)
+			break;
+
+		if (b2 == false) {
+			fprintf(stderr, "error: helicos fasta file [%s] does "
+			    "not appear to have a pair for read [%s]\n",
+			    file, name1);
+			return (false);
+		}
+
+		seq1len = strlen(seq1);
+		seq2len = strlen(seq2);
+		bases += seq1len + seq2len;
+
+		re = readalloc();
+		re->last_swhit_idx = UINT32_MAX;
+		re->ri->name = name1;
+		re->ri->read1 = fasta_sequence_to_bitfield(fasta, seq1);
+		re->ri->read2 = fasta_sequence_to_bitfield(fasta, seq2);
+		re->ri->read1_len = seq1len;
+		re->ri->read2_len = seq2len;
+
+		longest_read_len = MAX(re->ri->read1_len, longest_read_len);
+		longest_read_len = MAX(re->ri->read2_len, longest_read_len);
+
+		re->ri->dag_cookie = dag_build_kmer_graph(seq1, seq2, dag_epsilon);
+		kmers = dag_get_kmers(re->ri->dag_cookie, seed_span);
+		assert(kmers != NULL);
+
+		for (i = 0; kmers[i] != NULL; i++) {
+			uint32_t *kmer;
+			uint32_t mapidx;
+
+			/* scan() builds kmers in reverse, so we must as well... */
+			strrev(kmers[i]);
+
+			kmer = fasta_sequence_to_bitfield(fasta, kmers[i]);
+			mapidx = kmer_to_mapidx(kmer);
+			free(kmer);
+
+			/* permit only one kmer reference per read */
+			if (readmap[mapidx] != NULL &&
+			    readmap[mapidx][readmap_len[mapidx] - 1].offset == re->ri->offset)
+				continue;
+
+			readmap_len[mapidx]++;
+			readmap[mapidx] = (struct readmap_entry *)xrealloc(
+			    readmap[mapidx], (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
+			readmap[mapidx][readmap_len[mapidx] - 1].offset	= re->ri->offset;
+			readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= UINT32_MAX;
+			readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
+			readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
+			nkmers++;
+		}
+		if (i == 0)
+			fprintf(stderr, "WARNING: Got %d kmers for [%s] and [%s]\n", i, name1, name2);
+
+		dag_free_kmers(kmers);
+		free(name2);
+		free(seq1);
+		free(seq2);
+	}
+	if (Bflag)
+		fprintf(stderr, "\r- Loading read pairs... %u\n", nreads);
+	else
+		fprintf(stderr, "\n");
+
+	fprintf(stderr, "- Loaded %u letters in %u read pairs (%u kmers)\n",
+	    (unsigned int)bases, nreads, nkmers);
+
+	fasta_close(fasta);
+
+	return (true);
+}
+
+static bool
 load_reads(const char *file)
 {
-	ssize_t ret;
 	uint64_t before;
+	int seed_weight;
+	ssize_t ret, bytes;
+
+	seed_weight = strchrcnt(spaced_seed, '1');
+
+	/* allocate our read map */
+	bytes = sizeof(readmap[0]) * power(4, seed_weight);
+	readmap = (struct readmap_entry **)xmalloc(bytes);
+	memset(readmap, 0, bytes);
+
+	bytes = sizeof(readmap_len[0]) * power(4, seed_weight);
+	readmap_len = (uint32_t *)xmalloc(bytes);
+	memset(readmap_len, 0, bytes);
 
 	before = rdtsc();
-	if (use_colours)
-		ret = load_fasta(file, load_reads_helper, COLOUR_SPACE);
+	if (shrimp_mode == MODE_DAG_SPACE)
+		ret = load_reads_dag(file);
 	else
-		ret = load_fasta(file, load_reads_helper, LETTER_SPACE);
+		ret = load_reads_lscs(file);
 	fasta_load_ticks += rdtsc() - before;
 
-	if (ret != -1)
-		fprintf(stderr, "- Loaded %u %s in %u reads (%u kmers)\n",
-		    (unsigned int)ret, (use_colours) ? "colours" : "letters",
-		    nreads, nkmers);
-
-	return (ret == -1);
+	return (ret);
 }
 
 static void
-generate_output(struct re_score *rs, bool revcmpl)
+generate_output_dag(struct re_score *rs, bool revcmpl)
 {
 	static bool firstcall = true;
 
@@ -748,6 +846,78 @@ generate_output(struct re_score *rs, bool revcmpl)
 	struct read_elem *re;
 	uint32_t goff, glen;
 	u_int thresh;
+
+	for (; rs != NULL; rs = rs->next) {
+		double score;
+		bool meets_thresh = false;
+
+		re = rs->parent;
+
+		if (rs->index < re->window_len)
+			goff = 0;
+		else
+			goff = rs->index - re->window_len;
+
+		assert(goff < genome_len);
+
+		if (goff + (re->window_len * 2) >= genome_len)
+			glen = genome_len - goff;
+		else
+			glen = re->window_len * 2;
+
+		int i;
+		char *refseq = (char *)xmalloc(glen + 1);
+
+		for (i = 0; i < glen; i++) {
+			refseq[i] = base_translate(EXTRACT(genome, goff+i), false);
+		}
+		refseq[i] = '\0';
+
+		struct dag_alignment *dap = dag_build_alignment(refseq, re->ri->dag_cookie);
+
+		double avglen;
+
+		avglen = (double)(re->ri->read1_len + re->ri->read2_len) / 2;
+		if (((double)dap->score / avglen) >= dag_ref_weighted_thresh) {
+			meets_thresh = true;
+			score = ((double)dap->score / avglen);
+		}
+
+		if (meets_thresh) {
+			printf("\n--------------------------------------------------------------------------------\n");
+			printf("ALIGNMENT:\n");
+			printf("  contig: [%s]\n", contig_name);
+			printf("  read:   [%s]\n", re->ri->name);
+			printf("  strand: %c, score %.3f, genome_start: %d, genome_end: %d\n",
+			    revcmpl ? '-' : '+', score, goff + dap->start_index + 1,
+			    goff + dap->end_index);
+			printf("\n");
+			printf("  READ 1:     %s\n", dap->read1);
+			printf("  READ 2:     %s\n", dap->read2);
+			printf("  SEQUENCE:   %s\n", dap->sequence);
+			printf("--------------------------------------------------------------------------------\n");
+			printf("\n");
+			re->ri->final_matches++;
+		}
+
+		free(refseq);
+		dag_free_alignment(dap);
+	}
+}
+
+static void
+generate_output_lscs(struct re_score *rs, bool revcmpl)
+{
+	static bool firstcall = true;
+
+	struct sw_full_results sfr;
+	char *dbalign, *qralign;
+	struct read_elem *re;
+	uint32_t goff, glen;
+	u_int thresh;
+
+	assert(shrimp_mode == MODE_LETTER_SPACE ||
+	       shrimp_mode == MODE_COLOUR_SPACE);
 
 	for (; rs != NULL; rs = rs->next) {
 		re = rs->parent;
@@ -768,7 +938,7 @@ generate_output(struct re_score *rs, bool revcmpl)
 			thresh = (u_int)-sw_full_threshold;
 		} else {
 			thresh = (u_int)floor(((double)
-			    (match_value * re->ri->read_len) *
+			    (match_value * re->ri->read1_len) *
 			    (sw_full_threshold / 100.0)));
 		}
 
@@ -780,27 +950,27 @@ generate_output(struct re_score *rs, bool revcmpl)
 		 *   on the alignment we want and reduce our genome length
 		 *   in the much slower, full aligner, providing a net win.
 		 */
-		if (!use_colours) {
+		if (shrimp_mode == MODE_LETTER_SPACE) {
 			uint32_t tryoff, trylen, score;
 
 			trylen = glen / 2;
 			tryoff = goff + trylen / 2;
 			assert(tryoff < (goff + glen));
 			score = sw_vector(genome, tryoff, trylen,
-			    re->ri->read, re->ri->read_len, NULL, -1);
+			    re->ri->read1, re->ri->read1_len, NULL, -1);
 			if (score == rs->score) {
 				goff = tryoff;
 				glen = trylen;
 			}
 		}
 
-		if (use_colours) {
-			sw_full_cs(genome_ls, goff, glen, re->ri->read,
-			    re->ri->read_len, re->ri->initbp, thresh, &dbalign,
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			sw_full_cs(genome, goff, glen, re->ri->read1,
+			    re->ri->read1_len, re->ri->initbp, thresh, &dbalign,
 			    &qralign, &sfr);
 		} else {
-			sw_full_ls(genome, goff, glen, re->ri->read,
-			    re->ri->read_len, thresh, rs->score, &dbalign,
+			sw_full_ls(genome, goff, glen, re->ri->read1,
+			    re->ri->read1_len, thresh, rs->score, &dbalign,
 			    &qralign, &sfr);
 			assert(sfr.score == rs->score);
 		}
@@ -815,111 +985,147 @@ generate_output(struct re_score *rs, bool revcmpl)
 		firstcall = false;
 
 		output_normal(stdout, re->ri->name, contig_name, &sfr, genome_len,
-		    goff, use_colours, re->ri->read, re->ri->read_len, re->ri->initbp,
-		    revcmpl, Rflag);
+		    goff, shrimp_mode == MODE_COLOUR_SPACE, re->ri->read1,
+		    re->ri->read1_len, re->ri->initbp, revcmpl, Rflag);
 		fputc('\n', stdout);
 
 		if (Pflag) {
 			fputc('\n', stdout);
 			output_pretty(stdout, re->ri->name, contig_name, &sfr,
-			    dbalign, qralign,
-			    (use_colours) ? genome_ls : genome, genome_len,
-			    goff, use_colours, re->ri->read, re->ri->read_len,
-			    re->ri->initbp, revcmpl);
+			    dbalign, qralign, genome, genome_len, goff,
+			    shrimp_mode == MODE_COLOUR_SPACE, re->ri->read1,
+			    re->ri->read1_len, re->ri->initbp, revcmpl);
 		}
 	}
 }
 
 static void
-final_pass_contig(void *arg)
+final_pass_contig(struct re_score *scores, struct re_score *scores_revcmpl)
 {
-	static int i = 0;
-
-	struct {
-		struct re_score *scores;
-		struct re_score *revcmpl_scores;
-	} *contig_list = arg;
-
-	assert(i >= 0 && i < ncontigs);
 
 	if (Fflag)
-		generate_output(contig_list[i].scores, false);
+		if (shrimp_mode == MODE_DAG_SPACE)
+			generate_output_dag(scores, false);
+		else
+			generate_output_lscs(scores, false);
 
 	if (Cflag) {
 		uint64_t before;
 
 		before = rdtsc();
-		if (use_colours)
-			reverse_complement(genome_ls, genome, genome_len);
-		else
-			reverse_complement(genome, NULL, genome_len);
+		reverse_complement(genome, NULL, genome_len);
 		revcmpl_ticks += rdtsc() - before;
-		generate_output(contig_list[i].revcmpl_scores, true);
+		if (shrimp_mode == MODE_DAG_SPACE)
+			generate_output_dag(scores_revcmpl, true);
+		else
+			generate_output_lscs(scores_revcmpl, true);
 	}
-
-	i++;
 }
 
 static int
 final_pass(char **files, int nfiles)
 {
-	struct {
-		struct re_score *scores;
-		struct re_score *revcmpl_scores;
-	} *contig_list;
-	struct read_elem *re;
-	int i, hits = 0;
+	struct re_score **scores, **scores_revcmpl;
+	int i, j, k, hits = 0;
+	fasta_t fasta;
+	char *name, *sequence;
 
-	contig_list = xmalloc(sizeof(*contig_list) * ncontigs);
-	memset(contig_list, 0, sizeof(*contig_list) * ncontigs);
+	scores = (struct re_score **)xmalloc(sizeof(*scores) * ncontigs);
+	scores_revcmpl = (struct re_score**)xmalloc(sizeof(*scores) * ncontigs);
+	memset(scores, 0, sizeof(*scores) * ncontigs);
+	memset(scores_revcmpl, 0, sizeof(*scores_revcmpl) * ncontigs);
 
 	/* For each contig, generate a linked list of hits from it. */
-	for (re = reads; re != NULL; re = re->ri->next) {
+	for (i = 0; i < nreads; i++) {
+		struct read_elem *re = OFFSET_TO_READ(i);
+
 		if (re->ri->swhits == 0)
 			continue;
 
 		hits++;
-		
-		for (i = 1; i <= re->ri->scores[0].score; i++) {
-			int cn = re->ri->scores[i].contig_num;
 
-			assert(re->ri->scores[i].score >= 0);
+		/*
+		 * Sort our output. This isn't going to work perfectly for DAG
+		 * and colour spaces, but it will for regular letter space.
+		 * It's better than nothing...
+		 */	
+		heapsort(re->ri->scores);
+		for (j = 1, k = re->ri->scores[0].score; j < k; j++, k--) {
+			struct re_score tmp;
+	
+			tmp = re->ri->scores[j];
+			re->ri->scores[j] = re->ri->scores[k];
+			re->ri->scores[k] = tmp;
+		}
+/* XXXXX - we can remove duplicates again!!! */
+		for (j = 1; j <= re->ri->scores[0].score; j++) {
+			struct re_score *rs = &re->ri->scores[j];
+			int cn = rs->contig_num;
 
+			assert(rs->score >= 0);
 			assert(cn >= 0 && cn < ncontigs);
-			assert(re->ri->scores[i].parent == NULL);
-			assert(re->ri->scores[i].next == NULL);
-			assert(re->ri->scores[i].score >= sw_vect_threshold);
+			assert(rs->parent == NULL);
+			assert(rs->next == NULL);
 
-			if (re->ri->scores[i].revcmpl) {
-				re->ri->scores[i].next =
-				    contig_list[cn].revcmpl_scores;
-				contig_list[cn].revcmpl_scores = &re->ri->scores[i];
-			} else {
-				re->ri->scores[i].next =
-				    contig_list[cn].scores;
-				contig_list[cn].scores = &re->ri->scores[i];
+			/* extra sanity */
+			if (shrimp_mode != MODE_DAG_SPACE) {
+				int thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+				assert(rs->score >= thresh);
 			}
 
-			re->ri->scores[i].parent = re;
+			/* prepend to linked list (hence why we reversed our sort) */
+			if (rs->revcmpl) {
+				rs->next =
+				    scores_revcmpl[cn];
+				scores_revcmpl[cn] = &re->ri->scores[j];
+			} else {
+				rs->next = scores[cn];
+				scores[cn] = &re->ri->scores[j];
+			}
+
+			rs->parent = re;
 		}
 	}
 
 	/* Now, do a final s-w for all reads of each contig and output them. */
-	genome_contig_cb = final_pass_contig;
-	genome_contig_cb_arg = contig_list;
-	for (i = 0; i < nfiles; i++) {
+	for (i = j = 0; i < nfiles; i++) {
 		fprintf(stderr, "- Processing contig file [%s] (%d of %d)\n",
 		    files[i], i + 1, nfiles);
-		if (load_genome(files[i])) {
+
+		fasta = fasta_open(files[i], LETTER_SPACE);
+		if (fasta == NULL) {
 			fprintf(stderr, "error: failed to reload genome file "
 			    "[%s] for final pass\n", files[i]);
 			exit(1);
 		}
-	}
-	genome_contig_cb = NULL;
-	genome_contig_cb_arg = NULL;
 
-	free(contig_list);
+		while (fasta_get_next(fasta, &name, &sequence)) {
+			assert(j >= 0 && j < ncontigs);
+
+			contig_name = name;
+			genome_len = strlen(sequence);
+
+			genome = fasta_sequence_to_bitfield(fasta, sequence);
+			genome_cs = NULL;
+
+			fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
+			    genome_len, name);
+
+			free(sequence);
+			final_pass_contig(scores[j], scores_revcmpl[j]);
+
+			free(genome);
+			free(contig_name);
+			genome = genome_cs = NULL;
+			contig_name = NULL;
+			j++;
+		}
+
+		fasta_close(fasta);
+	}
+
+	free(scores);
+	free(scores_revcmpl);
 
 	return (hits);
 }
@@ -947,37 +1153,31 @@ valid_spaced_seed()
 	return (1);
 }
 
-struct scan_genomes_args {
-	struct timeval *tv1, *tv2;
-	double *stime, *ltime, *rtime;
-	char *file;
-};
-
 static void
-scan_genomes_contig(void *arg)
+scan_genomes_contig(struct timeval *tv1, struct timeval *tv2, double *stime,
+    double *ltime, double *rtime)
 {
-	struct scan_genomes_args *args = arg;
 
 	if (Fflag) {
-		gettimeofday(args->tv2, NULL);
+		gettimeofday(tv2, NULL);
 
-		*args->ltime += ((double)args->tv2->tv_sec +
-		    (double)args->tv2->tv_usec / 1.0e6) -
-		    ((double)args->tv1->tv_sec +
-		    (double)args->tv1->tv_usec / 1.0e6);
+		*ltime += ((double)tv2->tv_sec +
+		    (double)tv2->tv_usec / 1.0e6) -
+		    ((double)tv1->tv_sec +
+		    (double)tv1->tv_usec / 1.0e6);
 
 		/*
 		 * Do it forwards.
 		 */
-		gettimeofday(args->tv1, NULL);
+		gettimeofday(tv1, NULL);
 		scan(ncontigs, false);
 		reset_reads();
-		gettimeofday(args->tv2, NULL);
+		gettimeofday(tv2, NULL);
 
-		*args->stime += ((double)args->tv2->tv_sec +
-		    (double)args->tv2->tv_usec / 1.0e6) -
-		    ((double)args->tv1->tv_sec +
-		    (double)args->tv1->tv_usec / 1.0e6);
+		*stime += ((double)tv2->tv_sec +
+		    (double)tv2->tv_usec / 1.0e6) -
+		    ((double)tv1->tv_sec +
+		    (double)tv1->tv_usec / 1.0e6);
 	}
 
 	if (Cflag) {
@@ -988,29 +1188,29 @@ scan_genomes_contig(void *arg)
 		 */
 		fprintf(stderr, "    - Processing reverse complement\n");
 
-		gettimeofday(args->tv1, NULL);
+		gettimeofday(tv1, NULL);
 		before = rdtsc();
-		if (use_colours)
-			reverse_complement(genome_ls, genome, genome_len);
+		if (shrimp_mode == MODE_COLOUR_SPACE)
+			reverse_complement(genome, genome_cs, genome_len);
 		else
 			reverse_complement(genome, NULL, genome_len);
 		revcmpl_ticks += rdtsc() - before;
-		gettimeofday(args->tv2, NULL);
+		gettimeofday(tv2, NULL);
 
-		*args->rtime += ((double)args->tv2->tv_sec +
-		    (double)args->tv2->tv_usec / 1.0e6) -
-		    ((double)args->tv1->tv_sec +
-		    (double)args->tv1->tv_usec / 1.0e6);
+		*rtime += ((double)tv2->tv_sec +
+		    (double)tv2->tv_usec / 1.0e6) -
+		    ((double)tv1->tv_sec +
+		    (double)tv1->tv_usec / 1.0e6);
 
-		gettimeofday(args->tv1, NULL);
+		gettimeofday(tv1, NULL);
 		scan(ncontigs, true);
 		reset_reads();
-		gettimeofday(args->tv2, NULL);
+		gettimeofday(tv2, NULL);
 
-		*args->stime += ((double)args->tv2->tv_sec +
-		    (double)args->tv2->tv_usec / 1.0e6) -
-		    ((double)args->tv1->tv_sec +
-		    (double)args->tv1->tv_usec / 1.0e6);
+		*stime += ((double)tv2->tv_sec +
+		    (double)tv2->tv_usec / 1.0e6) -
+		    ((double)tv1->tv_sec +
+		    (double)tv1->tv_usec / 1.0e6);
 	}
 
 	ncontigs++;
@@ -1020,31 +1220,51 @@ static int
 scan_genomes(char **files, int nfiles, double *scantime, double *loadtime,
     double *revcmpltime)
 {
-	struct scan_genomes_args args;
 	struct timeval tv1, tv2;
 	double stime, ltime, rtime;
+	fasta_t fasta;
+	char *name, *sequence;
 	int i;
 
 	stime = ltime = rtime = 0;
-	args.tv1 = &tv1;
-	args.tv2 = &tv2;
-	args.stime = &stime;
-	args.ltime = &ltime;
-	args.rtime = &rtime;
 
-	genome_contig_cb = scan_genomes_contig;
-	genome_contig_cb_arg = &args;
 	for (i = 0; i < nfiles; i++) {
 		fprintf(stderr, "- Processing contig file [%s] (%d of %d)\n",
 		    files[i], i + 1, nfiles);
 
-		args.file = files[i];
 		gettimeofday(&tv1, NULL);
-		if (load_genome(files[i]))
+
+		fasta = fasta_open(files[i], LETTER_SPACE);
+		if (fasta == NULL) {
+			fprintf(stderr, "error: failed to reload genome file "
+			    "[%s] for final pass\n", files[i]);
 			return (1);
+		}
+
+		while (fasta_get_next(fasta, &name, &sequence)) { 
+			contig_name = name;
+			genome_len = strlen(sequence);
+
+			genome = fasta_sequence_to_bitfield(fasta, sequence);
+			if (shrimp_mode == MODE_COLOUR_SPACE)
+				genome_cs = fasta_bitfield_to_colourspace(fasta, genome, genome_len);
+
+			fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
+			    genome_len, name);
+
+			free(sequence);
+			scan_genomes_contig(&tv1, &tv2, &stime, &ltime, &rtime);
+
+			free(genome);
+			if (shrimp_mode == MODE_COLOUR_SPACE)
+				free(genome_cs);
+			free(contig_name);
+			genome = genome_cs = NULL;
+			contig_name = NULL;
+		}
+
+		fasta_close(fasta);
 	}
-	genome_contig_cb = NULL;
-	genome_contig_cb_arg = NULL;
 
 	if (scantime != NULL)
 		*scantime = stime;
@@ -1059,7 +1279,7 @@ scan_genomes(char **files, int nfiles, double *scantime, double *loadtime,
 static u_int
 set_window_lengths()
 {
-	struct read_elem *re;
+	uint32_t i;
 	u_int max_window_len = 0;
 
 	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
@@ -1067,11 +1287,14 @@ set_window_lengths()
 		    "length - is this what you want?\n");
 	}
 
-	for (re = reads; re != NULL; re = re->ri->next) {
+	for (i = 0; i < nreads; i++) {
+		struct read_elem *re = OFFSET_TO_READ(i);
+
 		if (IS_ABSOLUTE(window_len)) {
 			re->window_len = (uint16_t)-window_len;
 		} else {
-			re->window_len = (uint16_t)ceil(((double)(re->ri->read_len *
+			int read_len = MAX(re->ri->read1_len, re->ri->read2_len);
+			re->window_len = (uint16_t)ceil(((double)(read_len *
 			    (window_len / 100.0))));
 		}
 		max_window_len = MAX(max_window_len, re->window_len);
@@ -1081,9 +1304,121 @@ set_window_lengths()
 }
 
 static void
+print_statistics(double stime, double ltime, double rtime)
+{
+	double cellspersec;
+	struct read_elem *re;
+	uint64_t invocs, cells, reads_matched, total_matches;
+	uint32_t i;
+
+	reads_matched = total_matches = 0;
+	for (i = 0; i < nreads; i++) {
+		struct read_elem *re = OFFSET_TO_READ(i);
+
+		reads_matched += (re->ri->final_matches == 0) ? 0 : 1;
+		total_matches += re->ri->final_matches;
+	}
+
+	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
+	
+	fprintf(stderr, "\nStatistics:\n");
+	fprintf(stderr, "    Spaced Seed Scan:\n");
+	fprintf(stderr, "        Run-time:               %.2f seconds\n",
+	    stime - ((cellspersec == 0) ? 0 : (double)cells / cellspersec));
+	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
+	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
+	    shortest_scanned_kmer_list);
+	fprintf(stderr, "        Maximal Reads/Kmer:     %" PRIu64 "\n",
+	    longest_scanned_kmer_list);
+	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
+	    (kmer_lists_scanned == 0) ? 0 :
+	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    Vector Smith-Waterman:\n");
+	fprintf(stderr, "        Run-time:               %.2f seconds\n",
+	    (cellspersec == 0) ? 0 : cells / cellspersec);
+	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
+	fprintf(stderr, "        Cells Computed:         %.2f million\n",
+	    (double)cells / 1.0e6);
+	fprintf(stderr, "        Cells per Second:       %.2f million\n",
+	    cellspersec / 1.0e6);
+	fprintf(stderr, "\n");
+
+	if (shrimp_mode != MODE_DAG_SPACE) {
+		if (shrimp_mode == MODE_COLOUR_SPACE)
+			sw_full_cs_stats(&invocs, &cells, NULL, &cellspersec);
+		else
+			sw_full_ls_stats(&invocs, &cells, NULL, &cellspersec);
+
+		fprintf(stderr, "    Scalar Smith-Waterman:\n");
+		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+		    (cellspersec == 0) ? 0 : cells / cellspersec);
+		fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
+		fprintf(stderr, "        Cells Computed:         %.2f million\n",
+		    (double)cells / 1.0e6);
+		fprintf(stderr, "        Cells per Second:       %.2f million\n",
+		    cellspersec / 1.0e6);
+	} else {
+		struct dag_statistics *dsp = dag_get_statistics();
+
+		fprintf(stderr, "    DAG Read-Read Alignment:\n");
+		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+		    dsp->kmers_seconds);
+		fprintf(stderr, "        Avg Kmers/Read Pair:    %.2f\n",
+		    (double)dsp->kmers_total_kmers / (double)dsp->kmers_invocations);
+		fasta_load_ticks = (uint64_t)MAX(0, fasta_load_ticks - dsp->kmers_seconds * cpuhz());
+		fprintf(stderr, "\n");
+
+		fprintf(stderr, "    DAG Pair-Genome Alignment:\n");
+		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+		    dsp->aligner_seconds);
+		fprintf(stderr, "        Invocations:            %" PRIu64 "\n",
+		    dsp->aligner_invocations);
+		free(dsp);
+	}
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    Miscellaneous:\n");
+	fprintf(stderr, "        Load Time:              %.2f seconds\n",
+	    (double)fasta_load_ticks / cpuhz());
+	fprintf(stderr, "        Revcmpl. Time:          %.2f seconds\n",
+	    (double)revcmpl_ticks / cpuhz());
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    General:\n");
+	fprintf(stderr, "        Reads Matched:          %" PRIu64 "    "
+	    "(%.4f%%)\n", reads_matched,
+	    (nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
+	fprintf(stderr, "        Total Matches:          %" PRIu64 "\n",
+	    total_matches);
+	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
+	    (total_matches == 0) ? 0 : ((double)total_matches /
+	    (double)reads_matched));
+}
+
+static void
 usage(char *progname)
 {
-	char *slash;
+	char *slash, *seed;
+	double vect_sw_threshold;
+
+	switch (shrimp_mode) {
+	case MODE_LETTER_SPACE:
+		seed = DEF_SPACED_SEED_LS;
+		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
+		break;
+	case MODE_COLOUR_SPACE:
+		seed = DEF_SPACED_SEED_CS;
+		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
+		break;
+	case MODE_DAG_SPACE:
+		seed = DEF_SPACED_SEED_DAG;
+		vect_sw_threshold = DEF_SW_VECT_THRESHOLD_DAG;
+		break;
+	default:
+		assert(0);
+	}
 
 	slash = strrchr(progname, '/');
 	if (slash != NULL)
@@ -1096,7 +1431,7 @@ usage(char *progname)
 
 	fprintf(stderr,
 	    "    -s    Spaced Seed                             (default: %s)\n",
-	    (use_colours) ? DEF_SPACED_SEED_CS : DEF_SPACED_SEED_LS);
+	    seed);
 
 	fprintf(stderr,
 	    "    -n    Seed Matches per Window                 (default: %d)\n",
@@ -1123,35 +1458,97 @@ usage(char *progname)
 	    "\n", DEF_KMER_STDDEV_LIMIT,
 	    (DEF_KMER_STDDEV_LIMIT < 0) ? " [None]" : "");
 
+	if (shrimp_mode == MODE_DAG_SPACE) {
+		fprintf(stderr, "\n");
+		fprintf(stderr,
+		    "    -p    DAG Epsilon                             (default: %d)\n",
+		    DEF_DAG_EPSILON);
+
+		fprintf(stderr,
+		    "    -1    DAG Read Match                          (default: %d)\n",
+		    DEF_DAG_READ_MATCH);
+
+		fprintf(stderr,
+		    "    -y    DAG Read Mismatch                       (default: %d)\n",
+		    DEF_DAG_READ_MISMATCH);
+
+		fprintf(stderr,
+		    "    -z    DAG Read Gap                            (default: %d)\n",
+		    DEF_DAG_READ_GAP);
+
+		fprintf(stderr,
+		    "    -a    DAG Reference Match                     (default: %d)\n",
+		    DEF_DAG_REF_MATCH);
+
+		fprintf(stderr,
+		    "    -b    DAG Reference Mismatch                  (default: %d)\n",
+		    DEF_DAG_REF_MISMATCH);
+
+		fprintf(stderr,
+		    "    -c    DAG Reference Half Match                (default: %d)\n",
+		    DEF_DAG_REF_HALF_MATCH);
+
+		fprintf(stderr,
+		    "    -j    DAG Reference Neither Match             (default: %d)\n",
+		    DEF_DAG_REF_NEITHER_MATCH);
+
+		fprintf(stderr,
+		    "    -k    DAG Reference Match,Deletion            (default: %d)\n",
+		    DEF_DAG_REF_MATCH_DELETION);
+
+		fprintf(stderr,
+		    "    -l    DAG Reference Mismatch,Deletion         (default: %d)\n",
+		    DEF_DAG_REF_MISMATCH_DELETION);
+
+		fprintf(stderr,
+		    "    -u    DAG Reference Error,Insertion           (default: %d)\n",
+		    DEF_DAG_REF_ERROR_INSERTION);
+
+		fprintf(stderr,
+		    "    -2    DAG Reference Weighted Threshold        (default: %.3f)\n",
+		    DEF_DAG_REF_WEIGHTED_THRESHOLD);
+	}
+
+	fprintf(stderr, "\n");
 	fprintf(stderr,
 	    "    -m    S-W Match Value                         (default: %d)\n",
-	    DEF_MATCH_VALUE);
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_MATCH_VALUE_DAG : DEF_MATCH_VALUE);
 
 	fprintf(stderr,
 	    "    -i    S-W Mismatch Value                      (default: %d)\n",
-	    DEF_MISMATCH_VALUE);
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_MISMATCH_VALUE_DAG : DEF_MISMATCH_VALUE);
 
 	fprintf(stderr,
-	    "    -g    S-W Gap Open Penalty                    (default: %d)\n",
-	    DEF_GAP_OPEN);
+	    "    -g    S-W Gap Open Penalty (Reference)        (default: %d)\n",
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_A_GAP_OPEN_DAG : DEF_A_GAP_OPEN);
 
 	fprintf(stderr,
-	    "    -e    S-W Gap Extend Penalty                  (default: %d)\n",
-	    DEF_GAP_EXTEND);
+	    "    -q    S-W Gap Open Penalty (Query)            (default: %d)\n",
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_B_GAP_OPEN_DAG : DEF_B_GAP_OPEN);
 
-	if (use_colours) {
+	fprintf(stderr,
+	    "    -e    S-W Gap Extend Penalty (Reference)      (default: %d)\n",
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_A_GAP_EXTEND_DAG : DEF_A_GAP_EXTEND);
+
+	fprintf(stderr,
+	    "    -f    S-W Gap Extend Penalty (Query)          (default: %d)\n",
+	    (shrimp_mode == MODE_DAG_SPACE) ? DEF_B_GAP_EXTEND_DAG : DEF_B_GAP_EXTEND);
+
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		fprintf(stderr,
 		    "    -x    S-W Crossover Penalty                   ("
 		    "default: %d)\n", DEF_XOVER_PENALTY);
 	}
 
-	if (use_colours) {
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		fprintf(stderr,
 		    "    -h    S-W Full Hit Threshold                  "
 		    "(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_DAG_SPACE) {
 		fprintf(stderr,
 		    "    -v    S-W Vector Hit Threshold                "
-		    "(default: %.02f%%)\n", DEF_SW_VECT_THRESHOLD);
+		    "(default: %.02f%%)\n", vect_sw_threshold);
 	} else {
 		fprintf(stderr,
 		    "    -h    S-W Hit Threshold                       "
@@ -1187,33 +1584,47 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	struct read_elem *re;
 	char *reads_file, *progname, *optstr;
 	char **genome_files;
-	double cellspersec, stime, ltime, rtime;
-	uint64_t invocs, cells, reads_matched, total_matches;
+	double stime, ltime, rtime;
 	int ch, ret, ngenome_files;
 	u_int max_window_len;
 
-	if (use_colours)
+	set_mode_from_argv(argv);
+
+	/* set the appropriate defaults based on mode */
+	switch (shrimp_mode) {
+	case MODE_COLOUR_SPACE:
 		spaced_seed = DEF_SPACED_SEED_CS;
-	else
+		optstr = "s:n:t:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFPR";
+		break;
+	case MODE_LETTER_SPACE:
 		spaced_seed = DEF_SPACED_SEED_LS;
+		optstr = "s:n:t:w:o:r:d:m:i:g:q:e:f:x:h:BCFPR";
+		break;
+	case MODE_DAG_SPACE:
+		spaced_seed = DEF_SPACED_SEED_DAG;
+		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
+		match_value = DEF_MATCH_VALUE_DAG;
+		mismatch_value = DEF_MISMATCH_VALUE_DAG;
+		a_gap_open = DEF_A_GAP_OPEN_DAG;
+		b_gap_open = DEF_B_GAP_OPEN_DAG;
+		a_gap_extend = DEF_A_GAP_EXTEND_DAG;
+		b_gap_extend = DEF_B_GAP_EXTEND_DAG;
+		sw_vect_threshold = DEF_SW_VECT_THRESHOLD_DAG;
+		break;
+	default:
+		assert(0);
+	}
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "rmapper: %s SPACE. (SHRiMP %s [%s])\n",
-	    (use_colours) ? "COLOUR" : "LETTER", SHRIMP_VERSION_STRING,
-	    get_compiler());
+	fprintf(stderr, "rmapper: %s.\nSHRiMP %s [%s]\n", get_mode_string(),
+	    SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 
 	progname = argv[0];
-
-	if (use_colours)
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:x:h:v:BCFPR";
-	else
-		optstr = "s:n:t:w:o:r:d:m:i:g:e:h:BCFPR";
 
 	while ((ch = getopt(argc, argv, optstr)) != -1) {
 		switch (ch) {
@@ -1245,6 +1656,42 @@ main(int argc, char **argv)
 		case 'd':
 			kmer_stddev_limit = atoi(optarg);
 			break;
+		case 'p':
+			dag_epsilon = atoi(optarg);
+			break;
+		case '1':
+			dag_read_match = atoi(optarg);
+			break;
+		case 'y':
+			dag_read_mismatch = atoi(optarg);
+			break;
+		case 'z':
+			dag_read_gap = atoi(optarg);
+			break;
+		case 'a':
+			dag_ref_match = atoi(optarg);
+			break;
+		case 'b':
+			dag_ref_mismatch = atoi(optarg);
+			break;
+		case 'c':
+			dag_ref_half_match = atoi(optarg);
+			break;
+		case 'j':
+			dag_ref_neither_match = atoi(optarg);
+			break;
+		case 'k':
+			dag_ref_match_deletion = atoi(optarg);
+			break;
+		case 'l':
+			dag_ref_mismatch_deletion = atoi(optarg);
+			break;
+		case 'u':
+			dag_ref_error_insertion = atoi(optarg);
+			break;
+		case '2':
+			dag_ref_weighted_thresh = atof(optarg);
+			break;
 		case 'm':
 			match_value = atoi(optarg);
 			break;
@@ -1252,16 +1699,23 @@ main(int argc, char **argv)
 			mismatch_value = atoi(optarg);
 			break;
 		case 'g':
-			gap_open = atoi(optarg);
+			a_gap_open = atoi(optarg);
+			break;
+		case 'q':
+			b_gap_open = atoi(optarg);
 			break;
 		case 'e':
-			gap_extend = atoi(optarg);
+			a_gap_extend = atoi(optarg);
+			break;
+		case 'f':
+			b_gap_extend = atoi(optarg);
 			break;
 		case 'x':
-			assert(use_colours);
+			assert(shrimp_mode == MODE_COLOUR_SPACE);
 			xover_penalty = atoi(optarg);
 			break;
 		case 'h':
+			assert(shrimp_mode != MODE_DAG_SPACE);
 			sw_full_threshold = atof(optarg);
 			if (sw_full_threshold < 0.0) {
 				fprintf(stderr, "error: invalid s-w full "
@@ -1272,7 +1726,8 @@ main(int argc, char **argv)
 				sw_full_threshold = -sw_full_threshold;	//absol.
 			break;
 		case 'v':
-			assert(use_colours);
+			assert(shrimp_mode == MODE_COLOUR_SPACE ||
+			       shrimp_mode == MODE_DAG_SPACE);
 			sw_vect_threshold = atof(optarg);
 			if (sw_vect_threshold < 0.0) {
 				fprintf(stderr, "error: invalid s-w vector "
@@ -1327,7 +1782,7 @@ main(int argc, char **argv)
 	if (!Cflag && !Fflag)
 		Cflag = Fflag = true;
 
-	if (!use_colours)
+	if (shrimp_mode == MODE_LETTER_SPACE)
 		sw_vect_threshold = sw_full_threshold;
 
 	if (!valid_spaced_seed()) {
@@ -1351,12 +1806,12 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (gap_open > 0) {
+	if (a_gap_open > 0 || b_gap_open > 0) {
 		fprintf(stderr, "error: invalid gap open penalty\n");
 		exit(1);
 	}
 
-	if (gap_extend > 0) {
+	if (a_gap_extend > 0 || b_gap_extend > 0) {
 		fprintf(stderr, "error: invalid gap extend penalty\n");
 		exit(1);
 	}
@@ -1366,71 +1821,121 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	if (use_colours && !IS_ABSOLUTE(sw_vect_threshold) &&
+	if (shrimp_mode == MODE_COLOUR_SPACE && !IS_ABSOLUTE(sw_vect_threshold) &&
 	    sw_vect_threshold > 100.0) {
 		fprintf(stderr, "error: invalid s-w full hit threshold\n");
 		exit(1);
 	}
 
 	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "    Spaced Seed:                %s\n", spaced_seed);
-	fprintf(stderr, "    Spaced Seed Span:           %u\n",
+	fprintf(stderr, "    Spaced Seed:                          %s\n",
+	    spaced_seed);
+	fprintf(stderr, "    Spaced Seed Span:                     %u\n",
 	    (u_int)strlen(spaced_seed));
-	fprintf(stderr, "    Spaced Seed Weight:         %u\n",
+	fprintf(stderr, "    Spaced Seed Weight:                   %u\n",
 	    strchrcnt(spaced_seed, '1'));
-	fprintf(stderr, "    Seed Matches per Window:    %u\n", num_matches);
-	fprintf(stderr, "    Seed Taboo Length:          %u\n", taboo_len);
+	fprintf(stderr, "    Seed Matches per Window:              %u\n",
+	    num_matches);
+	fprintf(stderr, "    Seed Taboo Length:                    %u\n",
+	    taboo_len);
 
 	if (IS_ABSOLUTE(window_len)) {
-		fprintf(stderr, "    Seed Window Length:         %u\n",
-		    (u_int)-window_len);
+		fprintf(stderr, "    Seed Window Length:                   "
+		    "%u\n", (u_int)-window_len);
 	} else {
-		fprintf(stderr, "    Seed Window Length:         %.02f%%\n",
-		    window_len);
+		fprintf(stderr, "    Seed Window Length:                   "
+		    "%.02f%%\n", window_len);
 	}
 
-	fprintf(stderr, "    Maximum Hits per Read:      %u\n", num_outputs);
-	fprintf(stderr, "    Maximum Read Length:        %u\n", max_read_len);
-	fprintf(stderr, "    Kmer Std. Deviation Limit:  %d%s\n",
+	fprintf(stderr, "    Maximum Hits per Read:                %u\n",
+	    num_outputs);
+	fprintf(stderr, "    Maximum Read Length:                  %u\n",
+	    max_read_len);
+	fprintf(stderr, "    Kmer Std. Deviation Limit:            %d%s\n",
 	    kmer_stddev_limit, (kmer_stddev_limit < 0) ? " (None)" : "");
-	fprintf(stderr, "    S-W Match Value:            %d\n", match_value);
-	fprintf(stderr, "    S-W Mismatch Value:         %d\n", mismatch_value);
-	fprintf(stderr, "    S-W Gap Open Penalty:       %d\n", gap_open);
-	fprintf(stderr, "    S-W Gap Extend Penalty:     %d\n", gap_extend);
 
-	if (use_colours) {
-		fprintf(stderr, "    S-W Crossover Penalty:      %d\n",
-		    xover_penalty);
+	if (shrimp_mode == MODE_DAG_SPACE) {
+		fprintf(stderr, "\n");
+		fprintf(stderr, "    DAG Epsilon:                          "
+		    "%u\n", dag_epsilon);
+		fprintf(stderr, "    DAG Read Match:                       "
+		    "%d\n", dag_read_match);
+		fprintf(stderr, "    DAG Read Mismatch:                    "
+		    "%d\n", dag_read_mismatch);
+		fprintf(stderr, "    DAG Read Gap:                         "
+		    "%d\n", dag_read_gap);
+		fprintf(stderr, "    DAG Reference Match:                  "
+		    "%d\n", dag_ref_match);
+		fprintf(stderr, "    DAG Reference Mismatch:               "
+		    "%d\n", dag_ref_mismatch);
+		fprintf(stderr, "    DAG Reference Half Match:             "
+		    "%d\n", dag_ref_half_match);
+		fprintf(stderr, "    DAG Reference Neither Match:          "
+		    "%d\n", dag_ref_neither_match);
+		fprintf(stderr, "    DAG Reference Match,Deletion:         "
+		    "%d\n", dag_ref_match_deletion);
+		fprintf(stderr, "    DAG Reference Mismatch,Deletion:      "
+		    "%d\n", dag_ref_mismatch_deletion);
+		fprintf(stderr, "    DAG Reference Error,Insertion:        "
+		    "%d\n", dag_ref_error_insertion);
+		fprintf(stderr, "    DAG Reference Weighted Threshold:     "
+		    "%.03f\n", dag_ref_weighted_thresh);
 	}
 
-	if (use_colours) {
-		if (IS_ABSOLUTE(sw_vect_threshold)) {
-			fprintf(stderr, "    S-W Vector Hit Threshold:   %u\n",
-			    (u_int)-sw_vect_threshold);
-		} else {
-			fprintf(stderr, "    S-W Vector Hit Threshold:   "
-			    "%.02f%%\n", sw_vect_threshold);
-		}
+	fprintf(stderr, "\n");
+	fprintf(stderr, "    S-W Match Value:                      "
+	    "%d\n", match_value);
+	fprintf(stderr, "    S-W Mismatch Value:                   "
+	    "%d\n", mismatch_value);
+	fprintf(stderr, "    S-W Gap Open Penalty (Ref):           "
+	    "%d\n", a_gap_open);
+	fprintf(stderr, "    S-W Gap Open Penalty (Qry):           "
+	    "%d\n", b_gap_open);
+	fprintf(stderr, "    S-W Gap Extend Penalty (Ref):         "
+	    "%d\n", a_gap_extend);
+	fprintf(stderr, "    S-W Gap Extend Penalty (Qry):         "
+	    "%d\n", b_gap_extend);
 
-		if (IS_ABSOLUTE(sw_full_threshold)) {
-			fprintf(stderr, "    S-W Full Hit Threshold:     %u\n",
-			    (u_int)-sw_full_threshold);
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		fprintf(stderr, "    S-W Crossover Penalty:                "
+		    "%d\n", xover_penalty);
+	}
+
+	if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_DAG_SPACE) {
+		if (IS_ABSOLUTE(sw_vect_threshold)) {
+			fprintf(stderr, "    S-W Vector Hit Threshold:     "
+			    "        %u\n", (u_int)-sw_vect_threshold);
 		} else {
-			fprintf(stderr, "    S-W Full Hit Threshold:     "
-			    "%.02f%%\n", sw_full_threshold);
+			fprintf(stderr, "    S-W Vector Hit Threshold:     "
+			    "        %.02f%%\n", sw_vect_threshold);
 		}
-	} else {
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		if (IS_ABSOLUTE(sw_full_threshold)) {
-			fprintf(stderr, "    S-W Hit Threshold:          %u\n",
-			    (u_int)-sw_full_threshold);
+			fprintf(stderr, "    S-W Full Hit Threshold:       "
+			    "        %u\n", (u_int)-sw_full_threshold);
 		} else {
-			fprintf(stderr, "    S-W Hit Threshold:          "
-			    "%.02f\n", sw_full_threshold);
+			fprintf(stderr, "    S-W Full Hit Threshold:       "
+			    "        %.02f%%\n", sw_full_threshold);
+		}
+	}
+	if (shrimp_mode == MODE_LETTER_SPACE) {
+		if (IS_ABSOLUTE(sw_full_threshold)) {
+			fprintf(stderr, "    S-W Hit Threshold:            "
+			    "        %u\n", (u_int)-sw_full_threshold);
+		} else {
+			fprintf(stderr, "    S-W Hit Threshold:            "
+			    "        %.02f\n", sw_full_threshold);
 		}
 	}
 	fprintf(stderr, "\n");
 
-	if (load_reads(reads_file))
+	dag_setup(dag_read_match, dag_read_mismatch, dag_read_gap, dag_ref_match,
+	    dag_ref_mismatch, dag_ref_half_match, dag_ref_neither_match,
+	    dag_ref_match_deletion, dag_ref_mismatch_deletion,
+	    dag_ref_error_insertion);
+
+	if (!load_reads(reads_file))
 		exit(1);
 
 	fprintf(stderr, "  - Configuring window lengths...\n");
@@ -1438,21 +1943,23 @@ main(int argc, char **argv)
 	fprintf(stderr, "  - Maximum window length: %u\n", max_window_len);
 		
 
-	if (sw_vector_setup(max_window_len * 2, longest_read_len, gap_open,
-	    gap_extend, gap_open, gap_extend, match_value, mismatch_value,
-	    use_colours, false)) {
+	if (sw_vector_setup(max_window_len * 2, longest_read_len, a_gap_open,
+	    a_gap_extend, b_gap_open, b_gap_extend, match_value, mismatch_value,
+	    shrimp_mode == MODE_COLOUR_SPACE, false)) {
 		fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
 		exit(1);
 	}
 
-	if (use_colours) {
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+/* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(max_window_len * 2, longest_read_len,
-		    gap_open, gap_extend, match_value, mismatch_value,
+		    a_gap_open, a_gap_extend, match_value, mismatch_value,
 		    xover_penalty, false);
 	} else {
 		ret = sw_full_ls_setup(max_window_len * 2, longest_read_len,
-		    gap_open, gap_extend, match_value, mismatch_value, false);
+		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend,
+		    match_value, mismatch_value, false);
 	}
 	if (ret) {
 		fprintf(stderr, "failed to initialise scalar "
@@ -1468,69 +1975,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "\nGenerating output...\n");
 	final_pass(genome_files, ngenome_files);
 
-	reads_matched = total_matches = 0;
-	for (re = reads; re != NULL; re = re->ri->next) {
-		reads_matched += (re->ri->final_matches == 0) ? 0 : 1;
-		total_matches += re->ri->final_matches;
-	}
+	print_statistics(stime, ltime, rtime);
 
-	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
-	
-	fprintf(stderr, "\nStatistics:\n");
-	fprintf(stderr, "    Spaced Seed Scan:\n");
-	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    stime - ((cellspersec == 0) ? 0 : (double)cells / cellspersec));
-	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
-	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
-	    shortest_scanned_kmer_list);
-	fprintf(stderr, "        Maximal Reads/Kmer:     %" PRIu64 "\n",
-	    longest_scanned_kmer_list);
-	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
-	    (kmer_lists_scanned == 0) ? 0 :
-	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
-	fprintf(stderr, "\n");
-
-	fprintf(stderr, "    Vector Smith-Waterman:\n");
-	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    (cellspersec == 0) ? 0 : cells / cellspersec);
-	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
-	fprintf(stderr, "        Cells Computed:         %.2f million\n",
-	    (double)cells / 1.0e6);
-	fprintf(stderr, "        Cells per Second:       %.2f million\n",
-	    cellspersec / 1.0e6);
-	fprintf(stderr, "\n");
-
-	if (use_colours)
-		sw_full_cs_stats(&invocs, &cells, NULL, &cellspersec);
-	else
-		sw_full_ls_stats(&invocs, &cells, NULL, &cellspersec);
-
-	fprintf(stderr, "    Scalar Smith-Waterman:\n");
-	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    (cellspersec == 0) ? 0 : cells / cellspersec);
-	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
-	fprintf(stderr, "        Cells Computed:         %.2f million\n",
-	    (double)cells / 1.0e6);
-	fprintf(stderr, "        Cells per Second:       %.2f million\n",
-	    cellspersec / 1.0e6);
-	fprintf(stderr, "\n");
-
-	fprintf(stderr, "    Miscellaneous:\n");
-	fprintf(stderr, "        Load Time:              %.2f seconds\n",
-	    (double)fasta_load_ticks / cpuhz());
-	fprintf(stderr, "        Revcmpl. Time:          %.2f seconds\n",
-	    (double)revcmpl_ticks / cpuhz());
-	fprintf(stderr, "\n");
-
-	fprintf(stderr, "    General:\n");
-	fprintf(stderr, "        Reads Matched:          %" PRIu64 "    "
-	    "(%.4f%%)\n", reads_matched,
-	    (nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
-	fprintf(stderr, "        Total Matches:          %" PRIu64 "\n",
-	    total_matches);
-	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
-	    (total_matches == 0) ? 0 : ((double)total_matches /
-	    (double)reads_matched));
-	
 	return (0);
 }

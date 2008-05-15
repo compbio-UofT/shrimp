@@ -63,7 +63,7 @@ main(int argc, char **argv)
 		exit(1);
 	}
 
-	buf = malloc(sb.st_size);
+	buf = (char *)malloc(sb.st_size);
 	if (buf == NULL) {
 		perror("malloc");
 		exit(1);

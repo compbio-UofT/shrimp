@@ -169,7 +169,7 @@ read_file(const char *fpath)
 			input.read_seq = NULL;
 		} else if (input.read_seq != NULL) {
 			if (dynhash_find(read_seq_cache, input.read_seq,
-			    (void *)&key, NULL)) {
+			    (void **)&key, NULL)) {
 				free(input.read_seq);
 				input.read_seq = key;
 			} else {
@@ -186,7 +186,7 @@ read_file(const char *fpath)
 		/*
 		 * Cache the contig names similarly, so we don't waste memory.
 		 */
-		if (dynhash_find(contig_cache, input.genome, (void *)&key,
+		if (dynhash_find(contig_cache, input.genome, (void **)&key,
 		    NULL)) {
 			free(input.genome);
 			input.genome = key;
@@ -202,8 +202,8 @@ read_file(const char *fpath)
 
 		total_alignments++;
 
-		if (dynhash_find(read_list, input.read, (void *)&key,
-		    (void *)&ri)) {
+		if (dynhash_find(read_list, input.read, (void **)&key,
+		    (void **)&ri)) {
 			/* use only one read name string to save space */
 			free(input.read);
 			input.read = key;
@@ -215,7 +215,7 @@ read_file(const char *fpath)
 			total_unique_reads++;
 
 			/* alloc, init, insert in dynhash */
-			ri = xmalloc(sizeof(*ri) +
+			ri = (struct readinfo *)xmalloc(sizeof(*ri) +
 			    sizeof(ri->top_matches[0]) * (top_matches + 1));
 			memset(ri, 0, sizeof(*ri) +
 			    sizeof(ri->top_matches[0]) * (top_matches + 1));
@@ -268,8 +268,8 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 static void
 calc_rates(void *arg, void *key, void *val)
 {
-	struct rates *rates = arg;
-	struct readinfo *ri = val;
+	struct rates *rates = (struct rates *)arg;
+	struct readinfo *ri = (struct readinfo *)val;
 	struct input *rs;
 	double d;
 	int32_t best;
@@ -344,7 +344,8 @@ p_thissource(int k, int nerrors, double erate, int nsubs, double subrate,
 static int
 rspvcmp(const void *a, const void *b)
 {
-	const struct readstatspval *rspva = a, *rspvb = b;
+	const struct readstatspval *rspva = (const struct readstatspval *)a;
+	const struct readstatspval *rspvb = (const struct readstatspval *)b;
 	double cmp_a, cmp_b;
 
 	switch (sort_field) {
@@ -381,8 +382,8 @@ calc_probs(void *arg, void *key, void *val)
 {
 	static struct readstatspval *rspv;
 
-	struct rates *rates = arg;
-	struct readinfo *ri = val;
+	struct rates *rates = (struct rates *)arg;
+	struct readinfo *ri = (struct readinfo *)val;
 	double s, norm;
 	int i, j, rlen;
 
@@ -395,7 +396,7 @@ calc_probs(void *arg, void *key, void *val)
 	}
 
 	if (rspv == NULL)
-		rspv = xmalloc(sizeof(rspv[0]) * (top_matches + 1));
+		rspv = (struct readstatspval *)xmalloc(sizeof(rspv[0]) * (top_matches + 1));
 
 	/* 1: Calculate P(chance) and P(genome) for each hit */
 	norm = 0;
@@ -575,7 +576,7 @@ ratestats(struct rates *rates)
 static void
 single_pass_cb(char *path, struct stat *sb, void *arg)
 {
-	struct pass_cb *pcb = arg;
+	struct pass_cb *pcb = (struct pass_cb *)arg;
 
 	read_file(path);
 	pcb->nbytes += sb->st_size;
@@ -641,7 +642,7 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 static void
 double_pass_cb(char *path, struct stat *sb, void *arg)
 {
-	struct pass_cb *pcb = arg;
+	struct pass_cb *pcb = (struct pass_cb *)arg;
 
 	read_file(path);
 	pcb->nbytes += sb->st_size;
@@ -719,7 +720,7 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 static void
 count_files(char *path, struct stat *sb, void *arg)
 {
-	uint64_t *i = arg;
+	uint64_t *i = (uint64_t *)arg;
 
 	/* shut up, icc */
 	(void)path;
@@ -751,6 +752,8 @@ main(int argc, char **argv)
 	char *progname;
 	uint64_t total_files;
 	int ch;
+
+	set_mode_from_argv(argv);
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
