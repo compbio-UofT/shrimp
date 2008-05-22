@@ -380,7 +380,8 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 	for (i = 0, j = BPTO32BW(g_len) - 1; i <= j; i++, j--) {
 		tmp = g_ls[i];
 		g_ls[i] = swap_nibbles(g_ls[j]);
-		g_ls[j] = swap_nibbles(tmp);
+		if (i != j)
+			g_ls[j] = swap_nibbles(tmp);
 
 		g_ls[i]=(complement_base((g_ls[i] & 0x0000000f) >>  0) <<  0) |
 			(complement_base((g_ls[i] & 0x000000f0) >>  4) <<  4) |
@@ -390,6 +391,9 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 			(complement_base((g_ls[i] & 0x00f00000) >> 20) << 20) |
 			(complement_base((g_ls[i] & 0x0f000000) >> 24) << 24) |
 			(complement_base((g_ls[i] & 0xf0000000) >> 28) << 28);
+
+		if (i == j)
+			continue;
 
 		g_ls[j]=(complement_base((g_ls[j] & 0x0000000f) >>  0) <<  0) |
 			(complement_base((g_ls[j] & 0x000000f0) >>  4) <<  4) |
