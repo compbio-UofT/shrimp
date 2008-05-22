@@ -410,6 +410,8 @@ calc_probs(void *arg, void *key, void *val)
 		    rs->deletions;
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
 		    rs->insertions + rs->deletions, rs->read_length);
+		if (s < 0.00000001)
+			s = 0.00000001;
 
 		if (s > pchance_cutoff)
 			continue;
