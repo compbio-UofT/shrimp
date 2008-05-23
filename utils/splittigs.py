@@ -1,0 +1,38 @@
+#	$Id$
+
+import sys
+
+if len(sys.argv) != 2:
+	print >> sys.stderr, "usage: %s [fasta_file]" % (sys.argv[0])
+	sys.exit(1)
+
+outfd = None
+nfiles = 0
+skipping = False
+
+fd = open(sys.argv[1], "r")
+for line in fd.readlines():
+	if line.startswith(">"):
+		fname = line[1:].strip() + ".fa"
+		if outfd != None:
+			outfd.close()
+		outfd = open(fname, "w")
+		print >> sys.stderr, "splitting into file [%s]" % (fname)
+		nfiles = nfiles + 1
+
+	if outfd == None:
+		if not skipping:
+			print >> sys.stderr, "warning: no contig label yet; skipping line"
+			skipping = True
+		continue
+	skipping = False
+
+	outfd.write(line)
+
+if outfd != None:
+	outfd.close()
+
+if nfiles != 0:
+	print >> sys.stderr, "------------------------------------------"
+	print >> sys.stderr, "created %d individual contig file(s)" % (nfiles)
+	print >> sys.stderr, "------------------------------------------"
