@@ -2,14 +2,13 @@ $Id$
 
 Program			Function	
 -------			--------
-colourise		convert letterspace fasta files to colourspace (unused)
 mergehits-cs		merge all hits into one line per read (colour space)
 mergehits-ls		merge all hits into one line per read (letter space)
+mergehits-hs		merge all hits into one line per read pair (helicos)
 prettyprint-cs		pretty print alignments from rmapper/probcalc (c. space)
 prettyprint-ls		pretty print alignments from rmapper/probcalc (l. space)
+prettyprint-hs		pretty print alignments from rmapper/probcalc (helicos)
 probcalc		parse rmapper output (non-pretty-printed output)
-revcmpl			reverse-complement a contig (unused)
 rmapper-cs		colourspace read mapper
 rmapper-ls		letterspace read mapper
-splitreads		split fasta read files into smaller chunks
-splittigs		split fasta contig files into one file per contig
+rmapper-hs		helicos read mapper
