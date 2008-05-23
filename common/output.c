@@ -54,7 +54,11 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 {
 	char *gpre, *gpost, *lspre, *lspost, *mpre, *nospace = "";
 	int j, len;
-	uint32_t genome_start, genome_end, read_start, read_end;
+	uint32_t genome_start, genome_end;		/* start w/in *genome */
+	uint32_t idx_genome_start, idx_genome_end;	/* relative idx user sees */
+	uint32_t read_start, read_end;
+
+	
 
 	/* shut up, icc */
 	(void)readname;
@@ -67,9 +71,11 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 	assert(genome_len > genome_start && genome_len > genome_end);
 
 	if (revcmpl) {
-		uint32_t tmp = genome_start;
-		genome_start = genome_len - genome_end - 1;
-		genome_end = genome_len - tmp - 1;
+		idx_genome_start = genome_len - genome_end - 1;
+		idx_genome_end = genome_len - genome_start - 1;
+	} else {
+		idx_genome_start = genome_start;
+		idx_genome_end = genome_end;
 	}
 
 	read_start = sfr->read_start;
@@ -111,9 +117,9 @@ output_pretty(FILE *fp, const char *readname, const char *contigname,
 	/* NB: internally 0 is first position, output uses 1. adjust. */
 
 	fprintf(fp, "G: %10" PRId64 "    %s%s%s    %-10" PRId64 "\n",
-	    (revcmpl) ? (int64_t)genome_end + 1 : (int64_t)genome_start + 1,
+	    (revcmpl) ? (int64_t)idx_genome_end + 1 : (int64_t)idx_genome_start + 1,
 	    gpre, dbalign, gpost,
-	    (revcmpl) ? (int64_t)genome_start + 1 : (int64_t)genome_end + 1);
+	    (revcmpl) ? (int64_t)idx_genome_start + 1 : (int64_t)idx_genome_end + 1);
 
 	fprintf(fp, "%16s %s", "", mpre);
 	for (j = 0; j < len; j++) {
@@ -213,6 +219,7 @@ output_normal(FILE *fp, const char *readname, const char *contigname,
     bool print_readseq)
 {
 	uint32_t genome_start, genome_end;
+	uint32_t idx_genome_start, idx_genome_end;
 	const char *cname, *rname;
 
 	assert(fp != NULL && readname != NULL);
@@ -224,9 +231,11 @@ output_normal(FILE *fp, const char *readname, const char *contigname,
 	assert(genome_len > genome_start && genome_len > genome_end);
 
 	if (revcmpl) {
-		uint32_t tmp = genome_start;
-		genome_start = genome_len - genome_end - 1;
-		genome_end = genome_len - tmp - 1;
+		idx_genome_start = genome_len - genome_end - 1;
+		idx_genome_end = genome_len - genome_start - 1;
+	} else {
+		idx_genome_start = genome_start;
+		idx_genome_end = genome_end;
 	}
 
 	rname = escapestr(readname);
@@ -247,8 +256,8 @@ output_normal(FILE *fp, const char *readname, const char *contigname,
 
 	/* NB: internally 0 is first position, output uses 1. adjust. */
 	fprintf(fp, "score=%d g_start=%u g_end=%u r_start=%d r_end=%d r_len=%u "
-	    "match=%d subs=%d ins=%d dels=%d", sfr->score, genome_start + 1,
-	    genome_end + 1, sfr->read_start + 1,
+	    "match=%d subs=%d ins=%d dels=%d", sfr->score, idx_genome_start + 1,
+	    idx_genome_end + 1, sfr->read_start + 1,
 	    sfr->read_start + sfr->rmapped - 1 + 1, readlen, sfr->matches,
 	    sfr->mismatches, sfr->insertions, sfr->deletions);
 	  
