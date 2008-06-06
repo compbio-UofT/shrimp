@@ -1,6 +1,7 @@
 #	$Id$
 
 import sys
+from utils import *
 
 if len(sys.argv) != 4:
 	print >> sys.stderr, "usage: %s [contig_file] [start_index] [end_index]" % (sys.argv[0])
@@ -18,8 +19,8 @@ if end < start:
 
 seen_fasta_line = False
 lineset = []
-fd = open(sys.argv[1], "r") 
-for line in fd.readlines():
+fd = open_gz_or_ascii(sys.argv[1])
+for line in fd:
 	if line.startswith(">"):
 		if seen_fasta_line:
 			print >> sys.stderr, "ERROR: this only supports one contig per file"

@@ -3,12 +3,15 @@
 #include <assert.h>
 #include <errno.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
+#include <pthread.h>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -22,8 +25,8 @@ void
 set_mode_from_argv(char **argv)
 {
 
-	if (strstr(argv[0], "-dag") != NULL || strstr(argv[0], "-DAG") != NULL)
-		shrimp_mode = MODE_DAG_SPACE;
+	if (strstr(argv[0], "-hs") != NULL || strstr(argv[0], "-HS") != NULL)
+		shrimp_mode = MODE_HELICOS_SPACE;
 	else if (strstr(argv[0], "-cs") != NULL || strstr(argv[0], "-CS") != NULL)
 		shrimp_mode = MODE_COLOUR_SPACE;
 	else
@@ -39,8 +42,8 @@ get_mode_string()
 		return ("COLOUR SPACE (AB SOLiD)");
 	case MODE_LETTER_SPACE:
 		return ("LETTER SPACE (454,Illumina/Solexa,etc.)");
-	case MODE_DAG_SPACE:
-		return ("DAG SPACE (Helicos Single Molecule)");
+	case MODE_HELICOS_SPACE:
+		return ("HELICOS SPACE (Helicos Single Molecule)");
 	}
 
 	return ("--bloody no idea!--");
@@ -58,7 +61,7 @@ rdtsc() {
 double
 cpuhz()
 {
-	uint64_t before, after;
+	uint64_t before;
 	struct timeval tv1, tv2;
 	int diff;
 
@@ -72,9 +75,8 @@ cpuhz()
 		if (diff < 0)
 			diff = 1000000 - tv1.tv_usec + tv2.tv_usec;
 	} while (diff < 2000);
-	after = rdtsc();
 
-	return (((double)(after - before) / diff) * 1.0e6);
+	return (((double)(rdtsc() - before) / diff) * 1.0e6);
 }
 
 u_int
@@ -97,6 +99,17 @@ is_number(const char *str)
 
 	while (*str != '\0')
 		if (!isdigit((int)*str++))
+			return (false);
+
+	return (true);
+}
+
+bool
+is_whitespace(const char *str)
+{
+
+	while (*str != '\0')
+		if (!isspace((int)*str++))
 			return (false);
 
 	return (true);
@@ -242,7 +255,7 @@ void
 bitfield_prepend(uint32_t *bf, uint32_t entries, uint32_t val)
 {
 	uint32_t tmp;
-	int i;
+	u_int i;
 
 	for (i = 0; i < BPTO32BW(entries); i++) {
 		tmp = bf[i] >> 28;
@@ -576,3 +589,212 @@ strtrim(char *str)
 
         return (ret);
 }
+
+strbuf_t
+strbuf_create()
+{
+	strbuf_t sbp;
+
+	sbp = (strbuf_t)xmalloc(sizeof(*sbp));
+	memset(sbp, 0, sizeof(*sbp));
+	sbp->string_alloced = 4096;
+	sbp->string = (char *)xmalloc(4096);
+
+	return (sbp);
+}
+
+char *
+strbuf_string(strbuf_t sbp, int *length)
+{
+
+	assert(sbp->string_length == strlen(sbp->string));
+	if (length != NULL)
+		*length = sbp->string_length;
+	return (xstrdup(sbp->string));
+}
+
+void
+strbuf_append(strbuf_t sbp, char *fmt, ...)
+{
+	va_list ap;
+	int bytes;
+
+	assert(sbp->string_length < sbp->string_alloced);
+	if (sbp->string_alloced == sbp->string_length) {
+		sbp->string_alloced += 4096;
+		sbp->string = (char *)xrealloc(sbp->string, sbp->string_alloced);
+	}
+
+	va_start(ap, fmt);
+	do {
+		bytes = vsnprintf(&sbp->string[sbp->string_length],
+		    sbp->string_alloced - sbp->string_length, fmt, ap);
+
+		/* wasn't enough space. resize and try again */
+		if (sbp->string_length + bytes >= sbp->string_alloced) {
+			sbp->string_alloced += 4096;
+			sbp->string = (char *)xrealloc(sbp->string, sbp->string_alloced);
+		}
+	} while (sbp->string_length + bytes >= sbp->string_alloced);
+	va_end(ap);
+
+	sbp->string_length += bytes;
+	assert(sbp->string_length < sbp->string_alloced);
+}
+
+void
+strbuf_destroy(strbuf_t sbp)
+{
+
+	free(sbp->string);
+	free(sbp);
+}
+
+/*
+ * Fast and loose replacement for gzgets, for use when one is just
+ * sequentially calling gzgets on the whole file. Note that this is
+ * _not_ reentrant!
+ */
+char *
+fast_gzgets(gzFile gz, char *buf, int len)
+{
+	static char *save_buf;
+	static int   save_len;
+	static int   save_bytes;
+	static int   save_skip;
+
+	int ret, i, total;
+
+	assert(len >= 0);
+
+	if (len == 0)
+		goto out;
+
+	if (save_len < len) {
+		save_len = len;
+		save_buf = (char *)xrealloc(save_buf, save_len);
+	}
+
+	assert(save_bytes >= 0);
+	assert(save_bytes < save_len);
+
+	ret = -1;
+	total = 0;
+	do {
+		bool nl = false;
+
+		assert(save_skip < save_len);
+
+		if (save_bytes == 0) {
+			ret = gzread(gz, save_buf, save_len - 1);
+			if (ret < 0)
+				break;
+			save_skip = 0;
+			save_bytes = ret;
+		}
+
+		for (i = 0; i < save_bytes && (total + i) < (save_len - 1); i++) {
+			if ((buf[total + i] = save_buf[save_skip + i]) == '\n') {
+				nl  = true;
+				i++;
+				break;
+			}
+		}
+
+		total += i;
+		buf[total] = '\0';
+
+		assert(save_bytes >= 0);
+		assert(total < save_len);
+
+		if (nl) {
+			assert(i > 0);
+			assert(i <= save_bytes);
+			assert(save_buf[save_skip + i - 1] == '\n');
+			save_bytes -= i;
+			save_skip += i;
+			return (buf);
+		} else if (total == (save_len - 1)) {
+			if (i == total) { 
+				save_bytes = save_skip = 0;
+			} else {
+				assert(i < total);
+				save_bytes -= i;
+				save_skip += i;
+			}
+			return (buf);
+		} else if (save_bytes == 0) {
+			if (total == 0)
+				break;
+			assert(ret == 0);
+			save_bytes = save_skip = 0;
+			return (buf);
+		} else if (i == save_bytes) {
+			assert(i > 0);
+			save_bytes -= i;
+			save_skip += i;
+		} else {
+			assert(0);
+		}
+	} while (true);
+
+ out:
+	if (save_buf != NULL)
+		free(save_buf);
+	save_buf = NULL;
+	save_len = save_bytes = save_skip = 0;
+
+	return (NULL);
+}
+
+#if 0
+/*
+ * Try to assure our fast_gzgets works as fgets and gzgets.
+ * I think gzgets doesn't fully conform to fgets when TESTBUFLEN = 0.
+ */
+void
+fast_gztest(int nfiles, char **files)
+{
+	int i;
+#define TESTBUFLEN 9731
+	for (i = 0; i < nfiles; i++) {
+		FILE *fp;
+		gzFile gz1, gz2;
+		char *buf  = (char *)xmalloc(TESTBUFLEN);
+		char *buf2 = (char *)xmalloc(TESTBUFLEN);
+		char *buf3 = (char *)xmalloc(TESTBUFLEN);
+
+		printf("=== %s ===\n", files[i]);
+
+		fp = fopen(files[i], "r");
+		gz1 = gzopen(files[i], "r");
+		gz2 = gzopen(files[i], "r");
+		if (fp == NULL && gz1 == NULL && gz2 == NULL) {
+			printf("skipping [%s]\n", files[i]);
+			continue;
+		}
+		assert(fp != NULL && gz1 != NULL && gz2 != NULL);
+
+		while (gzgets(gz1, buf, TESTBUFLEN) != NULL) {
+			char *ret = fast_gzgets(gz2, buf2, TESTBUFLEN);
+			char *ret2 = fgets(buf3, TESTBUFLEN, fp);
+			assert(ret != NULL);
+			assert(ret2 != NULL);
+			if (strcmp(buf, buf2) != 0) {
+				printf("buf [%s]\n !=\n buf2 [%s]\n", buf, buf2);
+				assert(0);
+			}
+			if (strcmp(buf, buf3) != 0) {
+				printf("buf [%s]\n !=\n buf3 [%s]\n", buf, buf2);
+				assert(0);
+			}
+		}
+		assert(fgets(buf3, sizeof(buf3), fp) == NULL);
+		assert(fast_gzgets(gz2, buf2, sizeof(buf2)) == NULL);
+
+		fclose(fp);
+		gzclose(gz1);
+		gzclose(gz2);
+	}
+}
+#endif

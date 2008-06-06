@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <zlib.h>
 
 #include "../common/dynhash.h"
 #include "../common/util.h"
@@ -45,7 +46,8 @@ dynhash_expand(dynhash_t dh)
 	if (new_length <= dh->table_length)
 		return;
 
-	new_table = malloc(new_length * sizeof(struct dynhash_entry *));
+	new_table = (struct dynhash_entry **)
+	    malloc(new_length * sizeof(struct dynhash_entry *));
 	if (new_table == NULL)
 		return;
 
@@ -82,13 +84,13 @@ dynhash_create(uint32_t (*hashfn)(void *), int (*keycmp)(void *, void *))
 	if (hashfn == NULL || keycmp == NULL)
 		return (NULL);
 
-	dh = malloc(sizeof(*dh));
+	dh = (dynhash_t)malloc(sizeof(*dh));
 	if (dh == NULL)
 		return (NULL);
 
 	memset(dh, 0, sizeof(*dh));
 
-	dh->table = malloc(DYNHASH_INIT_LENGTH *
+	dh->table = (struct dynhash_entry **)malloc(DYNHASH_INIT_LENGTH *
 	    sizeof(struct dynhash_entry *));
 	if (dh->table == NULL) {
 		free(dh);
@@ -188,7 +190,7 @@ dynhash_add(dynhash_t dh, void *key, void *value)
 	if (dh->table_count == dh->table_length)
 		dynhash_expand(dh);
 
-	dhe = malloc(sizeof(*dhe));
+	dhe = (struct dynhash_entry *)malloc(sizeof(*dhe));
 	if (dhe == NULL)
 		return (false);
 

@@ -1,6 +1,7 @@
 #	$Id$
 
 import sys
+from utils import *
 
 if len(sys.argv) != 2:
 	print >> sys.stderr, "usage: %s [fasta_file]" % (sys.argv[0])
@@ -10,8 +11,8 @@ outfd = None
 nfiles = 0
 skipping = False
 
-fd = open(sys.argv[1], "r")
-for line in fd.readlines():
+fd = open_gz_or_ascii(sys.argv[1])
+for line in fd:
 	if line.startswith(">"):
 		fname = line[1:].strip() + ".fa"
 		if outfd != None:

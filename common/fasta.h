@@ -43,13 +43,17 @@
 #define BASE_CS_MAX	BASE_3
 
 typedef struct _fasta_t {
-	FILE  *fp;
+	gzFile fp;
 	char  *file;
 	int    space;
-	char   buffer[65536];
+	char   buffer[8*1024*1024];
 	char   translate[256];
 	bool   leftover;
 } * fasta_t;
+
+typedef struct _fasta_stats_t {
+	uint64_t	total_ticks;
+} * fasta_stats_t;
 
 fasta_t	  fasta_open(const char *, int);
 void	  fasta_close(fasta_t);
@@ -57,6 +61,7 @@ bool	  fasta_get_next(fasta_t, char **, char **);
 int	  fasta_get_initial_base(fasta_t, char *);
 uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
+fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);
 
 #endif

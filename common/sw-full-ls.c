@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -199,7 +200,7 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 		if (score == maxscore)
 			break;
 	}
-if (score != maxscore) fprintf(stderr, "WANTED: %d, FOUND: %d\n", maxscore, score);
+
 	*iret = i;
 	*jret = j;
 
@@ -230,7 +231,7 @@ do_backtrace(int lena, int i, int j, struct sw_full_results *sfr)
 	}
 	if (cell->score_north > fromscore)
 		from = cell->back_north;
-if (from == 0) fprintf(stderr, "i: %d, j: %d, lena: %d\n", i, j, lena);
+
 	assert(from != 0);
 
 	/* fill out the backtrace */
@@ -430,11 +431,10 @@ sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    int threshscore, int maxscore, char **dbalignp, char **qralignp,
-    struct sw_full_results *sfr)
+    int threshscore, int maxscore, struct sw_full_results *sfr)
 {
 	struct sw_full_results scratch;
-	uint64_t before, after;
+	uint64_t before;
 	int i, j, k;
 
 	before = rdtsc();
@@ -455,11 +455,6 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 
 	dbalign[0] = qralign[0] = '\0';
 
-	if (dbalignp != NULL)
-		*dbalignp = dbalign;
-	if (qralignp != NULL)
-		*qralignp = qralign;
-	
 	for (i = 0; i < glen; i++)
 		db[i] = (int8_t)EXTRACT(genome, goff + i);
 
@@ -470,9 +465,11 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	k = do_backtrace(glen, i, j, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;
+	sfr->genome_start += goff;
 	sfr->rmapped = i - sfr->read_start + 1;
+	sfr->dbalign = xstrdup(dbalign);
+	sfr->qralign = xstrdup(qralign);
 
 	swcells += (glen * rlen);
-	after = rdtsc();
-	swticks += (after - before);
+	swticks += (rdtsc() - before);
 }

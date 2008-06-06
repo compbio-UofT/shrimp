@@ -1,6 +1,7 @@
 #	$Id$
 
 import sys
+from utils import *
 
 if len(sys.argv) != 3:
 	print >> sys.stderr, "usage: %s [reads_per_file] [fasta_file]"
@@ -19,8 +20,8 @@ elif sys.argv[2].lower().strip().endswith(".csfa"):
 elif sys.argv[2].lower().strip().endswith(".fa"):
 	suffix = "fa"
 
-fd = open(sys.argv[2], "r")
-for line in fd.readlines():
+fd = open_gz_or_ascii(sys.argv[2])
+for line in fd:
 	if line.startswith("#"):
 		continue
 

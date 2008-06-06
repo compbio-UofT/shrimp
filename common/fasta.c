@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -18,24 +19,27 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 
+static uint64_t total_ticks;
+
 fasta_t
 fasta_open(const char *file, int space)
 {
-	fasta_t fasta;
+	fasta_t fasta = NULL;
 	struct stat sb;
-	FILE *fp;
+	gzFile fp;
+	uint64_t before = rdtsc();
 
 	assert(space == COLOUR_SPACE || space == LETTER_SPACE);
 
 	if (stat(file, &sb))
-		return (NULL);
+		goto out;
 
 	if (!S_ISREG(sb.st_mode))
-		return (NULL);
+		goto out;
 
-	fp = fopen(file, "r");
+	fp = gzopen(file, "r");
 	if (fp == NULL)
-		return (NULL);
+		goto out;
 
 	fasta = (fasta_t)xmalloc(sizeof(*fasta));
 	memset(fasta, 0, sizeof(*fasta));
@@ -46,45 +50,80 @@ fasta_open(const char *file, int space)
 	memset(fasta->translate, -1, sizeof(fasta->translate));
 
 	if (space == COLOUR_SPACE) {
-		fasta->translate['0'] = BASE_0;
-		fasta->translate['1'] = BASE_1;
-		fasta->translate['2'] = BASE_2;
-		fasta->translate['3'] = BASE_3;
-		fasta->translate['4'] = BASE_N;
-		fasta->translate['N'] = BASE_N;
-		fasta->translate['.'] = BASE_N;
-		fasta->translate['X'] = BASE_X;
+		fasta->translate[(int)'0'] = BASE_0;
+		fasta->translate[(int)'1'] = BASE_1;
+		fasta->translate[(int)'2'] = BASE_2;
+		fasta->translate[(int)'3'] = BASE_3;
+		fasta->translate[(int)'4'] = BASE_N;
+		fasta->translate[(int)'N'] = BASE_N;
+		fasta->translate[(int)'n'] = BASE_N;
+		fasta->translate[(int)'.'] = BASE_N;
+		fasta->translate[(int)'X'] = BASE_X;
+		fasta->translate[(int)'x'] = BASE_X;
 	} else {	
-		fasta->translate['A'] = BASE_A;
-		fasta->translate['C'] = BASE_C;
-		fasta->translate['G'] = BASE_G;
-		fasta->translate['T'] = BASE_T;
-		fasta->translate['U'] = BASE_U;
-		fasta->translate['M'] = BASE_M;
-		fasta->translate['R'] = BASE_R;
-		fasta->translate['W'] = BASE_W;
-		fasta->translate['S'] = BASE_S;
-		fasta->translate['Y'] = BASE_Y;
-		fasta->translate['K'] = BASE_K;
-		fasta->translate['V'] = BASE_V;
-		fasta->translate['H'] = BASE_H;
-		fasta->translate['D'] = BASE_D;
-		fasta->translate['B'] = BASE_B;
-		fasta->translate['N'] = BASE_N;
-		fasta->translate['.'] = BASE_N;
-		fasta->translate['X'] = BASE_X;
+		fasta->translate[(int)'A'] = BASE_A;
+		fasta->translate[(int)'a'] = BASE_A;
+		fasta->translate[(int)'C'] = BASE_C;
+		fasta->translate[(int)'c'] = BASE_C;
+		fasta->translate[(int)'G'] = BASE_G;
+		fasta->translate[(int)'g'] = BASE_G;
+		fasta->translate[(int)'T'] = BASE_T;
+		fasta->translate[(int)'t'] = BASE_T;
+		fasta->translate[(int)'U'] = BASE_U;
+		fasta->translate[(int)'u'] = BASE_U;
+		fasta->translate[(int)'M'] = BASE_M;
+		fasta->translate[(int)'m'] = BASE_M;
+		fasta->translate[(int)'R'] = BASE_R;
+		fasta->translate[(int)'r'] = BASE_R;
+		fasta->translate[(int)'W'] = BASE_W;
+		fasta->translate[(int)'w'] = BASE_W;
+		fasta->translate[(int)'S'] = BASE_S;
+		fasta->translate[(int)'s'] = BASE_S;
+		fasta->translate[(int)'Y'] = BASE_Y;
+		fasta->translate[(int)'y'] = BASE_Y;
+		fasta->translate[(int)'K'] = BASE_K;
+		fasta->translate[(int)'k'] = BASE_K;
+		fasta->translate[(int)'V'] = BASE_V;
+		fasta->translate[(int)'v'] = BASE_V;
+		fasta->translate[(int)'H'] = BASE_H;
+		fasta->translate[(int)'h'] = BASE_H;
+		fasta->translate[(int)'D'] = BASE_D;
+		fasta->translate[(int)'d'] = BASE_D;
+		fasta->translate[(int)'B'] = BASE_B;
+		fasta->translate[(int)'b'] = BASE_B;
+		fasta->translate[(int)'N'] = BASE_N;
+		fasta->translate[(int)'n'] = BASE_N;
+		fasta->translate[(int)'.'] = BASE_N;
+		fasta->translate[(int)'X'] = BASE_X;
+		fasta->translate[(int)'x'] = BASE_X;
 	}
 
+ out:
+	total_ticks += (rdtsc() - before);
 	return (fasta);
 }
 
 void
 fasta_close(fasta_t fasta)
 {
+	uint64_t before = rdtsc();
 
-	fclose(fasta->fp);
+	gzclose(fasta->fp);
 	free(fasta->file);
 	free(fasta);
+
+	total_ticks += (rdtsc() - before);
+}
+
+fasta_stats_t
+fasta_stats()
+{
+	fasta_stats_t fs;
+
+	fs = (fasta_stats_t)xmalloc(sizeof(*fs));
+	fs->total_ticks = total_ticks;
+
+	return (fs);
 }
 
 static char *
@@ -99,12 +138,29 @@ extract_name(char *buffer)
 bool
 fasta_get_next(fasta_t fasta, char **name, char **sequence)
 {
+	static int categories[256] = { 42 };
+	enum { CAT_SPACE, CAT_NEWLINE, CAT_ELSE };
+
 	int i;
 	bool gotname = false;
 	uint32_t sequence_length = 0;
 	uint32_t max_sequence_length = 0;
+	uint64_t before = rdtsc();
+	char *readinseq;
 
-	*name = *sequence = NULL;
+	/* isspace(3) is really slow, so build a lookup instead */
+	if (categories[0] == 42) {
+		for (i = 0; i < 256; i++) {
+			if (i == '\n')
+				categories[i] = CAT_NEWLINE;
+			else if (isspace(i))
+				categories[i] = CAT_SPACE;
+			else
+				categories[i] = CAT_ELSE;
+		}
+	}
+
+	*name = *sequence = readinseq = NULL;
 
 	if (fasta->leftover) {
 		*name = extract_name(fasta->buffer);
@@ -112,7 +168,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 		gotname = true;
 	}
 
-	while (fgets(fasta->buffer, sizeof(fasta->buffer), fasta->fp) != NULL) {
+	while (fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL) {
 		if (fasta->buffer[0] == '#')
 			continue;
 
@@ -127,56 +183,83 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 			continue;
 		}
 
+		if (max_sequence_length == 0 ||
+		    max_sequence_length - sequence_length <= sizeof(fasta->buffer)) {
+			if (max_sequence_length == 0)
+				max_sequence_length = 16*1024*1024;
+			else if (max_sequence_length >= 128*1024*1024)
+				max_sequence_length += 128*1024*1024;
+			else
+				max_sequence_length *= 2;
+			readinseq = (char *)xrealloc(readinseq, max_sequence_length);
+		}
+
 		for (i = 0; fasta->buffer[i] != '\0'; i++) {
-			if (fasta->buffer[i] == '\n') {
+			int act = categories[(int)fasta->buffer[i]];
+
+			switch (act) {
+			case CAT_NEWLINE:
 				fasta->buffer[i] = '\0';
-				break;
-			} else if (isspace((int)fasta->buffer[i])) {
+				goto out;
+			case CAT_SPACE:
 				continue;
+			case CAT_ELSE:
+			default:
+				/* fall down below */
+				break;
 			}
 
-			if (sequence_length == max_sequence_length) {
-				if (max_sequence_length == 0)
-					max_sequence_length = 1024*1024;
-				else if (max_sequence_length >= 128*1024*1024)
-					max_sequence_length += 128*1024*1024;
-				else
-					max_sequence_length *= 2;
-				*sequence = (char *)xrealloc(*sequence, max_sequence_length);
-			}
-			(*sequence)[sequence_length++] = fasta->buffer[i];
+			readinseq[sequence_length++] = fasta->buffer[i];
+
+			continue;
+ out:
+			break;
 		}
+
+		assert(sequence_length <= max_sequence_length);
 	}
 
 	if (!gotname) {
-		if (*sequence != NULL)
-			free(*sequence);
+		if (readinseq != NULL)
+			free(readinseq);
+		total_ticks += (rdtsc() - before);
 		return (false);
 	}
 
+	if (readinseq == NULL)
+		return (false);
+
 	/* ensure nul-termination */
-	if (sequence_length == max_sequence_length)
-		*sequence = (char *)xrealloc(*sequence, max_sequence_length + 1);
+	*sequence = (char *)xmalloc(sequence_length + 1);
+	memcpy(*sequence, readinseq, sequence_length);
 	(*sequence)[sequence_length] = '\0';
+	free(readinseq);
 
 	assert(*name != NULL);
 	assert(*sequence != NULL);
+	total_ticks += (rdtsc() - before);
 	return (true);
 }
 
 int
 fasta_get_initial_base(fasta_t fasta, char *sequence)
 {
-	char c;
 
 	assert(fasta->space == COLOUR_SPACE);
 
-	c = (char)toupper((int)*sequence);
-	switch (c) {
-	case 'A': return (BASE_A); break;
-	case 'C': return (BASE_C); break;
-	case 'G': return (BASE_G); break;
-	case 'T': return (BASE_T); break;
+	switch (*sequence) {
+	case 'A':
+	case 'a':
+		return (BASE_A);
+	case 'C':
+	case 'c':
+		return (BASE_C);
+	case 'G':
+	case 'g':
+		return (BASE_G);
+	case 'T':
+	case 't':
+		return (BASE_T);
 	}
 
 	return (-1);
@@ -188,10 +271,12 @@ fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length)
 	int a, lastbp = BASE_T;
 	uint32_t *dst;
 	uint32_t i;
+	uint64_t before = rdtsc();
 
 	assert(fasta->space == LETTER_SPACE);
 
 	dst = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
+	memset(dst, 0, BPTO32BW(length) * sizeof(uint32_t));
 
 	for (i = 0; i < length; i++) {
 		a = EXTRACT(source, i);
@@ -199,6 +284,7 @@ fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length)
 		lastbp = a;
 	}
 
+	total_ticks += (rdtsc() - before);
 	return (dst);
 }
 
@@ -207,26 +293,31 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 {
 	uint32_t i, length, idx;
 	uint32_t *bitfield;
+	uint64_t before = rdtsc();
 	int a;
 	char c;
 
 	length = strlen(sequence);
 	bitfield = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
+	memset(bitfield, 0, BPTO32BW(length) * sizeof(uint32_t));
 
-	for (i = idx = 0; i < length; i++) {
-		c = (char)toupper((int)sequence[i]);
-
-		if (i == 0 && fasta->space == COLOUR_SPACE) {
-			if (c != 'A' && c == 'C' && 
-			    c != 'G' && c != 'T') {
-				free(bitfield);
-				return (NULL);
-			}
-
-			continue;
+	i = 0;
+	c = (char)sequence[0];
+	if (fasta->space == COLOUR_SPACE) {
+		if (c != 'A' && c != 'a' &&
+		    c != 'C' && c != 'c' && 
+		    c != 'G' && c != 'g' &&
+		    c != 'T' && c != 't') {
+			free(bitfield);
+			total_ticks += (rdtsc() - before);
+			return (NULL);
 		}
+		
+		i = 1;
+	}
 
-		a = fasta->translate[(int)c];
+	for (idx = 0; i < length; i++) {
+		a = fasta->translate[(int)sequence[i]];
 		if (a == -1) {
 			fprintf(stderr, "error: invalid character ");
 			if (isprint((int)c))
@@ -255,6 +346,7 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 	else
 		assert(idx == length);
 
+	total_ticks += (rdtsc() - before);
 	return (bitfield);
 }
 

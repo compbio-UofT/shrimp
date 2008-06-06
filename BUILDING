@@ -10,12 +10,11 @@ considerably from 64-bit compiled code, whereas Core 2 architectures don't
 seem to care much.
 
 When building with icc, execute the following:
-    gmake CC="icc" CFLAGS="-Wall -Werror -wd981,1572 -axP -O3 -ipo -static" \
-        LDFLAGS="-lm"
+    gmake CC="icc" CFLAGS="-Kc++ -wd383,981,1572 -axP -O3 -ipo"
 
 When building with gcc, execute the following:
-    gmake CC="gcc" CFLAGS="-Wall -Werror -O3 -mmmx -msse -msse2 -static" \
-        LDFLAGS="-lm"
+    gmake CC="g++" CFLAGS="-O3 -mmmx -msse -msse2"
+GCC 4 users should also supply appropriate -ftree-vectorize and -march flags.
 
 Debugging and assertion features may be turned off by adding "-NDEBUG" to the
 CFLAGS argument. However, at present assertions don't appear to cost much and
@@ -24,14 +23,3 @@ any improvement in performance will be very small.
 You may want to adjust your flags depending on your hardware and compiler
 versions. The above icc CFLAGS seemed optimal for both Pentium 4 and Core 2
 architectures.
-
-
-IMPORTANT NOTES FOR MAC OS X USERS:
-----------------------------------
-    Mac OS X users may want to avoid the '-static' flag if compilation errors
-    occur. Apple either doesn't ship some or all static libraries, or there are
-    other things going on in Appleland that I don't understand.
-
-    Also, Mac OS X icc users may need to provide the additional '-wd269' flag to
-    avoid icc's complaints regarding Apple's strange PRIu64 and PRId64
-    definitions.

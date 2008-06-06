@@ -1,6 +1,7 @@
 #	$Id$
 
 import sys
+from utils import *
 
 WIDTH = 50
 
@@ -62,8 +63,8 @@ def revcmpl(sequence):
 lines = []
 seen_contig = False
 
-fd = open(sys.argv[1], "r")
-for line in fd.readlines():
+fd = open_gz_or_ascii(sys.argv[1])
+for line in fd:
 	if line.startswith(">"):
 		if seen_contig:
 			print >> sys.stderr, "error: only one fasta line per file is supported"

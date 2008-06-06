@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -858,11 +859,10 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
-    int initbp, int threshscore, char **dbalignp, char **qralignp,
-    struct sw_full_results *sfr)
+    int initbp, int threshscore, struct sw_full_results *sfr)
 {
 	struct sw_full_results scratch;
-	uint64_t before, after;
+	uint64_t before;
 	int i, j, k;
 
 	before = rdtsc();
@@ -883,11 +883,6 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 
 	dbalign[0] = qralign[0] = '\0';
 
-	if (dbalignp != NULL)
-		*dbalignp = dbalign;
-	if (qralignp != NULL)
-		*qralignp = qralign;
-	
 	for (i = 0; i < glen; i++)
 		db[i] = (int8_t)EXTRACT(genome_ls, goff + i);
 
@@ -916,9 +911,11 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 	k = do_backtrace(glen, i, j, k, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;
+	sfr->genome_start += goff;
 	sfr->rmapped = i - sfr->read_start + 1;
+	sfr->dbalign = xstrdup(dbalign);
+	sfr->qralign = xstrdup(qralign);
 
 	swcells += (glen * rlen);
-	after = rdtsc();
-	swticks += (after - before);
+	swticks += (rdtsc() - before);
 }

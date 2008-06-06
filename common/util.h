@@ -10,11 +10,11 @@
 
 #include "../common/fasta.h"
 
-enum shrimp_mode_t {
+typedef enum {
 	MODE_LETTER_SPACE = 1,
 	MODE_COLOUR_SPACE = 2,
-	MODE_DAG_SPACE    = 3
-};
+	MODE_HELICOS_SPACE= 3
+} shrimp_mode_t;
 
 extern shrimp_mode_t shrimp_mode;
 
@@ -27,12 +27,20 @@ extern shrimp_mode_t shrimp_mode;
 #define EXTRACT(_genome, _i) (((_genome)[(_i) / 8] >> (4 * ((_i) % 8))) & 0xf)
 #define BPTO32BW(_x) (((_x) + 7) / 8)
 
+struct _strbuf_t {
+	char   *string;
+	u_int	string_length;
+	u_int	string_alloced;
+};
+typedef struct _strbuf_t * strbuf_t;
+
 void		set_mode_from_argv(char **);
 const char     *get_mode_string(void);
 uint64_t	rdtsc(void);
 double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
 bool		is_number(const char *);
+bool		is_whitespace(const char *);
 void		xstat(const char *, struct stat *);
 void	       *xmalloc(size_t);
 void	       *xrealloc(void *, size_t);
@@ -53,6 +61,11 @@ uint64_t	file_iterator_n(char **, int,
 char           *get_compiler(void);
 char	       *strrev(char *);
 char	       *strtrim(char *);
+strbuf_t	strbuf_create(void);
+char	       *strbuf_string(strbuf_t, int *);
+void	        strbuf_append(strbuf_t, char *, ...);
+void		strbuf_destroy(strbuf_t);
+char	       *fast_gzgets(gzFile, char *, int);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;

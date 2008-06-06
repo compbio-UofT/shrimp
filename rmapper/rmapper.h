@@ -62,7 +62,8 @@ extern const bool use_dag;
 struct re_score {
 	struct read_elem *parent;		/* associated read_elem */
 	struct re_score  *next;			/* linked list (final pass) */
-	int		  contig_num;		/* contig index (for filename)*/
+	struct sw_full_results *sfrp;		/* alignment results (final pass) */
+	u_int		  contig_num;		/* contig index (for filename)*/
 	bool		  revcmpl;		/* from contig's reverse cmpl */
 	int32_t		  score;		/* doubles as heap cnt in [0] */
 	uint32_t	  index;

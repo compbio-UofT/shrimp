@@ -6,6 +6,7 @@
 #include <string>
 #include <climits>
 #include <fstream>
+#include <zlib.h>
 
 #include "../common/dag_align.h"
 #include "../common/dag_glue.h"
@@ -89,7 +90,7 @@ dag_get_kmers(dag_cookie_t dct, int len)
 
 	ki = kg->getkmers(len);
 
-	if ((len - 1) >= (ki->kmers).size()) {
+	if ((len - 1) >= (int)(ki->kmers).size()) {
 		delete ki;
 		return (NULL);
 	}

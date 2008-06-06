@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -26,10 +27,14 @@
 static dynhash_t read_list;		/* list of reads and top matches */
 static dynhash_t contig_cache;		/* contig name cache */
 static dynhash_t read_seq_cache;	/* read sequence cache */
+static dynhash_t read_edit_cache;	/* read edit string cache */
 
 static bool Bflag = false;		/* print a progress bar */
+static bool Gflag = false;		/* calculate rates and output them */
 static bool Rflag = false;		/* include read sequence in output */
 static bool Sflag = false;		/* do it all in one pass (save in ram)*/
+
+static char *rates_file;		/* -g flag specifies a rates file */
 
 struct readinfo {
 	char	    *name;
@@ -85,6 +90,9 @@ static int	sort_field		= SORT_PCHANCE;
 
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
+
+#define ALMOST_ZERO	0.000000001
+#define ALMOST_ONE	0.999999999
 
 static uint32_t
 keyhasher(void *k)
@@ -147,10 +155,10 @@ read_file(const char *fpath)
 	struct input input;
 	struct readinfo *ri;
 	char *key;
-	FILE *fp;
+	gzFile fp;
 	int i;
 
-	fp = fopen(fpath, "r");
+	fp = gzopen(fpath, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "error: could not open file [%s]: %s\n",
 		    fpath, strerror(errno));
@@ -200,6 +208,23 @@ read_file(const char *fpath)
 			}
 		}
 
+		/*
+		 * Finally, cache edit strings for memory happiness.
+		 */
+		if (dynhash_find(read_edit_cache, input.edit, (void **)&key,
+		    NULL)) {
+			free(input.edit);
+			input.edit = key;
+		} else {
+			if (dynhash_add(read_edit_cache, input.edit,
+			    NULL) == false) {
+				fprintf(stderr, "error: failed to add to "
+				    "edit cache (%d) - probably out of "
+				    "memory\n", __LINE__);
+				exit(1);
+			}
+		}
+
 		total_alignments++;
 
 		if (dynhash_find(read_list, input.read, (void **)&key,
@@ -235,7 +260,7 @@ read_file(const char *fpath)
 		}
 	}
 
-	fclose(fp);
+	gzclose(fp);
 }
 
 static double
@@ -243,7 +268,10 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 {
 	double r = 0;
 
-	r += ls_choose(k - 2, nsubs+nerrors) + ((nsubs + nerrors) * log(4));
+	if (isinf(pow(4, (nsubs + nerrors))))
+		r += ls_choose(k - 2, nsubs + nerrors) + ((nsubs + nerrors) * log(4));
+	else
+		r += ls_choose(k - 2, nsubs + nerrors) + log(pow(4, (nsubs + nerrors)) - 1);
 
 	/*
 	 * two for ins and dels, four for the four possible letters to insert.
@@ -253,7 +281,7 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 
 	/* r is now log of fraction of matched words over total words */
 	r -= (k * log(4));
-	r = pow(M_E, r);
+	r = exp(r);
 	r = 1 - r;
 
 	/* if hit not full length we need to correct */
@@ -262,7 +290,7 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
 	/* 2 for the two strands */
 	r = 2.0 * l * log(r);
 
-	return (1- pow(M_E, r));
+	return (1.0 - exp(r));
 }
 
 static void
@@ -286,7 +314,9 @@ calc_rates(void *arg, void *key, void *val)
 	best = 0;
 	for (i = 1; i <= ri->top_matches[0].score; i++) {
 		if (best == 0 ||
-		    ri->top_matches[i].score >= ri->top_matches[best].score) {
+		    ri->top_matches[i].score > ri->top_matches[best].score) {
+			/* NB: strictly >, as we want same results for double and single passes
+			       if there are two with the same score, but different alignments */
 			best = i;
 		}
 	}
@@ -330,13 +360,13 @@ p_thissource(int k, int nerrors, double erate, int nsubs, double subrate,
 	r += ls_choose(k - nerrors - nsubs, nindels) +
 	    (nindels * log(indelrate));
 	r += nmatches * log(matchrate);
-	r = (pow(M_E, r));
+	r = exp(r);
 
 
-	if (r < 0.00000001)
-		r = 0.00000001;
-	if (r > 0.99999999)
-		r = 0.99999999;
+	if (r < ALMOST_ZERO)
+		r = ALMOST_ZERO;
+	if (r > ALMOST_ONE)
+		r = ALMOST_ONE;
 
 	return (r);
 }
@@ -381,6 +411,7 @@ static void
 calc_probs(void *arg, void *key, void *val)
 {
 	static struct readstatspval *rspv;
+	static bool called = false;
 
 	struct rates *rates = (struct rates *)arg;
 	struct readinfo *ri = (struct readinfo *)val;
@@ -410,8 +441,8 @@ calc_probs(void *arg, void *key, void *val)
 		    rs->deletions;
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
 		    rs->insertions + rs->deletions, rs->read_length);
-		if (s < 0.00000001)
-			s = 0.00000001;
+		if (s < ALMOST_ZERO)
+			s = ALMOST_ZERO;
 
 		if (s > pchance_cutoff)
 			continue;
@@ -433,12 +464,23 @@ calc_probs(void *arg, void *key, void *val)
 	for (i = 0; i < j; i++)
 		rspv[i].normodds = rspv[i].normodds / norm;
 
-	/* 4: Sort the values ascending */
+	/* 3: Sort the values ascending */
 	qsort(rspv, j, sizeof(*rspv), rspvcmp);
 
-	/* 5: Finally, print out values in ascending order until the cutoff */
+	/* 4: Finally, print out values in ascending order until the cutoff */
+	if (!called) {
+		printf("#FORMAT: readname contigname strand contigstart contigend readstart readend "
+		    "readlength score editstring normodds pgenome pchance");
+		if (Rflag)
+			printf(" readsequence\n");
+		else
+			printf("\n");
+		called = true;
+	}
+
 	for (i = 0; i < j; i++) {
 		struct input *rs = rspv[i].rs;
+		char *readseq = "";
 
 		if (rspv[i].normodds < normodds_cutoff) {
 			if (sort_field == SORT_NORMODDS)
@@ -459,23 +501,20 @@ calc_probs(void *arg, void *key, void *val)
 				continue;
 		}
 
+		if (rs->read_seq != NULL && rs->read_seq[0] != '\0')
+			readseq = rs->read_seq;
+		else if (Rflag)
+			readseq = " ";
+
 		/* the only sane way is to reproduce the output code, sadly. */
-		printf("> r=\"%s\" g=\"%s\" g_str=%c ", rs->read, rs->genome,
+		printf(">%s\t%s\t%c", rs->read, rs->genome,
 		    (INPUT_IS_REVCMPL(rs)) ? '-' : '+');
 
-		if (rs->read_seq != NULL && rs->read_seq[0] != '\0')
-			printf("read_seq=\"%s\" ", rs->read_seq);
-
 		/* NB: internally 0 is first position, output is 1. adjust */
-		printf("score=%d g_start=%u g_end=%u r_start=%u r_end=%u "
-		    "r_len=%u match=%u subs=%u ins=%u dels=%u xovers=%u "
-		    "normodds=%f pgenome=%f pchance=%f\n\n", rs->score,
-		    rs->genome_start + 1, rs->genome_end + 1,
-		    (u_int)rs->read_start + 1, (u_int)rs->read_end + 1,
-		    (u_int)rs->read_length, (u_int)rs->matches,
-		    (u_int)rs->mismatches, (u_int)rs->insertions,
-		    (u_int)rs->deletions, (u_int)rs->crossovers,
-		    rspv[i].normodds, rspv[i].pgenome, rspv[i].pchance);
+		printf("\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%f\t%f\t%f\t%s\n", rs->genome_start + 1,
+		    rs->genome_end + 1, rs->read_start + 1,
+		    rs->read_end + 1, rs->read_length, rs->score, rs->edit, rspv[i].normodds,
+		    rspv[i].pgenome, rspv[i].pchance, readseq);
 	}
 }
 
@@ -494,7 +533,8 @@ cleanup_cb(void *arg, void *key, void *val)
 		assert(arg == read_list);
 		free(val);
 	} else {
-		assert(arg == read_seq_cache);
+		assert(arg == read_seq_cache ||
+		       arg == read_edit_cache);
 	}
 }
 
@@ -524,6 +564,65 @@ cleanup()
 		fprintf(stderr, "error: failed to allocate read_seq_cache\n");
 		exit(1);
 	}
+
+	dynhash_iterate(read_edit_cache, cleanup_cb, read_edit_cache);
+	dynhash_destroy(read_edit_cache);
+	read_edit_cache = dynhash_create(keyhasher, keycomparer);
+	if (read_edit_cache == NULL) {
+		fprintf(stderr, "error: failed to allocate read_edit_cache\n");
+		exit(1);
+	}
+}
+
+static void
+load_rates(const char *rates_file, struct rates *rates)
+{
+	FILE *fp;
+	char buf[512];
+	char *b;
+
+	memset(rates, 0, sizeof(*rates));
+
+	fp = fopen(rates_file, "r");
+	if (fp == NULL) {
+		fprintf(stderr, "error: failed to open rates file [%s]\n",
+		    rates_file);
+		exit(1);
+	}
+
+	while (fgets(buf, sizeof(buf), fp) != NULL) {
+		int r;
+		uint64_t totaligns, totunique, samples, length, insertions;
+		uint64_t deletions, matches, mismatches, xovers;
+
+		if (buf[0] != '>')
+			continue;
+
+		b = strtrim(buf + 1);
+
+		/* tot. alignments, tot. unique reads, samples, length, insertions, deletions,
+		 * matches, mismatches, xovers */
+		r = sscanf(b, "%"PRIu64 "%"PRIu64 "%"PRIu64 "%"PRIu64 "%"PRIu64 "%"PRIu64 "%"PRIu64
+		    "%"PRIu64 "%"PRIu64, &totaligns, &totunique, &samples, &length, &insertions,
+		    &deletions, &matches, &mismatches, &xovers);
+
+		if (r != 9) {
+			fprintf(stderr, "error: failed to parse rates file line [%s]\n", b);
+			exit(1);
+		}
+
+		total_alignments  += totaligns;
+		total_unique_reads+= totunique;
+		rates->samples    += samples;
+		rates->total_len  += length;
+		rates->insertions += insertions;
+		rates->deletions  += deletions;
+		rates->matches    += matches;
+		rates->mismatches += mismatches;
+		rates->crossovers += xovers;
+	}
+
+	fclose(fp);
 }
 
 static void
@@ -553,6 +652,15 @@ ratestats(struct rates *rates)
 	fprintf(stderr, "    crossovers:         %" PRIu64 "\n",
 	    rates->crossovers); 
 
+	if (Gflag) {
+		printf(">%" PRIu64 " %" PRIu64 " %"PRIu64 " %" PRIu64 " %" PRIu64
+		    " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 "\n",
+		    total_alignments, total_unique_reads, rates->samples, rates->total_len,
+		    rates->insertions, rates->deletions, rates->matches, rates->mismatches,
+		    rates->crossovers);
+		exit(0);
+	}
+
 	rates->erate = (double)rates->crossovers / (double)rates->total_len;
 	rates->srate = (double)rates->mismatches / (double)rates->total_len;
 	rates->irate = (double)(rates->insertions + rates->deletions) /
@@ -562,12 +670,12 @@ ratestats(struct rates *rates)
 	if (rates->erate == 0.0 || rates->srate == 0.0 || rates->irate == 0.0 ||
 	    rates->mrate == 0.0) {
 		fprintf(stderr, "NB: one or more rates changed from 0 to "
-		    "1.0e-9\n");
+		    "%f\n", ALMOST_ZERO);
 	}
-	rates->erate = (rates->erate == 0.0) ? 1.0e-9 : rates->erate;
-	rates->srate = (rates->srate == 0.0) ? 1.0e-9 : rates->srate;
-	rates->irate = (rates->irate == 0.0) ? 1.0e-9 : rates->irate;
-	rates->mrate = (rates->mrate == 0.0) ? 10.e-9 : rates->mrate;
+	rates->erate = (rates->erate == 0.0) ? ALMOST_ZERO : rates->erate;
+	rates->srate = (rates->srate == 0.0) ? ALMOST_ZERO : rates->srate;
+	rates->irate = (rates->irate == 0.0) ? ALMOST_ZERO : rates->irate;
+	rates->mrate = (rates->mrate == 0.0) ? ALMOST_ZERO : rates->mrate;
 
 	fprintf(stderr, "    error rate:         %.10f\n", rates->erate);
 	fprintf(stderr, "    substitution rate:  %.10f\n", rates->srate);
@@ -596,7 +704,6 @@ single_pass_cb(char *path, struct stat *sb, void *arg)
 static void
 do_single_pass(char **objs, int nobjs, uint64_t files)
 {
-	struct rates rates;
 	struct pass_cb pcb;
 
 	fprintf(stderr, "warning: single pass mode may consume a large amount "
@@ -614,12 +721,15 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 	/*
 	 * First iterative pass: calculate rates for top matches of reads.
 	 */
-
-	fprintf(stderr, "\nCalculating top match rates...\n");
-	PROGRESS_BAR(stderr, 0, 0, 100);
-	memset(&rates, 0, sizeof(rates));
-	dynhash_iterate(read_list, calc_rates, &rates);
-	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
+	if (rates_file == NULL) {
+		fprintf(stderr, "\nCalculating top match rates...\n");
+		PROGRESS_BAR(stderr, 0, 0, 100);
+		dynhash_iterate(read_list, calc_rates, &pcb.rates);
+		PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
+	} else {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+		load_rates(rates_file, &pcb.rates);
+	}
 
 	if (total_unique_reads == 0) {
 		fprintf(stderr, "error: no matches were found in input "
@@ -627,7 +737,7 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 		exit(1);
 	}
 
-	ratestats(&rates);
+	ratestats(&pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
@@ -635,7 +745,7 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 	 */
 	fprintf(stderr, "\nGenerating output...\n");
 	PROGRESS_BAR(stderr, 0, 0, 10);
-	dynhash_iterate(read_list, calc_probs, &rates);
+	dynhash_iterate(read_list, calc_probs, &pcb.rates);
 	PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 10);
 	if (Bflag)
 		putc('\n', stderr);
@@ -673,27 +783,32 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 	struct pass_cb pcb;
 	int tmp_top_matches;
 
-	/* only need best match for calculating rates */
-	tmp_top_matches = top_matches;
-	top_matches = 1;
-
 	/*
 	 * First iterative pass: Calculate rates.
 	 */
-	memset(&pcb, 0, sizeof(pcb));
-	pcb.pass = 1;
-	pcb.total_files = files;
+	if (rates_file == NULL) {
+		/* only need best match for calculating rates */
+		tmp_top_matches = top_matches;
+		top_matches = 1;
 
-	fprintf(stderr, "PASS 1: Parsing %" PRIu64 " file(s) to calculate "
-	    "rates...\n", files);
-	PROGRESS_BAR(stderr, 0, 0, 100);
-	file_iterator_n(objs, nobjs, double_pass_cb, &pcb);
-	PROGRESS_BAR(stderr, files, files, 100);
-	fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
-	    (double)pcb.nbytes / (1024 * 1024), pcb.nfiles);
+		memset(&pcb, 0, sizeof(pcb));
+		pcb.pass = 1;
+		pcb.total_files = files;
 
-	/* restore desired top matches */
-	top_matches = tmp_top_matches;
+		fprintf(stderr, "PASS 1: Parsing %" PRIu64 " file(s) to calculate "
+		    "rates...\n", files);
+		PROGRESS_BAR(stderr, 0, 0, 100);
+		file_iterator_n(objs, nobjs, double_pass_cb, &pcb);
+		PROGRESS_BAR(stderr, files, files, 100);
+		fprintf(stderr, "\nParsed %.2f MB in %" PRIu64 " file(s).\n",
+		    (double)pcb.nbytes / (1024 * 1024), pcb.nfiles);
+
+		/* restore desired top matches */
+		top_matches = tmp_top_matches;
+	} else {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+		load_rates(rates_file, &pcb.rates);
+	}
 
 	if (total_unique_reads == 0) {
 		fprintf(stderr, "error: no matches were found in input "
@@ -710,8 +825,8 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 	pcb.pass = 2;
 	pcb.nbytes = pcb.nfiles = 0;
 
-	fprintf(stderr, "\nPASS 2: Parsing %" PRIu64 " file(s) to calculate "
-	    "probabilities...\n", files);
+	fprintf(stderr, "\n%sParsing %" PRIu64 " file(s) to calculate "
+	    "probabilities...\n", (rates_file == NULL) ? "PASS 2: " : "", files);
 	PROGRESS_BAR(stderr, 0, 0, 100);
 	file_iterator_n(objs, nobjs, double_pass_cb, &pcb);
 	PROGRESS_BAR(stderr, files, files, 100);
@@ -740,9 +855,9 @@ usage(char *progname)
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [-n normodds_cutoff] [-o pgenome_cutoff] "
+	fprintf(stderr, "usage: %s [-g rates_file] [-n normodds_cutoff] [-o pgenome_cutoff] "
 	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
-	    "[-t top_matches] [-B] [-R] [-S] "
+	    "[-t top_matches] [-B] [-G] [-R] [-S] "
 	    "total_genome_len results_dir1|results_file1 "
 	    "results_dir2|results_file2 ...\n", progname);
 	exit(1);
@@ -765,8 +880,11 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:s:t:BRS")) != -1) {
+	while ((ch = getopt(argc, argv, "n:o:p:g:s:t:BGRS")) != -1) {
 		switch (ch) {
+		case 'g':
+			rates_file = xstrdup(optarg);
+			break;
 		case 'n':
 			normodds_cutoff = atof(optarg);
 			break;
@@ -795,6 +913,9 @@ main(int argc, char **argv)
 		case 'B':
 			Bflag = true;
 			break;
+		case 'G':
+			Gflag = true;
+			break;
 		case 'R':
 			Rflag = true;
 			break;
@@ -807,6 +928,11 @@ main(int argc, char **argv)
 	}
 	argc -= optind;
 	argv += optind;
+
+	if (Gflag && rates_file != NULL) {
+		fprintf(stderr, "error: -G and -g flags cannot be mixed\n");
+		exit(1);
+	}
 
 	if (argc < 2)
 		usage(progname);
@@ -834,7 +960,10 @@ main(int argc, char **argv)
 	fprintf(stderr, "    Genome Length:      %" PRIu64 "\n", genome_len);
 
 	fprintf(stderr, "\n");
-	
+
+	if (Gflag)
+		fprintf(stderr, "NOTICE: Calculating rates only.\n");
+
 	read_list = dynhash_create(keyhasher, keycomparer);
 	if (read_list == NULL) {
 		fprintf(stderr, "error: failed to allocate read_list\n");
@@ -850,6 +979,12 @@ main(int argc, char **argv)
 	read_seq_cache = dynhash_create(keyhasher, keycomparer);
 	if (read_seq_cache == NULL) {
 		fprintf(stderr, "error: failed to allocate read_seq_cache\n");
+		exit(1);
+	}
+
+	read_edit_cache = dynhash_create(keyhasher, keycomparer);
+	if (read_edit_cache == NULL) {
+		fprintf(stderr, "error: failed to allocate read_edit_cache\n");
 		exit(1);
 	}
 

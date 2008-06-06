@@ -146,7 +146,9 @@ Column::Column (Column &c1, Column &c2):s(c1.s + c2.s),score(getscore())
 }
 
 Column::Column (const Column &c1):s(c1.s), score(c1.score)
-{};
+{
+
+}
 
 int Column::getscore(Column* col2)
 {
@@ -476,7 +478,6 @@ CrossProduct::~CrossProduct() {
 			}
 	}
 }
-;
 
 ostream& operator <<(ostream& os, CrossProduct& g) {
 
@@ -512,17 +513,16 @@ ostream& operator <<(ostream& os, CrossProduct& g) {
 	return os;
 
 }
-;
+
 
 Node::Node(int index):index(index), aux(NULL)
 {
-};
+}
 
 void Node::AddSelfLoop(int column_length, char c)
 {
 	new Edge(*this, *this, string(column_length,c));
-};
-
+}
 
 void Graph::AddSelfLoops()
 		{
@@ -536,9 +536,9 @@ void Graph::AddSelfLoops()
 		}
 
 
-SmallAlignNode::SmallAlignNode():fscore(0), parent(NULL){};
-AlignNode::AlignNode():x(0),y(0),fscore(0),bscore(0){};
-AlignNode::AlignNode (int x, int y):x(x), y(y), fscore(0),bscore(0){};
+SmallAlignNode::SmallAlignNode():fscore(0), parent(NULL){}
+AlignNode::AlignNode():x(0),y(0),fscore(0),bscore(0){}
+AlignNode::AlignNode (int x, int y):x(x), y(y), fscore(0),bscore(0){}
 ostream& operator << (ostream& os, AlignNode& n)
 {
 	os <<"("<<n.x<<";"<<n.y<<")"  ;
@@ -612,6 +612,9 @@ int CrossProduct::DijkstraForward (bool global,  AlignNode ** pbestend)
 	vector<Node*>::iterator bi;
 	int maxscore = MINSCORE;
 	AlignNode * bestend = NULL;
+
+	/* shut up, icc */
+	(void)global;
 	
 	for (ai=a.node_list.begin(); ai!= a.node_list.end(); ai++) 
 	{
@@ -728,7 +731,7 @@ Alignment::Alignment()
 	string seq="";
 	string read1="";
 	string read2="";
-};
+}
 
 Alignment* SmallCrossProduct::GetBestPath(SmallAlignNode * bestend, Node * bestendap, Node * bestendbp)
 {
@@ -778,6 +781,9 @@ bool SmallCrossProduct::EdgesBetween(SmallAlignNode * sourcep, SmallAlignNode * 
 {
 	SmallAlignNode * temp_src;
 
+	/* shut up, icc */
+	(void)destp;
+
 	predai = (*destap).pred_list.begin();
 	predbi = (*destbp).pred_list.begin();
 	while(EdgePredPairIterator( destap, destbp, eapp, ebpp, &temp_src))
@@ -799,6 +805,9 @@ int CrossProduct::DijkstraBackward (bool global)
 	vector<Node*>::reverse_iterator bi;
 	int maxscore = MINSCORE;
 	//bestend = 0;
+
+	/* shut up, icc */
+	(void)global;
 	
 	for (ai=a.node_list.rbegin(); ai!= a.node_list.rend(); ai++) 
 	{

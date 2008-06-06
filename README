@@ -14,14 +14,15 @@ The authors may be contacted at shrimp at cs dot toronto dot edu.
 Table of Contents
 --------------------------------------------------------------------------------
   1.   Overview
-  2.   Usage
-  3.   Program Parameters
-  4.   Output Format
-  5.   SHRiMP Algorithms
-  6.   SHRiMP Statistics
-  7.   Contact
-  8.   Acknowledgements
-  9.   Contributors
+  2.   Quick Start
+  3.   Usage
+  4.   Program Parameters
+  5.   Output Format
+  6.   SHRiMP Algorithms
+  7.   SHRiMP Statistics
+  9.   Contact
+  9.   Acknowledgements
+  10.  Contributors
 
 
 --------------------------------------------------------------------------------
@@ -48,11 +49,48 @@ nucleotides) and a prettyprint tool that can help visualize the alignments for
 each read. For AB SOLiD colour space reads we use a novel color-space to letter-
 space Smith Waterman algorithm to identify sequencing errors as well as SNPs and
 micro-indels. The details of the algorithm and the methods we use to compute
-p-values are layed out in Sections 5 and 6, respectively.
+p-values are layed out in Sections 6 and 7, respectively.
 
 
 --------------------------------------------------------------------------------
-2. Usage
+2. Quick Start
+--------------------------------------------------------------------------------
+
+  This section provides a very brief and straightforwrd introduction to using
+  SHRiMP. For more details, see Sections 3 and 4.
+
+  2.1 Aligning reads
+  ---
+    Use bin/rmapper-foo to align reads, where 'foo' is either 'ls', 'cs', or
+    'hs' for letter-space (454, Illumina/Solexa), colour-space (AB SOLiD), and
+    Helicos-space (Helicos Heliscope SMS paired reads), respectively.
+
+    E.g.:
+        bin/rmapper-cs reads.csfasta /path/to/genome/chr*.fa > output.rmapper
+
+    If you want full, pretty-printed alignments, use the -P flag. For more
+    details about parameters, see Sections 3 and 4.
+
+  2.2 Calculating Probabilities
+  ---
+    Use bin/probcalc on the output created by rmapper to generate the
+    statistics described in Section 7. The first parameter is the total genome
+    length.
+
+    E.g.:
+	bin/probcalc 7000000 output.rmapper > output.probcalc
+
+  2.3 Pretty Printing Reads
+  ---
+    If the -P flag is not specified to rmapper, full alignments are omitted. To
+    print alignments after the fact, just run bin/prettyprint-foo (where 'foo'
+    is one of 'ls', 'cs', or 'hs').
+
+    E.g.:
+        bin/prettyprint-cs output.probcalc reads.csfasta /path/to/genome/chr*.fa
+
+--------------------------------------------------------------------------------
+3. Usage
 --------------------------------------------------------------------------------
 
 The distribution makes use of several programs. The first and most important
@@ -65,10 +103,11 @@ parallelism.
 
 It is important to note that 'rmapper' is always given a reference genome in
 letter-space, regardless of whether the reads are in letter-space or AB SOLiD's
-colour-space representation. For letter-space reads, use 'rmapper-ls' and for
-colour-space reads, 'rmapper-cs'. Other SHRiMP utilities that make assumptions
-about the input read format come in pairs, i.e. 'foo-ls' and 'foo-cs', for
-letters and colours, respectively.
+colour-space representation. For letter-space reads, use 'rmapper-ls', for
+colour-space reads, 'rmapper-cs', and for Helicos SMS reads, 'rmapper-hs'. Other
+SHRiMP utilities that make assumptions about the input read format come in
+pairs, i.e. 'foo-ls' and 'foo-cs', for letters and colours, respectively. Other
+utilities lacking any suffix are format-agnostic.
 
 Once 'rmapper' has been run, the standard output format of all alignments
 may be parsed via the 'probcalc' program. This code analyses all alignment
@@ -81,7 +120,7 @@ done on any one of the three aforementioned parameters.
 The output produced by the 'probcalc' utility is essentially a subset of the
 input, with added 'pgenome', 'pchance' and 'normodds' fields. These matches may
 then have their full alignments printed using the 'prettyprint' utility
-(although one could certainly feed rmapper output to prettyprint directly).
+(although one could also feed rmapper output to prettyprint directly).
 
 What follows is a complete example of scanning a set of reads against an
 entire genome (and its reverse-complement) from the Ciona Savignyi organism.
@@ -90,18 +129,18 @@ alignments.
 
 We shall assume a large set of colourspace reads exist in a single file
 'reads.csfasta' and the entire Ciona genome exists in 'ciona.fasta' (as a single
-contig), both in the present working directory.
+contig), both in the present working directory. $S represents the path to SHRiMP.
 
   1)  mkdir reads
   2)  mkdir results
   3)  cd reads
-  4)  splitreads 1000 ../reads.csfasta
+  4)  python $S/utils/splitreads.py 1000 ../reads.csfasta
   5)  cd ..
-  6)  rmapper-cs -s 11110111 -n 2 -t 4 -w 28 -o 10 -r 25 -m 100 -i -70 -g -100 \
-          -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta \
+  6)  $S/rmapper-cs -s 11110111 -n 2 -t 4 -w 28 -o 10 -r 25 -m 100 -i -70
+	  -g -100 -e -70 -x -200 -h 1975 -v 1875 -B reads/0_to_999.csfasta \
          ciona.fasta > results/ciona.0_to_999.out
-  7)  probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
-  8)  prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
+  7)  $S/probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
+  8)  $S/prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
          ciona.0_to_999.probcalc.out genome/ reads/
 
 Lines 1&2 set up the necessary directory structure. reads/ contains one or more
@@ -110,8 +149,8 @@ results of the 'rmapper' pass, which are fed to 'probcalc' to generate the
 probabilities of them being poor matches.
 
 Lines 3&4 split the reads.csfasta file, which contains a large number of
-colourspace reads into smaller chunks. This both saves memory, and would allow
-us to parallelise the computation.
+colourspace reads into smaller chunks. This both saves memory, and permits us
+to parallelise the computation.
 
 Line 6 maps all reads split into the file 0_to_999.csfasta against ciona.fasta.
 The various parameters are verbosely documented later in this file. By default,
@@ -133,15 +172,18 @@ and/or directories may be specified). The output is piped into a further results
 file for later evaluation by the 'prettyprint-cs' program. Note that 'probcalc'
 should be run once enough results have been gathered to generate reasonable
 statistics. Since this phase takes a relatively short amount of time, it is
-probably best done once sequentially for all output generated. 
+probably best done once sequentially for all output generated. However, one may
+also use the -G and -g flags to probcalc to run statistics generation in
+parallel, sequentially merge the statistics (i.e. just concatenate outputs), and
+calculate probabilities in parallel as well. See Section 4 for more details.
 
-Also note that probaclc mandates that results for a single read do not appear in
+Also note that probcalc mandates that results for a single read do not appear in
 multiple files. If rmapper has been run against the entire genome for some set
-of reads this assumption will hold. See section 3 for details regarding 
+of reads this assumption will hold. See section 4 for details regarding 
 probcalc's parameters.
 
 Line 8 prints pretty visual alignments of our resultant mappings. It requires
-knowning all genomic and reads files in order to locate each read referenced in
+knowing all genomic and reads files in order to locate each read referenced in
 the input file (generated by either 'rmapper' or 'probcalc') and aligns them
 against the appropriate contig in the genome. Alternatively, one could have run
 rmapper with the -P flag to generate these in the initial output (although that
@@ -152,7 +194,7 @@ as well.
 
 
 --------------------------------------------------------------------------------
-3. Program Parameters
+4. Program Parameters
 --------------------------------------------------------------------------------
 
 'rmapper' takes a variety of parameters, which differ sightly depending on
@@ -225,12 +267,30 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		The value applied to mismatches during the Smith-Waterman score
 		calculation.
 		
-		[ -g sw_gap_open_penalty ]
+		[ -g sw_gap_open_penalty_reference ]
 
-		The value applied to gap opens during the Smith-Waterman score
+		The value applied to gap opens along the reference sequence
+		during the Smith-Waterman score calculation.
+
+		Note that for backward compatibility, if -g is set and -q is
+		not set, the gap open penalty for the query will be set to the
+		same value as specified for the reference.
+
+		[ -q sw_gap_open_penalty_query ]
+
+		The value applied to gap opens along the query sequence
+		during the Smith-Waterman score calculation.
+
+		[ -e sw_gap_extend_penalty_reference ]
+
+		The value applied to gap extends during the Smith-Waterman score
 		calculation.
 
-		[ -e sw_gap_extend_penalty ]
+		Note that for backward compatibility, if -e is set and -f is
+		not set, the gap extend penalty for the query will be set to the
+		same value as specified for the reference.
+
+		[ -f sw_gap_extend_penalty_query ]
 
 		The value applied to gap extends during the Smith-Waterman score
 		calculation.
@@ -334,13 +394,21 @@ is a run-down of these options (in some strange, non-alphabetical order).
 
 		See the 'rmapper' -i description.
 
-		[ -g sw_gap_open_penalty ]
+		[ -g sw_gap_open_penalty_reference ]
 
 		See the 'rmapper' -g description.
 
-		[ -e sw_gap_extend_penalty ]
+		[ -q sw_gap_open_penalty_query ]
+
+		See the 'rmapper' -q description.
+
+		[ -e sw_gap_extend_penalty_reference ]
 
 		See the 'rmapper' -e description.
+
+		[ -f sw_gap_extend_penalty_query ]
+
+		See the 'rmapper' -f description.
 
 		[ -R ]
 
@@ -358,6 +426,15 @@ is a run-down of these options (in some strange, non-alphabetical order).
 
 
 'probcalc' takes a few optional parameters as well:
+	[-g rates_file]
+
+	Rather than calculating rates of alignment events using the provided
+	output file, assume the ones provided in 'rates_file'. This may be
+	used to run probcalc in parallel by first running all instances with
+	the -G flag, concatenating those outputs into a single 'rates_file',
+	and then running once more with the -g parameter to generate probabil-
+	ities.
+
 	[-n normodds_cutoff]
 
 	Set a threshold for normodds. Any values lower than this threshold will
@@ -386,6 +463,11 @@ is a run-down of these options (in some strange, non-alphabetical order).
  
  	Print a progress bar to stderr during various phases of computation.
 
+	[ -G ]
+
+	Only generate rates of various alignment events and send them to stdout.
+	This can be used to run probcalc in parallel. See also '-g'.
+
 	[ -R ]
  
 	Include the entire read sequence in the output generated. This
@@ -403,7 +485,7 @@ is a run-down of these options (in some strange, non-alphabetical order).
 	restriction.
 
 --------------------------------------------------------------------------------
-4. Output Format
+5. Output Format
 --------------------------------------------------------------------------------
 
 rmapper probcalc, and prettyprint all adhere to a common output format: a
@@ -421,6 +503,7 @@ Descriptions of the keys are as follows:
 	'r'		Read name
 	'g'		Genome (Contig/Chromosome) name
 	'g_str'		Genome strand ('+' or '-')
+	'edit'		Edit String. Succinct reference to read changes.
 	'score'		Alignment score
 	'g_start'	Start of alignment in genome (beginning with 1, not 0).
 	'g_end'		End of alignment in genome (inclusive).
@@ -438,7 +521,7 @@ Descriptions of the keys are as follows:
 
 
 --------------------------------------------------------------------------------
-5. SHRiMP Algorithms
+6. SHRiMP Algorithms
 --------------------------------------------------------------------------------
 
 SHRiMP uses a fast k-mer scan in order to locate the regions of potential
@@ -482,7 +565,7 @@ be relatively straightforward.
 
 
 --------------------------------------------------------------------------------
-6. SHRiMP Statistics
+7. SHRiMP Statistics
 --------------------------------------------------------------------------------
 
 The 'probcalc' utility computes the probability that a hit would be generated by
@@ -524,7 +607,7 @@ more distant one will lead to large discrepancies.
 
 
 --------------------------------------------------------------------------------
-7. Contact
+8. Contact
 --------------------------------------------------------------------------------
 
 The program website is 
@@ -541,7 +624,7 @@ trying to reach a specific person.
 
 
 --------------------------------------------------------------------------------
-8. Acknowledgements
+9. Acknowledgements
 --------------------------------------------------------------------------------
 
 Development was performed at the University of Toronto's Computational
@@ -553,9 +636,10 @@ Research Award (NSERC USRA).
 
 
 --------------------------------------------------------------------------------
-9. Contributors
+10. Contributors
 --------------------------------------------------------------------------------
 
 The following people helped make SHRiMP better:
 	- Phil Lacroute (mergehits, lots of testing, feedback and discussion)
 	- Vladimir Yanovsky (Helicos DAG aligner)
+	- Marc Fiume (probability calculation fixes)

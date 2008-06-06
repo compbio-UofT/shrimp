@@ -1,10 +1,26 @@
 $Id$
 
-1.1.0: May ??, 2008
+1.1.0: June ??, 2008
+	- Yet another new output format with edit strings to concisely
+	  describe the read->reference changes.
+	- rmapper scores are now sorted (again).
+	- Added rates calculation input to probcalc so that rates may be
+	  computed in parallel, joined, and then probabilities computed
+	  in parallel as well.
+	- Fixed a math bug in probcalc - thanks, Marc!
+	- prettyprint-* will now only use memory in proportion to the input set,
+	  rather than pulling all reads into memory.
+	- All programs and utilities now accept both regular and gzip'd input
+	  files.
 	- Fixed missed cycle handling in SOLiD reads.
-	- Various Speed Improvements.
+	- Fixed a bug in printing fringe genome bases on the negative strand.
+	- Fixed a bug that improperly reverse-complemented the middle 8 bases
+	  in a contig.
+	- Various speed improvements.
 	- Initial DAG aligner implementation for Helicos Single-Molecule
 	  Sequencing.
+	- Converted miscellaneous tools to python and moved them to utils/.
+	- Misc. bug fixes.
 
 1.0.5: March 25, 2008
 	- Increased spaced seed weight by 2 for letter space, as 454 and

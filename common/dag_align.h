@@ -116,11 +116,11 @@ public:
 	for a single iteration of pairs in a time */
 	vector<Node*>::iterator ai;
 	vector<Node*>::iterator bi;
-	bool VertexPairIterator(Node ** nap, Node ** nbp, SmallAlignNode ** san);
+	inline bool VertexPairIterator(Node ** nap, Node ** nbp, SmallAlignNode ** san);
 	
 	/*Used for iteration over pairs of predecessor edges */
 	vector<Edge*>::iterator predai, predbi;
-	bool EdgePredPairIterator(Node * nap, Node * nbp, Edge ** eapp, Edge ** ebpp, SmallAlignNode **sanpp);
+	inline bool EdgePredPairIterator(Node * nap, Node * nbp, Edge ** eapp, Edge ** ebpp, SmallAlignNode **sanpp);
 	
 	const int column_length;
 	
@@ -150,6 +150,7 @@ public:
 };
 
 ostream& operator << (ostream& os, CrossProduct& g);
+ostream& operator << (ostream& os, Edge& edge);
 
 class Column
 {

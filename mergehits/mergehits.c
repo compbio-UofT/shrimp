@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
  
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -44,12 +45,6 @@ static struct sequence *read_list;	/* list of read names and alignments */
 static dynhash_t read_index;		/* name index for read_list */
 static uint64_t nalignments;		/* number of alignments */
 
-#ifdef USE_COLOURS
-const bool use_colours = true;
-#else
-const bool use_colours = false;
-#endif
-
 static bool Rflag = false;		/* don't output read sequence */
 
 #define MAX_READ_LEN	5000		/* ridiculously high upper bound */
@@ -58,11 +53,11 @@ static void
 load_output_file(char *file)
 {
 	struct input inp;
-	FILE *fp;
+	gzFile fp;
 	struct alist_item *alignment;
 	struct sequence *seq, *last_read;
 
-	fp = fopen(file, "r");
+	fp = gzopen(file, "r");
 	if (fp == NULL) {
 		fprintf(stderr, "error: failed to open shrimp output file "
 		    "[%s]: %s\n", file, strerror(errno));
@@ -72,11 +67,11 @@ load_output_file(char *file)
 	assert(read_list == NULL);
 	last_read = NULL;
 	while (input_parseline(fp, &inp)) {
-		alignment = xmalloc(sizeof(*alignment));
+		alignment = (struct alist_item *)xmalloc(sizeof(*alignment));
 		memcpy(&alignment->input, &inp, sizeof(alignment->input));
 		alignment->next = NULL;
 
-		if (dynhash_find(read_index, inp.read, NULL, (void *)&seq)) {
+		if (dynhash_find(read_index, inp.read, NULL, (void **)&seq)) {
 			/*
 			 * we've already seen an alignment for the same
 			 * read, so add this one to that read's list
@@ -91,7 +86,7 @@ load_output_file(char *file)
 		         * this alignment is for a read we haven't seen
 			 * yet, so allocate a new list
 			 */
-			seq = xmalloc(sizeof(*seq));
+			seq = (struct sequence *)xmalloc(sizeof(*seq));
 			seq->name = xstrdup(inp.read);
 			seq->sequence = NULL;
 			seq->sequence_len = 0;
@@ -115,6 +110,8 @@ load_output_file(char *file)
 			nalignments++;
 		}
 	}
+
+	gzclose(fp);
 }
 
 static void
@@ -122,96 +119,57 @@ store_sequence(char *name, uint32_t *read, uint32_t read_len, int initbp)
 {
 	struct sequence *seq;
 
-	if (!dynhash_find(read_index, name, NULL, (void *)&seq)) {
+	if (!dynhash_find(read_index, name, NULL, (void **)&seq)) {
 		/* this read has no alignments so skip it */
 		return;
 	}
 	assert(seq != NULL);
-	seq->sequence = xmalloc(sizeof(seq->sequence[0]) * BPTO32BW(read_len));
-	memcpy(seq->sequence, read,
-	    sizeof(seq->sequence[0]) * BPTO32BW(read_len));
+	seq->sequence = read;
 	seq->sequence_len = read_len;
 	seq->initbp = initbp;
 }
 
 static void
-load_reads_file_helper(int base, ssize_t offset, int isnewentry, char *name,
-    int initbp)
-{
-	static char     *seq_name;
-	static uint32_t *read;
-	static uint32_t  read_len;
-	static int       read_initbp;
-
-	/* shut up, icc */
-	(void)offset;
-
-	/* handle initial call to alloc resources */
-	if (base == FASTA_ALLOC) {
-		assert(seq_name == NULL);
-
-		if (read == NULL) {
-			read = xmalloc(sizeof(read[0]) *
-			    BPTO32BW(MAX_READ_LEN));
-			memset(read, 0, sizeof(read[0]) *
-			    BPTO32BW(MAX_READ_LEN));
-		}
-		read_len = 0;
-		read_initbp = 0;
-
-		return;
-	} else if (base == FASTA_DEALLOC) {
-		assert(read != NULL);
-		if (seq_name != NULL) {
-			store_sequence(seq_name, read, read_len, read_initbp);
-			free(seq_name);
-			seq_name = NULL;
-		}
-		free(read);
-		read = NULL;
-		read_len = 0;
-		read_initbp = 0;
-		return;
-	}
-
-	if (isnewentry) {
-		if (seq_name != NULL) {
-			store_sequence(seq_name, read, read_len, read_initbp);
-			free(seq_name);
-			seq_name = NULL;
-		}
-		seq_name = xstrdup(name);
-		read_initbp = initbp;
-		memset(read, 0, sizeof(read[0]) * BPTO32BW(MAX_READ_LEN));
-		read_len = 0;
-	}
-
-	assert(seq_name != NULL);
-	assert(read_len < MAX_READ_LEN);
-	assert(base >= 0 && base <= 15);
-
-	bitfield_append(read, read_len++, base);
-}
-
-static void
 load_reads_file(char *fpath, struct stat *sb, void *arg)
 {
-	ssize_t ret;
+	fasta_t fasta;
+	char *name, *seq;
+	int space;
 
 	/* shut up, icc */
 	(void)sb;
 	(void)arg;
 
-	if (use_colours)
-		ret = load_fasta(fpath, load_reads_file_helper, COLOUR_SPACE);
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+		space = COLOUR_SPACE;
 	else
-		ret = load_fasta(fpath, load_reads_file_helper, LETTER_SPACE);
+		space = LETTER_SPACE;
 
-	if (ret == -1) {
+	fasta = fasta_open(fpath, space);
+	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to reads parse fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
+
+	while (fasta_get_next(fasta, &name, &seq)) {
+		uint32_t *bf = fasta_sequence_to_bitfield(fasta, seq);
+		uint32_t seqlen = strlen(seq);
+		int initbp = -1;
+
+		assert(seqlen > 0);
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			seqlen -= 1;
+			initbp = fasta_get_initial_base(fasta, seq);
+		}
+		assert(seqlen > 0);
+
+		store_sequence(name, bf, seqlen, initbp);
+		free(name);
+		free(seq);
+	}
+
+	fasta_close(fasta);
 }
 
 static uint32_t
@@ -262,7 +220,7 @@ print_alignments()
 		printf("\n");
 		if (seq->sequence_len > 0) {
 			read_str = readtostr(seq->sequence, seq->sequence_len,
-			    use_colours, seq->initbp);
+			    (shrimp_mode == MODE_COLOUR_SPACE), seq->initbp);
 			puts(read_str);
 		}
 	}

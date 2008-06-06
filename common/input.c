@@ -7,236 +7,285 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include "../common/input.h"
+#include "../common/sw-full-common.h"
 #include "../common/util.h"
 
-/* 
- * Trim leading/trailing whitespace.
- */
-static char *
-strtrim(char *str)
+enum {
+	F_SKIP,
+	F_READNAME,
+	F_CONTIGNAME,
+	F_STRAND,
+	F_CONTIGSTART,
+	F_CONTIGEND,
+	F_READSTART,
+	F_READEND,
+	F_READLENGTH,
+	F_SCORE,
+	F_EDITSTRING,
+	F_NORMODDS,
+	F_PGENOME,
+	F_PCHANCE,
+	F_READSEQUENCE,
+	F_UNKNOWN
+};
+
+struct _field_table {
+	char *field;
+	int   type;
+} field_table[] = {
+	{ "#FORMAT:",		F_SKIP		},
+	{ "readname",		F_READNAME	},
+	{ "contigname",		F_CONTIGNAME	},
+	{ "strand",		F_STRAND	},
+	{ "contigstart",	F_CONTIGSTART	},
+	{ "contigend",		F_CONTIGEND	},
+	{ "readstart",		F_READSTART	},
+	{ "readend",		F_READEND	},
+	{ "readlength",		F_READLENGTH	},
+	{ "score",		F_SCORE		},
+	{ "editstring",		F_EDITSTRING	},
+	{ "normodds",		F_NORMODDS	},
+	{ "pgenome",		F_PGENOME	},
+	{ "pchance",		F_PCHANCE	},
+	{ "readsequence",	F_READSEQUENCE	},
+	{ NULL,			0		}
+};
+
+struct format_spec {
+	int nfields;
+	int *fields;
+};
+
+bool
+editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 {
-	char *ret;
+	char *scratch;
+	size_t len, i, j;
+	bool inparen = false;
 
-	assert(str != NULL);
+	len = strlen(editstr);
+	scratch = (char *)xmalloc(len + 1);
+	scratch[0] = '\0';
 
-	while (isspace((int)*str) && *str != '\0')
-		str++;
+	memset(sfrp, 0, sizeof(*sfrp));
 
-	ret = str;
+	for (i = j = 0; i <= len; i++) {
+		assert(j <= len);
 
-	while (!isspace((int)*str) && *str != '\0')
-		str++;
-	
-	*str = '\0';
+		if (inparen) {
+			if (editstr[i] == ')') {
+				scratch[j] = '\0';
+				if (strcspn(scratch, "ACGTUMRWSYKVHDBXNacgtumrwsykvhdbxn") != 0) {
+					free(scratch);
+					return (false);
+				}
+				if (shrimp_mode == MODE_COLOUR_SPACE)
+					sfrp->crossovers += strspn(scratch, "acgtumrwsykvhdbxn");
+				sfrp->deletions += strlen(scratch);
+				inparen = false;
+				j = 0;
+				scratch[0] = '\0';
+			} else {
+				scratch[j++] = editstr[i];
+			}
+		} else {
+			if (!isdigit((int)editstr[i]) && j != 0) {
+				scratch[j] = '\0';
+				sfrp->matches += strtoul(scratch, NULL, 0);
+				j = 0;
+				scratch[0] = '\0';
+			}
 
-	return (ret);
+			switch (editstr[i]) {
+			case '-':
+				sfrp->insertions++;
+				break;
+			case '(':
+				inparen = true;
+				break;
+			case '\0':
+				break;
+			case 'X':
+				sfrp->crossovers++;
+				sfrp->matches++;
+				break;
+			case 'x':
+				sfrp->crossovers++;
+				sfrp->mismatches++;
+				break;
+			case 'A':
+			case 'C':
+			case 'G':
+			case 'T':
+			case 'N':
+			case 'a':
+			case 'c':
+			case 'g':
+			case 't':
+			case 'n':
+				sfrp->mismatches++;
+				break;
+			default:
+				if (isdigit((int)editstr[i]))
+					scratch[j++] = editstr[i];
+				else
+					return (false);
+			}
+		}
+	}
+
+	free(scratch);
+
+	return (!inparen);
 }
 
-/*
- * Extract the 'key' and 'value' from 'key=value' in 'str'. Accomodates for
- * leading/trailing whitespace and removes any single outer double-quote pairs.
- *
- * 'str' is modified in place.
- *
- * Returns true if input was well-formatted and 'key' and 'val' are the
- * extracted values.
- */
-static bool
-parse_keyvalue(char *str, char **key, char **val)
+static struct format_spec * 
+format_get_default()
 {
+	struct format_spec *fsp;
+	int i;
 
-	assert(str != NULL && key != NULL && val != NULL);
+	fsp = (struct format_spec *)xmalloc(sizeof(*fsp));
+	memset(fsp, 0, sizeof(*fsp));
+	fsp->nfields = sizeof(field_table)/sizeof(field_table[0]) - 2;
+	fsp->fields = (int *)xmalloc(sizeof(*fsp->fields) * fsp->nfields);
 
-	while (isspace((int)*str) && *str != '\0')
-		str++;
+	for (i = 0; i < fsp->nfields; i++)
+		fsp->fields[i] = field_table[i + 1].type;
 
-	if (*str == '\0')
-		return (false);
+	return (fsp);
+}
 
-	*key = str;
+static struct format_spec *
+format_get_from_string(char *format)
+{
+	struct format_spec *fsp;
+	char *field;
+	int i, next;
 
-	while (*str != '=' && *str != '\0')
-		str++;
+	fsp = (struct format_spec *)xmalloc(sizeof(*fsp));
+	memset(fsp, 0, sizeof(*fsp));
 
-	if (*str == '\0')
-		return (false);
+	field = strtok(format, " ");
+	while (field != NULL) {
+		field = strtrim(field);
 
-	*str++ = '\0';
-
-	while (isspace((int)*str) && *str != '\0')
-		str++;
-
-	if (*str == '"') {
-		char last;
-
-		*val = str + 1;
-
-		last = *str++;
-		while (true) {
-			while (*str != '"' && *str != '\0')
-				last = *str++;
-
-			/* Don't bail early on escaped quotes... */
-			if (*str == '"' && last != '\\')
+		next = F_UNKNOWN;
+		for (i = 0; field_table[i].field != NULL; i++) {
+			if (strcmp(field_table[i].field, field) == 0) {
+				next = field_table[i].type;
 				break;
-			else if (*str == '\0')
-				break;
-
-			last = *str++;
+			}
 		}
 
-		if (*str == '\0')
-			return (false);
+		if (next != F_SKIP) {
+			fsp->nfields++;
+			fsp->fields = (int *)xrealloc(fsp->fields, sizeof(*fsp->fields) * fsp->nfields);
+			fsp->fields[fsp->nfields-1] = next;
+		}
 
-		*str = '\0';
-	} else {
-		*val = str;
-
-		while (!isspace((int)*str) && *str != '\0')
-			str++;
-
-		*str = '\0';
-		*val = strtrim(*val);
+		if (next == F_UNKNOWN)
+			fprintf(stderr, "warning: unknown format field [%s]\n", field);
+		
+		field = strtok(NULL, " ");
 	}
 
-	*key = strtrim(*key);
-
-	return (true);
-}
-
-/* Remove "\=" and "\"" sequences added to escape whacky input files. */
-static const char *
-unescapestr(const char *str)
-{
-	static char *buf;
-	static u_int buflen;
-
-	int i, j;
-	u_int l;
-
-	l = strlen(str) + 1;
-	if (buf == NULL || buflen < l) {
-		if (buf != NULL)
-			free(buf);
-		buf = xmalloc(l);
-		buflen = l;
-	}
-
-	for (i = j = 0; str[i] != '\0'; i++, j++) {
-		if (str[i] == '\\' && (str[i+1] == '=' || str[i+1] == '"'))
-			j--;
-		else
-			buf[j] = str[i];
-	}
-	buf[j] = '\0';
-
-	assert(j < buflen);
-
-	return (buf);
+	return (fsp);
 }
 
 static void
-handle_keyvalue(struct input *inp, char *key, char *val)
+format_free(struct format_spec *fsp)
 {
-	bool error = false;
 
-	assert(inp != NULL && key != NULL && val != NULL);
+	free(fsp->fields);
+	free(fsp);
+}
 
-	switch (key[0]) {
-	case 'd':
-		if (strcmp(key, "dels") == 0)
-			inp->deletions = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+static void
+handle_field(struct input *inp, int type, char *val)
+{
+	struct sw_full_results sfr;
+
+	assert(inp != NULL && val != NULL);
+
+	if (is_whitespace(val))
+		return;
+
+	switch (type) {
+	case F_READNAME:
+		inp->read = xstrdup(val);
 		break;
-
-	case 'g':
-		if (strcmp(key, "g") == 0)
-			inp->genome = xstrdup(unescapestr(val));
-		else if (strcmp(key, "g_str") == 0) {
-			if (*val == '-')
-				inp->flags |= INPUT_FLAG_IS_REVCMPL;
-		/* NB: internally 0 is first position, in output 1 is. adjust.*/
-		} else if (strcmp(key, "g_start") == 0)
-			inp->genome_start = strtoul(val, NULL, 0) - 1;
-		else if (strcmp(key, "g_end") == 0)
-			inp->genome_end = strtoul(val, NULL, 0) - 1;
-		else
-			error = true;
+	case F_CONTIGNAME:
+		inp->genome = xstrdup(val);
 		break;
-
-	case 'i':
-		if (strcmp(key, "ins") == 0)
-			inp->insertions = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+	case F_STRAND:
+		if (*val == '-')
+			inp->flags |= INPUT_FLAG_IS_REVCMPL;
 		break;
-
-	case 'm':
-		if (strcmp(key, "match") == 0)
-			inp->matches = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+	case F_CONTIGSTART:
+		inp->genome_start = strtoul(val, NULL, 0) - 1;
 		break;
-
-	case 'n':
-		if (strcmp(key, "normodds") == 0) {
-			inp->normodds = atof(val);
-			inp->flags |= INPUT_FLAG_HAS_NORMODDS;
-		} else
-			error = true;
+	case F_CONTIGEND:
+		inp->genome_end = strtoul(val, NULL, 0) - 1;
 		break;
-
-	case 'p':
-		if (strcmp(key, "pgenome") == 0) {
-			inp->pgenome = atof(val);
-			inp->flags |= INPUT_FLAG_HAS_PGENOME;
-		} else if (strcmp(key, "pchance") == 0) {
-			inp->pchance = atof(val);
-			inp->flags |= INPUT_FLAG_HAS_PCHANCE;
-		} else
-			error = true;
+	case F_READSTART:
+		inp->read_start = (uint16_t)(strtoul(val, NULL, 0) - 1);
 		break;
-
-	case 'r':	
-		if (strcmp(key, "r") == 0)
-			inp->read = xstrdup(unescapestr(val));
-		else if (strcmp(key, "r_seq") == 0)
-			inp->read_seq = xstrdup(val);
-		else if (strcmp(key, "r_start") == 0)
-			inp->read_start = (uint16_t)(strtoul(val, NULL, 0) - 1);
-		else if (strcmp(key, "r_end") == 0)
-			inp->read_end = (uint16_t)(strtoul(val, NULL, 0) - 1);
-		else if (strcmp(key, "r_len") == 0)
-			inp->read_length = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+	case F_READEND:
+		inp->read_end = (uint16_t)(strtoul(val, NULL, 0) - 1);
 		break;
-
-	case 's':
-		if (strcmp(key, "score") == 0)
-			inp->score = strtoul(val, NULL, 0);
-		else if (strcmp(key, "subs") == 0)
-			inp->mismatches = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+	case F_SCORE:
+		inp->score = strtoul(val, NULL, 0);
 		break;
-
-	case 'x':
-		if (strcmp(key, "xovers") == 0)
-			inp->crossovers = (uint16_t)strtoul(val, NULL, 0);
-		else
-			error = true;
+	case F_NORMODDS:
+		inp->normodds = atof(val);
+		inp->flags |= INPUT_FLAG_HAS_NORMODDS;
 		break;
-
+	case F_PGENOME:
+		inp->pgenome = atof(val);
+		inp->flags |= INPUT_FLAG_HAS_PGENOME;
+		break;
+	case F_PCHANCE:
+		inp->pchance = atof(val);
+		inp->flags |= INPUT_FLAG_HAS_PCHANCE;
+		break;
+	case F_READSEQUENCE:
+		inp->read_seq = xstrdup(val);
+		break;
+	case F_READLENGTH:
+		inp->read_length = (uint16_t)strtoul(val, NULL, 0);
+		break;
+	case F_EDITSTRING:
+		inp->edit = xstrdup(val);
+		editstr_to_sfr(val, &sfr);
+		inp->matches = (uint16_t)sfr.matches;
+		inp->mismatches = (uint16_t)sfr.mismatches;
+		inp->deletions = (uint16_t)sfr.deletions;
+		inp->insertions = (uint16_t)sfr.insertions;
+		inp->crossovers = (uint16_t)sfr.crossovers;
+		break;
+	case F_UNKNOWN:
+		break;
 	default:
-		error = true;
+		fprintf(stderr, "warning: crazy field in input [%s]\n", val);
 	}
+}
 
-	if (error)
-		fprintf(stderr, "warning: unknown key in input (%s)\n", key);
+void
+input_free(struct input *inp)
+{
+
+	if (inp->read != NULL)
+		free(inp->read);
+	if (inp->read_seq != NULL)
+		free(inp->read_seq);
+	if (inp->genome != NULL)
+		free(inp->genome);
+	if (inp->edit != NULL)
+		free(inp->edit);
 }
 
 /*
@@ -247,52 +296,45 @@ handle_keyvalue(struct input *inp, char *key, char *val)
  * Returns false on EOF.
  */
 bool
-input_parseline(FILE *fp, struct input *inp)
+input_parseline(gzFile fp, struct input *inp)
 {
 	char buf[8192];
+	struct format_spec *fsp;
+	bool ret = true;
 
 	assert(fp != NULL && inp != NULL);
 
 	memset(inp, 0, sizeof(*inp));
+	fsp = format_get_default();
 
 	while (true) {
 		/* XXX: Assume sizeof(buf) is always big enough. */
-		if (fgets(buf, sizeof(buf), fp) == NULL)
-			return (false);
+		if (fast_gzgets(fp, buf, sizeof(buf)) == NULL) {
+			ret = false;
+			break;
+		}
 
-		if (buf[0] == '>') {
+		if (buf[0] == '#' && strncmp(buf, "#FORMAT:", 8) == 0) {
+			format_free(fsp);
+			fsp = format_get_from_string(buf);
+		} else if (buf[0] == '>') {
+			char *str = &buf[1];
+			char *val;
 			int i;
-			char *key, *val;
-			
-			i = strlen(buf);
 
-			while (--i >= 0) {
-				/* Be careful with escapes... */
-				if (buf[i] == '=' && i > 0 &&
-				    buf[i-1] != '\\') {
-					while (--i >= 0) {
-						if (!isspace((int)buf[i]))
-							break;
-					}
-					while (--i >= 0) {
-						if (isspace((int)buf[i]))
-							break;
-					}
-					if (i < 0)
-						break;
-					if (!parse_keyvalue(&buf[i],&key,&val))
-						return (false);
+			val = strtok(str, "\t");
+			for (i = 0; val != NULL; i++) {
+				if (i < fsp->nfields)
+					handle_field(inp, fsp->fields[i], val);
 
-					if (i == 0 && *key == '>')
-						key++;
-					handle_keyvalue(inp, key, val);
-				}
+				val = strtok(NULL, "\t");
 			}
 
-			if (i < 0)
-				break;
+			break;
 		}
 	}
 
-	return (true);
+	format_free(fsp);
+
+	return (ret);
 }

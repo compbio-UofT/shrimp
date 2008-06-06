@@ -1,6 +1,7 @@
 #	$Id$
 
 import sys
+from utils import *
 
 MAXCOLS		= 71
 BASE_N_COLOUR	= 4
@@ -26,8 +27,8 @@ col = 0
 last = BASE_T
 str = ""
 
-fd = open(sys.argv[1], "r")
-for line in fd.readlines():
+fd = open_gz_or_ascii(sys.argv[1])
+for line in fd:
 	if line.startswith(">"):
 		if len(str) > 0:
 			print str

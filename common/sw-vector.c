@@ -10,6 +10,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #include <mmintrin.h>	/* MMX */
 #include <xmmintrin.h>	/* SSE */
@@ -411,7 +412,7 @@ int
 sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     uint32_t *genome_ls, int initbp)
 {
-	uint64_t before, after;
+	uint64_t before;
 	int i, score;
 
 	before = rdtsc();
@@ -447,8 +448,7 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	}
 
 	swcells += (glen * rlen);
-	after = rdtsc();
-	swticks += (after - before);
+	swticks += (rdtsc() - before);
 
 	return (score);
 }

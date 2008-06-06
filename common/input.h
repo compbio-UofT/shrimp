@@ -4,6 +4,7 @@ struct input {
 	char    *read;				/* read name */
 	char    *genome;			/* genome/contig name */
 	char    *read_seq;			/* read sequence */
+	char    *edit;				/* edit string */
 	uint8_t  flags;				/* various flags; see below */
 	int32_t  score;				/* alignment score */
 	uint32_t genome_start;			/* start of alignment - genome*/
@@ -31,4 +32,6 @@ struct input {
 #define INPUT_HAS_PGENOME(_i)	((_i)->flags & INPUT_FLAG_HAS_PGENOME)
 #define INPUT_HAS_NORMODDS(_i)	((_i)->flags & INPUT_FLAG_HAS_NORMODDS)
 
-bool	input_parseline(FILE *, struct input *);
+void	input_free(struct input *);
+bool	input_parseline(gzFile, struct input *);
+bool	editstr_to_sfr(const char *, struct sw_full_results *);
