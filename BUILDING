@@ -10,16 +10,16 @@ considerably from 64-bit compiled code, whereas Core 2 architectures don't
 seem to care much.
 
 When building with icc, execute the following:
-    gmake CC="icc" CFLAGS="-Kc++ -wd383,981,1572 -axP -O3 -ipo"
+    gmake CXX="icc" CXXFLAGS="-Kc++ -wd383,981,1572 -axP -O3 -ipo"
 
 When building with gcc, execute the following:
-    gmake CC="g++" CFLAGS="-O3 -mmmx -msse -msse2"
-GCC 4 users should also supply appropriate -ftree-vectorize and -march flags.
+    gmake CXX="g++" CXXFLAGS="-O3 -mmmx -msse -msse2"
+GCXX 4 users should also supply appropriate -ftree-vectorize and -march flags.
 
 Debugging and assertion features may be turned off by adding "-NDEBUG" to the
-CFLAGS argument. However, at present assertions don't appear to cost much and
+CXXFLAGS argument. However, at present assertions don't appear to cost much and
 any improvement in performance will be very small.
 
 You may want to adjust your flags depending on your hardware and compiler
-versions. The above icc CFLAGS seemed optimal for both Pentium 4 and Core 2
+versions. The above icc CXXFLAGS seemed optimal for both Pentium 4 and Core 2
 architectures.
