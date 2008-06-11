@@ -83,7 +83,7 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 					return (false);
 				}
 				if (shrimp_mode == MODE_COLOUR_SPACE)
-					sfrp->crossovers += strspn(scratch, "acgtumrwsykvhdbxn");
+					assert(strspn(scratch, "acgtumrwsykvhdbxn") == 0);
 				sfrp->deletions += strlen(scratch);
 				inparen = false;
 				j = 0;
@@ -109,12 +109,8 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 			case '\0':
 				break;
 			case 'X':
-				sfrp->crossovers++;
-				sfrp->matches++;
-				break;
 			case 'x':
 				sfrp->crossovers++;
-				sfrp->mismatches++;
 				break;
 			case 'A':
 			case 'C':

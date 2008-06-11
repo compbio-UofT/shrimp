@@ -54,7 +54,7 @@ readtostr(const uint32_t *read, u_int len, bool use_colours, int initbp)
  *	A SNP at the 16th base of the tag is: 15A9
  *	A four-base insertion in the reference: 3(TGCT)20
  *	A four-base deletion in the reference: 5----20
- *	Two sequencing errors: 4x15x6
+ *	Two sequencing errors: 4x15x6	(25 total matches)
  *	etc.
  */
 static char *
@@ -91,9 +91,11 @@ editstr(const char *dbalign, const char *qralign)
 			break;
 
 		if (dbalign[i] == '-') {
+			if (islower((int)qralign[i]))
+				strbuf_append(sb, "x");
 			if (!refgap)
 				strbuf_append(sb, "(");
-			strbuf_append(sb, "%c", qralign[i]);
+			strbuf_append(sb, "%c", toupper((int)qralign[i]));
 			refgap = true;
 			continue;
 		}
@@ -101,17 +103,16 @@ editstr(const char *dbalign, const char *qralign)
 		if (qralign[i] == '-') {
 			strbuf_append(sb, "-");
 		} else {
-			char put;
-
 			assert(i > 0 || dbalign[i] == toupper((int)qralign[i]));
-			if (dbalign[i] == toupper((int)qralign[i]))
-				put = 'X';		/* xover match */
-			else if (islower((int)qralign[i]))
-				put = 'x';		/* xover mismatch */
-			else
-				put = qralign[i];
-
-			strbuf_append(sb, "%c", put);
+			if (dbalign[i] == toupper((int)qralign[i])) {
+				strbuf_append(sb, "x");
+				consec++;
+			} else if (islower((int)qralign[i])) {
+				strbuf_append(sb, "x");
+				strbuf_append(sb, "%c", toupper((int)qralign[i]));
+			} else {
+				strbuf_append(sb, "%c", qralign[i]);
+			}
 		}
 	}
 
