@@ -470,11 +470,8 @@ calc_probs(void *arg, void *key, void *val)
 	/* 4: Finally, print out values in ascending order until the cutoff */
 	if (!called) {
 		printf("#FORMAT: readname contigname strand contigstart contigend readstart readend "
-		    "readlength score editstring normodds pgenome pchance");
-		if (Rflag)
-			printf(" readsequence\n");
-		else
-			printf("\n");
+		    "readlength score editstring %snormodds pgenome pchance\n",
+		    (Rflag) ? "readsequence " : "");
 		called = true;
 	}
 
@@ -511,10 +508,11 @@ calc_probs(void *arg, void *key, void *val)
 		    (INPUT_IS_REVCMPL(rs)) ? '-' : '+');
 
 		/* NB: internally 0 is first position, output is 1. adjust */
-		printf("\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%f\t%f\t%f\t%s\n", rs->genome_start + 1,
-		    rs->genome_end + 1, rs->read_start + 1,
-		    rs->read_end + 1, rs->read_length, rs->score, rs->edit, rspv[i].normodds,
-		    rspv[i].pgenome, rspv[i].pchance, readseq);
+		printf("\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%s%s%f\t%f\t%f\n",
+		    rs->genome_start + 1, rs->genome_end + 1, rs->read_start + 1,
+		    rs->read_end + 1, rs->read_length, rs->score, rs->edit,
+		    (Rflag) ? readseq : "", (Rflag) ? "\t" : "",
+		    rspv[i].normodds, rspv[i].pgenome, rspv[i].pchance);
 	}
 }
 
