@@ -139,7 +139,7 @@ bool
 fasta_get_next(fasta_t fasta, char **name, char **sequence)
 {
 	static int categories[256] = { 42 };
-	enum { CAT_SPACE, CAT_NEWLINE, CAT_ELSE };
+	enum { CAT_SPACE, CAT_NEWLINE, CAT_NUL, CAT_ELSE };
 
 	int i;
 	bool gotname = false;
@@ -153,6 +153,8 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 		for (i = 0; i < 256; i++) {
 			if (i == '\n')
 				categories[i] = CAT_NEWLINE;
+			else if (i == '\0')
+				categories[i] = CAT_NUL;
 			else if (isspace(i))
 				categories[i] = CAT_SPACE;
 			else
@@ -198,6 +200,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 			int act = categories[(int)fasta->buffer[i]];
 
 			switch (act) {
+			case CAT_NUL:
 			case CAT_NEWLINE:
 				fasta->buffer[i] = '\0';
 				goto out;
@@ -224,6 +227,12 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 			free(readinseq);
 		total_ticks += (rdtsc() - before);
 		return (false);
+	}
+
+	/* if we read in a tag name but there's no sequence, don't just return false */ 
+	if (gotname && readinseq == NULL) {
+		readinseq = xstrdup("");
+		sequence_length = 1;
 	}
 
 	if (readinseq == NULL)
@@ -320,10 +329,10 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 		a = fasta->translate[(int)sequence[i]];
 		if (a == -1) {
 			fprintf(stderr, "error: invalid character ");
-			if (isprint((int)c))
-				fprintf(stderr, "(%c) ", c);
+			if (isprint((int)a))
+				fprintf(stderr, "(%c) ", a);
 			else
-				fprintf(stderr, "(0x%x) ", c);
+				fprintf(stderr, "(0x%x) ", a);
 			fprintf(stderr, "in input file [%s]\n", fasta->file);
 			fprintf(stderr, "       (Did you mix up letter "
 			    "space and colour space programs?)\n");
