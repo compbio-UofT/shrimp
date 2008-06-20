@@ -3,7 +3,7 @@ $Id$
 1.1.0: June ??, 2008
 	- Yet another new output format with edit strings to concisely
 	  describe the read->reference changes.
-	- rmapper scores are now sorted (again).
+	- rmapper scores are now sorted (again) and duplicates are removed.
 	- Added rates calculation input to probcalc so that rates may be
 	  computed in parallel, joined, and then probabilities computed
 	  in parallel as well.
