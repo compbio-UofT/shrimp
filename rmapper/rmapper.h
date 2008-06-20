@@ -9,7 +9,8 @@ extern const bool use_dag;
 #define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
 #define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
 #define DEF_NUM_MATCHES		2
-#define DEF_TABOO_LEN		4
+#define DEF_HIT_TABOO_LEN	4
+#define DEF_SEED_TABOO_LEN	0
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
 #define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */

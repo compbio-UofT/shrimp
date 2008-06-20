@@ -36,9 +36,9 @@
 static char    *spaced_seed		= "0";
 static double	window_len		= DEF_WINDOW_LEN;
 static u_int	num_matches		= DEF_NUM_MATCHES;
-static u_int	taboo_len		= DEF_TABOO_LEN;
+static u_int	hit_taboo_len		= DEF_HIT_TABOO_LEN;
+static u_int	seed_taboo_len		= DEF_SEED_TABOO_LEN;
 static u_int	num_outputs		= DEF_NUM_OUTPUTS;
-static u_int	max_read_len		= DEF_MAX_READ_LEN;
 static int	kmer_stddev_limit  	= DEF_KMER_STDDEV_LIMIT;
 
 static u_int	dag_epsilon		= DEF_DAG_EPSILON;
@@ -438,7 +438,7 @@ scan(int contig_num, bool revcmpl)
 #endif
 
 			prevhit = re->hits[re->prev_hit].g_idx;
-			if ((idx - prevhit) <= taboo_len && prevhit != UINT32_MAX)
+			if ((idx - prevhit) <= hit_taboo_len && prevhit != UINT32_MAX)
 				continue;
 
 			re->hits[re->next_hit].g_idx = idx;
@@ -599,9 +599,18 @@ load_reads_lscs(const char *file)
 		}
 
 		seqlen = strlen(seq);
+		if (seqlen == 0) {
+			fprintf(stderr, "error: read [%s] had no sequence!\n",
+			    name);
+			exit(1);
+		}
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			/* the sequence begins with the initial letter base */
-			assert(seqlen > 1);
+			if (seqlen < 1) {
+				fprintf(stderr, "error: read [%s] had sequence "
+				    "with no colours!\n", name);
+				exit(1);
+			}
 			seqlen--;
 		}
 		bases += seqlen;
@@ -637,7 +646,7 @@ load_reads_lscs(const char *file)
 			 * Ignore kmers that contain an 'N'.
 			 */
 			if (base > 3)
-				skip = seed_span - 1;
+				skip = MAX(seed_span - 1, skip);
 
 			if (skip > 0) {
 				skip--;
@@ -675,6 +684,10 @@ load_reads_lscs(const char *file)
 			readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
 			readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
 			nkmers++;
+
+			/* Taboo the seed generation as well, if requested. */
+			if (seed_taboo_len)
+				skip = seed_taboo_len;
 		}
 
 		free(seq);
@@ -750,6 +763,12 @@ load_reads_dag(const char *file)
 		seq1len = strlen(seq1);
 		seq2len = strlen(seq2);
 		bases += seq1len + seq2len;
+
+		if (seq1len == 0 || seq2len == 0) {
+			fprintf(stderr, "error: read [%s] had no sequence!\n",
+			    name1);
+			exit(1);
+		}
 
 		re = readalloc();
 		re->last_swhit_idx = UINT32_MAX;
@@ -1531,8 +1550,12 @@ usage(char *progname)
 	    DEF_NUM_MATCHES);
 
 	fprintf(stderr,
-	    "    -t    Seed Taboo Length                       (default: %d)\n",
-	    DEF_TABOO_LEN);
+	    "    -t    Seed Hit Taboo Length                   (default: %d)\n",
+	    DEF_HIT_TABOO_LEN);
+
+	fprintf(stderr,
+	    "    -9    Seed Generation Taboo Length            (default: %d)\n",
+	    DEF_SEED_TABOO_LEN);
 
 	fprintf(stderr,
 	    "    -w    Seed Window Length                      (default: "
@@ -1692,15 +1715,15 @@ main(int argc, char **argv)
 	switch (shrimp_mode) {
 	case MODE_COLOUR_SPACE:
 		spaced_seed = DEF_SPACED_SEED_CS;
-		optstr = "s:n:t:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFPR";
 		break;
 	case MODE_LETTER_SPACE:
 		spaced_seed = DEF_SPACED_SEED_LS;
-		optstr = "s:n:t:w:o:r:d:m:i:g:q:e:f:x:h:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:BCFPR";
 		break;
 	case MODE_HELICOS_SPACE:
 		spaced_seed = DEF_SPACED_SEED_DAG;
-		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
 		match_value = DEF_MATCH_VALUE_DAG;
 		mismatch_value = DEF_MISMATCH_VALUE_DAG;
 		a_gap_open = DEF_A_GAP_OPEN_DAG;
@@ -1731,7 +1754,10 @@ main(int argc, char **argv)
 			num_matches = atoi(optarg);
 			break;
 		case 't':
-			taboo_len = atoi(optarg);
+			hit_taboo_len = atoi(optarg);
+			break;
+		case '9':
+			seed_taboo_len = atoi(optarg);
 			break;
 		case 'w':
 			window_len = atof(optarg);
@@ -1747,7 +1773,7 @@ main(int argc, char **argv)
 			num_outputs = atoi(optarg);
 			break;
 		case 'r':
-			max_read_len = atoi(optarg);
+			/* max_read_len is gone - silently ignore */
 			break;
 		case 'd':
 			kmer_stddev_limit = atoi(optarg);
@@ -1951,8 +1977,10 @@ main(int argc, char **argv)
 	    strchrcnt(spaced_seed, '1'));
 	fprintf(stderr, "    Seed Matches per Window:              %u\n",
 	    num_matches);
-	fprintf(stderr, "    Seed Taboo Length:                    %u\n",
-	    taboo_len);
+	fprintf(stderr, "    Seed Hit Taboo Length:                %u\n",
+	    hit_taboo_len);
+	fprintf(stderr, "    Seed Generation Taboo Length:         %u\n",
+	    seed_taboo_len);
 
 	if (IS_ABSOLUTE(window_len)) {
 		fprintf(stderr, "    Seed Window Length:                   "
@@ -1964,8 +1992,6 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "    Maximum Hits per Read:                %u\n",
 	    num_outputs);
-	fprintf(stderr, "    Maximum Read Length:                  %u\n",
-	    max_read_len);
 	fprintf(stderr, "    Kmer Std. Deviation Limit:            %d%s\n",
 	    kmer_stddev_limit, (kmer_stddev_limit < 0) ? " (None)" : "");
 
