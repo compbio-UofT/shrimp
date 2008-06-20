@@ -485,40 +485,64 @@ is a run-down of these options (in some strange, non-alphabetical order).
 	restriction.
 
 --------------------------------------------------------------------------------
-5. Output Format
+5.0 Output Format
 --------------------------------------------------------------------------------
 
-rmapper probcalc, and prettyprint all adhere to a common output format: a
-simple string of key/value pairs beginning with '>'. For example:
+rmapper probcalc, and prettyprint all adhere to a common output format: lines
+corresponding to individual hits with tab-delimited fields. Such lines always
+begin with a '>' character in the first position. All utilities ignore any lines
+that do not begin with '>', such as alignments, comments, etc.
 
-> r="872_553_145_F3" g="reftig_9" g_str=- score=2300 g_start=454878 g_end=454902
-r_start=1 r_end=25 r_len=25 match=25 subs=0 ins=0 dels=0 xovers=1
+Here's an example ('\' indicates continuation of the same logical line on the
+next line of this README file and does not appear in the actual output):
 
-Only lines beginning with a '>' character are parsed. This enables us to output
-pretty alignments using 'rmapper' with the -P flag, or with prettyprint, while
-maintaining output compatibility. '=' and '"' characters in read and 
-contig/chromosome names are escaped using the '\' character automatically.
+    >947_1567_1384_F3       reftig_991      +       22901   22923   3       \
+    25      25      2020    18x2x3
 
-Descriptions of the keys are as follows:
-	'r'		Read name
-	'g'		Genome (Contig/Chromosome) name
-	'g_str'		Genome strand ('+' or '-')
-	'edit'		Edit String. Succinct reference to read changes.
+Additionally, the beginning of each output file begins with a specification of
+the tab-delimited fields. For example, the follow applies to the above read hit:
+
+    #FORMAT: readname contigname strand contigstart contigend readstart readend\
+     readlength score editstring
+
+The #FORMAT: line allows new fields to be unambiguously added, or others removed
+or reordered without requiring alteration to the parsing routines.
+
+Descriptions of the columns are as follows:
+	'readname'	Read tag name
+	'contigname'	Genome (Contig/Chromosome) name
+	'strand'	Genome strand ('+' or '-')
+	'contigstart'	Start of alignment in genome (beginning with 1, not 0).
+	'contigend'	End of alignment in genome (inclusive).
+	'readstart'	Start of alignment in read (beginning with 1, not 0).
+	'readend'	End of alignment in read (inclusive).
+	'readlength'	Length of the read in bases/colours.
 	'score'		Alignment score
-	'g_start'	Start of alignment in genome (beginning with 1, not 0).
-	'g_end'		End of alignment in genome (inclusive).
-	'r_start'	Start of alignment in read (beginning with 1, not 0).
-	'r_end'		End of alignment in read (inclusive).
-	'r_len'		Length of the read in bases/colours.
-	'match'		Number of letters matched.
-	'subs'		Substitutions
-	'ins'		Insertions (in the base genome)
-	'dels'		Deletions (in the base genome)
-	'xovers'	Colourspace only: matrix crossovers (read errors) found.
+	'editstring'	Edit string: read to reference summary; see below.
+
+Additionally, probcalc output adds the following columns:
 	'pchance'	Probability of read matching by chance in the genome.
 	'pgenome'	Probability of the read matching where it did.
 	'normodds'	Normalized pgenome/pchance.
 
+The 'editstring' column contains a short description of the alignment with
+reference to the database sequence. This allows at a glance analysis of
+alignments, including identification of miscalls, SNPs, indels, etc.
+
+The edit string consists of numbers, characters and the following additional
+symbols: '-', '(' and ')'. It is constructed as follows:
+    <number> = size of a matching substring
+    <letter> = mismatch, value is the tag letter
+    (<letters>) = gap in the reference, value shows the letters in the tag
+    - = one-base gap in the tag
+    x = crossover (inserted between the appropriate two bases)
+
+For example:
+    A perfect match for 25-bp tags is: "25"
+    A SNP at the 16th base of the tag is: "15A9"
+    A four-base insertion in the reference: "3(TGCT)20"
+    A four-base deletion in the reference: "5----20"
+    Two sequencing errors: "4x15x6"	(i.e. 25 matches with 2 crossovers)
 
 --------------------------------------------------------------------------------
 6. SHRiMP Algorithms
@@ -545,7 +569,7 @@ into a full Smith-Waterman algorithm, and a detailed output is generated.
 The speed of execution depends largely on the spaced seed employed, the number
 of desired matches within a window, the window length, and Smith-Waterman score
 thresholds. For example, aligning 22e6 25-colour reads against the Ciona
-Savignyi genome (173.67 Mbases) takes approximately 6.5 hours on a cluster of
+Savignyi genome (173.67 Mbases) takes approximately 4.5 hours on a cluster of
 50 4-way Xeon 3.2GHz Hyperthreaded CPUs (200 cores) using a spaced seed of 
 length 8, weight 7, a window lenght of 30, 2 matches per window, and a 
 Smith-Waterman threshold of 1875 (penalties: 100 for matches, -70 mismatch, 
