@@ -75,6 +75,8 @@ static uint64_t    nalignments_revcmpl;
 
 static bool Rflag = false;		/* don't output read sequence */
 
+static bool seen_probs = false;		/* set if ever seen normodds, etc */
+
 #define MAX_READ_LEN	5000		/* ridiculously high upper bound */
 
 /*
@@ -150,12 +152,18 @@ print_alignments()
 	char *fmt;
 
 	fmt = output_format_line(Rflag);
-	puts(fmt);
+	printf("%s%s\n", fmt, (seen_probs) ? " normodds pgenome pchance" : "");
 	free(fmt);
 
 	for (fpo = alignments_ordered; fpo != NULL; fpo = fpo->next_ordered) {
-		puts(fpo->output_normal);
-		puts("");
+		printf("%s", fpo->output_normal);
+		if (INPUT_HAS_NORMODDS(&fpo->input))
+			printf("\t%f", fpo->input.normodds);
+		if (INPUT_HAS_PGENOME(&fpo->input))
+			printf("\t%f", fpo->input.pgenome);
+		if (INPUT_HAS_PCHANCE(&fpo->input))
+			printf("\t%f", fpo->input.pchance);
+		puts("\n");
 		puts(fpo->output_pretty);
 	}
 }
@@ -177,6 +185,10 @@ load_output_file(char *file)
 	while (input_parseline(fp, &inp)) {
 		bool found;
 		struct contig_ll *cll;
+
+		if (INPUT_HAS_NORMODDS(&inp) || INPUT_HAS_PGENOME(&inp) ||
+		    INPUT_HAS_PCHANCE(&inp))
+			seen_probs = true;
 
 		fpo = (struct fpo *)xmalloc(sizeof(*fpo));
 		memset(fpo, 0, sizeof(*fpo));
