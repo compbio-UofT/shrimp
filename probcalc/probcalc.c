@@ -35,6 +35,7 @@ static bool Rflag = false;		/* include read sequence in output */
 static bool Sflag = false;		/* do it all in one pass (save in ram)*/
 
 static char *rates_file;		/* -g flag specifies a rates file */
+static char *rates_string;		/* -r user-supplied rates */
 
 struct readinfo {
 	char	    *name;
@@ -682,6 +683,58 @@ ratestats(struct rates *rates)
 }
 
 static void
+parse_rates_string(char *rates_string, struct rates *rates)
+{
+	char *estr, *sstr, *istr, *mstr;
+
+	estr = strtok(rates_string, ",");
+	sstr = strtok(NULL, ",");
+	istr = strtok(NULL, ",");
+	mstr = strtok(NULL, "");
+
+	if (estr == NULL || sstr == NULL || istr == NULL || mstr == NULL) {
+		fprintf(stderr, "error: failed to parse -r argument\n");
+		exit(1);
+	}
+
+	rates->erate = atof(estr);
+	rates->srate = atof(sstr);
+	rates->irate = atof(istr);
+	rates->mrate = atof(mstr);
+
+	/* permit 7.00 as 0.07 */
+	if (rates->erate > 1.0)
+		rates->erate /= 100.0; 
+	if (rates->srate > 1.0)
+		rates->srate /= 100.0; 
+	if (rates->irate > 1.0)
+		rates->irate /= 100.0; 
+	if (rates->mrate > 1.0)
+		rates->mrate /= 100.0; 
+
+	if (rates->erate > 1.0 || rates->srate > 1.0 || rates->irate > 1.0 ||
+	    rates->mrate > 1.0) {
+		fprintf(stderr, "error: user-provided rate(s) > 1.0\n");
+		exit(1);
+	}
+
+	if (rates->erate == 0.0 || rates->srate == 0.0 || rates->irate == 0.0 ||
+	    rates->mrate == 0.0) {
+		fprintf(stderr, "NB: one or more rates changed from 0 to "
+		    "%f\n", ALMOST_ZERO);
+	}
+	rates->erate = (rates->erate == 0.0) ? ALMOST_ZERO : rates->erate;
+	rates->srate = (rates->srate == 0.0) ? ALMOST_ZERO : rates->srate;
+	rates->irate = (rates->irate == 0.0) ? ALMOST_ZERO : rates->irate;
+	rates->mrate = (rates->mrate == 0.0) ? ALMOST_ZERO : rates->mrate;
+
+	fprintf(stderr, "    error rate:         %.10f\n", rates->erate);
+	fprintf(stderr, "    substitution rate:  %.10f\n", rates->srate);
+	fprintf(stderr, "    indel rate:         %.10f\n", rates->irate);
+	fprintf(stderr, "    match rate:         %.10f\n", rates->mrate);
+}
+
+static void
 single_pass_cb(char *path, struct stat *sb, void *arg)
 {
 	struct pass_cb *pcb = (struct pass_cb *)arg;
@@ -719,23 +772,28 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 	/*
 	 * First iterative pass: calculate rates for top matches of reads.
 	 */
-	if (rates_file == NULL) {
+	if (rates_file != NULL) {
+		fprintf(stderr, "\nUsing user-defined rates file...\n");
+		load_rates(rates_file, &pcb.rates);
+	} else if (rates_string != NULL) {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+	} else {
 		fprintf(stderr, "\nCalculating top match rates...\n");
 		PROGRESS_BAR(stderr, 0, 0, 100);
 		dynhash_iterate(read_list, calc_rates, &pcb.rates);
 		PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
-	} else {
-		fprintf(stderr, "\nUsing user-defined rates...\n");
-		load_rates(rates_file, &pcb.rates);
 	}
 
-	if (total_unique_reads == 0) {
+	if (total_unique_reads == 0 && rates_string == NULL) {
 		fprintf(stderr, "error: no matches were found in input "
 		    "file(s)\n");
 		exit(1);
 	}
 
-	ratestats(&pcb.rates);
+	if (rates_string == NULL)
+		ratestats(&pcb.rates);
+	else
+		parse_rates_string(rates_string, &pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
@@ -784,7 +842,12 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 	/*
 	 * First iterative pass: Calculate rates.
 	 */
-	if (rates_file == NULL) {
+	if (rates_file != NULL) {
+		fprintf(stderr, "\nUsing user-defined rates file...\n");
+		load_rates(rates_file, &pcb.rates);
+	} else if (rates_string != NULL) {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+	} else {
 		/* only need best match for calculating rates */
 		tmp_top_matches = top_matches;
 		top_matches = 1;
@@ -803,18 +866,18 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 
 		/* restore desired top matches */
 		top_matches = tmp_top_matches;
-	} else {
-		fprintf(stderr, "\nUsing user-defined rates...\n");
-		load_rates(rates_file, &pcb.rates);
 	}
 
-	if (total_unique_reads == 0) {
+	if (total_unique_reads == 0 && rates_string == NULL) {
 		fprintf(stderr, "error: no matches were found in input "
 		    "file(s)\n");
 		exit(1);
 	}
 
-	ratestats(&pcb.rates);
+	if (rates_string == NULL)
+		ratestats(&pcb.rates);
+	else
+		parse_rates_string(rates_string, &pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
@@ -854,7 +917,7 @@ usage(char *progname)
 		progname = slash + 1;
 
 	fprintf(stderr, "usage: %s [-g rates_file] [-n normodds_cutoff] [-o pgenome_cutoff] "
-	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
+	    "[-p pchance_cutoff] [-r erate,srate,irate,mrate] [-s normodds|pgenome|pchance] "
 	    "[-t top_matches] [-B] [-G] [-R] [-S] "
 	    "total_genome_len results_dir1|results_file1 "
 	    "results_dir2|results_file2 ...\n", progname);
@@ -878,7 +941,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:g:s:t:BGRS")) != -1) {
+	while ((ch = getopt(argc, argv, "n:o:p:g:r:s:t:BGRS")) != -1) {
 		switch (ch) {
 		case 'g':
 			rates_file = xstrdup(optarg);
@@ -891,6 +954,9 @@ main(int argc, char **argv)
 			break;
 		case 'p':
 			pchance_cutoff = atof(optarg);
+			break;
+		case 'r':
+			rates_string = xstrdup(optarg);
 			break;
 		case 's':
 			if (strstr(optarg, "pchance") != NULL) {
@@ -926,6 +992,11 @@ main(int argc, char **argv)
 	}
 	argc -= optind;
 	argv += optind;
+
+	if (rates_file != NULL && rates_string != NULL) {
+		fprintf(stderr, "error: -g and -r flags cannot be mixed\n");
+		exit(1);
+	}
 
 	if (Gflag && rates_file != NULL) {
 		fprintf(stderr, "error: -G and -g flags cannot be mixed\n");
