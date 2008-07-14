@@ -3,10 +3,13 @@ $Id$
 README for SHRiMP: SHort Read Mapping Package version 1.1.0
 http://compbio.cs.toronto.edu/shrimp
 
-SHRiMP is brought to you by
-	Stephen Rumble
+SHRiMP is brought to you by:
+	Stephen M. Rumble
 	Michael Brudno
-	and contributors...
+	Phil Lacroute
+	Vladimir Yanovsky
+	Marc Fiume
+	Adrian Dalca
 
 The authors may be contacted at shrimp at cs dot toronto dot edu.
 
@@ -20,9 +23,8 @@ Table of Contents
   5.   Output Format
   6.   SHRiMP Algorithms
   7.   SHRiMP Statistics
-  9.   Contact
+  8.   Contact
   9.   Acknowledgements
-  10.  Contributors
 
 
 --------------------------------------------------------------------------------
@@ -130,6 +132,9 @@ alignments.
 We shall assume a large set of colourspace reads exist in a single file
 'reads.csfasta' and the entire Ciona genome exists in 'ciona.fasta' (as a single
 contig), both in the present working directory. $S represents the path to SHRiMP.
+
+NB: This example uses a lot of parameters to exhibit the configurability of
+    SHRiMP. Settings shown here are not necessarily appropriate for your reads.
 
   1)  mkdir reads
   2)  mkdir results
@@ -450,6 +455,15 @@ is a run-down of these options (in some strange, non-alphabetical order).
 	Set a threshold for pchance. Any values higher than this threshold will
 	be suppressed.
 
+	[-r erate,srate,irate,mrate]
+
+	Rather than calculate rates of various events, provide them explicitly
+	and use those values in the calculations. Here, 'erate', 'srate',
+	'irate' and 'mrate' mean errors (miscalls), substitutions (SNPs),
+	indels and matches, respectively.
+
+	Values should be in the range 0.0 to 1.0.
+	
 	[-s normodds|pgenome|pchance]
 
 	Sort based on normodds, pgenome, or pchance given the appropriate
@@ -642,7 +656,7 @@ The authors of this software may be contacted at the following e-mail address:
 
 The individual authors' email addresses are:
 	brudno at cs dot toronto dot edu	(Michael Brudno)
-	rumble at cs dot toronto dot edu	(Stephen Rumble)
+	rumble at cs dot toronto dot edu	(Stephen M. Rumble)
 However, we generally prefer that you use the shrimp@ address, unless you are
 trying to reach a specific person.
 
@@ -654,16 +668,6 @@ trying to reach a specific person.
 Development was performed at the University of Toronto's Computational
 Biology lab in collaboration with the Stanford University Sidow Lab.
 
-The development of this distribution was made possible in part by a
+The development of this distribution was made possible in part by
 National Engineering and Research Council of Canada Undergraduate Student
-Research Award (NSERC USRA).
-
-
---------------------------------------------------------------------------------
-10. Contributors
---------------------------------------------------------------------------------
-
-The following people helped make SHRiMP better:
-	- Phil Lacroute (mergehits, lots of testing, feedback and discussion)
-	- Vladimir Yanovsky (Helicos DAG aligner)
-	- Marc Fiume (probability calculation fixes)
+Research Awards (NSERC USRAs).
