@@ -702,19 +702,10 @@ parse_rates_string(char *rates_string, struct rates *rates)
 	rates->irate = atof(istr);
 	rates->mrate = atof(mstr);
 
-	/* permit 7.00 as 0.07 */
-	if (rates->erate > 1.0)
-		rates->erate /= 100.0; 
-	if (rates->srate > 1.0)
-		rates->srate /= 100.0; 
-	if (rates->irate > 1.0)
-		rates->irate /= 100.0; 
-	if (rates->mrate > 1.0)
-		rates->mrate /= 100.0; 
-
 	if (rates->erate > 1.0 || rates->srate > 1.0 || rates->irate > 1.0 ||
 	    rates->mrate > 1.0) {
-		fprintf(stderr, "error: user-provided rate(s) > 1.0\n");
+		fprintf(stderr, "error: user-provided rate(s) > 1.0; please "
+		    "use values in [0,1]\n");
 		exit(1);
 	}
 
