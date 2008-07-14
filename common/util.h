@@ -18,6 +18,14 @@ typedef enum {
 
 extern shrimp_mode_t shrimp_mode;
 
+#ifdef __GNUC__
+#define __predict_false(_x)	__builtin_expect((_x), 0)
+#define __predict_true(_x)	__builtin_expect((_x), 1)
+#else
+#define __predict_false(_x)	(_x)
+#define __predict_true(_x)	(_x)
+#endif
+
 #define MAX(_a, _b) ((_a) > (_b) ? (_a) : (_b))
 #define MIN(_a, _b) ((_a) < (_b) ? (_a) : (_b))
 
