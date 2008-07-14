@@ -329,9 +329,9 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 		a = fasta->translate[(int)sequence[i]];
 		if (a == -1) {
 			fprintf(stderr, "error: invalid character ");
-			if (isprint((int)a))
+			if (isprint(a))
 				fprintf(stderr, "(%c) ", a);
-			else
+			else if (a != -1)
 				fprintf(stderr, "(0x%x) ", a);
 			fprintf(stderr, "in input file [%s]\n", fasta->file);
 			fprintf(stderr, "       (Did you mix up letter "
