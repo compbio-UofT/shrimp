@@ -1,6 +1,6 @@
 $Id$
 
-Building rmapper is easy - it requires a C compiler (gcc and icc have been
+Building rmapper is easy - it requires a C++ compiler (gcc and icc have been
 used during development) and gmake. Intel's C Compiler (icc) is _highly_
 recommended as it is often at least 10-20% faster than gcc. All official
 SHRiMP binary releases are compiled using icc.
@@ -14,11 +14,11 @@ When building with icc, execute the following:
 
 When building with gcc, execute the following:
     gmake CXX="g++" CXXFLAGS="-O3 -mmmx -msse -msse2"
-GCXX 4 users should also supply appropriate -ftree-vectorize and -march flags.
+GCC 4 users should also supply appropriate -ftree-vectorize and -march flags.
 
 Debugging and assertion features may be turned off by adding "-NDEBUG" to the
 CXXFLAGS argument. However, at present assertions don't appear to cost much and
-any improvement in performance will be very small.
+any improvement in performance will be very small (probably imperceptible).
 
 You may want to adjust your flags depending on your hardware and compiler
 versions. The above icc CXXFLAGS seemed optimal for both Pentium 4 and Core 2
