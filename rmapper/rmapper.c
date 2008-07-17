@@ -318,6 +318,7 @@ get_sw_threshold(struct read_elem *re, double which, int readnum)
 			    (match_value * re->ri->read1_len) *
 			    (which / 100.0)));
 		} else {
+			assert(readnum == 2);
 			assert(shrimp_mode == MODE_HELICOS_SPACE);
 			thresh = (u_int)floor(((double)
 			    (match_value * re->ri->read2_len) *
@@ -379,11 +380,9 @@ scan(int contig_num, bool revcmpl)
 
 	kmer = (uint32_t *)xmalloc(sizeof(kmer[0]) * BPTO32BW(seed_span));
 	memset(kmer, 0, sizeof(kmer[0]) * BPTO32BW(seed_span));
-	for (i = 0; i < seed_span - 1; i++)
-		bitfield_prepend(kmer, seed_span, EXTRACT(scan_genome, i));
 
-	skip = 0;
-	for (i = seed_span - 1; i < genome_len; i++) {
+	skip = seed_span - 1;
+	for (i = 0; i < genome_len; i++) {
 		PROGRESS_BAR(stderr, i, genome_len, 10);
 
 		base = EXTRACT(scan_genome, i);
@@ -1413,7 +1412,7 @@ static void
 print_statistics()
 {
 	double cellspersec, hz;
-	uint64_t invocs, cells, reads_matched, total_matches, fasta_load_ticks;
+	uint64_t invocs, cells, reads_matched, total_matches, fasta_load_ticks, vticks;
 	fasta_stats_t fs;
 	uint32_t i;
 
@@ -1430,12 +1429,12 @@ print_statistics()
 		total_matches += re->ri->final_matches;
 	}
 
-	sw_vector_stats(&invocs, &cells, NULL, &cellspersec);
-	
+	sw_vector_stats(&invocs, &cells, &vticks, &cellspersec);
+
 	fprintf(stderr, "\nStatistics:\n");
 	fprintf(stderr, "    Spaced Seed Scan:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    scan_ticks / hz);
+	    (scan_ticks - vticks) / hz);
 	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
 	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
 	    shortest_scanned_kmer_list);
@@ -1478,7 +1477,8 @@ print_statistics()
 		    dsp->kmers_seconds);
 		fprintf(stderr, "        Avg Kmers/Read Pair:    %.2f\n",
 		    (double)dsp->kmers_total_kmers / (double)dsp->kmers_invocations);
-		fasta_load_ticks = (uint64_t)MAX(0, fasta_load_ticks - dsp->kmers_seconds * hz);
+		fasta_load_ticks = (uint64_t)MAX(0, (float)fasta_load_ticks -
+		    (float)dsp->kmers_seconds * hz);
 		fprintf(stderr, "\n");
 
 		fprintf(stderr, "    DAG Pair-Genome Alignment:\n");
@@ -1553,9 +1553,11 @@ usage(char *progname)
 	    "    -t    Seed Hit Taboo Length                   (default: %d)\n",
 	    DEF_HIT_TABOO_LEN);
 
-	fprintf(stderr,
-	    "    -9    Seed Generation Taboo Length            (default: %d)\n",
-	    DEF_SEED_TABOO_LEN);
+	if (shrimp_mode != MODE_HELICOS_SPACE) {
+		fprintf(stderr,
+		    "    -9    Seed Generation Taboo Length            (default: %d)\n",
+		    DEF_SEED_TABOO_LEN);
+	}
 
 	fprintf(stderr,
 	    "    -w    Seed Window Length                      (default: "
@@ -1723,7 +1725,7 @@ main(int argc, char **argv)
 		break;
 	case MODE_HELICOS_SPACE:
 		spaced_seed = DEF_SPACED_SEED_DAG;
-		optstr = "s:n:t:9:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
+		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
 		match_value = DEF_MATCH_VALUE_DAG;
 		mismatch_value = DEF_MISMATCH_VALUE_DAG;
 		a_gap_open = DEF_A_GAP_OPEN_DAG;
@@ -1757,6 +1759,7 @@ main(int argc, char **argv)
 			hit_taboo_len = atoi(optarg);
 			break;
 		case '9':
+			assert(shrimp_mode != MODE_HELICOS_SPACE);
 			seed_taboo_len = atoi(optarg);
 			break;
 		case 'w':
@@ -1979,8 +1982,11 @@ main(int argc, char **argv)
 	    num_matches);
 	fprintf(stderr, "    Seed Hit Taboo Length:                %u\n",
 	    hit_taboo_len);
-	fprintf(stderr, "    Seed Generation Taboo Length:         %u\n",
-	    seed_taboo_len);
+
+	if (shrimp_mode != MODE_HELICOS_SPACE) {
+		fprintf(stderr, "    Seed Generation Taboo Length:         %u\n",
+		    seed_taboo_len);
+	}
 
 	if (IS_ABSOLUTE(window_len)) {
 		fprintf(stderr, "    Seed Window Length:                   "
