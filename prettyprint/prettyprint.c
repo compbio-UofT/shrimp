@@ -92,7 +92,7 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	bool revcmpl;
 
 	if (!dynhash_find(read_list, fpo->input.read, NULL,
-	    (void **)&read)) {
+	    (void **)(void *)&read)) {
 		fprintf(stderr, "error: read [%s] is missing\n",
 		    fpo->input.read);
 		exit(1);
@@ -198,7 +198,8 @@ load_output_file(char *file)
 		 * Cache the contig name. We'll use it later when loading
 		 * contigs.
 		 */
-		found = dynhash_find(contig_list, fpo->input.genome, NULL, (void **)&cll);
+		found = dynhash_find(contig_list, fpo->input.genome, NULL,
+		    (void **)(void *)&cll);
 		if (found) {
 			assert(cll != NULL);
 			if (INPUT_IS_REVCMPL(&inp)) {
@@ -285,7 +286,8 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 		free(seq);
 
 		/* add to our dynhash */
-		found = dynhash_find(contig_list, s->name, NULL, (void **)&cll);
+		found = dynhash_find(contig_list, s->name, NULL,
+		    (void **)(void *)&cll);
 		if (found) {
 			struct fpo *fpo;
 

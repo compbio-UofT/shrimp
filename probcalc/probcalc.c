@@ -178,7 +178,7 @@ read_file(const char *fpath)
 			input.read_seq = NULL;
 		} else if (input.read_seq != NULL) {
 			if (dynhash_find(read_seq_cache, input.read_seq,
-			    (void **)&key, NULL)) {
+			    (void **)(void *)&key, NULL)) {
 				free(input.read_seq);
 				input.read_seq = key;
 			} else {
@@ -195,8 +195,8 @@ read_file(const char *fpath)
 		/*
 		 * Cache the contig names similarly, so we don't waste memory.
 		 */
-		if (dynhash_find(contig_cache, input.genome, (void **)&key,
-		    NULL)) {
+		if (dynhash_find(contig_cache, input.genome,
+		    (void **)(void *)&key, NULL)) {
 			free(input.genome);
 			input.genome = key;
 		} else {
@@ -212,8 +212,8 @@ read_file(const char *fpath)
 		/*
 		 * Finally, cache edit strings for memory happiness.
 		 */
-		if (dynhash_find(read_edit_cache, input.edit, (void **)&key,
-		    NULL)) {
+		if (dynhash_find(read_edit_cache, input.edit,
+		    (void **)(void *)&key, NULL)) {
 			free(input.edit);
 			input.edit = key;
 		} else {
@@ -228,8 +228,8 @@ read_file(const char *fpath)
 
 		total_alignments++;
 
-		if (dynhash_find(read_list, input.read, (void **)&key,
-		    (void **)&ri)) {
+		if (dynhash_find(read_list, input.read, (void **)(void *)&key,
+		    (void **)(void *)&ri)) {
 			/* use only one read name string to save space */
 			free(input.read);
 			input.read = key;

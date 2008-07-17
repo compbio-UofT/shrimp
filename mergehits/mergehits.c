@@ -71,7 +71,8 @@ load_output_file(char *file)
 		memcpy(&alignment->input, &inp, sizeof(alignment->input));
 		alignment->next = NULL;
 
-		if (dynhash_find(read_index, inp.read, NULL, (void **)&seq)) {
+		if (dynhash_find(read_index, inp.read, NULL,
+		    (void **)(void *)&seq)) {
 			/*
 			 * we've already seen an alignment for the same
 			 * read, so add this one to that read's list
@@ -119,7 +120,7 @@ store_sequence(char *name, uint32_t *read, uint32_t read_len, int initbp)
 {
 	struct sequence *seq;
 
-	if (!dynhash_find(read_index, name, NULL, (void **)&seq)) {
+	if (!dynhash_find(read_index, name, NULL, (void **)(void *)&seq)) {
 		/* this read has no alignments so skip it */
 		return;
 	}
