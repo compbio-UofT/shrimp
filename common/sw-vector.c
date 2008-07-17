@@ -66,7 +66,6 @@ vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 	__m128i v_a_gap, v_b_gap, v_nogap;
 	__m128i v_last_nogap, v_prev_nogap, v_seq_a, v_seq_b;
 	__m128i v_tmp;
-	int16_t w[8];
 
 	/* shut up icc */
 	(void)ls_seqA;
@@ -188,9 +187,19 @@ vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 		}
 	}
 
-	_mm_store_si128((__m128i *)w, v_score);
-	for (i = 0; i < 8; i++)
-		score = MAX(score, w[i]);
+	/*
+	 * Ugh. Old gcc can't loop and using _mm_store to an int16_t array
+	 * breaks strict-aliasing rules.
+	 */
+	assert(score == 0);
+	score = MAX(score, _mm_extract_epi16(v_score, 0));
+	score = MAX(score, _mm_extract_epi16(v_score, 1));
+	score = MAX(score, _mm_extract_epi16(v_score, 2));
+	score = MAX(score, _mm_extract_epi16(v_score, 3));
+	score = MAX(score, _mm_extract_epi16(v_score, 4));
+	score = MAX(score, _mm_extract_epi16(v_score, 5));
+	score = MAX(score, _mm_extract_epi16(v_score, 6));
+	score = MAX(score, _mm_extract_epi16(v_score, 7));
 
 	return (score);
 }
@@ -217,7 +226,6 @@ vect_sw_same_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 	__m128i v_a_gap, v_b_gap, v_nogap;
 	__m128i v_last_nogap, v_prev_nogap, v_seq_a, v_seq_b;
 	__m128i v_tmp;
-	int16_t w[8];
 
 	/* shut up icc */
 	(void)ls_seqA;
@@ -339,9 +347,19 @@ vect_sw_same_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 		}
 	}
 
-	_mm_store_si128((__m128i *)w, v_score);
-	for (i = 0; i < 8; i++)
-		score = MAX(score, w[i]);
+	/*
+	 * Ugh. Old gcc can't loop and using _mm_store to an int16_t array
+	 * breaks strict-aliasing rules.
+	 */
+	assert(score == 0);
+	score = MAX(score, _mm_extract_epi16(v_score, 0));
+	score = MAX(score, _mm_extract_epi16(v_score, 1));
+	score = MAX(score, _mm_extract_epi16(v_score, 2));
+	score = MAX(score, _mm_extract_epi16(v_score, 3));
+	score = MAX(score, _mm_extract_epi16(v_score, 4));
+	score = MAX(score, _mm_extract_epi16(v_score, 5));
+	score = MAX(score, _mm_extract_epi16(v_score, 6));
+	score = MAX(score, _mm_extract_epi16(v_score, 7));
 
 	return (score);
 }
