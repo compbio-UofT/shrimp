@@ -65,7 +65,7 @@ p-values are layed out in Sections 6 and 7, respectively.
   ---
     Use bin/rmapper-foo to align reads, where 'foo' is either 'ls', 'cs', or
     'hs' for letter-space (454, Illumina/Solexa), colour-space (AB SOLiD), and
-    Helicos-space (Helicos Heliscope SMS paired reads), respectively.
+    Helicos-space (Helicos HeliScope SMS 2-pass reads), respectively.
 
     E.g.:
         bin/rmapper-cs reads.csfasta /path/to/genome/chr*.fa > output.rmapper
@@ -548,7 +548,7 @@ symbols: '-', '(' and ')'. It is constructed as follows:
     <number> = size of a matching substring
     <letter> = mismatch, value is the tag letter
     (<letters>) = gap in the reference, value shows the letters in the tag
-    - = one-base gap in the tag
+    - = one-base gap in the tag (i.e. insertion in the reference)
     x = crossover (inserted between the appropriate two bases)
 
 For example:
@@ -584,7 +584,7 @@ The speed of execution depends largely on the spaced seed employed, the number
 of desired matches within a window, the window length, and Smith-Waterman score
 thresholds. For example, aligning 22e6 25-colour reads against the Ciona
 Savignyi genome (173.67 Mbases) takes approximately 4.5 hours on a cluster of
-50 4-way Xeon 3.2GHz Hyperthreaded CPUs (200 cores) using a spaced seed of 
+50 4-way P4 Xeon 3.2GHz Hyperthreaded CPUs (200 cores) using a spaced seed of 
 length 8, weight 7, a window lenght of 30, 2 matches per window, and a 
 Smith-Waterman threshold of 1875 (penalties: 100 for matches, -70 mismatch, 
 -75 gap open, -25 gap extend, -200 crossover). 
