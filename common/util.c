@@ -1,6 +1,7 @@
 /*	$Id$	*/
 
 #include <assert.h>
+#include <inttypes.h>
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
@@ -798,3 +799,33 @@ fast_gztest(int nfiles, char **files)
 	}
 }
 #endif
+
+/*
+ * Return a string on the stack corresponding to an unsigned integer that also
+ * features commas. E.g.: int 1000 yields "1,000".
+ *
+ * There is a pool of sequentially allocated buffers returned, so this should
+ * be safe to use multiple times in function arguments.
+ */
+char *
+comma_integer(uint64_t val)
+{
+	static char rets[50][32];	// no malloc, allow uses in fn args, etc
+	static int col = 0;
+
+	char *ret = rets[(col++ % 50)];
+	char str[32];
+	int skip, i, j;
+
+	snprintf(str, 32, "%" PRIu64, val);
+
+	skip = 3 - (strlen(str) % 3);
+	for (i = j = 0; str[i] != '\0'; i++) {
+		if ((i + skip) % 3 == 0 && i != 0)
+			ret[j++] = ',';
+		ret[j++] = str[i];
+	}
+	ret[j] = '\0';
+
+	return (ret);
+}

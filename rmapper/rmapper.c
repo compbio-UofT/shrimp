@@ -697,9 +697,9 @@ load_reads_lscs(const char *file)
 	else
 		fprintf(stderr, "\n");
 
-	fprintf(stderr, "- Loaded %u %s in %u reads (%u kmers)\n",
-	    (unsigned int)bases, (shrimp_mode == MODE_COLOUR_SPACE) ?
-	    "colours" : "letters", nreads, nkmers);
+	fprintf(stderr, "- Loaded %s %s in %s reads (%s kmers)\n",
+	    comma_integer(bases), (shrimp_mode == MODE_COLOUR_SPACE) ?
+	    "colours" : "letters", comma_integer(nreads),comma_integer(nkmers));
 
 	fasta_close(fasta);
 
@@ -834,8 +834,8 @@ load_reads_dag(const char *file)
 	else
 		fprintf(stderr, "\n");
 
-	fprintf(stderr, "- Loaded %u letters in %u read pairs (%u kmers)\n",
-	    (unsigned int)bases, nreads, nkmers);
+	fprintf(stderr, "- Loaded %s letters in %u read pairs (%u kmers)\n",
+	    comma_integer(bases), nreads, nkmers);
 
 	fasta_close(fasta);
 
@@ -1243,8 +1243,8 @@ final_pass(char **files, u_int nfiles)
 			}
 			genome_cs = NULL;
 
-			fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
-			    genome_len, name);
+			fprintf(stderr, "  - Loaded %s letters from contig \"%s\"\n",
+			    comma_integer(genome_len), name);
 
 			free(sequence);
 			final_pass_contig(scores[j], scores_revcmpl[j]);
@@ -1361,8 +1361,8 @@ scan_genomes(char **files, int nfiles)
 			if (shrimp_mode == MODE_COLOUR_SPACE)
 				genome_cs = fasta_bitfield_to_colourspace(fasta, genome, genome_len);
 
-			fprintf(stderr, "  - Loaded %u letters from contig \"%s\"\n",
-			    genome_len, name);
+			fprintf(stderr, "  - Loaded %s letters from contig \"%s\"\n",
+			    comma_integer(genome_len), name);
 
 			free(sequence);
 			scan_genomes_contig();
@@ -1435,11 +1435,12 @@ print_statistics()
 	fprintf(stderr, "    Spaced Seed Scan:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    (scan_ticks - vticks) / hz);
-	fprintf(stderr, "        Total Kmers:            %u\n", nkmers);
-	fprintf(stderr, "        Minimal Reads/Kmer:     %" PRIu64 "\n",
-	    shortest_scanned_kmer_list);
-	fprintf(stderr, "        Maximal Reads/Kmer:     %" PRIu64 "\n",
-	    longest_scanned_kmer_list);
+	fprintf(stderr, "        Total Kmers:            %s\n",
+	    comma_integer(nkmers));
+	fprintf(stderr, "        Minimal Reads/Kmer:     %s\n",
+	    comma_integer(shortest_scanned_kmer_list));
+	fprintf(stderr, "        Maximal Reads/Kmer:     %s\n",
+	    comma_integer(longest_scanned_kmer_list));
 	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
 	    (kmer_lists_scanned == 0) ? 0 :
 	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
@@ -1448,7 +1449,8 @@ print_statistics()
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    (cellspersec == 0) ? 0 : cells / cellspersec);
-	fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
+	fprintf(stderr, "        Invocations:            %s\n",
+	    comma_integer(invocs));
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
 	fprintf(stderr, "        Cells per Second:       %.2f million\n",
@@ -1464,7 +1466,8 @@ print_statistics()
 		fprintf(stderr, "    Scalar Smith-Waterman:\n");
 		fprintf(stderr, "        Run-time:               %.2f seconds\n",
 		    (cellspersec == 0) ? 0 : cells / cellspersec);
-		fprintf(stderr, "        Invocations:            %" PRIu64 "\n",invocs);
+		fprintf(stderr, "        Invocations:            %s\n",
+		    comma_integer(invocs));
 		fprintf(stderr, "        Cells Computed:         %.2f million\n",
 		    (double)cells / 1.0e6);
 		fprintf(stderr, "        Cells per Second:       %.2f million\n",
@@ -1484,8 +1487,8 @@ print_statistics()
 		fprintf(stderr, "    DAG Pair-Genome Alignment:\n");
 		fprintf(stderr, "        Run-time:               %.2f seconds\n",
 		    dsp->aligner_seconds);
-		fprintf(stderr, "        Invocations:            %" PRIu64 "\n",
-		    dsp->aligner_invocations);
+		fprintf(stderr, "        Invocations:            %s\n",
+		    comma_integer(dsp->aligner_invocations));
 		free(dsp);
 	}
 	fprintf(stderr, "\n");
@@ -1498,15 +1501,16 @@ print_statistics()
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    General:\n");
-	fprintf(stderr, "        Reads Matched:          %" PRIu64 "    "
-	    "(%.4f%%)\n", reads_matched,
+	fprintf(stderr, "        Reads Matched:          %s    "
+	    "(%.4f%%)\n", comma_integer(reads_matched),
 	    (nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
-	fprintf(stderr, "        Total Matches:          %" PRIu64 "\n",
-	    total_matches);
+	fprintf(stderr, "        Total Matches:          %s\n",
+	    comma_integer(total_matches));
 	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
 	    (total_matches == 0) ? 0 : ((double)total_matches /
 	    (double)reads_matched));
-	fprintf(stderr, "        Duplicate Hits Pruned:  %u\n", nduphits);
+	fprintf(stderr, "        Duplicate Hits Pruned:  %s\n",
+	    comma_integer(nduphits));
 }
 
 static void

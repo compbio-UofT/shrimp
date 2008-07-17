@@ -74,6 +74,7 @@ char	       *strbuf_string(strbuf_t, int *);
 void	        strbuf_append(strbuf_t, char *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
+char	       *comma_integer(uint64_t);
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;

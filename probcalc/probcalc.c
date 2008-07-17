@@ -632,24 +632,24 @@ ratestats(struct rates *rates)
 	    total_unique_reads);
 
 	fprintf(stderr, "\nStatistics:\n");
-	fprintf(stderr, "    total matches:      %" PRIu64 "\n",
-	    total_alignments);
-	fprintf(stderr, "    total unique reads: %" PRIu64 "\n",
-	    total_unique_reads);
-	fprintf(stderr, "    total samples:      %" PRIu64 "\n",
-	    rates->samples);
-	fprintf(stderr, "    total length:       %" PRIu64 "\n",
-	    rates->total_len); 
-	fprintf(stderr, "    insertions:         %" PRIu64 "\n",
-	    rates->insertions); 
-	fprintf(stderr, "    deletions:          %" PRIu64 "\n",
-	    rates->deletions); 
-	fprintf(stderr, "    matches:            %" PRIu64 "\n",
-	    rates->matches); 
-	fprintf(stderr, "    mismatches:         %" PRIu64 "\n",
-	    rates->mismatches); 
-	fprintf(stderr, "    crossovers:         %" PRIu64 "\n",
-	    rates->crossovers); 
+	fprintf(stderr, "    total matches:      %s\n",
+	    comma_integer(total_alignments));
+	fprintf(stderr, "    total unique reads: %s\n",
+	    comma_integer(total_unique_reads));
+	fprintf(stderr, "    total samples:      %s\n",
+	    comma_integer(rates->samples));
+	fprintf(stderr, "    total length:       %s\n",
+	    comma_integer(rates->total_len));
+	fprintf(stderr, "    insertions:         %s\n",
+	    comma_integer(rates->insertions));
+	fprintf(stderr, "    deletions:          %s\n",
+	    comma_integer(rates->deletions));
+	fprintf(stderr, "    matches:            %s\n",
+	    comma_integer(rates->matches));
+	fprintf(stderr, "    mismatches:         %s\n",
+	    comma_integer(rates->mismatches));
+	fprintf(stderr, "    crossovers:         %s\n",
+	    comma_integer(rates->crossovers));
 
 	if (Gflag) {
 		printf(">%" PRIu64 " %" PRIu64 " %"PRIu64 " %" PRIu64 " %" PRIu64
@@ -1017,7 +1017,7 @@ main(int argc, char **argv)
 	    (sort_field == SORT_PGENOME)  ? "pgenome"  :
 	    (sort_field == SORT_NORMODDS) ? "normodds" : "<unknown>");
 	fprintf(stderr, "    Top Matches:        %d\n", top_matches);
-	fprintf(stderr, "    Genome Length:      %" PRIu64 "\n", genome_len);
+	fprintf(stderr, "    Genome Length:      %s",comma_integer(genome_len));
 
 	fprintf(stderr, "\n");
 
