@@ -156,6 +156,13 @@ print_alignments()
 	free(fmt);
 
 	for (fpo = alignments_ordered; fpo != NULL; fpo = fpo->next_ordered) {
+		if (fpo->output_normal == NULL || fpo->output_pretty == NULL) {
+			fprintf(stderr, "warning: could not align read [%s] to contig"
+			    "[%s] - missing contig file!\n", fpo->input.read,
+			    fpo->input.genome);
+			continue;
+		}
+
 		printf("%s", fpo->output_normal);
 		if (INPUT_HAS_NORMODDS(&fpo->input))
 			printf("\t%f", fpo->input.normodds);
