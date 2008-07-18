@@ -24,6 +24,14 @@
 
 #include "probcalc.h"
 
+/* STATS DEFINITIONS */
+double * factTable;
+double ** chooseTable;
+double *** maxIndelsTable;
+double *** minIndelsTable;
+double ** subsTable;
+/* END OF STATS DEF */
+
 static dynhash_t read_list;		/* list of reads and top matches */
 static dynhash_t contig_cache;		/* contig name cache */
 static dynhash_t read_seq_cache;	/* read sequence cache */
@@ -35,7 +43,6 @@ static bool Rflag = false;		/* include read sequence in output */
 static bool Sflag = false;		/* do it all in one pass (save in ram)*/
 
 static char *rates_file;		/* -g flag specifies a rates file */
-static char *rates_string;		/* -r user-supplied rates */
 
 struct readinfo {
 	char	    *name;
@@ -178,7 +185,7 @@ read_file(const char *fpath)
 			input.read_seq = NULL;
 		} else if (input.read_seq != NULL) {
 			if (dynhash_find(read_seq_cache, input.read_seq,
-			    (void **)(void *)&key, NULL)) {
+			    (void **)&key, NULL)) {
 				free(input.read_seq);
 				input.read_seq = key;
 			} else {
@@ -195,8 +202,8 @@ read_file(const char *fpath)
 		/*
 		 * Cache the contig names similarly, so we don't waste memory.
 		 */
-		if (dynhash_find(contig_cache, input.genome,
-		    (void **)(void *)&key, NULL)) {
+		if (dynhash_find(contig_cache, input.genome, (void **)&key,
+		    NULL)) {
 			free(input.genome);
 			input.genome = key;
 		} else {
@@ -212,8 +219,8 @@ read_file(const char *fpath)
 		/*
 		 * Finally, cache edit strings for memory happiness.
 		 */
-		if (dynhash_find(read_edit_cache, input.edit,
-		    (void **)(void *)&key, NULL)) {
+		if (dynhash_find(read_edit_cache, input.edit, (void **)&key,
+		    NULL)) {
 			free(input.edit);
 			input.edit = key;
 		} else {
@@ -228,8 +235,8 @@ read_file(const char *fpath)
 
 		total_alignments++;
 
-		if (dynhash_find(read_list, input.read, (void **)(void *)&key,
-		    (void **)(void *)&ri)) {
+		if (dynhash_find(read_list, input.read, (void **)&key,
+		    (void **)&ri)) {
 			/* use only one read name string to save space */
 			free(input.read);
 			input.read = key;
@@ -265,33 +272,50 @@ read_file(const char *fpath)
 }
 
 static double
-p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen)
+p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, int ins, int dels)
 {
 	double r = 0;
 
-	if (isinf(pow(4, (nsubs + nerrors))))
-		r += ls_choose(k - 2, nsubs + nerrors) + ((nsubs + nerrors) * log(4));
-	else
-		r += ls_choose(k - 2, nsubs + nerrors) + log(pow(4, (nsubs + nerrors)) - 1);
+	(void)nindels;
 
-	/*
-	 * two for ins and dels, four for the four possible letters to insert.
-	 * above should really take length of indel into account
-	 */
-	r += ls_choose(k - 1, nindels) + (nindels * log(2*4));
+	int corr_fact = (origlen-k+1); // correction factor, normal space
+
+	/* substitutions */
+	r += log(subsTable[k][nsubs+nerrors]); // log space
+	
+	/* indels */
+	r += log(0.5*(maxIndelsTable[k][dels][ins]+minIndelsTable[k][dels][ins])); // log space
+	
+	/* correction factor */
+	r += log(corr_fact); // log space
 
 	/* r is now log of fraction of matched words over total words */
-	r -= (k * log(4));
-	r = exp(r);
-	r = 1 - r;
-
-	/* if hit not full length we need to correct */
-	l *= MAX(origlen - k+1, 1);
-
-	/* 2 for the two strands */
-	r = 2.0 * l * log(r);
-
-	return (1.0 - exp(r));
+	if (r <= k * log(4))
+		r -= (k * log(4)); // log space
+	else 
+		return 1;
+	
+	r = exp(r); // normal space
+	
+	/* 
+	at this point, r = cf * (Z/4^k) 
+	We have the following potential problem: if r is very small (good hit), 
+	'1.0-r' will approximate to 1.0.
+	
+	to avoid this, consider the binomial approximation: (1-r)^x = 1-rx when r is very small
+	hence our pchance = 1 - (1-r)^x = 1-(1-xr) = xr, where x is 2*l
+	
+	Thus: IF (1-r) == 1; use bionmial approx; ELSE; compute exact pchance; FI
+	*/
+	if( 1-r == 1 ) { // use bionmial approx
+		r = (2.0*l)*r;
+	} else { // compute exact pchance
+		r = 1-r; // normal space
+		r = 2*l*log(r); // log space
+		r = (1.0 - exp(r)); // normal space
+	}
+	
+	return r;
 }
 
 static void
@@ -332,10 +356,10 @@ calc_rates(void *arg, void *key, void *val)
 	 */
 	assert(best != 0);
 	rs = &ri->top_matches[best];
-	rlen =  rs->matches + rs->mismatches + rs->insertions + rs->deletions;
+	rlen =  rs->matches + rs->mismatches + rs->deletions;
 
 	d = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		rs->insertions + rs->deletions, rs->read_length);
+		rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions);
 
 	if (best != 0 && d < pchance_cutoff) {
 		rates->samples++;
@@ -352,25 +376,47 @@ static double
 p_thissource(int k, int nerrors, double erate, int nsubs, double subrate,
     int nindels, double indelrate, int nmatches, double matchrate, int origlen)
 {
-	double r;
+        double r, p_err, p_sub, p_indel;
+        int i;
 
-	(void)origlen;
+        (void)origlen;
+	(void)nmatches;
+	(void)matchrate;
 
-	r  = ls_choose(k, nerrors) + (nerrors * log(erate));
-	r += ls_choose(k - nerrors, nsubs) + (nsubs * log(subrate));
-	r += ls_choose(k - nerrors - nsubs, nindels) +
-	    (nindels * log(indelrate));
-	r += nmatches * log(matchrate);
-	r = exp(r);
+        // This function computes the likelihood that the read will differ by as much or more
+        // from the reference, given the mutational parameters.
+        //  Each of the loops is the probability that a given read would have
+        // that many or more {errors, subs, indels}. Errors and indels happen between letters, hence k-1 possible
+        // positions; subs happen at letters, and can't happen at the last letters, hence k-2.
+        // k is just matches + mismatches for this function; matchrate is unused, at least for now...
+        p_err = 0;
+        for (i=0; i < nerrors; i++) {
+          p_err  += exp(ls_choose(k-1, i) + i * log(erate) + (k-1-i)*log(1-erate));
+        }
+        p_err = 1-p_err;
+        p_sub = 0;
+        for (i=0; i < nsubs; i++) {
+          p_sub += exp(ls_choose(k - 2 - nerrors, i) + i * log(subrate) + (k-2-nerrors-i)*log(1-subrate));
+        }
+        p_sub = 1-p_sub;
+        p_indel = 0;
+        for (i=0; i < nindels; i++) {
+          p_indel += exp(ls_choose(k-1 , i) + i * log(indelrate) + (k-1-i)*log(1-indelrate));
+        }
+        p_indel = 1-p_indel;
+        // now the product is the likelihood that a real alignment would have
+        //that many (or more) of each event type
+        r = p_err * p_sub * p_indel;
 
-
-	if (r < ALMOST_ZERO)
-		r = ALMOST_ZERO;
-	if (r > ALMOST_ONE)
-		r = ALMOST_ONE;
-
-	return (r);
+/*
+        if (r < ALMOST_ZERO)
+                r = ALMOST_ZERO;
+        if (r > ALMOST_ONE)
+                r = ALMOST_ONE;
+*/
+        return (r);
 }
+
 
 static int
 rspvcmp(const void *a, const void *b)
@@ -438,12 +484,15 @@ calc_probs(void *arg, void *key, void *val)
 		if (rs->score < 0)
 			continue;
 
-		rlen = rs->matches + rs->mismatches + rs->insertions +
-		    rs->deletions;
+		rlen = rs->matches + rs->mismatches + rs->deletions;
+		//fprintf (stdout, "matches: %i, mismatches: %i, rsdels: %i ", rs->matches , rs->mismatches , rs->deletions); 
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		    rs->insertions + rs->deletions, rs->read_length);
-		if (s < ALMOST_ZERO)
-			s = ALMOST_ZERO;
+		    rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions);
+		    
+		//fprintf(stdout,"%f\n", s);
+		    
+	//	if (s < ALMOST_ZERO || isnan(s))
+		//	s = ALMOST_ZERO;
 
 		if (s > pchance_cutoff)
 			continue;
@@ -509,7 +558,7 @@ calc_probs(void *arg, void *key, void *val)
 		    (INPUT_IS_REVCMPL(rs)) ? '-' : '+');
 
 		/* NB: internally 0 is first position, output is 1. adjust */
-		printf("\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%s%s%f\t%f\t%f\n",
+		printf("\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%s%s%e\t%e\t%e\n",
 		    rs->genome_start + 1, rs->genome_end + 1, rs->read_start + 1,
 		    rs->read_end + 1, rs->read_length, rs->score, rs->edit,
 		    (Rflag) ? readseq : "", (Rflag) ? "\t" : "",
@@ -628,8 +677,8 @@ static void
 ratestats(struct rates *rates)
 {
 
-	fprintf(stderr, "\nCalculated rates for %" PRIu64 " reads\n",
-	    total_unique_reads);
+	fprintf(stderr, "\nCalculated rates for %s reads\n",
+	    comma_integer(total_unique_reads));
 
 	fprintf(stderr, "\nStatistics:\n");
 	fprintf(stderr, "    total matches:      %s\n",
@@ -665,49 +714,6 @@ ratestats(struct rates *rates)
 	rates->irate = (double)(rates->insertions + rates->deletions) /
 	    (double)rates->total_len;
 	rates->mrate = (double)rates->matches / (double)rates->total_len;
-
-	if (rates->erate == 0.0 || rates->srate == 0.0 || rates->irate == 0.0 ||
-	    rates->mrate == 0.0) {
-		fprintf(stderr, "NB: one or more rates changed from 0 to "
-		    "%f\n", ALMOST_ZERO);
-	}
-	rates->erate = (rates->erate == 0.0) ? ALMOST_ZERO : rates->erate;
-	rates->srate = (rates->srate == 0.0) ? ALMOST_ZERO : rates->srate;
-	rates->irate = (rates->irate == 0.0) ? ALMOST_ZERO : rates->irate;
-	rates->mrate = (rates->mrate == 0.0) ? ALMOST_ZERO : rates->mrate;
-
-	fprintf(stderr, "    error rate:         %.10f\n", rates->erate);
-	fprintf(stderr, "    substitution rate:  %.10f\n", rates->srate);
-	fprintf(stderr, "    indel rate:         %.10f\n", rates->irate);
-	fprintf(stderr, "    match rate:         %.10f\n", rates->mrate);
-}
-
-static void
-parse_rates_string(char *rates_string, struct rates *rates)
-{
-	char *estr, *sstr, *istr, *mstr;
-
-	estr = strtok(rates_string, ",");
-	sstr = strtok(NULL, ",");
-	istr = strtok(NULL, ",");
-	mstr = strtok(NULL, "");
-
-	if (estr == NULL || sstr == NULL || istr == NULL || mstr == NULL) {
-		fprintf(stderr, "error: failed to parse -r argument\n");
-		exit(1);
-	}
-
-	rates->erate = atof(estr);
-	rates->srate = atof(sstr);
-	rates->irate = atof(istr);
-	rates->mrate = atof(mstr);
-
-	if (rates->erate > 1.0 || rates->srate > 1.0 || rates->irate > 1.0 ||
-	    rates->mrate > 1.0) {
-		fprintf(stderr, "error: user-provided rate(s) > 1.0; please "
-		    "use values in [0,1]\n");
-		exit(1);
-	}
 
 	if (rates->erate == 0.0 || rates->srate == 0.0 || rates->irate == 0.0 ||
 	    rates->mrate == 0.0) {
@@ -763,28 +769,23 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 	/*
 	 * First iterative pass: calculate rates for top matches of reads.
 	 */
-	if (rates_file != NULL) {
-		fprintf(stderr, "\nUsing user-defined rates file...\n");
-		load_rates(rates_file, &pcb.rates);
-	} else if (rates_string != NULL) {
-		fprintf(stderr, "\nUsing user-defined rates...\n");
-	} else {
+	if (rates_file == NULL) {
 		fprintf(stderr, "\nCalculating top match rates...\n");
 		PROGRESS_BAR(stderr, 0, 0, 100);
 		dynhash_iterate(read_list, calc_rates, &pcb.rates);
 		PROGRESS_BAR(stderr, total_unique_reads, total_unique_reads, 100);
+	} else {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+		load_rates(rates_file, &pcb.rates);
 	}
 
-	if (total_unique_reads == 0 && rates_string == NULL) {
+	if (total_unique_reads == 0) {
 		fprintf(stderr, "error: no matches were found in input "
 		    "file(s)\n");
 		exit(1);
 	}
 
-	if (rates_string == NULL)
-		ratestats(&pcb.rates);
-	else
-		parse_rates_string(rates_string, &pcb.rates);
+	ratestats(&pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
@@ -833,12 +834,7 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 	/*
 	 * First iterative pass: Calculate rates.
 	 */
-	if (rates_file != NULL) {
-		fprintf(stderr, "\nUsing user-defined rates file...\n");
-		load_rates(rates_file, &pcb.rates);
-	} else if (rates_string != NULL) {
-		fprintf(stderr, "\nUsing user-defined rates...\n");
-	} else {
+	if (rates_file == NULL) {
 		/* only need best match for calculating rates */
 		tmp_top_matches = top_matches;
 		top_matches = 1;
@@ -857,18 +853,18 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 
 		/* restore desired top matches */
 		top_matches = tmp_top_matches;
+	} else {
+		fprintf(stderr, "\nUsing user-defined rates...\n");
+		load_rates(rates_file, &pcb.rates);
 	}
 
-	if (total_unique_reads == 0 && rates_string == NULL) {
+	if (total_unique_reads == 0) {
 		fprintf(stderr, "error: no matches were found in input "
 		    "file(s)\n");
 		exit(1);
 	}
 
-	if (rates_string == NULL)
-		ratestats(&pcb.rates);
-	else
-		parse_rates_string(rates_string, &pcb.rates);
+	ratestats(&pcb.rates);
 
 	/*
 	 * Second iterative pass: Determine probabilities for all reads' best
@@ -908,7 +904,7 @@ usage(char *progname)
 		progname = slash + 1;
 
 	fprintf(stderr, "usage: %s [-g rates_file] [-n normodds_cutoff] [-o pgenome_cutoff] "
-	    "[-p pchance_cutoff] [-r erate,srate,irate,mrate] [-s normodds|pgenome|pchance] "
+	    "[-p pchance_cutoff] [-s normodds|pgenome|pchance] "
 	    "[-t top_matches] [-B] [-G] [-R] [-S] "
 	    "total_genome_len results_dir1|results_file1 "
 	    "results_dir2|results_file2 ...\n", progname);
@@ -918,6 +914,52 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
+
+
+
+	
+	/*************************************************************************
+	 * Stats calculations
+	 *************************************************************************/
+	
+	/* parse input */
+	int maxins = 70;
+	int maxdels = 70;
+	int maxlen = 70;
+	int maxsubs = 70;
+	
+	/* max function initialization */
+	/* initiate fast factoriaztion table */
+	initfastfact();
+	
+	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
+	int ins, dels, len, subs;
+	
+	maxIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
+	minIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
+	subsTable = (double **) malloc(sizeof(double *) * (maxlen + 1));
+	
+	for (len = 0; len <= maxlen; len++) {
+		maxIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
+		minIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
+		subsTable[len] = (double *) malloc(sizeof(double) * (maxsubs + 1));
+		
+		for (ins = 0; ins <= maxins; ins++) {
+			maxIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
+			minIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
+			
+			for (dels = 0; dels <= maxdels; dels++) {
+				
+				maxIndelsTable[len][ins][dels] = maxCount(ins, dels, len);
+				minIndelsTable[len][ins][dels] = minCount(ins, dels, len);
+			}
+		}
+		
+		for (subs = 0; subs <= maxsubs; subs++) {
+			subsTable[len][subs] =  subCount(subs, len);
+		}
+	}
+	
 	char *progname;
 	uint64_t total_files;
 	int ch;
@@ -932,7 +974,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:g:r:s:t:BGRS")) != -1) {
+	while ((ch = getopt(argc, argv, "n:o:p:g:s:t:BGRS")) != -1) {
 		switch (ch) {
 		case 'g':
 			rates_file = xstrdup(optarg);
@@ -945,9 +987,6 @@ main(int argc, char **argv)
 			break;
 		case 'p':
 			pchance_cutoff = atof(optarg);
-			break;
-		case 'r':
-			rates_string = xstrdup(optarg);
 			break;
 		case 's':
 			if (strstr(optarg, "pchance") != NULL) {
@@ -984,11 +1023,6 @@ main(int argc, char **argv)
 	argc -= optind;
 	argv += optind;
 
-	if (rates_file != NULL && rates_string != NULL) {
-		fprintf(stderr, "error: -g and -r flags cannot be mixed\n");
-		exit(1);
-	}
-
 	if (Gflag && rates_file != NULL) {
 		fprintf(stderr, "error: -G and -g flags cannot be mixed\n");
 		exit(1);
@@ -1017,7 +1051,8 @@ main(int argc, char **argv)
 	    (sort_field == SORT_PGENOME)  ? "pgenome"  :
 	    (sort_field == SORT_NORMODDS) ? "normodds" : "<unknown>");
 	fprintf(stderr, "    Top Matches:        %d\n", top_matches);
-	fprintf(stderr, "    Genome Length:      %s",comma_integer(genome_len));
+	fprintf(stderr, "    Genome Length:      %s\n",
+	    comma_integer(genome_len));
 
 	fprintf(stderr, "\n");
 
@@ -1061,5 +1096,151 @@ main(int argc, char **argv)
 	else
 		do_double_pass(argv, argc, total_files);
 
+	
+	
+	
+
+	
 	return (0);
+}
+
+
+
+
+
+
+
+/*********************************************************
+ * STATS FUNCTIONS
+ *********************************************************/
+
+/* EXACT FUNCTIONS */
+
+/* exact factorial function */
+double fact(double n) {
+	if (n > 0) { return n * fact(n-1); }
+	else { return 1.0; }
+}
+
+/* exact choose function, using exact fact */
+double choose(int n, int m) {
+	return fact(n)/ ( fact(n-m) * fact(m));
+}
+
+
+
+
+/* FAST FUNCTIONS */
+
+/* initiatlize fast factorial lookup table */
+void initfastfact() {
+	
+	factTable = (double *) malloc (sizeof(double) * 21);
+	int i;
+	for (i = 0; i < 21; i++) {
+		factTable[i] = fact(i);
+	}
+	
+	
+}
+
+/* initiatlize fast factorial lookup table */
+void initlookupchoose() {
+	
+	int max_choose = 35;
+	
+	chooseTable = (double **) malloc (sizeof(double *) * (max_choose + 1));
+	int i, j;
+	for (i = 0; i <= max_choose; i++) {
+		chooseTable[i] = (double *) malloc (sizeof(double) * (max_choose + 1));
+	
+		for (j = 0; j <= max_choose; j++) {
+			if (i >= j) { chooseTable[i][j] = choose(i, j); }
+			else {chooseTable[i][j] = -1; }
+		} 
+	}
+	
+}
+
+/* 
+ * compute fast factorial: 
+ * for n=0..20 use lookup table, for n>20 use stirling approx 
+ */
+double fastfact(int n) {
+	
+	if (n < 21) {
+		return factTable[n];
+	} else {
+		double lnn =  0.5 * log((2*n + 1.0/3.0) * M_PI) + n * log(n) - n;
+		return exp(lnn); 
+	}
+	
+}
+
+/* fast choose function: uses fastfact */
+double fastchoose(int n, int m) {
+	return fastfact(n)/ ( fastfact(n-m) * fastfact(m));
+
+}
+
+
+/* lookup choose function: uses lookup table*/
+double lookupchoose(int n, int m) {
+	return chooseTable[n][m];
+
+}
+
+
+
+
+
+double maxCount(int ins, int dels, int len) {
+	
+	int i = 0;
+	
+	double sum = 0;
+	
+	for (i = 0; i <= ins; i++) {
+		sum += fastchoose(len, dels) * fastchoose(len + ins - dels, i) * pow(3, i);
+	}
+	
+	return sum;
+}
+
+
+
+double minCount(int ins, int dels, int len) {
+	
+	int i;
+	
+	double sum = 0;
+	
+	if (dels == 0) {
+		for (i = 0; i <= ins; i++) {
+			sum += fastchoose(len + ins, i) * pow(3, i);
+		}
+	} else {
+		sum = choose(len + ins, ins) * pow(3, ins);
+	}
+		
+	return sum;
+}
+
+double subCount(int subs, int len) {
+	
+	//if (len == 21) {
+	//	fprintf(stderr, "DETinside: %i, %f, %f\n", subs, fastchoose(len, subs), pow(3, subs));
+	//}
+	
+	double sum = 0;
+	
+	int i;
+	for (i = 0; i <= subs; i++) {
+		sum += fastchoose(len, i) * pow(3, i);
+	}
+	return sum;
+	
+	
+	//double sum = fastchoose(len, subs) * pow(3, subs);
+	//return sum;
 }
