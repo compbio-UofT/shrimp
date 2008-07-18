@@ -1725,11 +1725,11 @@ main(int argc, char **argv)
 		break;
 	case MODE_LETTER_SPACE:
 		spaced_seed = DEF_SPACED_SEED_LS;
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFPR";
 		break;
 	case MODE_HELICOS_SPACE:
 		spaced_seed = DEF_SPACED_SEED_DAG;
-		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:x:v:BCFPR";
+		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFPR";
 		match_value = DEF_MATCH_VALUE_DAG;
 		mismatch_value = DEF_MISMATCH_VALUE_DAG;
 		a_gap_open = DEF_A_GAP_OPEN_DAG;
