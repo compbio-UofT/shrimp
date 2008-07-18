@@ -4,7 +4,7 @@ extern const bool use_colours;
 extern const bool use_dag;
 
 /* default parameters - optimised for human */
-#define DEF_SPACED_SEED_CS	"1111101111"
+#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
 #define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 #define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
 #define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
