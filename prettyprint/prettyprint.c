@@ -165,11 +165,11 @@ print_alignments()
 
 		printf("%s", fpo->output_normal);
 		if (INPUT_HAS_NORMODDS(&fpo->input))
-			printf("\t%f", fpo->input.normodds);
+			printf("\t%e", fpo->input.normodds);
 		if (INPUT_HAS_PGENOME(&fpo->input))
-			printf("\t%f", fpo->input.pgenome);
+			printf("\t%e", fpo->input.pgenome);
 		if (INPUT_HAS_PCHANCE(&fpo->input))
-			printf("\t%f", fpo->input.pchance);
+			printf("\t%e", fpo->input.pchance);
 		puts("\n");
 		puts(fpo->output_pretty);
 	}
