@@ -1,14 +1,15 @@
 $Id$
 
-1.1.0: July 18, 2008
+1.1.0: July 19, 2008
 	- Yet another new output format with edit strings to concisely
 	  describe the read->reference changes.
-	- Fixed a strict aliasing bug.
+	- Fixed a nasty strict aliasing bug.
 	- rmapper scores are now sorted (again) and duplicates are removed.
 	- Added rates calculation input to probcalc so that rates may be
 	  computed in parallel, joined, and then probabilities computed
 	  in parallel as well.
-	- Fixed several problems in probcalc's equations.
+	- Fixed a number of problems in probcalc's equations, small number
+	  handling, and now output in scientific notation.
 	- prettyprint-* will now only use memory in proportion to the input set,
 	  rather than pulling all reads into memory.
 	- All programs and utilities now accept both regular and gzip'd input
