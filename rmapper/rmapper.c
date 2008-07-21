@@ -140,7 +140,7 @@ reheap(struct re_score *scores, int node)
 	struct re_score tmp;
 	int left, right, max;
 
-	assert(node >= 1 && node <= (int)num_outputs);
+	assert(node >= 1 && node <= (int)scores[0].index);
 
 	left  = node * 2;
 	right = left + 1;
@@ -169,7 +169,7 @@ percolate_up(struct re_score *scores, int node)
 	struct re_score tmp;
 	int parent;
 
-	assert(node >= 1 && node <= (int)num_outputs);
+	assert(node >= 1 && node <= (int)scores[0].index);
 
 	if (node == 1)
 		return;
@@ -205,12 +205,33 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 	} else {
 		int idx = 1 + scores[0].score++;
 
+		/* We do the array doubling trick for O(1) amortised alloc. */
+		if (scores[0].score > scores[0].index) {
+			int alloc_slots;
+
+			assert(scores[0].score > 0);
+
+			if ((scores[0].score * 2) > num_outputs)
+				alloc_slots = num_outputs;
+			else
+				alloc_slots = scores[0].score * 2;
+
+			assert(alloc_slots <= num_outputs);
+
+			scores[0].index = alloc_slots;
+			scores = (struct re_score *)xrealloc(scores,
+			    sizeof(struct re_score) * (alloc_slots + 1));
+			memset(&scores[idx], 0,
+			    sizeof(struct re_score) * (alloc_slots + 1 - idx));
+			re->ri->scores = scores;
+		}
+
 		scores[idx].score = score;
 		scores[idx].index = index;
 		scores[idx].contig_num = contig_num;
 		scores[idx].revcmpl = revcmpl;
 		percolate_up(scores, idx);
-	} 
+	}
 }
 
 /*
@@ -546,7 +567,7 @@ readalloc()
 	for (i = 0; i < num_matches; i++)
 		re->hits[i].g_idx = re->hits[i].r_idx = UINT32_MAX;
 
-	bytes = sizeof(struct re_score) * (num_outputs + 1);
+	bytes = sizeof(struct re_score) * 1;
 	re->ri->scores = (struct re_score *)xmalloc(bytes);
 	memset(re->ri->scores, 0, bytes);
 
@@ -1050,7 +1071,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 		rs->score = rs->sfrp->score;
 	}
 
-	/* Sort the scores. We use a min heap, so we get non-increasing order.*/
+	/* Sort the scores. */
 	qsort(rs_array, rs_len, sizeof(rs_array[0]), score_cmp);
 
 	/* Output sorted list, removing any duplicates. */

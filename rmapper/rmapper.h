@@ -67,7 +67,7 @@ struct re_score {
 	u_int		  contig_num;		/* contig index (for filename)*/
 	bool		  revcmpl;		/* from contig's reverse cmpl */
 	int32_t		  score;		/* doubles as heap cnt in [0] */
-	uint32_t	  index;
+	uint32_t	  index;		/* doubles as heap alloc in [0]*/
 };
 
 /*
