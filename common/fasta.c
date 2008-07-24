@@ -129,10 +129,20 @@ fasta_stats()
 static char *
 extract_name(char *buffer)
 {
+	char *extracted;
+	char *ret;
+	int len;
 
 	assert(buffer[0] == '>');
 
-	return (xstrdup(strtrim(&buffer[1])));
+	/* Funny business for valgrind. See bottom of fasta_get_next. */
+	extracted = strtrim(&buffer[1]);
+	len = strlen(extracted);
+	ret = (char *)xmalloc(len + 17);
+	memcpy(ret, extracted, len);
+	memset(ret + len, 0, 17);
+
+	return (ret);
 }
 
 bool
@@ -199,6 +209,8 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 		for (i = 0; fasta->buffer[i] != '\0'; i++) {
 			int act = categories[(int)fasta->buffer[i]];
 
+			assert(i < (int)sizeof(fasta->buffer));
+
 			switch (act) {
 			case CAT_NUL:
 			case CAT_NEWLINE:
@@ -238,10 +250,15 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 	if (readinseq == NULL)
 		return (false);
 
-	/* ensure nul-termination */
-	*sequence = (char *)xmalloc(sequence_length + 1);
+	/*
+	 * Ensure nul-termination and allocate extra space to appease valgrind.
+	 * I think strlen may do > char-sized loads and valgrind thinks it's
+	 * conditionally jumping on uninitialised memory. That explanation
+	 * doesn't seem right to me, but doing this makes it happy again.
+	 */
+	*sequence = (char *)xmalloc(sequence_length + 17);
 	memcpy(*sequence, readinseq, sequence_length);
-	(*sequence)[sequence_length] = '\0';
+	memset(*sequence + sequence_length, 0, 17);
 	free(readinseq);
 
 	assert(*name != NULL);

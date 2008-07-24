@@ -300,7 +300,7 @@ progress_bar(FILE *out, uint64_t at, uint64_t of, uint incr)
 	static int lastperc, beenhere;
 	static char whirly = '\\';
 
-	char progbuf[52];
+	char progbuf[52 + 16];
 	int perc, i, j, dec;
 
 	if (at == 0 && of == 0) {
@@ -350,7 +350,7 @@ progress_bar(FILE *out, uint64_t at, uint64_t of, uint incr)
 			j++;
 		}
 	}
-	progbuf[51] = '\0';
+	memset(&progbuf[51], 0, 16);	/* XXX - valgrind */
 
 	if (incr == 100)
 		fprintf(out, "\rProgress: [%s] %3d.%02d%%", progbuf, perc, dec);
@@ -813,11 +813,12 @@ comma_integer(uint64_t val)
 	static char rets[50][32];	// no malloc, allow uses in fn args, etc
 	static int col = 0;
 
-	char *ret = rets[(col++ % 50)];
-	char str[32];
+	char *ret = rets[(col++ % (sizeof(rets) / sizeof(rets[0])))];
+	char str[sizeof(rets[0])];
 	int skip, i, j;
 
-	snprintf(str, 32, "%" PRIu64, val);
+	memset(str, 0, sizeof(str));	// XXX - shut up, valgrind
+	snprintf(str, sizeof(str), "%" PRIu64, val);
 
 	skip = 3 - (strlen(str) % 3);
 	for (i = j = 0; str[i] != '\0'; i++) {
