@@ -206,12 +206,12 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 		int idx = 1 + scores[0].score++;
 
 		/* We do the array doubling trick for O(1) amortised alloc. */
-		if (scores[0].score > scores[0].index) {
-			int alloc_slots;
+		if (scores[0].score > (int)scores[0].index) {
+			unsigned int alloc_slots;
 
 			assert(scores[0].score > 0);
 
-			if ((scores[0].score * 2) > num_outputs)
+			if (((unsigned int)scores[0].score * 2) > num_outputs)
 				alloc_slots = num_outputs;
 			else
 				alloc_slots = scores[0].score * 2;
