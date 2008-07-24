@@ -24,14 +24,6 @@
 
 #include "probcalc.h"
 
-/* STATS DEFINITIONS */
-double * factTable;
-double ** chooseTable;
-double *** maxIndelsTable;
-double *** minIndelsTable;
-double ** subsTable;
-/* END OF STATS DEF */
-
 static dynhash_t read_list;		/* list of reads and top matches */
 static dynhash_t contig_cache;		/* contig name cache */
 static dynhash_t read_seq_cache;	/* read sequence cache */
@@ -96,6 +88,12 @@ static double	pgenome_cutoff	        = DEF_PGENOME_CUTOFF;
 static int	top_matches		= DEF_TOP_MATCHES;
 static uint64_t genome_len;
 static int	sort_field		= SORT_PCHANCE;
+
+/* stats lookup */
+static int	  max_read_len;
+static double *** maxIndelsTable;
+static double *** minIndelsTable;
+static double ** subsTable;
 
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
@@ -269,6 +267,8 @@ read_file(const char *fpath)
 				exit(1);
 			}
 		}
+
+		max_read_len = MAX(max_read_len, input.read_length);
 	}
 
 	gzclose(fp);
@@ -811,6 +811,8 @@ do_single_pass(char **objs, int nobjs, uint64_t files)
 	PROGRESS_BAR(stderr, files, files, 100);
 	fprintf(stderr, "\nParsed %.2f MB in %s file(s).\n",
 	    (double)pcb.nbytes / (1024 * 1024), comma_integer(pcb.nfiles));
+	fprintf(stderr, "Maximum read length: %d\n", max_read_len);
+	initStats(max_read_len);
 
 	/*
 	 * First iterative pass: calculate rates for top matches of reads.
@@ -861,6 +863,7 @@ double_pass_cb(char *path, struct stat *sb, void *arg)
 	PROGRESS_BAR(stderr, pcb->nfiles, pcb->total_files, 100);
 
 	/* iterate over what's been read and free stored data */
+	initStats(max_read_len);
 	assert(pcb->pass == 1 || pcb->pass == 2);
 	if (pcb->pass == 1)
 		dynhash_iterate(read_list, calc_rates, &pcb->rates);
@@ -907,6 +910,7 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 		fprintf(stderr, "\nParsed %.2f MB in %s file(s).\n",
 		    (double)pcb.nbytes / (1024 * 1024),
 		    comma_integer(pcb.nfiles));
+		fprintf(stderr, "Maximum read length: %d\n", max_read_len);
 
 		/* restore desired top matches */
 		top_matches = tmp_top_matches;
@@ -972,52 +976,6 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-
-
-
-	
-	/*************************************************************************
-	 * Stats calculations
-	 *************************************************************************/
-	
-	/* parse input */
-	int maxins = 70;
-	int maxdels = 70;
-	int maxlen = 70;
-	int maxsubs = 70;
-	
-	/* max function initialization */
-	/* initiate fast factoriaztion table */
-	initfastfact();
-	
-	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
-	int ins, dels, len, subs;
-	
-	maxIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
-	minIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
-	subsTable = (double **) malloc(sizeof(double *) * (maxlen + 1));
-	
-	for (len = 0; len <= maxlen; len++) {
-		maxIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
-		minIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
-		subsTable[len] = (double *) malloc(sizeof(double) * (maxsubs + 1));
-		
-		for (ins = 0; ins <= maxins; ins++) {
-			maxIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
-			minIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
-			
-			for (dels = 0; dels <= maxdels; dels++) {
-				
-				maxIndelsTable[len][ins][dels] = maxCount(ins, dels, len);
-				minIndelsTable[len][ins][dels] = minCount(ins, dels, len);
-			}
-		}
-		
-		for (subs = 0; subs <= maxsubs; subs++) {
-			subsTable[len][subs] =  subCount(subs, len);
-		}
-	}
-	
 	char *progname;
 	uint64_t total_files;
 	int ch;
@@ -1107,7 +1065,7 @@ main(int argc, char **argv)
 
 	argc--;
 	argv++;
-
+	
 	fprintf(stderr, "\nSettings:\n");
 	fprintf(stderr, "    Normodds Cutoff:  < %f\n", normodds_cutoff);
 	fprintf(stderr, "    Pgenome Cutoff:   < %f\n", pgenome_cutoff);
@@ -1170,110 +1128,114 @@ main(int argc, char **argv)
 	return (0);
 }
 
-
-
-
-
-
-
-/*********************************************************
- * STATS FUNCTIONS
- *********************************************************/
-
-/* EXACT FUNCTIONS */
-
-/* exact factorial function */
-double fact(double n) {
-	if (n > 0) { return n * fact(n-1); }
-	else { return 1.0; }
-}
-
-/* exact choose function, using exact fact */
-double choose(int n, int m) {
-	return fact(n)/ ( fact(n-m) * fact(m));
-}
-
-
-
-
-/* FAST FUNCTIONS */
-
-/* initiatlize fast factorial lookup table */
-void initfastfact() {
+static void
+freeStats(int maxlen)
+{
+	/* parse input */
+	int maxins = maxlen;
 	
-	factTable = (double *) malloc (sizeof(double) * 21);
-	int i;
-	for (i = 0; i < 21; i++) {
-		factTable[i] = fact(i);
+	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
+	int ins, len;
+
+	if (maxlen == 0)
+		return;
+	
+	for (len = 0; len <= maxlen; len++) {
+		for (ins = 0; ins <= maxins && ins <= len; ins++) {
+			free(maxIndelsTable[len][ins]);
+			free(minIndelsTable[len][ins]);
+		}
+
+		free(maxIndelsTable[len]);
+		free(minIndelsTable[len]);
+		free(subsTable[len]);
 	}
-	
-	
+
+	free(maxIndelsTable);
+	free(minIndelsTable); 
+	free(subsTable);
 }
 
-/* initiatlize fast factorial lookup table */
-void initlookupchoose() {
+static void
+allocStats(int maxlen)
+{
+	/* parse input */
+	int maxins = maxlen;
+	int maxdels = maxlen;
+	int maxsubs = maxlen;
 	
-	int max_choose = 35;
+	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
+	int ins, len;
 	
-	chooseTable = (double **) malloc (sizeof(double *) * (max_choose + 1));
-	int i, j;
-	for (i = 0; i <= max_choose; i++) {
-		chooseTable[i] = (double *) malloc (sizeof(double) * (max_choose + 1));
+	maxIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
+	minIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
+	subsTable = (double **) malloc(sizeof(double *) * (maxlen + 1));
 	
-		for (j = 0; j <= max_choose; j++) {
-			if (i >= j) { chooseTable[i][j] = choose(i, j); }
-			else {chooseTable[i][j] = -1; }
-		} 
+	for (len = 0; len <= maxlen; len++) {
+		maxIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
+		minIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
+		subsTable[len] = (double *) malloc(sizeof(double) * (maxsubs + 1));
+		
+		for (ins = 0; ins <= maxins && ins <= len; ins++) {
+			maxIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
+			minIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
+		}
 	}
-	
 }
 
-/* 
- * compute fast factorial: 
- * for n=0..20 use lookup table, for n>20 use stirling approx 
- */
-double fastfact(int n) {
+/* Stats calculations */
+void initStats(int maxlen) {
+	static int prev_maxlen;
+
+	/* parse input */
+	int maxins = maxlen;
+	int maxdels = maxlen;
+	int maxsubs = maxlen;
 	
-	if (n < 21) {
-		return factTable[n];
-	} else {
-		double lnn =  0.5 * log((2*n + 1.0/3.0) * M_PI) + n * log(n) - n;
-		return exp(lnn); 
+	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
+	int ins, dels, len, subs;
+
+	if (maxlen <= prev_maxlen)
+		return;
+	assert(maxlen >= 0);
+	freeStats(prev_maxlen);
+	allocStats(maxlen);
+	prev_maxlen = maxlen;
+	
+	for (len = 0; len <= maxlen; len++) {
+		for (ins = 0; ins <= maxins && ins <= len; ins++) {
+			for (dels = 0; dels <= maxdels && dels <= len; dels++) {
+				maxIndelsTable[len][ins][dels] = maxCount(ins, dels, len);
+				minIndelsTable[len][ins][dels] = minCount(ins, dels, len);
+			}
+		}
+		
+		for (subs = 0; subs <= maxsubs && subs <= len ; subs++) {
+			subsTable[len][subs] =  subCount(subs, len);
+		}
 	}
-	
-}
-
-/* fast choose function: uses fastfact */
-double fastchoose(int n, int m) {
-	return fastfact(n)/ ( fastfact(n-m) * fastfact(m));
-
-}
-
-
-/* lookup choose function: uses lookup table*/
-double lookupchoose(int n, int m) {
-	return chooseTable[n][m];
-
 }
 
 
 
 
+
+/****************************************************************************************
+ * counting formulations
+ ***************************************************************************************/
 
 double maxCount(int ins, int dels, int len) {
 	
-	int i = 0;
+	int i;
 	
 	double sum = 0;
 	
 	for (i = 0; i <= ins; i++) {
-		sum += fastchoose(len, dels) * fastchoose(len + ins - dels, i) * pow(3, i);
+		sum +=  exp(fastlchoose(len + ins - dels, i) + i * log(3));
 	}
 	
-	return sum;
+	return fastchoose(len, dels) * sum;
 }
-
-
 
 double minCount(int ins, int dels, int len) {
 	
@@ -1283,30 +1245,37 @@ double minCount(int ins, int dels, int len) {
 	
 	if (dels == 0) {
 		for (i = 0; i <= ins; i++) {
-			sum += fastchoose(len + ins, i) * pow(3, i);
+			sum += exp(fastlchoose(len + ins, i) + i * log(3));
 		}
 	} else {
-		sum = choose(len + ins, ins) * pow(3, ins);
+		sum = exp(fastlchoose(len + ins, ins) + ins * log(3));
 	}
 		
 	return sum;
 }
 
 double subCount(int subs, int len) {
-	
-	//if (len == 21) {
-	//	fprintf(stderr, "DETinside: %i, %f, %f\n", subs, fastchoose(len, subs), pow(3, subs));
-	//}
-	
 	double sum = 0;
 	
 	int i;
 	for (i = 0; i <= subs; i++) {
-		sum += fastchoose(len, i) * pow(3, i);
+		sum += exp(fastlchoose(len, i) +  i * log(3));
 	}
 	return sum;
-	
-	
-	//double sum = fastchoose(len, subs) * pow(3, subs);
-	//return sum;
+}
+
+/****************************************************************************************
+ * FAST math functions
+ ***************************************************************************************/
+
+/* fast log choose function: uses lgamma */ 
+double fastlchoose(int n, int m) {
+	if (m > n) return 0.0;
+	return lgamma(n + 1) - lgamma(n - m + 1)  - lgamma(m + 1);
+}
+
+/* fast choose function: uses fastlchoose */
+double fastchoose(int n, int m) {
+	if (m > n) return 0.0;
+	return exp(fastlchoose(n,m));
 }
