@@ -121,16 +121,16 @@ static uint64_t revcmpl_ticks;
 static size_t
 power(size_t base, size_t exp)
 {
-	size_t i, ret;
+	size_t result = 1;
 
-	if (exp == 0)
-		return (1);
+	while (exp > 0) {
+		if ((exp % 2) == 1)
+			result *= base;
+		base *= base;
+		exp /= 2;
+	} 
 
-	ret = base;
-	for (i = 1; i < exp; i++)
-		ret *= base;
-
-	return (ret);
+	return (result);
 }
 
 /* percolate down in our min-heap */
