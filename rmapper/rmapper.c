@@ -624,6 +624,10 @@ load_reads_lscs(const char *file)
 			    name);
 			exit(1);
 		}
+		if (seqlen > MAX_READ_LENGTH) {
+			fprintf(stderr, "error: read [%s] had unreasonable "
+			    "length!\n", name);
+		}
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			/* the sequence begins with the initial letter base */
 			if (seqlen < 1) {
@@ -788,6 +792,10 @@ load_reads_dag(const char *file)
 			fprintf(stderr, "error: read [%s] had no sequence!\n",
 			    name1);
 			exit(1);
+		}
+		if (seq1len > MAX_READ_LENGTH || seq2len > MAX_READ_LENGTH) {
+			fprintf(stderr, "error: read [%s] had unreasonable "
+			    "length!\n", name);
 		}
 
 		re = readalloc();

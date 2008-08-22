@@ -60,6 +60,9 @@ extern const bool use_dag;
 #define MAX_SEED_WEIGHT		16
 #endif
 
+/* Sanity check - pin reads to a fairly small size */
+#define MAX_READ_LENGTH	15000
+
 struct re_score {
 	struct read_elem *parent;		/* associated read_elem */
 	struct re_score  *next;			/* linked list (final pass) */
@@ -104,7 +107,7 @@ struct read_elem {
 	uint16_t	  window_len;		/* per-read window length */
 	uint8_t	  	  prev_hit;		/* prev index in 'hits' */
 	uint8_t		  next_hit;		/* next index in 'hits' */
-	struct read_hit	  hits[0];		/* size depends on num_matches */
+	struct read_hit	  hits[0];		/* size depends on num_matches*/
 };
 
 /*
