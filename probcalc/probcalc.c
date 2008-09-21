@@ -91,9 +91,7 @@ static int	sort_field		= SORT_PCHANCE;
 
 /* stats lookup */
 static int	  max_read_len;
-static double *** maxIndelsTable;
-static double *** minIndelsTable;
-static double ** subsTable;
+static double ** objBinsTable;
 
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
@@ -275,19 +273,26 @@ read_file(const char *fpath)
 }
 
 static double
-p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, int ins, int dels)
+p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, int ins, int dels, char * editstr)
 {
 	double r = 0;
 
 	(void)nindels;
 
 	int corr_fact = (origlen-k+1); // correction factor, normal space
+	
+	double delev = 0;
+	double insev = 0;
+	double deln = 1;
+	double insn = 1;
+	readIndelStats(origlen, editstr, &delev, &insev, &deln, &insn); // editstr has to finish with a \0
 
 	/* substitutions */
-	r += log(subsTable[k][nsubs+nerrors]); // log space
+	r += log(subCount(nsubs+nerrors, k)); // log space
 	
 	/* indels */
-	r += log(0.5*(maxIndelsTable[k][dels][ins]+minIndelsTable[k][dels][ins])); // log space
+	r += log(0.5*(maxCount(ins, dels, k, delev, deln, insev, insn)
+			+ minCount(ins, dels, k, delev, deln, insev, insn))); // log space	
 	
 	/* correction factor */
 	r += log(corr_fact); // log space
@@ -362,7 +367,7 @@ calc_rates(void *arg, void *key, void *val)
 	rlen =  rs->matches + rs->mismatches + rs->deletions;
 
 	d = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions);
+		rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions, rs->edit);
 
 	if (best != 0 && d < pchance_cutoff) {
 		rates->samples++;
@@ -490,7 +495,7 @@ calc_probs(void *arg, void *key, void *val)
 		rlen = rs->matches + rs->mismatches + rs->deletions;
 		//fprintf (stdout, "matches: %i, mismatches: %i, rsdels: %i ", rs->matches , rs->mismatches , rs->deletions); 
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
-		    rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions);
+		    rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions, rs->edit);
 		    
 		//fprintf(stdout,"%f\n", s);
 		    
@@ -1128,58 +1133,34 @@ main(int argc, char **argv)
 	return (0);
 }
 
+/***************************************************************************** 
+ * P-function table 
+ ****************************************************************************/
+
 static void
 freeStats(int maxlen)
 {
-	/* parse input */
-	int maxins = maxlen;
-	
-	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
-	int ins, len;
+	int len;
 
 	if (maxlen == 0)
 		return;
 	
 	for (len = 0; len <= maxlen; len++) {
-		for (ins = 0; ins <= maxins && ins <= len; ins++) {
-			free(maxIndelsTable[len][ins]);
-			free(minIndelsTable[len][ins]);
-		}
-
-		free(maxIndelsTable[len]);
-		free(minIndelsTable[len]);
-		free(subsTable[len]);
+		free(objBinsTable[len]);
 	}
-
-	free(maxIndelsTable);
-	free(minIndelsTable); 
-	free(subsTable);
+	free(objBinsTable);
 }
 
 static void
 allocStats(int maxlen)
 {
-	/* parse input */
-	int maxins = maxlen;
-	int maxdels = maxlen;
-	int maxsubs = maxlen;
-	
 	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
-	int ins, len;
+	int len;
 	
-	maxIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
-	minIndelsTable = (double ***) malloc(sizeof(double **) * (maxlen + 1));
-	subsTable = (double **) malloc(sizeof(double *) * (maxlen + 1));
+	objBinsTable = (double **) malloc(sizeof(double *) * (maxlen + 1));
 	
 	for (len = 0; len <= maxlen; len++) {
-		maxIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
-		minIndelsTable[len] = (double **) malloc(sizeof(double *) * (maxins + 1));
-		subsTable[len] = (double *) malloc(sizeof(double) * (maxsubs + 1));
-		
-		for (ins = 0; ins <= maxins && ins <= len; ins++) {
-			maxIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
-			minIndelsTable[len][ins] = (double *) malloc(sizeof(double) * (maxdels + 1));
-		}
+		objBinsTable[len] = (double *) malloc(sizeof(double)*(maxlen+1));
 	}
 }
 
@@ -1187,86 +1168,58 @@ allocStats(int maxlen)
 void initStats(int maxlen) {
 	static int prev_maxlen;
 
-	/* parse input */
-	int maxins = maxlen;
-	int maxdels = maxlen;
-	int maxsubs = maxlen;
-	
-	/* compute maxCount via formula for ins=0:maxins, dels=0:maxdels */
-	int ins, dels, len, subs;
-
 	if (maxlen <= prev_maxlen)
 		return;
+	
 	assert(maxlen >= 0);
 	freeStats(prev_maxlen);
 	allocStats(maxlen);
 	prev_maxlen = maxlen;
 	
-	for (len = 0; len <= maxlen; len++) {
-		for (ins = 0; ins <= maxins && ins <= len; ins++) {
-			for (dels = 0; dels <= maxdels && dels <= len; dels++) {
-				maxIndelsTable[len][ins][dels] = maxCount(ins, dels, len);
-				minIndelsTable[len][ins][dels] = minCount(ins, dels, len);
+	/* build objBinsTable */
+	int obj, bins, i;
+	for (obj = 0; obj <= maxlen; obj++) {
+		for (bins = 0; bins <= maxlen; bins++) {
+			if (obj < bins || obj == 0 || bins == 0) {
+				objBinsTable[obj][bins] = 0;
+			} else if (obj == bins || bins == 1) {
+				objBinsTable[obj][bins] = 1;
+			} else {
+			
+				objBinsTable[obj][bins] = 0; 
+				for (i=1; i<=bins; i++) {
+					objBinsTable[obj][bins] += objBinsTable[obj-bins][i];
+				}
 			}
 		}
-		
-		for (subs = 0; subs <= maxsubs && subs <= len ; subs++) {
-			subsTable[len][subs] =  subCount(subs, len);
-		}
 	}
 }
 
-
-
-
-
-/****************************************************************************************
+/******************************************************************************
  * counting formulations
- ***************************************************************************************/
+ *****************************************************************************/
 
-double maxCount(int ins, int dels, int len) {
-	
-	int i;
-	
-	double sum = 0;
-	
-	for (i = 0; i <= ins; i++) {
-		sum +=  exp(fastlchoose(len + ins - dels, i) + i * log(3));
-	}
-	
-	return fastchoose(len, dels) * sum;
+double maxCount(int ins, int dels, int len, double delev, double deln, double insev, double insn){
+	return (fastfact((int)delev)/deln) * (fastfact((int)insev)/insn) * fastchoose(len, (int)insev) * 
+		objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3, dels);
 }
 
-double minCount(int ins, int dels, int len) {
+double minCount(int ins, int dels, int len, double delev, double deln, double insev, double insn) {
 	
-	int i;
-	
-	double sum = 0;
-	
-	if (dels == 0) {
-		for (i = 0; i <= ins; i++) {
-			sum += exp(fastlchoose(len + ins, i) + i * log(3));
-		}
+	if (ins == 0) {
+		return (fastfact((int)delev)/deln) * fastchoose((int)(len + delev), (int)delev) * pow(3, dels);
 	} else {
-		sum = exp(fastlchoose(len + ins, ins) + ins * log(3));
+		return (fastfact((int)delev)/deln) * objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3, dels);
 	}
-		
-	return sum;
 }
 
 double subCount(int subs, int len) {
-	double sum = 0;
-	
-	int i;
-	for (i = 0; i <= subs; i++) {
-		sum += exp(fastlchoose(len, i) +  i * log(3));
-	}
-	return sum;
+	return exp(fastlchoose(len, subs) +  subs * log(3));
 }
 
-/****************************************************************************************
+/*****************************************************************************
  * FAST math functions
- ***************************************************************************************/
+ *****************************************************************************/
 
 /* fast log choose function: uses lgamma */ 
 double fastlchoose(int n, int m) {
@@ -1278,4 +1231,95 @@ double fastlchoose(int n, int m) {
 double fastchoose(int n, int m) {
 	if (m > n) return 0.0;
 	return exp(fastlchoose(n,m));
+}
+
+double fastfact(int n) {
+	if (n < 0) exit(2);
+	return exp(lgamma(n + 1));
+}
+
+
+/*****************************************************************************
+ * Read Stats
+ ****************************************************************************/
+
+
+/* get read stats */
+void readIndelStats(int readlen, char * editstr, double * delev, double * insev, double * deln, double * insn) {
+	int * delFreq = (int *) malloc(sizeof(int) * (readlen + 1));
+	int * insFreq = (int *) malloc(sizeof(int) * (readlen + 1));
+	
+	editstr_to_stats(editstr, strlen(editstr), readlen, delFreq, insFreq);
+	
+	*delev = 0;
+	*insev = 0;
+	*deln = 1;
+	*insn = 1;
+	
+	int i;
+	for (i =0; i <= readlen; i++) {
+		if (delFreq[i] != 0) {
+			*delev += delFreq[i];
+			*deln *= fastfact(delFreq[i]);
+		}
+		if (insFreq[i] != 0) {
+			*insev += insFreq[i];
+			*insn *= fastfact(insFreq[i]);
+		}
+	}
+		
+	free(delFreq);
+	free(insFreq);
+}
+
+
+/* shrimp edit string to stats */ 
+void editstr_to_stats(char * str, int slen, int readlen, int * delFreq, int * insFreq) {
+
+	int inins = 0; int indel = 0;
+	int inssize = -1; int delsize = -1;
+	int isnuc = -1;
+
+	int i = 0;
+	for (i = 0; i <= readlen; i++) {
+		delFreq[i] = 0;
+		insFreq[i] = 0;
+	}
+
+	for (i = 0; i < slen; i++) {
+
+		isnuc = str[i] == 'A' || str[i] == 'C' || str[i] == 'T' || str[i] == 'G';
+
+		// INSERTIONS
+		if (str[i] == '-' && inins) {
+			inssize++;
+		} else if (str[i] == '-') {
+			inins = 1;
+			inssize = 1;
+		} else if (inins) { // not an insertion (anymore)
+			inins = 0;
+			//add inssize to datastructure
+			insFreq[inssize]++;
+			inssize = 0;
+		} // ow not in insertion and not a insertion char '-'  
+
+		// DELETIONS
+		if (str[i] == '(') {
+			indel = 1;
+			delsize = 0;
+		} else if (isnuc && indel) {
+			delsize++;
+		} else if (str[i] == ')') {
+			indel = 0;
+			//add delsize to datastructure
+			delFreq[delsize]++;
+			delsize = 0;
+		}
+	}
+
+	if (indel) { delFreq[delsize]++; }
+	
+	if (inins) { insFreq[inssize]++; }
+
+	
 }

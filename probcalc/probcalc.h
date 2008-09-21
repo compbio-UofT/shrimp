@@ -7,10 +7,12 @@
 
 
 /* Stats stuff */
-
-double maxCount(int ins, int dels, int len); /* max indel Z */
-double minCount(int ins, int dels, int len); /* min indel Z */
+double maxCount(int ins, int dels, int len, double delev, double deln, double insev, double insn); /* max indel Z */
+double minCount(int ins, int dels, int len, double delev, double deln, double insev, double insn); /* min indel Z */
 double subCount(int subs, int len); /* subs Z */
 double fastchoose(int n, int m); /* fast choose function: uses fastlchoose */
 double fastlchoose(int n, int m); /* fast log choose function: uses lgamma */
-void initStats(int maxlen); /* initiate statistics - build the lookup tables */
+double fastfact(int n);
+void initStats(int maxlen) ; /* initiate statistics - build the lookup tables */
+void editstr_to_stats(char * str, int slen, int readlen, int * delFreq, int * insFreq);
+void readIndelStats(int readlen, char * editstr, double * delev, double * insev, double * deln, double * insn);
