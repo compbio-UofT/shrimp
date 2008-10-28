@@ -795,7 +795,7 @@ load_reads_dag(const char *file)
 		}
 		if (seq1len > MAX_READ_LENGTH || seq2len > MAX_READ_LENGTH) {
 			fprintf(stderr, "error: read [%s] had unreasonable "
-			    "length!\n", name);
+			    "length!\n", name1);
 		}
 
 		re = readalloc();
@@ -1222,10 +1222,12 @@ final_pass(char **files, u_int nfiles)
 			assert(rs->next == NULL);
 
 			/* extra sanity */
+#ifndef NDEBUG
 			if (shrimp_mode != MODE_HELICOS_SPACE) {
 				int thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 				assert(rs->score >= thresh);
 			}
+#endif
 
 			/* prepend to linked list */
 			if (rs->revcmpl) {
@@ -1545,8 +1547,8 @@ print_statistics()
 static void
 usage(char *progname)
 {
-	char *slash, *seed;
-	double vect_sw_threshold;
+	char *slash, *seed = "";
+	double vect_sw_threshold = -1;
 
 	switch (shrimp_mode) {
 	case MODE_LETTER_SPACE:
@@ -1735,7 +1737,7 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	char *reads_file, *progname, *optstr;
+	char *reads_file, *progname, *optstr = "";
 	char **genome_files;
 	int ch, ret, ngenome_files;
 	u_int max_window_len;
