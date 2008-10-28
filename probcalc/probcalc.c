@@ -1205,7 +1205,8 @@ double maxCount(int ins, int dels, int len, double delev, double deln, double in
 }
 
 double minCount(int ins, int dels, int len, double delev, double deln, double insev, double insn) {
-	
+	(void)insev;
+	(void)insn;	
 	if (ins == 0) {
 		return (fastfact((int)delev)/deln) * fastchoose((int)(len + delev), (int)delev) * pow(3, dels);
 	} else {
