@@ -4,6 +4,7 @@
 #define DEF_PGENOME_CUTOFF	0.0
 #define DEF_NORMODDS_CUTOFF	0.0
 #define DEF_TOP_MATCHES		10
+#define DEF_NUMBER_MATCHES	10
 
 
 /* Stats stuff */

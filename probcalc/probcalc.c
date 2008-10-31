@@ -39,7 +39,7 @@ static char *rates_string;		/* -r user-supplied rates */
 
 struct readinfo {
 	char	    *name;
-	struct input top_matches[0];
+	struct input number_matches[0];
 };
 
 struct rates {
@@ -84,8 +84,9 @@ static uint64_t total_unique_reads;	/* total unique reads in all files */
 /* arguments */
 static double   normodds_cutoff		= DEF_NORMODDS_CUTOFF;
 static double   pchance_cutoff		= DEF_PCHANCE_CUTOFF;
-static double	pgenome_cutoff	        = DEF_PGENOME_CUTOFF;
-static int	top_matches		= DEF_TOP_MATCHES;
+static double	pgenome_cutoff	    = DEF_PGENOME_CUTOFF;
+static int	top_matches				= DEF_TOP_MATCHES;
+static int	number_matches			= DEF_NUMBER_MATCHES;
 static uint64_t genome_len;
 static int	sort_field		= SORT_PCHANCE;
 
@@ -144,7 +145,7 @@ reheap(struct input *stats, int node)
 static void
 save_match(struct readinfo *ri, struct input *input)
 {
-	struct input *stats = ri->top_matches;
+	struct input *stats = ri->number_matches;
 
 	if (input->score < stats[1].score)
 		return;
@@ -241,21 +242,21 @@ read_file(const char *fpath)
 			input.read = key;
 
 			/* test if score better than worst, if so, add it */
-			if (input.score > ri->top_matches[1].score)
+			if (input.score > ri->number_matches[1].score)
 				save_match(ri, &input);
 		} else {
 			total_unique_reads++;
 
 			/* alloc, init, insert in dynhash */
 			ri = (struct readinfo *)xmalloc(sizeof(*ri) +
-			    sizeof(ri->top_matches[0]) * (top_matches + 1));
+			    sizeof(ri->number_matches[0]) * (number_matches + 1));
 			memset(ri, 0, sizeof(*ri) +
-			    sizeof(ri->top_matches[0]) * (top_matches + 1));
+			    sizeof(ri->number_matches[0]) * (number_matches + 1));
 
 			ri->name = input.read;
-			ri->top_matches[0].score = top_matches;
-			for (i = 1; i <= top_matches; i++)
-				ri->top_matches[i].score = 0x80000000 + i;
+			ri->number_matches[0].score = number_matches;
+			for (i = 1; i <= number_matches; i++)
+				ri->number_matches[i].score = 0x80000000 + i;
 
 			save_match(ri, &input);
 
@@ -345,9 +346,9 @@ calc_rates(void *arg, void *key, void *val)
 	}
 
 	best = 0;
-	for (i = 1; i <= ri->top_matches[0].score; i++) {
+	for (i = 1; i <= ri->number_matches[0].score; i++) {
 		if (best == 0 ||
-		    ri->top_matches[i].score > ri->top_matches[best].score) {
+		    ri->number_matches[i].score > ri->number_matches[best].score) {
 			/* NB: strictly >, as we want same results for double and single passes
 			       if there are two with the same score, but different alignments */
 			best = i;
@@ -355,15 +356,15 @@ calc_rates(void *arg, void *key, void *val)
 	}
 
 	if (!Sflag) {
-		assert(ri->top_matches[0].score == 1);
-		assert(ri->top_matches[1].score >= 0);
+		assert(ri->number_matches[0].score == 1);
+		assert(ri->number_matches[1].score >= 0);
 	}
 
 	/*
 	 * Only count the best score with no equivalent best scores.
 	 */
 	assert(best != 0);
-	rs = &ri->top_matches[best];
+	rs = &ri->number_matches[best];
 	rlen =  rs->matches + rs->mismatches + rs->deletions;
 
 	d = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
@@ -482,12 +483,12 @@ calc_probs(void *arg, void *key, void *val)
 	}
 
 	if (rspv == NULL)
-		rspv = (struct readstatspval *)xmalloc(sizeof(rspv[0]) * (top_matches + 1));
+		rspv = (struct readstatspval *)xmalloc(sizeof(rspv[0]) * (number_matches + 1));
 
 	/* 1: Calculate P(chance) and P(genome) for each hit */
 	norm = 0;
-	for (i = 1, j = 0; i <= top_matches; i++) {
-		struct input *rs = &ri->top_matches[i];
+	for (i = 1, j = 0; i <= number_matches; i++) {
+		struct input *rs = &ri->number_matches[i];
 
 		if (rs->score < 0)
 			continue;
@@ -533,7 +534,7 @@ calc_probs(void *arg, void *key, void *val)
 		called = true;
 	}
 
-	for (i = 0; i < j; i++) {
+	for (i = 0; i < j && i < top_matches; i++) {
 		struct input *rs = rspv[i].rs;
 		char *readseq = "";
 
@@ -667,7 +668,7 @@ load_rates(const char *rates_file, struct rates *rates)
 			exit(1);
 		}
 
-		total_alignments  += totaligns;
+		total_alignments  += totaligns; 
 		total_unique_reads+= totunique;
 		rates->samples    += samples;
 		rates->total_len  += length;
@@ -888,7 +889,7 @@ static void
 do_double_pass(char **objs, int nobjs, uint64_t files)
 {
 	struct pass_cb pcb;
-	int tmp_top_matches;
+	int tmp_number_matches;
 
 	/*
 	 * First iterative pass: Calculate rates.
@@ -900,8 +901,8 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 		fprintf(stderr, "\nUsing user-defined rates...\n");
 	} else {
 		/* only need best match for calculating rates */
-		tmp_top_matches = top_matches;
-		top_matches = 1;
+		tmp_number_matches = number_matches;
+		number_matches = 1;
 
 		memset(&pcb, 0, sizeof(pcb));
 		pcb.pass = 1;
@@ -918,7 +919,7 @@ do_double_pass(char **objs, int nobjs, uint64_t files)
 		fprintf(stderr, "Maximum read length: %d\n", max_read_len);
 
 		/* restore desired top matches */
-		top_matches = tmp_top_matches;
+		number_matches = tmp_number_matches;
 	}
 
 	if (total_unique_reads == 0 && rates_string == NULL) {
@@ -972,7 +973,7 @@ usage(char *progname)
 
 	fprintf(stderr, "usage: %s [-g rates_file] [-n normodds_cutoff] [-o pgenome_cutoff] "
 	    "[-p pchance_cutoff] [-r erate,srate,irate,mrate] [-s normodds|pgenome|pchance] "
-	    "[-t top_matches] [-B] [-G] [-R] [-S] "
+	    "[-t top_matches] [-m total_matches] [-B] [-G] [-R] [-S] "
 	    "total_genome_len results_dir1|results_file1 "
 	    "results_dir2|results_file2 ...\n", progname);
 	exit(1);
@@ -995,7 +996,7 @@ main(int argc, char **argv)
 	    "------------------------------\n");
 
 	progname = argv[0];
-	while ((ch = getopt(argc, argv, "n:o:p:g:r:s:t:BGRS")) != -1) {
+	while ((ch = getopt(argc, argv, "n:o:p:g:r:s:t:m:BGRS")) != -1) {
 		switch (ch) {
 		case 'g':
 			rates_file = xstrdup(optarg);
@@ -1027,6 +1028,9 @@ main(int argc, char **argv)
 			break;
 		case 't':
 			top_matches = atoi(optarg);
+			break;
+		case 'm':
+			number_matches = atoi(optarg);
 			break;
 		case 'B':
 			Bflag = true;
@@ -1079,6 +1083,7 @@ main(int argc, char **argv)
 	    (sort_field == SORT_PCHANCE)  ? "pchance"  :
 	    (sort_field == SORT_PGENOME)  ? "pgenome"  :
 	    (sort_field == SORT_NORMODDS) ? "normodds" : "<unknown>");
+	fprintf(stderr, "    Nr of Matches:      %d\n", number_matches);
 	fprintf(stderr, "    Top Matches:        %d\n", top_matches);
 	fprintf(stderr, "    Genome Length:      %s\n",
 	    comma_integer(genome_len));
