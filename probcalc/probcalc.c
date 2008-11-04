@@ -292,9 +292,12 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, in
 	r += log(subCount(nsubs+nerrors, k)); // log space
 	
 	/* indels */
+	
+	
+	
 	r += log(0.5*(maxCount(ins, dels, k, delev, deln, insev, insn)
 			+ minCount(ins, dels, k, delev, deln, insev, insn))); // log space	
-	
+		
 	/* correction factor */
 	r += log(corr_fact); // log space
 
@@ -1186,20 +1189,23 @@ void initStats(int maxlen) {
 	/* build objBinsTable */
 	int obj, bins, i;
 	for (obj = 0; obj <= maxlen; obj++) {
-		for (bins = 0; bins <= maxlen; bins++) {
-			if (obj < bins || obj == 0 || bins == 0) {
-				objBinsTable[obj][bins] = 0;
-			} else if (obj == bins || bins == 1) {
-				objBinsTable[obj][bins] = 1;
-			} else {
-			
-				objBinsTable[obj][bins] = 0; 
-				for (i=1; i<=bins; i++) {
-					objBinsTable[obj][bins] += objBinsTable[obj-bins][i];
-				}
-			}
-		}
+	  for (bins = 0; bins <= maxlen; bins++) {
+	    if (obj < bins) { // || obj == 0 || bins == 0) {
+	      objBinsTable[obj][bins] = 0.0;
+	    } else if (obj == bins || bins == 1) {
+	      objBinsTable[obj][bins] = 1.0;
+	    } else {
+	      
+	      objBinsTable[obj][bins] = 0.0; 
+	      for (i=1; i<=bins; i++) {
+		objBinsTable[obj][bins] += objBinsTable[obj-bins][i];
+	      }
+	    }
+	  }
 	}
+
+
+
 }
 
 /******************************************************************************
@@ -1207,7 +1213,8 @@ void initStats(int maxlen) {
  *****************************************************************************/
 
 double maxCount(int ins, int dels, int len, double delev, double deln, double insev, double insn){
-	return (fastfact((int)delev)/deln) * (fastfact((int)insev)/insn) * fastchoose(len, (int)insev) * 
+	
+  return (fastfact((int)delev)/deln) * (fastfact((int)insev)/insn) * fastchoose(len, (int)insev) * 
 		objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3, dels);
 }
 
