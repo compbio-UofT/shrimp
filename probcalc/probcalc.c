@@ -323,6 +323,8 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, in
 		r = 2*l*log(r); // log space
 		r = (1.0 - exp(r)); // normal space
 	}
+		
+	if (r < ALMOST_ZERO) r = ALMOST_ZERO;
 	
 	return r;
 }
