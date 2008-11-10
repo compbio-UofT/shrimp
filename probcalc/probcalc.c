@@ -421,13 +421,15 @@ p_thissource(int k, int nerrors, double erate, int nsubs, double subrate,
         // now the product is the likelihood that a real alignment would have
         //that many (or more) of each event type
         r = p_err * p_sub * p_indel;
+        
 
-/*
+
         if (r < ALMOST_ZERO)
                 r = ALMOST_ZERO;
         if (r > ALMOST_ONE)
                 r = ALMOST_ONE;
-*/
+
+        
         return (r);
 }
 
@@ -499,21 +501,22 @@ calc_probs(void *arg, void *key, void *val)
 			continue;
 
 		rlen = rs->matches + rs->mismatches + rs->deletions;
-		//fprintf (stdout, "matches: %i, mismatches: %i, rsdels: %i ", rs->matches , rs->mismatches , rs->deletions); 
+		 
 		s = p_chance(genome_len, rlen, rs->mismatches, rs->crossovers,
 		    rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions, rs->edit);
 		    
-		//fprintf(stdout,"%f\n", s);
+		
 		    
-	//	if (s < ALMOST_ZERO || isnan(s))
-		//	s = ALMOST_ZERO;
+		if (s < ALMOST_ZERO || isnan(s))
+			s = ALMOST_ZERO;
 
+		
 		if (s > pchance_cutoff)
 			continue;
 
 		rspv[j].rs = rs;
 		rspv[j].pchance = s;
-
+		
 		rlen = rs->matches + rs->mismatches;
 		rspv[j].pgenome = p_thissource(rlen, rs->crossovers,
 		    rates->erate, rs->mismatches, rates->srate,
@@ -521,9 +524,12 @@ calc_probs(void *arg, void *key, void *val)
 		    rs->matches, rates->mrate, rs->read_length);
 		rspv[j].normodds = rspv[j].pgenome / rspv[j].pchance;
 		norm += rspv[j].normodds;
+		
 		j++;
 	}
 
+	
+	
 	/* 2: Normalise our values */
 	for (i = 0; i < j; i++)
 		rspv[i].normodds = rspv[i].normodds / norm;
