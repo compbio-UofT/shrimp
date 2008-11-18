@@ -703,7 +703,7 @@ int CrossProduct::PrintBestPath(AlignNode * bestend)
 int SmallCrossProduct::PrintBestPath(SmallAlignNode * bestend, Node * bestendap, Node * bestendbp)
 {
 	int len = 0;
-	Edge *ea, *eb;
+	Edge *ea = NULL, *eb = NULL;
 	if (bestend == NULL)
 		cout << "smallbestend == NULL!!!!!!!!!!!!!!!";
 	else ; //cout << "Outputing the best alignment\n";
@@ -736,7 +736,7 @@ Alignment::Alignment()
 Alignment* SmallCrossProduct::GetBestPath(SmallAlignNode * bestend, Node * bestendap, Node * bestendbp)
 {
 
-	Edge *ea, *eb;
+	Edge *ea = NULL, *eb = NULL;
 	if (bestend == NULL)
 		cout << "smallbestend == NULL!!!!!!!!!!!!!!!";
 	else ; //cout << "Outputing the best alignment\n";
