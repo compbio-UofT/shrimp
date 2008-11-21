@@ -14,6 +14,8 @@ When building with icc, execute the following:
 
 When building with Sun Pro under Solaris, execute the following:
     gmake CXX="CC" CXXFLAGS="-xarch=sse2 -features=zla,extensions -fast -xvector=simd"
+For 64-bit compiles (recommended), supply the "-m64" flag as well, i.e.:
+    gmake CXX="CC" CXXFLAGS="-m64 -xarch=sse2 -features=zla,extensions -fast -xvector=simd"
 
 When building with gcc, execute the following:
     gmake CXX="g++" CXXFLAGS="-O3 -mmmx -msse -msse2"
