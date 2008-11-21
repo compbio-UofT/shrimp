@@ -25,7 +25,7 @@ bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
     common/output.o common/util.o
-	$(LD) -o $@ $+ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf rmapper bin/rmapper-cs
 	$(LN) -sf rmapper bin/rmapper-hs
 	$(LN) -sf rmapper bin/rmapper-ls
@@ -39,7 +39,7 @@ rmapper/rmapper.o: rmapper/rmapper.c
 
 bin/probcalc: probcalc/probcalc.o common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
-	$(LD) -o $@ $+ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 probcalc/probcalc.o: probcalc/probcalc.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -51,7 +51,7 @@ probcalc/probcalc.o: probcalc/probcalc.c
 bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
     common/util.o
-	$(LD) -o $@ $+ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-hs
 	$(LN) -sf prettyprint bin/prettyprint-ls
@@ -65,7 +65,7 @@ prettyprint/prettyprint.o: prettyprint/prettyprint.c
 
 bin/mergehits: mergehits/mergehits.o common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
-	$(LD) -o $@ $+ $(LDFLAGS)
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf mergehits bin/mergehits-cs
 	$(LN) -sf mergehits bin/mergehits-hs
 	$(LN) -sf mergehits bin/mergehits-ls
