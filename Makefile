@@ -3,13 +3,16 @@ ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
-LDFLAGS=-lm -lz
+LD=$(CXX)
+LDFLAGS=-lm -lz -lc
 LN=ln
 
 # statically compile on all but OS X.
 UNAME=$(shell uname -s)
 ifneq ($(UNAME),Darwin)
+ifneq ($(UNAME),SunOS)
 override CXXFLAGS+=-static
+endif
 endif
 
 all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits
@@ -18,45 +21,57 @@ all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits
 # rmapper/
 #
 
-bin/rmapper: rmapper/rmapper.c common/fasta.o common/dag_align.o \
+bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
     common/output.o common/util.o
-	$(CXX) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	$(LD) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf rmapper bin/rmapper-cs
 	$(LN) -sf rmapper bin/rmapper-hs
 	$(LN) -sf rmapper bin/rmapper-ls
+
+rmapper/rmapper.o: rmapper/rmapper.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
 # probcalc 
 #
 
-bin/probcalc: probcalc/probcalc.c common/fasta.o common/dynhash.o \
+bin/probcalc: probcalc/probcalc.o common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
-	$(CXX) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	$(LD) -o $@ $+ $(LDFLAGS)
+
+probcalc/probcalc.o: probcalc/probcalc.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
 # prettyprint
 #
 
-bin/prettyprint: prettyprint/prettyprint.c common/fasta.o common/dynhash.o \
+bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
     common/util.o
-	$(CXX) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	$(LD) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-hs
 	$(LN) -sf prettyprint bin/prettyprint-ls
+
+prettyprint/prettyprint.o: prettyprint/prettyprint.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
 # mergehits
 #
 
-bin/mergehits: mergehits/mergehits.c common/fasta.o common/dynhash.o \
+bin/mergehits: mergehits/mergehits.o common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
-	$(CXX) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	$(LD) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf mergehits bin/mergehits-cs
 	$(LN) -sf mergehits bin/mergehits-hs
 	$(LN) -sf mergehits bin/mergehits-ls
+
+mergehits/mergehits.o: mergehits/mergehits.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
 # common/

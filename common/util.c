@@ -54,7 +54,11 @@ uint64_t
 rdtsc() {
 	uint32_t lo, hi;
 
+#ifdef __GNUC__
 	__asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+#else
+	asm("rdtsc" : "=a" (lo), "=d" (hi));
+#endif
 
 	return (((uint64_t)hi << 32) | lo);
 }
@@ -486,16 +490,21 @@ file_iterator(char *path, void (*fh)(char *, struct stat *, void *),
 		if (de == NULL)
 			break;
 
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-
 		strcpy(fpath, path);
 		if (fpath[strlen(path) - 1] != '/')
 			strcat(fpath, "/");
 		strcat(fpath, de->d_name);
+		xstat(fpath, &sb);
+
+#if defined(DT_REG) && defined(DT_LNK)
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+#else
+		if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))
+			continue;
+#endif
 
 		/* ensure it's a regular file or link to one */
-		xstat(fpath, &sb);
 		if (S_ISREG(sb.st_mode)) {
 			fh(fpath, &sb, arg);
 			files++;
@@ -527,22 +536,27 @@ file_iterator_n(char **paths, int npaths,
 char *
 get_compiler()
 {
-	char *comp;
 
 #ifdef __GNUC__
 	if (strstr(__VERSION__, "Intel(R)"))
-		comp = "ICC " __VERSION__;
+		return ("ICC " __VERSION__);
 	else
-		comp = "GCC " __VERSION__;
-#else
- #ifdef __cplusplus
-	comp = "unknown C++";
- #else
-	comp = "unknown C";
- #endif
+		return ("GCC " __VERSION__);
 #endif
 
-	return (comp);
+#ifdef __SUNPRO_C
+	return ("Sun Pro C");
+#endif
+
+#ifdef __SUNPRO_CC
+	return ("Sun Pro C++");
+#endif
+
+#ifdef __cplusplus
+	return ("unknown C++");
+#else
+	return ("unknown C");
+#endif
 }
 
 /* reverse the string `str' in place */

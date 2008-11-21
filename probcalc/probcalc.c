@@ -299,11 +299,11 @@ p_chance(uint64_t l, int k, int nsubs, int nerrors, int nindels, int origlen, in
 			+ minCount(ins, dels, k, delev, deln, insev, insn))); // log space	
 		
 	/* correction factor */
-	r += log(corr_fact); // log space
+	r += log((double)corr_fact); // log space
 
 	/* r is now log of fraction of matched words over total words */
-	if (r <= k * log(4))
-		r -= (k * log(4)); // log space
+	if (r <= k * log(4.0))
+		r -= (k * log(4.0)); // log space
 	else 
 		return 1;
 	
@@ -1221,21 +1221,21 @@ void initStats(int maxlen) {
 double maxCount(int ins, int dels, int len, double delev, double deln, double insev, double insn){
 	
   return (fastfact((int)delev)/deln) * (fastfact((int)insev)/insn) * fastchoose(len, (int)insev) * 
-		objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3, dels);
+		objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3.0, (double)dels);
 }
 
 double minCount(int ins, int dels, int len, double delev, double deln, double insev, double insn) {
 	(void)insev;
 	(void)insn;	
 	if (ins == 0) {
-		return (fastfact((int)delev)/deln) * fastchoose((int)(len + delev), (int)delev) * pow(3, dels);
+		return (fastfact((int)delev)/deln) * fastchoose((int)(len + delev), (int)delev) * pow(3.0, (double)dels);
 	} else {
-		return (fastfact((int)delev)/deln) * objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3, dels);
+		return (fastfact((int)delev)/deln) * objBinsTable[dels][(int)delev] * fastchoose((int)(len + delev - ins), (int)delev) * pow(3.0, (double)dels);
 	}
 }
 
 double subCount(int subs, int len) {
-	return exp(fastlchoose(len, subs) +  subs * log(3));
+	return exp(fastlchoose(len, subs) +  subs * log(3.0));
 }
 
 /*****************************************************************************
