@@ -20,8 +20,7 @@ struct input {
 	double   pchance;			/* pchance from probcalc */
 	double   pgenome;			/* pgenome from probcalc */
 	double   pgenome_short;		/* pgenome_short from probcalc */
-	double   normodds;			/* normodds from probcalc */
-	//bool   	 is_forward;		/* is forward or backward read */
+        double   normodds;			/* normodds from probcalc */
 };
 
 #define INPUT_FLAG_IS_REVCMPL	0x00000001
