@@ -506,7 +506,6 @@ calc_probs(void *arg, void *key, void *val)
 		    rs->insertions + rs->deletions, rs->read_length, rs->insertions, rs->deletions, rs->edit);
 		    
 		
-		    
 		if (s < ALMOST_ZERO || isnan(s))
 			s = ALMOST_ZERO;
 
@@ -584,6 +583,8 @@ calc_probs(void *arg, void *key, void *val)
 		    (Rflag) ? readseq : "", (Rflag) ? "\t" : "",
 		    rspv[i].normodds, rspv[i].pgenome, rspv[i].pchance);
 	}
+	printf("---blah---\n");
+	//exit(1);
 }
 
 static unsigned int cleanup_cb_called = 0;
