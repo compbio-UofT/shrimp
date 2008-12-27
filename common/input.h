@@ -7,19 +7,21 @@ struct input {
 	char    *edit;				/* edit string */
 	uint8_t  flags;				/* various flags; see below */
 	int32_t  score;				/* alignment score */
-	uint32_t genome_start;			/* start of alignment - genome*/
-	uint32_t genome_end;			/* end of alignment - genome */
-	uint16_t read_start;			/* start of alignment - read */
+	uint32_t genome_start;		/* start of alignment - genome*/
+	uint32_t genome_end;		/* end of alignment - genome */
+	uint16_t read_start;		/* start of alignment - read */
 	uint16_t read_end;			/* end of alignment - read */ 
-	uint16_t read_length;			/* length of the read */
+	uint16_t read_length;		/* length of the read */
 	uint16_t matches;			/* number of matches */
-	uint16_t mismatches;			/* number of mismatches */
-	uint16_t insertions;			/* number of insertions */
+	uint16_t mismatches;		/* number of mismatches */
+	uint16_t insertions;		/* number of insertions */
 	uint16_t deletions;			/* number of deletions */
-	uint16_t crossovers;			/* number of crossovers (CS) */
+	uint16_t crossovers;		/* number of crossovers (CS) */
 	double   pchance;			/* pchance from probcalc */
 	double   pgenome;			/* pgenome from probcalc */
+	double   pgenome_short;		/* pgenome_short from probcalc */
 	double   normodds;			/* normodds from probcalc */
+	bool   	 is_forward;		/* is forward or backward read */
 };
 
 #define INPUT_FLAG_IS_REVCMPL	0x00000001
