@@ -21,7 +21,7 @@ struct input {
 	double   pgenome;			/* pgenome from probcalc */
 	double   pgenome_short;		/* pgenome_short from probcalc */
 	double   normodds;			/* normodds from probcalc */
-	bool   	 is_forward;		/* is forward or backward read */
+	//bool   	 is_forward;		/* is forward or backward read */
 };
 
 #define INPUT_FLAG_IS_REVCMPL	0x00000001
