@@ -19,8 +19,9 @@ struct input {
 	uint16_t crossovers;		/* number of crossovers (CS) */
 	double   pchance;			/* pchance from probcalc */
 	double   pgenome;			/* pgenome from probcalc */
-	double   pgenome_short;		/* pgenome_short from probcalc */
-        double   normodds;			/* normodds from probcalc */
+	double   normodds;			/* normodds from probcalc */
+	int is_forward; 			/* is it forward or backward? */
+        
 };
 
 #define INPUT_FLAG_IS_REVCMPL	0x00000001
