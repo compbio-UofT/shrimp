@@ -23,8 +23,9 @@ Table of Contents
   5.   Output Format
   6.   SHRiMP Algorithms
   7.   SHRiMP Statistics
-  8.   Contact
-  9.   Acknowledgements
+  8.   Mate Pairs
+  9.   Contact
+  10.  Acknowledgements
 
 
 --------------------------------------------------------------------------------
@@ -90,6 +91,14 @@ p-values are layed out in Sections 6 and 7, respectively.
 
     E.g.:
         bin/prettyprint-cs output.probcalc reads.csfasta /path/to/genome/chr*.fa
+        
+  2.4 Combine Reads into Mate Pairs
+  ---
+  use bin/probcalc_mp to combine the read mappings into mate pairs. First, one
+  should transform the probcalc output in a binary file (with the datastructure
+  specified by dbtypes.h/mapping_t)
+  	./shrimp_mp -m  binfile.bin -f _F3 -b _R3 -g 3080419480 -M 2000 
+
 
 --------------------------------------------------------------------------------
 3. Usage
@@ -498,6 +507,77 @@ is a run-down of these options (in some strange, non-alphabetical order).
 	read appear in at most one file, this option does not have the same
 	restriction.
 
+
+'probcalc_mp' takes quite a few parameters. 
+	we start with the mandatory parameters
+
+		[-m binary_mapping_filename] 
+		
+		the binary mapping file
+		
+		[-f forward_suffix]
+		
+		the suffix for foward reads. For e.g.: "_F3"
+		
+		[-b reverse_suffix] 
+		
+		the suffix for backwards (reverse) reads. For e.g.: "_R3"
+		
+		[-g genome_length] 
+		
+		the genome length, for purposes of pchance computation
+		
+		[-M hard_distance_limit] 
+		
+		for computing the mean statistics, the hard M limit 
+		
+	optional parameters:
+	
+		[-L nr_mate_pairs] 
+		
+		the number of *good* mate pairs to include in the statistics
+		calculations. do -L 0 to include *all* good mate pairs.
+		default: 50,000
+		
+		[-R] 
+		
+		indicator that the read sequence is included in the input,
+		as used by probcalc
+		
+		[-x max_reads_to_expect] 
+		
+		the maximum number of mappings one should expect for one read
+		
+		[-d]
+		
+		discordant analysis.
+		
+		[-u]
+		
+		in computing the mean, use unique mappings only
+		
+		[-T max_reads_to_output] 
+		
+		the maximum(ish) number of mappings to output per mate pair
+		
+		[-C PCHANCE_CUTOFF]
+		
+		pchance cutoff
+		
+		[-G PGENOME_CUTOFF]
+		
+		pgenome cutoff
+		
+		[-s nr_stdevs] 
+		
+		after computing stats, M (hard_distance_limit) is set to
+		the mean + nr_stdev * stdev. Default: nr_stdevs = 2;
+		
+		[-c ] 
+		
+		do not print matepairs with hits on different chromosomes
+
+
 --------------------------------------------------------------------------------
 5.0 Output Format
 --------------------------------------------------------------------------------
@@ -559,6 +639,42 @@ For example:
     A four-base insertion in the reference: "3(TGCT)20"
     A four-base deletion in the reference: "5----20"
     Two sequencing errors: "4x15x6"	(i.e. 25 matches with 2 crossovers)
+ 
+ 
+    
+The 'probcalc_mp' wil have the following output:
+	#FORMAT: fwd_name fwd_chr fwd_editstring fwd_strand fwd_start\
+	fwd_end fwd_pg rev_name rev_chr rev_editstring rev_strand rev_start\
+	rev_end rev_pg distance normodds pgenome pchance
+	
+	for example:
+	0       1000_1003_1062_F3       chr10   25      -       71183122\
+	71183146        1.000   1000_1003_1062_R3       chr10   25\
+	-       71183699    71183723 1.000   601     1.000   0.967   0.0000000010
+
+	Descriptions of these columns are as follows:
+	'fwd_name'		Forward Read tag name
+	'fwd_chr'		Forward Genome (Contig/Chromosome) name
+	'fwd_editstring'Forward Edit string: read to reference summary; see below.
+	'fwd_strand'	Forward Genome strand ('+' or '-')
+	'fwd_start'		Forward Start of alignment in genome (beginning with 1, not 0).
+	'fwd_end'		Forward End of alignment in genome (inclusive).
+	'fwd_pg'		Forward pgenome.	
+	'rev_name'		Reverse Read tag name
+	'rev_chr'		Reverse Genome (Contig/Chromosome) name
+	'rev_editstring'Reverse Edit string: read to reference summary; see below.
+	'rev_strand'	Reverse Genome strand ('+' or '-')
+	'rev_start'		Reverse Start of alignment in genome (beginning with 1, not 0).
+	'rev_end'		Reverse End of alignment in genome (inclusive).
+	'rev_pg'		Reverse pgenome.
+	'distance'		Distance between the mate pairs
+	'pgenome'		Probability that the matepair hits were generated via common 
+						evolutionary events characteristic of the genome.
+	'pchance'		Probability that a mate pair will align with a genome with 
+						as good a score or better by chance.
+	'normodds'		Normalized pgenome/pchance.
+	
+
 
 --------------------------------------------------------------------------------
 6. SHRiMP Algorithms
@@ -643,6 +759,21 @@ their sum. This value represents how much more likely is this hit to be right
 than all the other ones. For example having two equally good hits with lead to
 normalized odd values of 0.5 for both, while having an almost exact match and a
 more distant one will lead to large discrepancies.
+
+
+
+--------------------------------------------------------------------------------
+8. Mate Pairs
+--------------------------------------------------------------------------------
+
+The probcalc_mp project takes in a binary file filled with mapping_t 
+structures as defined in dbtypes.h. This is a file with read mappings as
+outputted by the 'probcalc' tool. Assuming the binary file is sorted by 
+read id, probcalc_mp will find all the mate pair mappings, assign them 
+probability-based confidence values (see the SHRiMP paper), and output them. 
+How and which computations are done, and which matepair are outputted depends on 
+the given parameters. Due to the fact that this software is aimed at being used 
+in current NGS research, many parameters are provided. 
 
 
 --------------------------------------------------------------------------------

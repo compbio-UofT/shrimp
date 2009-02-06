@@ -15,7 +15,7 @@ override CXXFLAGS+=-static
 endif
 endif
 
-all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits
+all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp
 
 #
 # rmapper/
@@ -42,6 +42,16 @@ bin/probcalc: probcalc/probcalc.o common/fasta.o common/dynhash.o \
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 probcalc/probcalc.o: probcalc/probcalc.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+	
+#
+# probcalc_mp 
+#
+
+bin/probcalc_mp: probcalc_mp/probcalc_mp.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+probcalc_mp/probcalc_mp.o: probcalc_mp/probcalc_mp.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -116,7 +126,7 @@ common/util.o: common/util.c common/util.h
 
 clean:
 	rm -f bin/rmapper* bin/colourise bin/probcalc \
-	    bin/prettyprint* bin/mergehits*
+	    bin/prettyprint* bin/mergehits* bin/probcalc_mp
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f
