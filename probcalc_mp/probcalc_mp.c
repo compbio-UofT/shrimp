@@ -808,6 +808,7 @@ void increments_stats(uint64_t good_mps_dist) {
 	
 	if (gl_mean_nr != 0 && gl_good_mps >= gl_mean_nr && ABS(prev_mean - gl_mean) < 0.2) {
 		gl_done_mean = 1;
+		fprintf(stderr, "mean signal sent\n");
 	}
 }
 
