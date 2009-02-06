@@ -537,22 +537,16 @@ char *
 get_compiler()
 {
 
-#ifdef __GNUC__
+#if defined(__GNUC__)
 	if (strstr(__VERSION__, "Intel(R)"))
 		return ("ICC " __VERSION__);
 	else
 		return ("GCC " __VERSION__);
-#endif
-
-#ifdef __SUNPRO_C
+#elif defined(__SUNPRO_C)
 	return ("Sun Pro C");
-#endif
-
-#ifdef __SUNPRO_CC
+#elif defined(__SUNPRO_CC)
 	return ("Sun Pro C++");
-#endif
-
-#ifdef __cplusplus
+#elif defined(__cplusplus)
 	return ("unknown C++");
 #else
 	return ("unknown C");
