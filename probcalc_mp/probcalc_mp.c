@@ -237,7 +237,8 @@ int main(int argc, char **argv) {
 		print_hists();
 	}		
 	
-	distcutoff = ceil(gl_mean + nr_stdev * sqrt(gl_stdev/gl_good_mps));
+	distcutoff = ceil(gl_mean + 
+			double(nr_stdev) * sqrt(gl_stdev/double(gl_good_mps)));
 	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
 	
