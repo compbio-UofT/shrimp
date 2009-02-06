@@ -237,7 +237,7 @@ int main(int argc, char **argv) {
 		print_hists();
 	}		
 	
-	distcutoff = ceil(gl_mean + 
+	distcutoff = (uint64_t) ceil(gl_mean + 
 			double(nr_stdev) * sqrt(gl_stdev/double(gl_good_mps)));
 	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
@@ -300,7 +300,7 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 	}
 	struct stat fs;
 	stat(mappingfilename, &fs);
-	uint64_t nr_mappings = (uint64_t) fs.st_size * 1.0 / sizeof(mapping_t); 
+	uint64_t nr_mappings = (uint64_t) (fs.st_size * 1.0 / sizeof(mapping_t)); 
 	// TODO: could check if it actually rounds to an integer.
 	
 	if (pass_type != MEAN_PASS || gl_mean_nr == 0)
@@ -493,7 +493,7 @@ void mp_analysis(mapping_t *fwd_maps, mapping_t *rev_maps,
 	// good: d < M and R+F+, F-R-
 	int good_mps = 0;  
 	uint64_t good_mps_dist = 0; // the distance of a good mp
-	uint64_t dist = -1; 			// local distance
+	uint64_t dist = 0; 			// local distance
 	
 	// looking in every combination
 	if (pass_type == MEAN_PASS || discordant) {
@@ -568,18 +568,21 @@ void mp_analysis(mapping_t *fwd_maps, mapping_t *rev_maps,
 			}
 			
 			
-			printf("%lli\t", gl_printed_mp);
+			printf("%lli\t", (long long int) gl_printed_mp);
 			gl_printed_mp++;
 			printf("%s\t%s\t%s\t%c\t%lli\t%lli\t%1.3f\t", 
 					&(mp_set[i].fwd_rs->readname[1]), mp_set[i].fwd_rs->contigname,
 					mp_set[i].fwd_rs->editstring, mp_set[i].fwd_rs->strand, 
-					mp_set[i].fwd_rs->contigstart, mp_set[i].fwd_rs->contigend, mp_set[i].fwd_rs->pgenome);
+					(long long int) mp_set[i].fwd_rs->contigstart, 
+					(long long int) mp_set[i].fwd_rs->contigend, mp_set[i].fwd_rs->pgenome);
 			printf("%s\t%s\t%s\t%c\t%lli\t%lli\t%1.3f\t", 
 					&(mp_set[i].rev_rs->readname[1]), mp_set[i].rev_rs->contigname,
 					mp_set[i].rev_rs->editstring, mp_set[i].rev_rs->strand, 
-					mp_set[i].rev_rs->contigstart, mp_set[i].rev_rs->contigend, mp_set[i].rev_rs->pgenome);
+					(long long int) mp_set[i].rev_rs->contigstart, 
+					(long long int) mp_set[i].rev_rs->contigend, mp_set[i].rev_rs->pgenome);
 			printf("%lli\t%1.3f\t%1.3f\t%1.10f\n",
-					mp_set[i].dist, mp_set[i].normodds, mp_set[i].pgenome, mp_set[i].pchance);
+					(long long int) mp_set[i].dist, 
+					mp_set[i].normodds, mp_set[i].pgenome, mp_set[i].pchance);
 		}
 		
 		free(mp_set);
