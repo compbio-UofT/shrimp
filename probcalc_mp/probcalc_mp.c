@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <inttypes.h>
 
 // file handling
 #include <sys/types.h>
@@ -50,7 +51,7 @@ static char * fwd_suffix = "";			// forward suffix
 static int fwdsuflen = 0;				// forward suffix length
 static char * rev_suffix = "";			// reverse (backward) suffix
 static int revsuflen = 0;				// reverse suffix length
-static int Rflag = false;				// Rflag included in probcalc output
+//static int Rflag = false;				// Rflag included in probcalc output
 static uint64_t distcutoff = 0;			// hard distance cutoff (M).
 static uint64_t hist_distcutoff = 0;	// hard distance cutoff used in histograms (M).
 static int max_reads = MAX_READS;		// maximum number of a read's mappings
@@ -85,9 +86,9 @@ static int calledMP = 0;
 int main(int argc, char **argv) {
 
 	start_clock[TOTAL_TIME] = clock();
-	
+
 	char *progname = argv[0];
-	char ch;
+	int ch;
 	
 	char *mappingfilename = "";
 	
@@ -102,8 +103,8 @@ int main(int argc, char **argv) {
 	while ((ch = getopt(argc, argv, "m:x:R:f:b:M:g:duL:T:D:C:G:qs:ce")) != -1) {
 		switch (ch) {
 		
-			case 'R': // Rflag was included in probcalc runs
-				Rflag = true;
+			case 'R': // unused: Rflag was included in probcalc runs
+				//Rflag = true;
 				break;
 			case 'x': // max number of reads to expect, per direction
 				max_reads = atoi(optarg);
@@ -238,7 +239,7 @@ int main(int argc, char **argv) {
 	}		
 	
 	distcutoff = (uint64_t) ceil(gl_mean + (double)nr_stdev * sqrt(gl_stdev/ (double)gl_good_mps));
-	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
+	fprintf(stderr, "new M cutoff: %" PRIu64 " = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
 	
 	
@@ -417,10 +418,12 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 				else debugwithoutzero += fwd_index + rev_index;
 				
 				if (nr_reads % 100000 == 0)
-					fprintf(stderr, "DEBUGLINE: #reads:%lli, #mappings_now:%i "
-							"| w/0:%lli, wo/0:%lli\n", 
-							nr_reads, fwd_index * rev_index, 
-								debugwithzero, debugwithoutzero);
+					fprintf(stderr, "DEBUGLINE: #reads:%"
+					    PRIu64 ", #mappings_now:%i "
+					    "| w/0:%" PRIu64 ", wo/0:%"
+					    PRIu64 "\n", 
+					    nr_reads, fwd_index * rev_index, 
+					    debugwithzero, debugwithoutzero);
 				
 				if (pass_type != MEAN_PASS) debuglimit--;
 				if (pass_type != MEAN_PASS && debuglimit < 0) break;
@@ -664,7 +667,7 @@ static void usage(char *progname) {
 			" -g genome_length -M hard_distance_limit [-L nr_mate_pairs] [-q] "
 			"[-C PCHANCE_CUTOFF] [-G PGENOME_CUTOFF] [-R] "
 			"[-x max_reads_to_expect] [-d] [-u] [-D] [-T max_reads_to_output] "
-			"[-s nr_stdev] [-c]", progname);
+			"[-s nr_stdev] [-c]\n", progname);
 	exit(1);
 }
 
@@ -707,7 +710,7 @@ void print_hists() {
 	
 	int i;
 	for (i = 0; i < HIST_BINS; i++) {
-		fprintf(hfp, "[bin %i: %.2f-%.2f] %lli\n", 
+		fprintf(hfp, "[bin %i: %.2f-%.2f] %" PRIu64 "\n", 
 				i, i*1.0*hist_distcutoff/HIST_BINS, 
 				(i+1)*1.0*hist_distcutoff/HIST_BINS, gl_hist[i]);
 		fprintf(cfp, "[bin %i: %.2f-%.2f] %f\n", 
@@ -798,10 +801,14 @@ void increments_stats(uint64_t good_mps_dist) {
 	
 		if (debugmode) {
 			if (gl_good_mps % 100000 == 0)
-				fprintf(stderr, "DEBUGLINE: mean:%.2f, stdev:%.2f, nr:%lli;"
-						"nr_called:%lli; binnr:%i; glhist_binnr:%lli ||| dist:%lli\n", 
-						gl_mean, sqrt(gl_stdev/gl_good_mps), gl_good_mps, gl_debug_call,
-						binnr, gl_hist[binnr], good_mps_dist);
+				fprintf(stderr, "DEBUGLINE: mean:%.2f, "
+				    "stdev:%.2f, nr:%" PRIu64 ";"
+				    "nr_called:%" PRIu64 "; binnr:%i; "
+				    "glhist_binnr:%" PRIu64 " ||| dist:%"
+				    PRIu64 "\n", 
+				    gl_mean, sqrt(gl_stdev/gl_good_mps),
+				    gl_good_mps, gl_debug_call, binnr,
+				    gl_hist[binnr], good_mps_dist);
 		}
 	}
 	
