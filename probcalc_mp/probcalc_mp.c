@@ -675,7 +675,7 @@ static void usage(char *progname) {
 void compute_cumsum() {
 	uint64_t subtract;
 	gl_hist_cumsum[0] = 1;
-	int mean_bin = floor((gl_mean * 1.0 / hist_distcutoff) * HIST_BINS);
+	int mean_bin = (int) floor((gl_mean * 1.0 / hist_distcutoff) * HIST_BINS);
 	
 	int i;
 	for (i = 1; i < HIST_BINS; i++) {
@@ -792,7 +792,7 @@ void increments_stats(uint64_t good_mps_dist) {
 		
 		assert(good_mps_dist < distcutoff);
 		assert(hist_distcutoff == distcutoff);
-		binnr = floor((good_mps_dist * 1.0 / hist_distcutoff) * HIST_BINS);
+		binnr = (int) floor((good_mps_dist * 1.0 / hist_distcutoff) * HIST_BINS);
 		assert(binnr < HIST_BINS);
 		
 		gl_hist[binnr] = gl_hist[binnr] + 1;
@@ -806,7 +806,7 @@ void increments_stats(uint64_t good_mps_dist) {
 		}
 	}
 	
-	if (gl_mean_nr != 0 && gl_good_mps >= gl_mean_nr && abs(prev_mean - gl_mean) < 0.2) {
+	if (gl_mean_nr != 0 && gl_good_mps >= gl_mean_nr && ABS(prev_mean - gl_mean) < 0.2) {
 		gl_done_mean = 1;
 	}
 }
@@ -851,7 +851,7 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (discordant) {
 		pgenome = pgenome_fwd * pgenome_rev;
 	} else {
-		pgenome_bin = floor((abs(dist - gl_mean) * 1.0 / hist_distcutoff) * HIST_BINS);
+		pgenome_bin = floor((ABS(double(dist) - gl_mean) * 1.0 / hist_distcutoff) * HIST_BINS);
 	
 		if (pgenome_bin >= HIST_BINS)
 			pgenome_cumsum = 0;
@@ -879,9 +879,9 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 		pchance = pchance_fwd * pchance_rev;
 	} else { 
 		double pchance_fwd_alt = 1 - pow(1 - pchance_fwd, 
-				abs(dist - gl_mean + 1) * 1.0 / (double)genome_length);
+				ABS(double(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		double pchance_rev_alt = 1 - pow(1 - pchance_rev, 
-				abs(dist - gl_mean + 1) * 1.0 / (double)genome_length);
+				ABS(double(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		pchance = (pchance_fwd * pchance_rev_alt + 
 				pchance_rev * pchance_fwd_alt) / 2;
 	}
@@ -925,7 +925,7 @@ char * comma_integer(uint64_t val) {
 	int skip, i, j;
 
 	memset(str, 0, sizeof(str));	// XXX - shut up, valgrind
-	snprintf(str, sizeof(str), "%lli" , val);
+	snprintf(str, sizeof(str), "%lli" , (long long int) val);
 
 	skip = 3 - (strlen(str) % 3);
 	for (i = j = 0; str[i] != '\0'; i++) {
