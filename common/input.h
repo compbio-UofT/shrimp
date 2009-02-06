@@ -20,7 +20,7 @@ struct input {
 	double   pchance;			/* pchance from probcalc */
 	double   pgenome;			/* pgenome from probcalc */
 	double   normodds;			/* normodds from probcalc */
-	int is_forward; 			/* is it forward or backward? */
+	//int is_forward; 			/* is it forward or backward? */
         
 };
 
