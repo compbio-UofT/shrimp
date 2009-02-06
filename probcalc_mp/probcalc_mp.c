@@ -851,7 +851,9 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (discordant) {
 		pgenome = pgenome_fwd * pgenome_rev;
 	} else {
-		pgenome_bin = floor((ABS(double(dist) - gl_mean) * 1.0 / hist_distcutoff) * HIST_BINS);
+		pgenome_bin = floor((ABS(double(dist) - gl_mean) 
+				* 1.0 / hist_distcutoff) 
+				* HIST_BINS);
 	
 		if (pgenome_bin >= HIST_BINS)
 			pgenome_cumsum = 0;
