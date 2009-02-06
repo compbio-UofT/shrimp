@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
 	char *progname = argv[0];
 	char ch;
 	
-	char *mappingfilename;
+	char *mappingfilename = "";
 	
 	// check for given input
 	int givenr = 1;
