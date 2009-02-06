@@ -237,8 +237,7 @@ int main(int argc, char **argv) {
 		print_hists();
 	}		
 	
-	distcutoff = (uint64_t) ceil(gl_mean + 
-			double(nr_stdev) * sqrt(gl_stdev/double(gl_good_mps)));
+	distcutoff = (uint64_t) ceil(gl_mean + (double)nr_stdev * sqrt(gl_stdev/ (double)gl_good_mps));
 	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
 	
@@ -806,9 +805,14 @@ void increments_stats(uint64_t good_mps_dist) {
 		}
 	}
 	
-	if (gl_mean_nr != 0 && gl_good_mps >= gl_mean_nr && ABS(prev_mean - gl_mean) < 0.2) {
+	if ((gl_mean_nr != 0) && (gl_good_mps >= gl_mean_nr) && ABS(prev_mean - gl_mean) < 1.0) {
 		gl_done_mean = 1;
-		fprintf(stderr, "mean signal sent\n");
+		
+		
+//		fprintf(stderr, "mean signal sent: gl_good_mps:%lli, gl_mean_nr:%lli, ABS:%i\n",
+//				(long long int) gl_good_mps, (long long int) gl_mean_nr, 
+//				ABS(prev_mean - gl_mean) < 0.2);
+		
 	}
 }
 
@@ -852,7 +856,7 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (discordant) {
 		pgenome = pgenome_fwd * pgenome_rev;
 	} else {
-		pgenome_bin = (int) floor((ABS(double(dist) - gl_mean) 
+		pgenome_bin = (int) floor((ABS((double)(dist) - gl_mean) 
 				* 1.0 / hist_distcutoff) * HIST_BINS);
 	
 		if (pgenome_bin >= HIST_BINS)
@@ -881,9 +885,9 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 		pchance = pchance_fwd * pchance_rev;
 	} else { 
 		double pchance_fwd_alt = 1 - pow(1 - pchance_fwd, 
-				ABS(double(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
+				ABS((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		double pchance_rev_alt = 1 - pow(1 - pchance_rev, 
-				ABS(double(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
+				ABS((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		pchance = (pchance_fwd * pchance_rev_alt + 
 				pchance_rev * pchance_fwd_alt) / 2;
 	}
