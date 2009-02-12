@@ -21,7 +21,6 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
-#include <inttypes.h>
 
 // file handling
 #include <sys/types.h>
@@ -51,7 +50,7 @@ static char * fwd_suffix = "";			// forward suffix
 static int fwdsuflen = 0;				// forward suffix length
 static char * rev_suffix = "";			// reverse (backward) suffix
 static int revsuflen = 0;				// reverse suffix length
-//static int Rflag = false;				// Rflag included in probcalc output
+static int Rflag = false;				// Rflag included in probcalc output
 static uint64_t distcutoff = 0;			// hard distance cutoff (M).
 static uint64_t hist_distcutoff = 0;	// hard distance cutoff used in histograms (M).
 static int max_reads = MAX_READS;		// maximum number of a read's mappings
@@ -65,6 +64,7 @@ static double pchance_cutoff = PCHANCE_CUTOFF; // pgenome cutoff
 static int quickmode = 0;				// TODO boolean quickmode option
 static double nr_stdev = 2;				// number of standard deviations for second M assignment
 static int allow_diff_chr = 1;			// allow the same chromosome or not
+static int input_file_type = ASCII;	// input file type, ascii or binary
 
 // debug variables
 static uint64_t gl_debug_call = 0;		// the number of times mp_analysis is called
@@ -86,11 +86,12 @@ static int calledMP = 0;
 int main(int argc, char **argv) {
 
 	start_clock[TOTAL_TIME] = clock();
-
+	
 	char *progname = argv[0];
-	int ch;
+	char ch;
 	
 	char *mappingfilename = "";
+	char * inputfiletype = "ascii";
 	
 	// check for given input
 	int givenr = 1;
@@ -100,11 +101,11 @@ int main(int argc, char **argv) {
 	int giveng = 0;
 	int givenM = 0;
 	
-	while ((ch = getopt(argc, argv, "m:x:R:f:b:M:g:duL:T:D:C:G:qs:ce")) != -1) {
+	while ((ch = getopt(argc, argv, "m:x:R:f:b:M:g:duL:T:D:C:G:qs:cei:")) != -1) {
 		switch (ch) {
 		
-			case 'R': // unused: Rflag was included in probcalc runs
-				//Rflag = true;
+			case 'R': // Rflag was included in probcalc runs
+				Rflag = true;
 				break;
 			case 'x': // max number of reads to expect, per direction
 				max_reads = atoi(optarg);
@@ -157,6 +158,12 @@ int main(int argc, char **argv) {
 			case 's': // the number of standard deviations for new M comp.
 				nr_stdev = atof(optarg);
 				break;
+			case 'i': // input file type. Default: ASCII
+				inputfiletype = optarg;
+				if (strcmp(inputfiletype, "ascii") == 0) 
+					input_file_type = ASCII;
+				else 
+					input_file_type = BINARY;
 				
 			case 'M': // hard distance cut off. 
 				distcutoff = atoll(optarg);
@@ -180,8 +187,14 @@ int main(int argc, char **argv) {
 	// print settings
 	print_dashed_line();
 	fprintf(stderr, "Some settings:\n");
-	fprintf(stderr, "pgenome cutoff:%f\n", pgenome_cutoff);
-	fprintf(stderr, "pchance cutoff:%f\n", pchance_cutoff);
+	fprintf(stderr, "pgenome cutoff:  %f\n", pgenome_cutoff);
+	fprintf(stderr, "pchance cutoff:  %f\n", pchance_cutoff);
+	
+	if (input_file_type == ASCII)
+		fprintf(stderr, "input file type: %s\n", "ASCII");
+	else
+		fprintf(stderr, "input file type: %s\n", "Binary");
+	
 	print_dashed_line();
 	
 	
@@ -239,7 +252,7 @@ int main(int argc, char **argv) {
 	}		
 	
 	distcutoff = (uint64_t) ceil(gl_mean + (double)nr_stdev * sqrt(gl_stdev/ (double)gl_good_mps));
-	fprintf(stderr, "new M cutoff: %" PRIu64 " = %.2f + %.2f * %.2f\n", 
+	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
 	
 	
@@ -351,7 +364,8 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 	char test_name[READNAME_LEN]; 	// the read just taken from fread. 
 		
 	// loop over all reads...
-	while(fread (mapping, sizeof(mapping_t), 1, mappingfile) == 1) {
+	///while(fread (mapping, sizeof(mapping_t), 1, mappingfile) == 1) {
+	while(read_probcalc_line(mappingfile, mapping) == 1) {
 		
 		// process bar
 		gl_debug_lines++;
@@ -418,12 +432,10 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 				else debugwithoutzero += fwd_index + rev_index;
 				
 				if (nr_reads % 100000 == 0)
-					fprintf(stderr, "DEBUGLINE: #reads:%"
-					    PRIu64 ", #mappings_now:%i "
-					    "| w/0:%" PRIu64 ", wo/0:%"
-					    PRIu64 "\n", 
-					    nr_reads, fwd_index * rev_index, 
-					    debugwithzero, debugwithoutzero);
+					fprintf(stderr, "DEBUGLINE: #reads:%lli, #mappings_now:%i "
+							"| w/0:%lli, wo/0:%lli\n", 
+							nr_reads, fwd_index * rev_index, 
+								debugwithzero, debugwithoutzero);
 				
 				if (pass_type != MEAN_PASS) debuglimit--;
 				if (pass_type != MEAN_PASS && debuglimit < 0) break;
@@ -667,7 +679,7 @@ static void usage(char *progname) {
 			" -g genome_length -M hard_distance_limit [-L nr_mate_pairs] [-q] "
 			"[-C PCHANCE_CUTOFF] [-G PGENOME_CUTOFF] [-R] "
 			"[-x max_reads_to_expect] [-d] [-u] [-D] [-T max_reads_to_output] "
-			"[-s nr_stdev] [-c]\n", progname);
+			"[-s nr_stdev] [-c]", progname);
 	exit(1);
 }
 
@@ -710,7 +722,7 @@ void print_hists() {
 	
 	int i;
 	for (i = 0; i < HIST_BINS; i++) {
-		fprintf(hfp, "[bin %i: %.2f-%.2f] %" PRIu64 "\n", 
+		fprintf(hfp, "[bin %i: %.2f-%.2f] %lli\n", 
 				i, i*1.0*hist_distcutoff/HIST_BINS, 
 				(i+1)*1.0*hist_distcutoff/HIST_BINS, gl_hist[i]);
 		fprintf(cfp, "[bin %i: %.2f-%.2f] %f\n", 
@@ -801,14 +813,10 @@ void increments_stats(uint64_t good_mps_dist) {
 	
 		if (debugmode) {
 			if (gl_good_mps % 100000 == 0)
-				fprintf(stderr, "DEBUGLINE: mean:%.2f, "
-				    "stdev:%.2f, nr:%" PRIu64 ";"
-				    "nr_called:%" PRIu64 "; binnr:%i; "
-				    "glhist_binnr:%" PRIu64 " ||| dist:%"
-				    PRIu64 "\n", 
-				    gl_mean, sqrt(gl_stdev/gl_good_mps),
-				    gl_good_mps, gl_debug_call, binnr,
-				    gl_hist[binnr], good_mps_dist);
+				fprintf(stderr, "DEBUGLINE: mean:%.2f, stdev:%.2f, nr:%lli;"
+						"nr_called:%lli; binnr:%i; glhist_binnr:%lli ||| dist:%lli\n", 
+						gl_mean, sqrt(gl_stdev/gl_good_mps), gl_good_mps, gl_debug_call,
+						binnr, gl_hist[binnr], good_mps_dist);
 		}
 	}
 	
@@ -958,3 +966,138 @@ void print_dashed_line() {
 	fprintf(stderr, "----------------------------------------");
 	fprintf(stderr, "----------------------------------------\n");
 }
+
+
+/*
+ * Read a line from the mapping file, and assign the apropriate values to 
+ * the mapping_t mapping.
+ * The mappingfile can be binary or ascii, with input_file_type appropriately 
+ * set.  
+ */
+int read_probcalc_line(FILE *mappingfile, mapping_t * mapping) {
+	
+	if (input_file_type == BINARY) {
+		return fread (mapping, sizeof(mapping_t), 1, mappingfile);
+		
+	} else {
+		
+		char line[MAXLINELEN];
+		int linelen = 0;
+		int i;
+		
+		char ech; 	// temp character
+		char field[256];
+		int fieldnr = 1;
+		int fieldindex = 0;
+		
+		// look though all of the tab-delimited fields
+		while (fgets(line, MAXLINELEN, mappingfile) != NULL) {
+			if (line[0] == '#')
+				continue;
+			
+			linelen = strlen(line);
+			for (i = 0; i < linelen; i++) {
+				ech = line[i];
+					
+				if (ech == '\t') {
+					field[fieldindex] = '\0';
+					
+					switch (fieldnr) {
+						case 1:
+							strcpy(mapping->readname, field);
+							break;
+							
+						case 2:
+							strcpy(mapping->contigname, field);
+							break;
+							
+						case 3:
+							if (strlen(field) != 1) {
+								fprintf(stderr, "Error, strand is not single character: [len:%i] %s\n", strlen(field), field);
+								exit(1);
+							}
+							mapping->strand = field[0];
+							break;
+							
+						case 4:
+							mapping->contigstart = atoll(field);
+							break;
+							
+						case 5:
+							mapping->contigend = atoll(field);
+							break;
+							
+						case 6:
+							mapping->readstart = atoll(field);
+							break;
+							
+						case 7:
+							mapping->readend = atoll(field);
+							break;
+							
+						case 8:
+							mapping->readlength = atoi(field);
+							break;
+							
+						case 9:
+							mapping->score = atof(field);
+							break;
+							
+						case 10:
+							strcpy(mapping->editstring, field);
+							break;
+							
+						case 11:
+							if (~Rflag)
+								mapping->normodds = atof(field);
+							
+							break;
+							
+						case 12:
+							if (Rflag)
+								mapping->normodds = atof(field);
+							else
+								mapping->pgenome = atof(field);
+							break;
+							
+						case 13:
+							if (Rflag)
+								mapping->pgenome = atof(field);
+							else
+								mapping->pchance = atof(field);
+							break;
+							
+						case 14:
+							if (Rflag)
+								mapping->pchance = atof(field);
+							else {
+								fprintf(stderr, "no R Flag, and too many fields. line:\n");
+								fprintf(stderr, "%s\n", line);
+								exit(1);
+							}
+							break;
+							
+						default:
+							fprintf(stderr, "error: failed to parse file line [%s]"
+									" fieldnr:%i\n", line, fieldnr);
+							break;
+							
+					}
+					
+					fieldnr++;
+					fieldindex = 0;
+					
+				} else {
+					field[fieldindex++] = ech;
+				}
+			} // for loop through the line
+			
+			return 1;
+		} // while loop skipping over comment lines
+		return 0; // since the result was therefore NULL
+		
+	}
+	assert(0);
+	return -1;
+}
+

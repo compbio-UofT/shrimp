@@ -41,7 +41,12 @@
 #define COUNT_TIME 3
 #define TOTAL_TIME 4 // always the largest value!
 
- 
+// input file types 
+#define ASCII 0
+#define BINARY 1
+
+#define MAXLINELEN 1023
+
 // mate pair mapping struct
 typedef struct {
 	mapping_t 	*fwd_rs;
@@ -129,3 +134,11 @@ char * comma_integer(uint64_t val);
  * Print a dashed line of 80 chars, including the newline char at the end
  */
 void print_dashed_line();
+
+/*
+ * Read a line from the mapping file, and assign the apropriate values to 
+ * the mapping_t mapping.
+ * The mappingfile can be binary or ascii, with input_file_type appropriately 
+ * set.  
+ */
+int read_probcalc_line(FILE *mappingfile, mapping_t * mapping);
