@@ -1040,7 +1040,7 @@ int read_probcalc_line(FILE *mappingfile, mapping_t * mapping) {
 							break;
 							
 						case 9:
-							mapping->score = atof(field);
+							mapping->score = atoi(field);
 							break;
 							
 						case 10:
