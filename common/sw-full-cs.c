@@ -897,7 +897,8 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 		for (j = 0; j < rlen; j++) {
 			int base = EXTRACT(read, j);
 
-			if (base == BASE_N || base == BASE_X) {
+			if (base == BASE_N || base == BASE_X ||
+			    base == BASE_DASH) {
 				qr[i][j] = BASE_N;
 				letter = (i + initbp) % 4;
 			} else {

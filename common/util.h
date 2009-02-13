@@ -100,11 +100,11 @@ complement_base(int base)
 		BASE_D,		/* H -> D */
 		BASE_H,		/* D -> H */
 		BASE_V,		/* B -> V */
-		BASE_N,		/* X,N -> N */
+		BASE_N,		/* X,N,- -> N */
 	};
 
 	assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
-	    (base == BASE_X || base == BASE_N));
+	    (base == BASE_X || base == BASE_N || base == BASE_DASH));
 
 	return (cmpl[base]);
 }
