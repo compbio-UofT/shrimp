@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <math.h>
 #include <time.h>
+#include <inttypes.h>
 
 // file handling
 #include <sys/types.h>
@@ -86,9 +87,9 @@ static int calledMP = 0;
 int main(int argc, char **argv) {
 
 	start_clock[TOTAL_TIME] = clock();
-	
+
 	char *progname = argv[0];
-	char ch;
+	int ch;
 	
 	char *mappingfilename = "";
 	char * inputfiletype = "ascii";
@@ -252,7 +253,7 @@ int main(int argc, char **argv) {
 	}		
 	
 	distcutoff = (uint64_t) ceil(gl_mean + (double)nr_stdev * sqrt(gl_stdev/ (double)gl_good_mps));
-	fprintf(stderr, "new M cutoff: %.2lli = %.2f + %.2f * %.2f\n", 
+	fprintf(stderr, "new M cutoff: %" PRIu64 " = %.2f + %.2f * %.2f\n", 
 			distcutoff, gl_mean, nr_stdev, sqrt(gl_stdev/gl_good_mps));
 	
 	
@@ -432,10 +433,12 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 				else debugwithoutzero += fwd_index + rev_index;
 				
 				if (nr_reads % 100000 == 0)
-					fprintf(stderr, "DEBUGLINE: #reads:%lli, #mappings_now:%i "
-							"| w/0:%lli, wo/0:%lli\n", 
-							nr_reads, fwd_index * rev_index, 
-								debugwithzero, debugwithoutzero);
+					fprintf(stderr, "DEBUGLINE: #reads:%"
+					    PRIu64 ", #mappings_now:%i "
+					    "| w/0:%" PRIu64 ", wo/0:%"
+					    PRIu64 "\n", 
+					    nr_reads, fwd_index * rev_index, 
+					    debugwithzero, debugwithoutzero);
 				
 				if (pass_type != MEAN_PASS) debuglimit--;
 				if (pass_type != MEAN_PASS && debuglimit < 0) break;
@@ -722,7 +725,7 @@ void print_hists() {
 	
 	int i;
 	for (i = 0; i < HIST_BINS; i++) {
-		fprintf(hfp, "[bin %i: %.2f-%.2f] %lli\n", 
+		fprintf(hfp, "[bin %i: %.2f-%.2f] %" PRIu64 "\n", 
 				i, i*1.0*hist_distcutoff/HIST_BINS, 
 				(i+1)*1.0*hist_distcutoff/HIST_BINS, gl_hist[i]);
 		fprintf(cfp, "[bin %i: %.2f-%.2f] %f\n", 
@@ -813,10 +816,14 @@ void increments_stats(uint64_t good_mps_dist) {
 	
 		if (debugmode) {
 			if (gl_good_mps % 100000 == 0)
-				fprintf(stderr, "DEBUGLINE: mean:%.2f, stdev:%.2f, nr:%lli;"
-						"nr_called:%lli; binnr:%i; glhist_binnr:%lli ||| dist:%lli\n", 
-						gl_mean, sqrt(gl_stdev/gl_good_mps), gl_good_mps, gl_debug_call,
-						binnr, gl_hist[binnr], good_mps_dist);
+				fprintf(stderr, "DEBUGLINE: mean:%.2f, "
+				    "stdev:%.2f, nr:%" PRIu64 ";"
+				    "nr_called:%" PRIu64 "; binnr:%i; "
+				    "glhist_binnr:%" PRIu64 " ||| dist:%"
+				    PRIu64 "\n", 
+				    gl_mean, sqrt(gl_stdev/gl_good_mps),
+				    gl_good_mps, gl_debug_call, binnr,
+				    gl_hist[binnr], good_mps_dist);
 		}
 	}
 	
@@ -1013,7 +1020,7 @@ int read_probcalc_line(FILE *mappingfile, mapping_t * mapping) {
 							
 						case 3:
 							if (strlen(field) != 1) {
-								fprintf(stderr, "Error, strand is not single character: [len:%i] %s\n", strlen(field), field);
+								fprintf(stderr, "Error, strand is not single character: [len:%zu] %s\n", strlen(field), field);
 								exit(1);
 							}
 							mapping->strand = field[0];
@@ -1048,9 +1055,8 @@ int read_probcalc_line(FILE *mappingfile, mapping_t * mapping) {
 							break;
 							
 						case 11:
-							if (~Rflag)
+							if (!Rflag)
 								mapping->normodds = atof(field);
-							
 							break;
 							
 						case 12:
@@ -1097,7 +1103,9 @@ int read_probcalc_line(FILE *mappingfile, mapping_t * mapping) {
 		return 0; // since the result was therefore NULL
 		
 	}
-	assert(0);
-	return -1;
+
+	// avoid unreachable compiler warning; we'd get a no return warning if it were
+	//assert(0);
+	//return -1;
 }
 
