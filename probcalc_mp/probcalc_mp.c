@@ -827,7 +827,7 @@ void increments_stats(uint64_t good_mps_dist) {
 		}
 	}
 	
-	if ((gl_mean_nr != 0) && (gl_good_mps >= gl_mean_nr) && ABS(prev_mean - gl_mean) < 1.0) {
+	if ((gl_mean_nr != 0) && (gl_good_mps >= gl_mean_nr) && fabs(prev_mean - gl_mean) < 1.0) {
 		gl_done_mean = 1;
 		
 		
@@ -878,7 +878,7 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (discordant) {
 		pgenome = pgenome_fwd * pgenome_rev;
 	} else {
-		pgenome_bin = (int) floor((ABS((double)(dist) - gl_mean) 
+		pgenome_bin = (int) floor((fabs((double)(dist) - gl_mean) 
 				* 1.0 / hist_distcutoff) * HIST_BINS);
 	
 		if (pgenome_bin >= HIST_BINS)
@@ -894,7 +894,9 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (pgenome < pgenome_cutoff)
 		return 0;
 
-	
+	//fprintf(stderr, "pgenome1: %f, pgenome2: %f, pgenome: %f, pgenome_bin: %i,,small_fabs:%f pgenome_cumsum:%f\n", 
+		//		pgenome_fwd, pgenome_rev, pgenome, pgenome_bin, fabs((double)(dist) - gl_mean), pgenome_cumsum);
+
 	
 	// pchance
 	double pchance;
@@ -907,9 +909,9 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 		pchance = pchance_fwd * pchance_rev;
 	} else { 
 		double pchance_fwd_alt = 1 - pow(1 - pchance_fwd, 
-				ABS((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
+				fabs((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		double pchance_rev_alt = 1 - pow(1 - pchance_rev, 
-				ABS((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
+				fabs((double)(dist) - gl_mean + 1) * 1.0 / (double)genome_length);
 		pchance = (pchance_fwd * pchance_rev_alt + 
 				pchance_rev * pchance_fwd_alt) / 2;
 	}
@@ -918,6 +920,7 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 	if (pchance > pchance_cutoff)
 		return 0;
 	
+
 	
 	
 	// assigning the values

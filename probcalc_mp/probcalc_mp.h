@@ -20,9 +20,11 @@
 #define ALMOST_ONE	0.999999999
 
 // some math macros...
-#define MAX(a, b) ((a > b) ? a : b)
-#define MIN(a, b) ((a < b) ? a : b)
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define ABS(a) (MAX(a, -a))
+#define FABS(a) (MAX(a, -a))
+
 
 // pass types
 #define MEAN_PASS 0
