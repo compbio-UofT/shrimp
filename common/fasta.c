@@ -60,7 +60,6 @@ fasta_open(const char *file, int space)
 		fasta->translate[(int)'.'] = BASE_N;
 		fasta->translate[(int)'X'] = BASE_X;
 		fasta->translate[(int)'x'] = BASE_X;
-		fasta->translate[(int)'-'] = BASE_DASH;
 	} else {	
 		fasta->translate[(int)'A'] = BASE_A;
 		fasta->translate[(int)'a'] = BASE_A;
@@ -97,7 +96,6 @@ fasta_open(const char *file, int space)
 		fasta->translate[(int)'.'] = BASE_N;
 		fasta->translate[(int)'X'] = BASE_X;
 		fasta->translate[(int)'x'] = BASE_X;
-		fasta->translate[(int)'-'] = BASE_DASH;
 	}
 
  out:
@@ -168,6 +166,8 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 			else if (i == '\0')
 				categories[i] = CAT_NUL;
 			else if (isspace(i))
+				categories[i] = CAT_SPACE;
+			else if (i == '-')	/* simply ignore dashes in haplome alignments */
 				categories[i] = CAT_SPACE;
 			else
 				categories[i] = CAT_ELSE;
@@ -360,10 +360,10 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 
 		if (fasta->space == COLOUR_SPACE) {
 			assert((a >= BASE_CS_MIN && a <= BASE_CS_MAX) ||
-			    (a == BASE_N || a == BASE_X || a == BASE_DASH));
+			    (a == BASE_N || a == BASE_X));
 		} else {
 			assert((a >= BASE_LS_MIN && a <= BASE_LS_MAX) ||
-			    (a == BASE_N || a == BASE_X || a == BASE_DASH));
+			    (a == BASE_N || a == BASE_X));
 		}
 
 		bitfield_append(bitfield, idx++, a);
@@ -387,7 +387,7 @@ char
 base_translate(int base, bool use_colours)
 {
 	/*
-	 * NB: colour-space only valid for 0-3 and BASE_N/BASE_X/BASE_DASH
+	 * NB: colour-space only valid for 0-3 and BASE_N/BASE_X
 	 *     BASE_N is reported as a skipped cycle: '.' in CS.
 	 */
 	char cstrans[] = { '0', '1', '2', '3', '!', '@', '#', '$',
@@ -397,11 +397,11 @@ base_translate(int base, bool use_colours)
 
 	if (use_colours) {
 		assert((base >= BASE_CS_MIN && base <= BASE_CS_MAX) ||
-		    (base == BASE_N || base == BASE_X || base == BASE_DASH));
+		    (base == BASE_N || base == BASE_X));
 		return (cstrans[base]);
 	} else {
 		assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
-		    (base == BASE_N || base == BASE_X || base == BASE_DASH));
+		    (base == BASE_N || base == BASE_X));
 		return (lstrans[base]);
 	}
 }

@@ -104,7 +104,7 @@ complement_base(int base)
 	};
 
 	assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
-	    (base == BASE_X || base == BASE_N || base == BASE_DASH));
+	    (base == BASE_X || base == BASE_N));
 
 	return (cmpl[base]);
 }

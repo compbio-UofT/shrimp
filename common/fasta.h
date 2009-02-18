@@ -30,7 +30,6 @@
 #define BASE_B		14		/* C or G or T (not A) */
 #define BASE_X		15		/* G or A or T or C (any base) */
 #define BASE_N		15		/* G or A or T or C (any base) */
-#define BASE_DASH	15		/* G or A or T or C (any base) */
 
 #define BASE_LS_MIN	BASE_A
 #define BASE_LS_MAX	BASE_B
