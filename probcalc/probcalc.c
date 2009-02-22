@@ -583,7 +583,7 @@ calc_probs(void *arg, void *key, void *val)
 		    (Rflag) ? readseq : "", (Rflag) ? "\t" : "",
 		    rspv[i].normodds, rspv[i].pgenome, rspv[i].pchance);
 	}
-	printf("---blah---\n");
+	//printf("---blah---\n");
 	//exit(1);
 }
 
