@@ -95,9 +95,11 @@ p-values are layed out in Sections 6 and 7, respectively.
   2.4 Combine Reads into Mate Pairs
   ---
   use bin/probcalc_mp to combine the read mappings into mate pairs. First, one
-  should transform the probcalc output in a binary file (with the datastructure
-  specified by dbtypes.h/mapping_t)
-  	./shrimp_mp -m  binfile.bin -f _F3 -b _R3 -g 3080419480 -M 2000 
+  should sort the probcalc output in one large file (or a binary file  with the 
+  datastructure specified by dbtypes.h/mapping_t). To have one large sorted file
+  pipe the probcalc output thorugh '> sort'    and finally combine all files by 
+  using '> sort -m'. Finally, run probcalc_mp:
+  	./probcalc_mp -m  sortedfile -f _F3 -b _R3 -g 3080419480 -M 2000 
 
 
 --------------------------------------------------------------------------------
@@ -511,9 +513,9 @@ is a run-down of these options (in some strange, non-alphabetical order).
 'probcalc_mp' takes quite a few parameters. 
 	we start with the mandatory parameters
 
-		[-m binary_mapping_filename] 
+		[-m mapping_filename] 
 		
-		the binary mapping file
+		the mapping file (normal text or binary)
 		
 		[-f forward_suffix]
 		
@@ -538,6 +540,10 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		the number of *good* mate pairs to include in the statistics
 		calculations. do -L 0 to include *all* good mate pairs.
 		default: 50,000
+		
+		[-i file_type]
+		
+		the type of file, file_type can be 'ascii' or 'binary'
 		
 		[-R] 
 		
@@ -766,9 +772,9 @@ more distant one will lead to large discrepancies.
 8. Mate Pairs
 --------------------------------------------------------------------------------
 
-The probcalc_mp project takes in a binary file filled with mapping_t 
-structures as defined in dbtypes.h. This is a file with read mappings as
-outputted by the 'probcalc' tool. Assuming the binary file is sorted by 
+The probcalc_mp project takes in a sorted file (ascii or binary filled with 
+mapping_t structures as defined in dbtypes.h). This is a file with read mappings 
+as outputted by the 'probcalc' tool. Assuming the binary file is sorted by 
 read id, probcalc_mp will find all the mate pair mappings, assign them 
 probability-based confidence values (see the SHRiMP paper), and output them. 
 How and which computations are done, and which matepair are outputted depends on 
