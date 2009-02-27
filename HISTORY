@@ -9,8 +9,8 @@ $Id$
 	- Treat '-' in fasta file sequences (often found in individual,
 	  aligned haplome sequences) as spaces, i.e. ignore them.
 	- Added experimental support for larger seeds, up to a span of 128 with
-	  any weight up to 128. Should work, but performance characteristics
-	  not evaluated.
+	  any weight up to 128. Should work fine, but performance
+	  characteristics haven't been evaluated.
 	- Misc. documentation updates.
 
 1.1.0: July 19, 2008
