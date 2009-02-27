@@ -1,6 +1,6 @@
 # $Id$
 ifndef CXXFLAGS
-CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror
+CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
 LD=$(CXX)

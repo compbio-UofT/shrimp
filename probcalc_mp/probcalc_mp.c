@@ -12,6 +12,7 @@
  * readme.
  ***************************************************************************/
 
+#include <alloc.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -83,6 +84,15 @@ double elapsed_clock[TOTAL_TIME + 1];
 //other
 static int calledMP = 0;
 
+
+static uint64_t
+abs64(int64_t x)
+{
+	if (x < 0)
+		return (-x);
+	else
+		return (x);
+}
 
 int main(int argc, char **argv) {
 
@@ -341,10 +351,14 @@ uint64_t filepass(char * mappingfilename, int pass_type) {
 	// note: max_reads + 1 because we read dirrectly to these arrays, but may need to
 	// switch
 	//mapping_t *fwd_maps = (mapping_t *) malloc(sizeof(mapping_t) * (max_reads + 1));
-	mapping_t fwd_maps[max_reads + 1];
+
+	// Sun Studio does not allow variable-sized array declarations
+	//mapping_t fwd_maps[max_reads + 1];
+	mapping_t *fwd_maps = (mapping_t *)alloca(sizeof(mapping_t) * (max_reads + 1));
 	assert(fwd_maps);
 	//mapping_t *rev_maps = (mapping_t *) malloc(sizeof(mapping_t) * (max_reads + 1));
-	mapping_t rev_maps[max_reads + 1];
+	//mapping_t rev_maps[max_reads + 1];
+	mapping_t *rev_maps = (mapping_t *)alloca(sizeof(mapping_t) * (max_reads + 1));
 	assert(rev_maps);
 	mapping_t *mapping = fwd_maps;
 	
@@ -765,7 +779,7 @@ uint64_t good_mp_dst(mapping_t * fwd_map, mapping_t * rev_map) {
 		cs_fwd = fwd_map->contigend; 
 		cs_rev = rev_map->contigstart;
 	}
-	dist = abs(cs_fwd - cs_rev);
+	dist = abs64(cs_fwd - cs_rev);
 	is_small_dist = (dist < distcutoff);
 	
 	// get the strands
@@ -864,7 +878,7 @@ inline int add_p_stats(mapping_t * fwd_map, mapping_t * rev_map,
 		cs_fwd = fwd_map->contigend; 
 		cs_rev = rev_map->contigstart;
 	}
-	uint64_t dist = abs(cs_fwd - cs_rev);
+	uint64_t dist = abs64(cs_fwd - cs_rev);
 	
 	
 	
