@@ -98,6 +98,7 @@ static uint32_t		     *readmap_len;	/* entries in each readmap[n] */
 static int Bflag = false;			/* print a progress bar */
 static int Cflag = false;			/* do complement only */
 static int Fflag = false;			/* do positive (forward) only */
+static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 
@@ -110,6 +111,9 @@ static uint64_t kmer_list_entries_scanned;
 /* Misc stats */
 static uint64_t scan_ticks;
 static uint64_t revcmpl_ticks;
+
+/* kmer_to_mapidx function */
+static uint32_t (*kmer_to_mapidx)(uint32_t *) = NULL;
 
 #define PROGRESS_BAR(_a, _b, _c, _d)	\
     if (Bflag) progress_bar((_a), (_b), (_c), (_d))
@@ -234,20 +238,127 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 	}
 }
 
+/* pulled off the web; this may or may not be any good */
+static uint32_t
+hash(uint32_t a)
+{
+	a = (a+0x7ed55d16) + (a<<12);
+	a = (a^0xc761c23c) ^ (a>>19);
+	a = (a+0x165667b1) + (a<<5);
+	a = (a+0xd3a2646c) ^ (a<<9);
+	a = (a+0xfd7046c5) + (a<<3);
+	a = (a^0xb55a4f09) ^ (a>>16);
+	return (a);
+}
+
+/* hash-based version or kmer -> map index function for larger seeds */
+static uint32_t
+kmer_to_mapidx_hash(uint32_t *kmer)
+{
+	static u_int seed_span;
+	static u_int maxidx;
+	static uint32_t *mask;
+
+	uint32_t mapidx;
+	int i;
+
+	/* XXX moving this outside of the function yields only ~12% speedup */
+	if (seed_span == 0) {
+		assert(Hflag);
+
+		seed_span = strlen(spaced_seed);
+		maxidx = power(4, HASH_TABLE_POWER);
+		maxidx -= 1;
+
+		mask = (uint32_t *)xmalloc(sizeof(mask[0]) * BPTO32BW(seed_span));
+		memset(mask, 0, sizeof(mask[0]) * BPTO32BW(seed_span));
+
+		for (i = 0; i < (int)seed_span; i++) {
+			if (spaced_seed[i] == '1')
+				bitfield_prepend(mask, seed_span, 0xf);
+			else
+				bitfield_prepend(mask, seed_span, 0);
+		}
+	}
+
+	mapidx = 0;
+
+	switch (BPTO32BW(seed_span)) {
+	case 1: goto mapidx_1; break;
+	case 2: goto mapidx_2; break;
+	case 3: goto mapidx_3; break;
+	case 4: goto mapidx_4; break;
+	case 5: goto mapidx_5; break;
+	case 6: goto mapidx_6; break;
+	case 7: goto mapidx_7; break;
+	case 8: goto mapidx_8; break;
+	case 9: goto mapidx_9; break;
+	case 10: goto mapidx_10; break;
+	case 11: goto mapidx_11; break;
+	case 12: goto mapidx_12; break;
+	case 13: goto mapidx_13; break;
+	case 14: goto mapidx_14; break;
+	case 15: goto mapidx_15; break;
+	case 16: goto mapidx_16; break;
+	default:
+		fprintf(stderr, "%s: internal error\n", __func__);
+		exit(1);
+	}
+
+mapidx_16:
+	mapidx = hash((kmer[15] & mask[15]) ^ mapidx);
+mapidx_15:
+	mapidx = hash((kmer[14] & mask[14]) ^ mapidx);
+mapidx_14:
+	mapidx = hash((kmer[13] & mask[13]) ^ mapidx);
+mapidx_13:
+	mapidx = hash((kmer[12] & mask[12]) ^ mapidx);
+mapidx_12:
+	mapidx = hash((kmer[11] & mask[11]) ^ mapidx);
+mapidx_11:
+	mapidx = hash((kmer[10] & mask[10]) ^ mapidx);
+mapidx_10:
+	mapidx = hash((kmer[9] & mask[9]) ^ mapidx);
+mapidx_9:
+	mapidx = hash((kmer[8] & mask[8]) ^ mapidx);
+mapidx_8:
+	mapidx = hash((kmer[7] & mask[7]) ^ mapidx);
+mapidx_7:
+	mapidx = hash((kmer[6] & mask[6]) ^ mapidx);
+mapidx_6:
+	mapidx = hash((kmer[5] & mask[5]) ^ mapidx);
+mapidx_5:
+	mapidx = hash((kmer[4] & mask[4]) ^ mapidx);
+mapidx_4:
+	mapidx = hash((kmer[3] & mask[3]) ^ mapidx);
+mapidx_3:
+	mapidx = hash((kmer[2] & mask[2]) ^ mapidx);
+mapidx_2:
+	mapidx = hash((kmer[1] & mask[1]) ^ mapidx);
+mapidx_1:
+	mapidx = hash((kmer[0] & mask[0]) ^ mapidx);
+
+	return (mapidx & maxidx);
+}
+
 /*
  * Compress the given kmer into an index in 'readmap' according to the seed.
  * While not optimal, this is only about 20% of the spaced seed scan time.
+ *
+ * This is the original version for smaller seeds.
  */
 static uint32_t
-kmer_to_mapidx(uint32_t *kmer)
+kmer_to_mapidx_orig(uint32_t *kmer)
 {
 	static u_int seed_span;
 
 	uint32_t mapidx;
 	int i;
 
-	if (seed_span == 0)
+	if (seed_span == 0) {
+		assert(!Hflag);
 		seed_span = strlen(spaced_seed);
+	}
 
 	mapidx = 0;
 	for (i = seed_span - 1; i >= 0; i--) {
@@ -277,6 +388,9 @@ readmap_prune()
 
 	if (kmer_stddev_limit < 0)
 		return;
+
+	/* this won't work with the hash table approach... */
+	assert(!Hflag);
 
 	j = power(4, strchrcnt(spaced_seed, '1'));
 
@@ -880,11 +994,17 @@ load_reads(const char *file)
 	seed_weight = strchrcnt(spaced_seed, '1');
 
 	/* allocate our read map */
-	bytes = sizeof(readmap[0]) * power(4, seed_weight);
+	if (Hflag)
+		bytes = sizeof(readmap[0]) * power(4, HASH_TABLE_POWER);
+	else
+		bytes = sizeof(readmap[0]) * power(4, seed_weight);
 	readmap = (struct readmap_entry **)xmalloc(bytes);
 	memset(readmap, 0, bytes);
 
-	bytes = sizeof(readmap_len[0]) * power(4, seed_weight);
+	if (Hflag)
+		bytes = sizeof(readmap_len[0]) * power(4, HASH_TABLE_POWER);
+	else
+		bytes = sizeof(readmap_len[0]) * power(4, seed_weight);
 	readmap_len = (uint32_t *)xmalloc(bytes);
 	memset(readmap_len, 0, bytes);
 
@@ -1307,13 +1427,17 @@ valid_spaced_seed()
 	if (seed_span < 1)
 		return (0);
 
-	if (strchrcnt(spaced_seed, '1') > MAX_SEED_WEIGHT)
+	if (strchrcnt(spaced_seed, '1') > MAX_SEED_WEIGHT && !Hflag)
 		return (0);
 
 	if (strchrcnt(spaced_seed, '0') != seed_span - seed_weight) 
 		return (0);
 
 	if (seed_weight < 1)
+		return (0);
+
+	if (Hflag && (seed_span > MAX_HASH_SEED_SPAN ||
+	    seed_weight > MAX_HASH_SEED_WEIGHT))
 		return (0);
 
 	return (1);
@@ -1752,15 +1876,15 @@ main(int argc, char **argv)
 	switch (shrimp_mode) {
 	case MODE_COLOUR_SPACE:
 		spaced_seed = DEF_SPACED_SEED_CS;
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPR";
 		break;
 	case MODE_LETTER_SPACE:
 		spaced_seed = DEF_SPACED_SEED_LS;
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPR";
 		break;
 	case MODE_HELICOS_SPACE:
 		spaced_seed = DEF_SPACED_SEED_DAG;
-		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFPR";
+		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPR";
 		match_value = DEF_MATCH_VALUE_DAG;
 		mismatch_value = DEF_MISMATCH_VALUE_DAG;
 		a_gap_open = DEF_A_GAP_OPEN_DAG;
@@ -1920,6 +2044,9 @@ main(int argc, char **argv)
 			}
 			Fflag = true;
 			break;
+		case 'H':
+			Hflag = true;
+			break;
 		case 'P':
 			Pflag = true;
 			break;
@@ -1932,6 +2059,15 @@ main(int argc, char **argv)
 	}
 	argc -= optind;
 	argv += optind;
+
+	kmer_to_mapidx = kmer_to_mapidx_orig;
+	if (Hflag)
+		kmer_to_mapidx = kmer_to_mapidx_hash;
+
+	if (Hflag && kmer_stddev_limit >= 0) {
+		fprintf(stderr, "error: the -H flag may not be used with -d\n");
+		exit(1);
+	}
 
 	if (argc < 2) {
 		fprintf(stderr, "error: %sgenome_file(s) not specified\n",
@@ -1951,6 +2087,9 @@ main(int argc, char **argv)
 
 	if (!valid_spaced_seed()) {
 		fprintf(stderr, "error: invalid spaced seed\n");
+		if (!Hflag)
+			fprintf(stderr, "       for longer seeds, try using "
+			    "the -H flag"); 
 		exit(1);
 	}
 

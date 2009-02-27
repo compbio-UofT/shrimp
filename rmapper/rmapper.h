@@ -57,8 +57,16 @@ extern const bool use_dag;
  * architectures.
  */
 #ifndef MAX_SEED_WEIGHT
-#define MAX_SEED_WEIGHT		16
+#define MAX_SEED_WEIGHT		14
 #endif
+
+/*
+ * For larger seeds we'll just use a hash table. Presently, we're restricted to
+ * 128 bytes in kmer_to_mapidx, but it's trivially extended.
+ */
+#define MAX_HASH_SEED_WEIGHT	128
+#define MAX_HASH_SEED_SPAN	128
+#define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
 
 /* Sanity check - pin reads to a fairly small size */
 #define MAX_READ_LENGTH	15000

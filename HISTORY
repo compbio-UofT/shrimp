@@ -1,5 +1,18 @@
 $Id$
 
+1.2.0: February 27, 2009
+	- Reduce memory usage substantially by dynamically allocating the
+	  hit heap, rather than preallocating it all up front in rmapper.
+	- Various probcalc fixes.
+	- Added 'probcalc_mp' utility for matepair analysis.
+	- Fixes to compile under Sun Studio 12 for Solaris x86 and amd64.
+	- Treat '-' in fasta file sequences (often found in individual,
+	  aligned haplome sequences) as spaces, i.e. ignore them.
+	- Added experimental support for larger seeds, up to a span of 128 with
+	  any weight up to 128. Should work, but performance characteristics
+	  not evaluated.
+	- Misc. documentation updates.
+
 1.1.0: July 19, 2008
 	- Yet another new output format with edit strings to concisely
 	  describe the read->reference changes.

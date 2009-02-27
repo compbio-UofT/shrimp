@@ -348,6 +348,20 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		Only process the positive strand of the genome (going
 		`F'orwards). By default, both strands are scanned.
 
+		[ -H ]
+
+		Use a hash table, rather than a direct lookup table for seeds.
+		A direct lookup will be more efficient for small seeds, but
+		quickly becomes prohibitively large for longer ones. For seeds
+		of weight greater than about 14, this option should be used.
+
+		Note that rmapper will not automatically switch to using a hash
+		table if the seed is too large for a direct lookup, the reason
+		being that this option has simply not been as well-tested.
+
+		Note also that this cannot be used in conjunction with the -d
+		parameter.
+
 		[ -P ]
 
 		'rmapper' has two output formats. The first, and default,
@@ -648,7 +662,7 @@ For example:
  
  
     
-The 'probcalc_mp' wil have the following output:
+The 'probcalc_mp' has the following output:
 	#FORMAT: fwd_name fwd_chr fwd_editstring fwd_strand fwd_start\
 	fwd_end fwd_pg rev_name rev_chr rev_editstring rev_strand rev_start\
 	rev_end rev_pg distance normodds pgenome pchance
@@ -716,9 +730,9 @@ Smith-Waterman threshold of 1875 (penalties: 100 for matches, -70 mismatch,
 The closer the expected matches are to perfect, the larger the spaced seed
 weight can be, and the faster the k-mer scan runs. By decreasing the weight by
 one, execution time increases by approximately a factor of four. Due to memory 
-limitations, weights quickly become impractical around 16. Similarly,
-exceedingly small weights will offer little or no benefit over a full
-Smith-Waterman run. 
+limitations of our implementation, weights quickly become impractical around 16.Longer weights are therefore handled is a slightly different manner to overcome
+this. Similarly, exceedingly small weights will offer little or no benefit over 
+a full Smith-Waterman run. 
 
 Please note that the vectored Smith-Waterman algorithm is written specifically
 for the SSE2 instruction set. Hence this program will not run on non-x86/x86_64
