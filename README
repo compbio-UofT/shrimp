@@ -730,9 +730,10 @@ Smith-Waterman threshold of 1875 (penalties: 100 for matches, -70 mismatch,
 The closer the expected matches are to perfect, the larger the spaced seed
 weight can be, and the faster the k-mer scan runs. By decreasing the weight by
 one, execution time increases by approximately a factor of four. Due to memory 
-limitations of our implementation, weights quickly become impractical around 16.Longer weights are therefore handled is a slightly different manner to overcome
-this. Similarly, exceedingly small weights will offer little or no benefit over 
-a full Smith-Waterman run. 
+limitations of our implementation, weights quickly become impractical around 16.
+Longer weights are therefore handled is a slightly different manner to overcome
+this. Similarly, exceedingly small weights will offer little or no benefit over
+a full Smith-Waterman run.
 
 Please note that the vectored Smith-Waterman algorithm is written specifically
 for the SSE2 instruction set. Hence this program will not run on non-x86/x86_64
