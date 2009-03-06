@@ -4,7 +4,7 @@ import sys
 from utils import *
 
 if len(sys.argv) != 3:
-	print >> sys.stderr, "usage: %s [reads_per_file] [fasta_file]"
+	print >> sys.stderr, "usage: %s [reads_per_file] [fasta_file]" % (sys.argv[0])
 	sys.exit(1)
 
 READS_PER_FILE = int(sys.argv[1])
