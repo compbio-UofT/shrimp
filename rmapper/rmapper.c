@@ -2246,7 +2246,7 @@ main(int argc, char **argv)
 			    "        %u\n", (u_int)-sw_full_threshold);
 		} else {
 			fprintf(stderr, "    S-W Hit Threshold:            "
-			    "        %.02f\n", sw_full_threshold);
+			    "        %.02f%%\n", sw_full_threshold);
 		}
 	}
 	fprintf(stderr, "\n");
