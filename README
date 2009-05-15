@@ -404,7 +404,10 @@ is a run-down of these options (in some strange, non-alphabetical order).
 
 		To extract the list of unmapped reads from the output file,
 		simply list every line following "#UNMAPPED READS:". This can
-		be accomplished with awk/perl/python, or a simple grep command:
+		be accomplished with the utils/extractunmapped.py script:
+		    python utils/extractunmapped.py /path/to/results.out
+
+		Alternatively, one can use the following grep command: 
 		    grep -A 2147483647 "^#UNMAPPED READS:" /path/to/results.out
 	        `2147483647' is the number of lines after the matching context
 		to output. In the case where we want them all, 2147483647 is the
