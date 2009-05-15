@@ -101,6 +101,7 @@ static int Fflag = false;			/* do positive (forward) only */
 static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
+static int Uflag = false;			/* output unmapped reads, too */
 
 /* Scan stats */
 static uint64_t shortest_scanned_kmer_list;
@@ -1855,6 +1856,10 @@ usage(char *progname)
 	    "    -R    Print Reads in Output                         (default: "
 	    "disabled)\n");
 
+	fprintf(stderr,
+	    "    -U    Print Unmapped Read Names in Output           (default: "
+	    "disabled)\n");
+
 	exit(1);
 }
 
@@ -1876,15 +1881,15 @@ main(int argc, char **argv)
 	switch (shrimp_mode) {
 	case MODE_COLOUR_SPACE:
 		spaced_seed = DEF_SPACED_SEED_CS;
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRU";
 		break;
 	case MODE_LETTER_SPACE:
 		spaced_seed = DEF_SPACED_SEED_LS;
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPR";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPRU";
 		break;
 	case MODE_HELICOS_SPACE:
 		spaced_seed = DEF_SPACED_SEED_DAG;
-		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPR";
+		optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRU";
 		match_value = DEF_MATCH_VALUE_DAG;
 		mismatch_value = DEF_MISMATCH_VALUE_DAG;
 		a_gap_open = DEF_A_GAP_OPEN_DAG;
@@ -2052,6 +2057,9 @@ main(int argc, char **argv)
 			break;
 		case 'R':
 			Rflag = true;
+			break;
+		case 'U':
+			Uflag = true;
 			break;
 		default:
 			usage(progname);
@@ -2295,6 +2303,20 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "\nGenerating output...\n");
 	final_pass(genome_files, ngenome_files);
+
+	if (Uflag) {
+		unsigned int i;
+
+		fprintf(stderr, "\nListing unmapped reads...\n");
+		printf("#\n#UNMAPPED READS:\n#\n");
+
+		for (i = 0; i < nreads; i++) {
+			struct read_elem *re = OFFSET_TO_READ(i);
+
+                	if (re->ri->final_matches == 0)
+				printf("%s\n", re->ri->name);
+		}
+	}
 
 	print_statistics();
 

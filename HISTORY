@@ -1,5 +1,13 @@
 $Id$
 
+1.2.1: May ?, 2009
+	- Fix a few Sun Studio Compiler portability bugs. 
+	- rmapper-ls: make it clear when S-W Threshold is absolute vs.
+	  fractional. 
+	- Add a -U flag to rmapper, which outputs a list of unmapped reads
+	  after all of the alignments. See the README for more information.
+	- Misc. documentation updates.
+
 1.2.0: February 27, 2009
 	- Reduce memory usage substantially by dynamically allocating the
 	  hit heap, rather than preallocating it all up front in rmapper.

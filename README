@@ -380,6 +380,36 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		will consume huge gobs of disk space for large reads and is
 		disabled by default. Saved reads are placed in the 'r_seq' key.
 
+		[ -U ]
+
+		After performing all alignments and outputting the results,
+		generate a list of unmapped reads (i.e. reads for which no
+		sufficiently high-scoring alignment was found in a contig). The
+		reads are listed one per line and follow a special comment
+		header to separate them from the alignment results. For example,
+		the output file will eventually look something like the
+		following:
+
+		    ...
+		    >1035_1688_1316_F3      reftig_9        -       3721634 ... 
+		    >1035_1688_1316_F3      reftig_9        -       3721162 ... 
+		    >1035_1688_1316_F3      reftig_9        -       3722237 ... 
+		    #
+		    #UNMAPPED READS:
+		    #
+		    1035_1577_840_F3
+		    1035_1587_820_F3
+		    1035_1594_1563_F3
+		    ...
+
+		To extract the list of unmapped reads from the output file,
+		simply list every line following "#UNMAPPED READS:". This can
+		be accomplished with awk/perl/python, or a simple grep command:
+		    grep -A 2147483647 "^#UNMAPPED READS:" /path/to/results.out
+	        `2147483647' is the number of lines after the matching context
+		to output. In the case where we want them all, 2147483647 is the
+		largest acceptable value for GNU grep.
+
 	rmapper-cs-specific parameters: 
 		[ -x crossover_penalty ]
 
