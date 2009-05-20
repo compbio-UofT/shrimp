@@ -48,11 +48,12 @@ Smith-Waterman implementation to speed up the accurate alignment of these
 regions to reads. We also include in the SHRiMP package tools to analyze the
 resultant alignments, including programs that compute for every alignment the
 probability that the match would occur by chance (in a genome with iid
-nucleotides) and a prettyprint tool that can help visualize the alignments for
-each read. For AB SOLiD colour space reads we use a novel color-space to letter-
-space Smith Waterman algorithm to identify sequencing errors as well as SNPs and
-micro-indels. The details of the algorithm and the methods we use to compute
-p-values are layed out in Sections 6 and 7, respectively.
+nucleotides), a prettyprint tool that can help visualize the alignments for
+each read, and a variation output tool (shrimp_var) what will output the variations
+detected for a specific hit in detail. For AB SOLiD colour space reads we use a 
+novel color-space to letter-space Smith Waterman algorithm to identify sequencing 
+errors as well as SNPs and micro-indels. The details of the algorithm and the 
+methods we use to compute p-values are layed out in Sections 6 and 7, respectively.
 
 
 --------------------------------------------------------------------------------
@@ -91,8 +92,16 @@ p-values are layed out in Sections 6 and 7, respectively.
 
     E.g.:
         bin/prettyprint-cs output.probcalc reads.csfasta /path/to/genome/chr*.fa
+
+  2.4 Printing hit variations
+  ---
+  	To print the variations in hit alignments in detail, run shrimp_var on the 
+  	shrimp/probcalc output.
+  	
+  	E.g.:
+  		bin/shrimp_var -r output.probcalc
         
-  2.4 Combine Reads into Mate Pairs
+  2.5 Combine Reads into Mate Pairs
   ---
   use bin/probcalc_mp to combine the read mappings into mate pairs. First, one
   should sort the probcalc output in one large file (or a binary file  with the 
@@ -133,7 +142,8 @@ done on any one of the three aforementioned parameters.
 The output produced by the 'probcalc' utility is essentially a subset of the
 input, with added 'pgenome', 'pchance' and 'normodds' fields. These matches may
 then have their full alignments printed using the 'prettyprint' utility
-(although one could also feed rmapper output to prettyprint directly).
+(although one could also feed rmapper output to prettyprint directly). Also, the 
+shrimp_var utility will print the variations for each hit in detail. 
 
 What follows is a complete example of scanning a set of reads against an
 entire genome (and its reverse-complement) from the Ciona Savignyi organism.
@@ -161,6 +171,7 @@ PLEASE NOTE:
   7)  $S/probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
   8)  $S/prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
          ciona.0_to_999.probcalc.out genome/ reads/
+  9)  $S/shrimp_var -p ciona.0_to_999.probcalc.out > ciona.0_to_999.probcalc.var 
 
 Lines 1&2 set up the necessary directory structure. reads/ contains one or more
 fasta files containing letterspace or colourspace reads. results/ contains the
@@ -211,6 +222,10 @@ prettyprint share the same default parameters. Deviating from the defaults
 in rmapper means having to provide the appropriate S-W penalties to prettyprint
 as well.
 
+Line 9 outputs the variations of the hits computed by rmapper in detail, 
+specifically SNPs, insertions and deletions. The needed flag is the input file type,
+that is -r for rmapper and -p for probcalc. If the -R flag is used in rmapper, it 
+should also be supplied to shrimp_var.
 
 --------------------------------------------------------------------------------
 4. Program Parameters
@@ -633,7 +648,19 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		
 		do not print matepairs with hits on different chromosomes
 
-
+'shrimp_var' takes only few parameters:
+	mandatory
+		[-r | -p]
+		
+		tell shrimp_var weather the input files are rmapper or probcalc input.
+		
+	optional
+	
+		[-R ]
+		
+		indicator that the read sequence is included in the input,
+		as used by probcalc
+		
 --------------------------------------------------------------------------------
 5.0 Output Format
 --------------------------------------------------------------------------------
@@ -711,14 +738,14 @@ The 'probcalc_mp' has the following output:
 	Descriptions of these columns are as follows:
 	'fwd_name'		Forward Read tag name
 	'fwd_chr'		Forward Genome (Contig/Chromosome) name
-	'fwd_editstring'Forward Edit string: read to reference summary; see below.
+	'fwd_editstring'Forward Edit string: read to reference summary; see above.
 	'fwd_strand'	Forward Genome strand ('+' or '-')
 	'fwd_start'		Forward Start of alignment in genome (beginning with 1, not 0).
 	'fwd_end'		Forward End of alignment in genome (inclusive).
 	'fwd_pg'		Forward pgenome.	
 	'rev_name'		Reverse Read tag name
 	'rev_chr'		Reverse Genome (Contig/Chromosome) name
-	'rev_editstring'Reverse Edit string: read to reference summary; see below.
+	'rev_editstring'Reverse Edit string: read to reference summary; see above.
 	'rev_strand'	Reverse Genome strand ('+' or '-')
 	'rev_start'		Reverse Start of alignment in genome (beginning with 1, not 0).
 	'rev_end'		Reverse End of alignment in genome (inclusive).
@@ -730,6 +757,31 @@ The 'probcalc_mp' has the following output:
 						as good a score or better by chance.
 	'normodds'		Normalized pgenome/pchance.
 	
+	
+	
+The shrimp_var tool has a significantly different output format:
+	>read_name edit_string contig_start #SNPs #ins #dels var_id1 var_id2 ...
+	
+	for example:
+	>example_1 2G1---12(AC)2 101 1 1 1 s-G-103 d-3-105 i-AC-119
+	
+	Description of these columns are as follows:
+	'read_name' 	The name of the read
+	'edit_string'	Edit string: read to reference summary; see above
+	'contig_start'	Start of alignment in genome (beginning with 1, not 0).
+	'#SNPs'			The number of SNPs present in the hit alignment 
+	'#ins'			The number of insertions present in the hit alignment
+	'#dels' 		The number of deletions	present in the hit alignment
+	'var_idX'		The variation id, description, and position. Details:
+		if variation is a SNP, the var_idX is s-L-pos, where s means SNP, L
+		is a letter that the residue is changed to, and pos is the contig 
+		position of the SNP; if variation is a insertion, the var_idX is 
+		i-INS-pos where i signals an insertion, INS includes the inserted 
+		residues and pos is the contig position of the insertion; if variation 
+		is a deletion, the var_idX is of form d-len-pos, with d signaling a 
+		deletion, len representing the length of the deletion, and pos is the 
+		contig position of the deletion. More examples and a discussion on 
+		negative strand handling is available in pdf via email.  
 
 
 --------------------------------------------------------------------------------
