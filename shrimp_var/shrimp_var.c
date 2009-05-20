@@ -197,9 +197,17 @@ int variant_transform(char *fpath) {
 	// reading in variables
 	char readname[256], contigname[256], strand[256], editstring[100];
 	char readsequence[256];
-	long contigstart, contigend, readstart, readend;
-	int readlength;
-	float score, normodds, pgenome, pchance;
+	long contigstart = -1; 
+	long contigend = -1; 
+	long readstart  = -1; 
+	long readend = -1;
+	
+	int readlength = -1;
+	
+	float score = -1; 
+	float normodds = -1; 
+	float pgenome = -1; 
+	float pchance  = -1;
 	
 	char line[LINE_MAX];
 	int linelen = 0;
