@@ -396,7 +396,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 			if (is_forward) {
 				readloc += atoi(num);
 			} else {
-				for (j = 0; j < strlen(num); j++) {
+				for (j = 0; j < (int) strlen(num); j++) {
 					rev_num[j] = num[strlen(num) - j - 1];
 				}
 				rev_num[strlen(num)] = '\0';
@@ -457,7 +457,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 			if (is_forward) {
 				sprintf(&outstring[strlen(outstring)], "i-%s-%li\t", ins, readloc - 1);
 			} else {
-				for (j = 0; j < strlen(ins); j++) {
+				for (j = 0; j < (int) strlen(ins); j++) {
 					rev_ins[j] = complement(ins[j]); // no need for ins[strlen(ins) - j - 1], since already reading backwards
 				}
 				rev_ins[strlen(ins)] = '\0';
