@@ -1,11 +1,15 @@
 $Id$
 
-1.2.1: May ?, 2009
+1.2.1: June ?, 2009
 	- Fix a few Sun Studio Compiler portability bugs. 
 	- rmapper-ls: make it clear when S-W Threshold is absolute vs.
 	  fractional. 
 	- Add a -U flag to rmapper, which outputs a list of unmapped reads
 	  after all of the alignments. See the README for more information.
+	- Add experimental support for multiple spaced seeds (enabled by
+	  passing multiple '-s' arguments to rmapper.
+	- Add the 'shrimp_var' utility, which prints detailed variations
+	  detected for specific hits.
 	- Misc. documentation updates.
 
 1.2.0: February 27, 2009

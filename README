@@ -243,11 +243,16 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		considered as matching, whereas 1's dictate positions that must
 		match. A string of all 1's will result in a simple kmer scan.
 
-		Note that our implementation creates a hash table based on the
-		kmer size (spaced seed 'weight', or number of 1's). Hence
-		memory usage increases by a factor of four for each addition
+		Multiple -s arguments may be provided, in which case rmapper will
+		use all of the spaced seeds. Note that currently all spaced seeds
+		must have the same span and weight.
+
+		Note that, by default, our implementation creates a lookup table
+		based on the kmer size (spaced seed 'weight', or number of 1's).
+		Hence memory usage increases by a factor of four for each addition
 		1. At 16, we're looking at a 32GB hash table allocation for
-		32-bit architectures.
+		32-bit architectures. See the -H option for an alternative method,
+		which creates a hash table, permitting much larger seeds.
 
 		[ -n seed_matches_per_window ]
 
