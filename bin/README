@@ -13,3 +13,4 @@ probcalc_mp		combine read mappings from probalc into mate pairs
 rmapper-cs		colourspace read mapper
 rmapper-ls		letterspace read mapper
 rmapper-hs		helicos read mapper
+shrimp_var		list detailed hit variations in rmapper/probcalc results
