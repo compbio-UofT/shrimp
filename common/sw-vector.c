@@ -52,6 +52,11 @@ static uint64_t swticks, swcells, swinvocs;
  *
  *	3) seqA and seqB's padding _must_ be different, otherwise our logic will
  *	   consider the padding as matches!
+ *
+ *      4) These is no _mm_max_epu16 prior to SSE 4! We must use the signed max
+ *         function. Unfortunately, this limits our maximum score to 2^15 - 1, or
+ *         32767. Since bad things happen if we roll over, our caller must ensure
+ *         that this will not happen.
  */
 static int
 vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
@@ -369,6 +374,12 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
     int _b_gap_open, int _b_gap_ext, int _match, int _mismatch,
     int _use_colours, bool reset_stats)
 {
+	if (_match * _qrlen >= 32768) {
+		fprintf(stderr, "Error: Match Value is too high/reads are too long. "
+		    "Please ensure that (Match_Value x your_longest_read_length)"
+		    " is less than 32768! Try using smaller S-W values.");
+		exit(1);
+	}
 
 	dblen = _dblen;
 	db = (int8_t *)malloc((dblen + 14) * sizeof(db[0]));
