@@ -111,8 +111,8 @@ static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
 
 /* Misc stats */
-static uint64_t scan_ticks;
-static uint64_t revcmpl_ticks;
+static uint64_t scan_usecs;
+static uint64_t revcmpl_usecs;
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -1338,9 +1338,9 @@ final_pass_contig(struct re_score *scores, struct re_score *scores_revcmpl)
 	if (Cflag) {
 		uint64_t before;
 
-		before = rdtsc();
+		before = gettimeinusecs();
 		reverse_complement(genome, NULL, genome_len);
-		revcmpl_ticks += rdtsc() - before;
+		revcmpl_usecs += (gettimeinusecs() - before);
 		generate_output(scores_revcmpl, true);
 	}
 }
@@ -1499,9 +1499,9 @@ scan_genomes_contig()
 		/*
 		 * Do it forwards.
 		 */
-		before = rdtsc();
+		before = gettimeinusecs();
 		scan(ncontigs, false);
-		scan_ticks += (rdtsc() - before);
+		scan_usecs += (gettimeinusecs() - before);
 		reset_reads();
 	}
 
@@ -1511,16 +1511,16 @@ scan_genomes_contig()
 		 */
 		fprintf(stderr, "    - Processing reverse complement\n");
 
-		before = rdtsc();
+		before = gettimeinusecs();
 		if (shrimp_mode == MODE_COLOUR_SPACE)
 			reverse_complement(genome, genome_cs, genome_len);
 		else
 			reverse_complement(genome, NULL, genome_len);
-		revcmpl_ticks += (rdtsc() - before);
+		revcmpl_usecs += (gettimeinusecs() - before);
 
-		before = rdtsc();
+		before = gettimeinusecs();
 		scan(ncontigs, true);
-		scan_ticks += (rdtsc() - before);
+		scan_usecs += (gettimeinusecs() - before);
 		reset_reads();
 	}
 
@@ -1613,7 +1613,7 @@ set_window_lengths()
 static void
 print_statistics()
 {
-	double cellspersec, hz;
+	double cellspersec, hz, seedscantime;
 	uint64_t invocs, cells, reads_matched, total_matches, fasta_load_ticks, vticks;
 	fasta_stats_t fs;
 	uint32_t i;
@@ -1633,10 +1633,13 @@ print_statistics()
 
 	sw_vector_stats(&invocs, &cells, &vticks, &cellspersec);
 
+	seedscantime = ((double)scan_usecs / 1000000.0) - (vticks / hz);
+	seedscantime = MAX(0, seedscantime);
+
 	fprintf(stderr, "\nStatistics:\n");
 	fprintf(stderr, "    Spaced Seed Scan:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
-	    (scan_ticks - vticks) / hz);
+	    seedscantime); 
 	fprintf(stderr, "        Total Kmers:            %s\n",
 	    comma_integer(nkmers));
 	fprintf(stderr, "        Minimal Reads/Kmer:     %s\n",
@@ -1699,7 +1702,7 @@ print_statistics()
 	fprintf(stderr, "        Load Time:              %.2f seconds\n",
 	    (double)fasta_load_ticks / hz);
 	fprintf(stderr, "        Revcmpl. Time:          %.2f seconds\n",
-	    (double)revcmpl_ticks / hz);
+	    (double)revcmpl_usecs / 1000000.0);
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    General:\n");

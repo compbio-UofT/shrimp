@@ -45,6 +45,7 @@ typedef struct _strbuf_t * strbuf_t;
 
 void		set_mode_from_argv(char **);
 const char     *get_mode_string(void);
+uint64_t	gettimeinusecs(void);
 uint64_t	rdtsc(void);
 double		cpuhz(void);
 u_int		strchrcnt(const char *, const char);
