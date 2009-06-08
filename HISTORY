@@ -4,6 +4,11 @@ $Id$
 	- Fix a few Sun Studio Compiler portability bugs. 
 	- rmapper-ls: make it clear when S-W Threshold is absolute vs.
 	  fractional. 
+	- Make the vector sw algorithm bail upon set up if the match value
+	  times the maximum read length exceeds 32767, since this it the
+	  highest score we can attain with pre-SSE4 16-bit instructions.
+	  Correspondingly, divide the rmapper S-W defaults by 10 to make
+	  longer reads work.
 	- Add a -U flag to rmapper, which outputs a list of unmapped reads
 	  after all of the alignments. See the README for more information.
 	- Add experimental support for multiple spaced seeds (enabled by
