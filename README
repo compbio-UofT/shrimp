@@ -70,7 +70,7 @@ methods we use to compute p-values are layed out in Sections 6 and 7, respective
     Helicos-space (Helicos HeliScope SMS 2-pass reads), respectively.
 
     E.g.:
-        bin/rmapper-cs reads.csfasta /path/to/genome/chr*.fa > output.rmapper
+        bin/rmapper-cs reads.csfasta /path/to/genomedir/chr*.fa > output.rmapper
 
     If you want full, pretty-printed alignments, use the -P flag. For more
     details about parameters, see Sections 3 and 4.
@@ -91,7 +91,7 @@ methods we use to compute p-values are layed out in Sections 6 and 7, respective
     is one of 'ls', 'cs', or 'hs').
 
     E.g.:
-        bin/prettyprint-cs output.probcalc reads.csfasta /path/to/genome/chr*.fa
+        bin/prettyprint-cs output.probcalc /path/to/genomedir/ reads.csfasta
 
   2.4 Printing hit variations
   ---
