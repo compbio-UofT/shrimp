@@ -419,8 +419,15 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 			(complement_base((g_ls[i] & 0x0f000000) >> 24) << 24) |
 			(complement_base((g_ls[i] & 0xf0000000) >> 28) << 28);
 
-		if (i == j)
-			continue;
+		/* Don't swap twice if we're at the same index */
+		if (i == j) {
+			// if i == j and i == 0, then we're done. Else j would
+			// underflow in the for loop above with unsigned badness
+			if (i == 0)
+				break;
+			else
+				continue;
+		}
 
 		g_ls[j]=(complement_base((g_ls[j] & 0x0000000f) >>  0) <<  0) |
 			(complement_base((g_ls[j] & 0x000000f0) >>  4) <<  4) |
