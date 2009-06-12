@@ -102,6 +102,7 @@ static int Fflag = false;			/* do positive (forward) only */
 static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
+static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
 
 /* Scan stats */
@@ -1225,10 +1226,12 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 		rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(*rs->sfrp));
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			sw_full_cs(genome, goff, glen, re->ri->read1,
-			    re->ri->read1_len, re->ri->initbp, thresh, rs->sfrp);
+			    re->ri->read1_len, re->ri->initbp, thresh,
+			    rs->sfrp, revcmpl && Tflag);
 		} else {
 			sw_full_ls(genome, goff, glen, re->ri->read1,
-			    re->ri->read1_len, thresh, rs->score, rs->sfrp);
+			    re->ri->read1_len, thresh, rs->score,
+			    rs->sfrp, revcmpl && Tflag);
 			assert(rs->sfrp->score == rs->score);
 		}
 		rs->score = rs->sfrp->score;
@@ -1905,6 +1908,12 @@ usage(char *progname)
 	    "    -R    Print Reads in Output                         (default: "
 	    "disabled)\n");
 
+	if (shrimp_mode != MODE_HELICOS_SPACE) {
+		fprintf(stderr,
+		    "    -T    Reverse tie-break choice on negative strand   (default: "
+		    "disabled)\n");
+	}
+
 	fprintf(stderr,
 	    "    -U    Print Unmapped Read Names in Output           (default: "
 	    "disabled)\n");
@@ -1938,11 +1947,11 @@ main(int argc, char **argv)
 	switch (shrimp_mode) {
 	case MODE_COLOUR_SPACE:
 		add_spaced_seed(DEF_SPACED_SEED_CS);
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRU";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTU";
 		break;
 	case MODE_LETTER_SPACE:
 		add_spaced_seed(DEF_SPACED_SEED_LS);
-		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPRU";
+		optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPRTU";
 		break;
 	case MODE_HELICOS_SPACE:
 		add_spaced_seed(DEF_SPACED_SEED_DAG);
@@ -2117,6 +2126,9 @@ main(int argc, char **argv)
 			break;
 		case 'R':
 			Rflag = true;
+			break;
+		case 'T':
+			Tflag = true;
 			break;
 		case 'U':
 			Uflag = true;

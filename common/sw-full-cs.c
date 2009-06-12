@@ -115,7 +115,8 @@ static uint64_t		swticks, swcells, swinvocs;
  * scan.
  */
 static int
-full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
+full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
+    int *kret, bool revcmpl)
 {
 	int i, j, k, l, max_i, max_j, max_k;
 	int score, ms, go, ge, tmp, resetval;
@@ -228,17 +229,32 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 				 */
 				ms = (db[j] == qr[k][i]) ? match : mismatch;
 
-				tmp  = cell_nw->from[k].score_nw + ms;
-				tmp2 = FROM_x(k, FROM_NORTHWEST_NORTHWEST);
+				if (!revcmpl) {
+					tmp  = cell_nw->from[k].score_nw + ms;
+					tmp2 = FROM_x(k, FROM_NORTHWEST_NORTHWEST);
 
-				if (cell_nw->from[k].score_n + ms > tmp) {
-					tmp  = cell_nw->from[k].score_n + ms;
-					tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
-				}
+					if (cell_nw->from[k].score_n + ms > tmp) {
+						tmp  = cell_nw->from[k].score_n + ms;
+						tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
+					}
 
-				if (cell_nw->from[k].score_w + ms > tmp) {
+					if (cell_nw->from[k].score_w + ms > tmp) {
+						tmp  = cell_nw->from[k].score_w + ms;
+						tmp2 = FROM_x(k, FROM_NORTHWEST_WEST);
+					}
+				} else {
 					tmp  = cell_nw->from[k].score_w + ms;
 					tmp2 = FROM_x(k, FROM_NORTHWEST_WEST);
+
+					if (cell_nw->from[k].score_n + ms > tmp) {
+						tmp  = cell_nw->from[k].score_n + ms;
+						tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
+					}
+
+					if (cell_nw->from[k].score_nw + ms > tmp) {
+						tmp  = cell_nw->from[k].score_nw + ms;
+						tmp2 = FROM_x(k, FROM_NORTHWEST_NORTHWEST);
+					}
 				}
 
 				/* check neighbours */
@@ -246,34 +262,66 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 					if (l == k)
 						continue;
 
-					/* northwest */
-					if (cell_nw->from[l].score_nw + ms +
-					    xover_penalty > tmp) {
-						tmp  =
-						    cell_nw->from[l].score_nw
-						    + ms + xover_penalty;
-						tmp2 = FROM_x(l,
-						    FROM_NORTHWEST_NORTHWEST);
-					}
+					if (!revcmpl) {
+						/* northwest */
+						if (cell_nw->from[l].score_nw + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_nw
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_NORTHWEST);
+						}
 
-					/* north */
-					if (cell_nw->from[l].score_n + ms +
-					    xover_penalty > tmp) {
-						tmp  =
-						    cell_nw->from[l].score_n
-						    + ms + xover_penalty;
-						tmp2 = FROM_x(l,
-						    FROM_NORTHWEST_NORTH);
-					}
+						/* north */
+						if (cell_nw->from[l].score_n + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_n
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_NORTH);
+						}
 
-					/* west */
-					if (cell_nw->from[l].score_w + ms +
-					    xover_penalty > tmp) {
-						tmp  =
-						    cell_nw->from[l].score_w
-						    + ms + xover_penalty;
-						tmp2 = FROM_x(l,
-						    FROM_NORTHWEST_WEST);
+						/* west */
+						if (cell_nw->from[l].score_w + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_w
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_WEST);
+						}
+					} else {
+						/* west */
+						if (cell_nw->from[l].score_w + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_w
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_WEST);
+						}
+
+						/* north */
+						if (cell_nw->from[l].score_n + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_n
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_NORTH);
+						}
+
+						/* northwest */
+						if (cell_nw->from[l].score_nw + ms +
+						    xover_penalty > tmp) {
+							tmp  =
+							    cell_nw->from[l].score_nw
+							    + ms + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTHWEST_NORTHWEST);
+						}
 					}
 				}
 
@@ -289,12 +337,22 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 				/*
 				 * north
 				 */
-				tmp  = cell_n->from[k].score_nw - go - ge;
-				tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
+				if (!revcmpl) {
+					tmp  = cell_n->from[k].score_nw - go - ge;
+					tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 
-				if (cell_n->from[k].score_n - ge > tmp) {
+					if (cell_n->from[k].score_n - ge > tmp) {
+						tmp  = cell_n->from[k].score_n - ge;
+						tmp2 = FROM_x(k, FROM_NORTH_NORTH);
+					}
+				} else {
 					tmp  = cell_n->from[k].score_n - ge;
 					tmp2 = FROM_x(k, FROM_NORTH_NORTH);
+
+					if (cell_n->from[k].score_nw - go - ge > tmp) {
+						tmp  = cell_n->from[k].score_nw - go - ge;
+						tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
+					}
 				}
 
 				/* check neighbours */
@@ -302,24 +360,46 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 					if (l == k)
 						continue;
 
-					/* northwest */
-					if (cell_n->from[l].score_nw - go - ge
-					    + xover_penalty > tmp) {
-						tmp  =
-						    cell_n->from[l].score_nw
-						    - go - ge + xover_penalty;
-						tmp2 = FROM_x(l,
-						    FROM_NORTH_NORTHWEST);
-					}
+					if (!revcmpl) {
+						/* northwest */
+						if (cell_n->from[l].score_nw - go - ge
+						    + xover_penalty > tmp) {
+							tmp  =
+							    cell_n->from[l].score_nw
+							    - go - ge + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTH_NORTHWEST);
+						}
 
-					/* north */
-					if (cell_n->from[l].score_n - ge
-					    + xover_penalty > tmp) {
-						tmp  =
-						    cell_n->from[l].score_n
-						    - ge + xover_penalty;
-						tmp2 = FROM_x(l,
-						    FROM_NORTH_NORTH);
+						/* north */
+						if (cell_n->from[l].score_n - ge
+						    + xover_penalty > tmp) {
+							tmp  =
+							    cell_n->from[l].score_n
+							    - ge + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTH_NORTH);
+						}
+					} else {
+						/* north */
+						if (cell_n->from[l].score_n - ge
+						    + xover_penalty > tmp) {
+							tmp  =
+							    cell_n->from[l].score_n
+							    - ge + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTH_NORTH);
+						}
+
+						/* northwest */
+						if (cell_n->from[l].score_nw - go - ge
+						    + xover_penalty > tmp) {
+							tmp  =
+							    cell_n->from[l].score_nw
+							    - go - ge + xover_penalty;
+							tmp2 = FROM_x(l,
+							    FROM_NORTH_NORTHWEST);
+						}
 					}
 				}
 
@@ -335,12 +415,22 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 				/*
 				 * west
 				 */
-				tmp  = cell_w->from[k].score_nw - go - ge;
-				tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
+				if (!revcmpl) {
+					tmp  = cell_w->from[k].score_nw - go - ge;
+					tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 
-				if (cell_w->from[k].score_w - ge > tmp) {
+					if (cell_w->from[k].score_w - ge > tmp) {
+						tmp  = cell_w->from[k].score_w - ge;
+						tmp2 = FROM_x(k, FROM_WEST_WEST);
+					}
+				} else {
 					tmp  = cell_w->from[k].score_w - ge;
 					tmp2 = FROM_x(k, FROM_WEST_WEST);
+
+					if (cell_w->from[k].score_nw - go - ge > tmp) {
+						tmp  = cell_w->from[k].score_nw - go - ge;
+						tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
+					}
 				}
 
 				/*
@@ -360,17 +450,32 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret, int *kret)
 				/*
 				 * max score
 				 */
-				if (cell_cur->from[k].score_nw > score) {
-					score = cell_cur->from[k].score_nw;
-					max_i = i, max_j = j, max_k = k;
-				}
-				if (cell_cur->from[k].score_n > score) {
-					score = cell_cur->from[k].score_n;
-					max_i = i, max_j = j, max_k = k;
-				}
-				if (cell_cur->from[k].score_w > score) {
-					score = cell_cur->from[k].score_w;
-					max_i = i, max_j = j, max_k = k;
+				if (!revcmpl) {
+					if (cell_cur->from[k].score_nw > score) {
+						score = cell_cur->from[k].score_nw;
+						max_i = i, max_j = j, max_k = k;
+					}
+					if (cell_cur->from[k].score_n > score) {
+						score = cell_cur->from[k].score_n;
+						max_i = i, max_j = j, max_k = k;
+					}
+					if (cell_cur->from[k].score_w > score) {
+						score = cell_cur->from[k].score_w;
+						max_i = i, max_j = j, max_k = k;
+					}
+				} else {
+					if (cell_cur->from[k].score_w > score) {
+						score = cell_cur->from[k].score_w;
+						max_i = i, max_j = j, max_k = k;
+					}
+					if (cell_cur->from[k].score_n > score) {
+						score = cell_cur->from[k].score_n;
+						max_i = i, max_j = j, max_k = k;
+					}
+					if (cell_cur->from[k].score_nw > score) {
+						score = cell_cur->from[k].score_nw;
+						max_i = i, max_j = j, max_k = k;
+					}
 				}
 			}
 		}
@@ -859,7 +964,7 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
-    int initbp, int threshscore, struct sw_full_results *sfr)
+    int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl)
 {
 	struct sw_full_results scratch;
 	uint64_t before;
@@ -907,7 +1012,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 		}
 	}
 
-	sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k);
+	sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl);
 	k = do_backtrace(glen, i, j, k, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;

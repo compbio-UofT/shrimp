@@ -9,12 +9,17 @@ $Id$
 	  highest score we can attain with pre-SSE4 16-bit instructions.
 	  Correspondingly, divide the rmapper S-W defaults by 10 to make
 	  longer reads work.
+	- Add a -T flag to rmapper, which when set causes tie-breaks to
+	  be broken in the opposite order during full alignment. This
+	  should help alignment gaps line up when negative alignments are
+	  reverse-complemented and lined up against positive ones.
 	- Add a -U flag to rmapper, which outputs a list of unmapped reads
 	  after all of the alignments. See the README for more information.
 	- Add experimental support for multiple spaced seeds (enabled by
 	  passing multiple '-s' arguments to rmapper.
 	- Add the 'shrimp_var' utility, which prints detailed variations
 	  detected for specific hits.
+	- Misc. bug fixes.
 	- Misc. documentation updates.
 
 1.2.0: February 27, 2009

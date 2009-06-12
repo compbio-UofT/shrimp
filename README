@@ -403,6 +403,13 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		will consume huge gobs of disk space for large reads and is
 		disabled by default. Saved reads are placed in the 'r_seq' key.
 
+		[ -T ]
+
+		Reverse the order in which tie-breaks are resolved in the full
+		aligner when doing the negative strand. This should help line
+		up gaps when negative matches are reverse-complemented and
+		compared with positive matches.
+
 		[ -U ]
 
 		After performing all alignments and outputting the results,
@@ -501,6 +508,13 @@ is a run-down of these options (in some strange, non-alphabetical order).
 		Include the entire read sequence in the output generated. This
 		will only have an effect for input lines containing the 'r_seq'
 		key.
+
+		[ -T ]
+
+		Reverse the order in which tie-breaks are resolved in the full
+		aligner when doing the negative strand. This should help line
+		up gaps when negative matches are reverse-complemented and
+		compared with positive matches.
 
 	prettyprint-cs-specific parameters:
 		[ -x crossover_penalty ]

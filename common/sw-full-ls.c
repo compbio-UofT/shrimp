@@ -57,7 +57,8 @@ static char	       *dbalign, *qralign;
 static uint64_t		swticks, swcells, swinvocs;
 
 static int
-full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
+full_sw(int lena, int lenb, int threshscore, int maxscore,
+    int *iret, int *jret, bool revcmpl)
 {
 	int i, j;
 	int sw_band, ne_band;
@@ -130,17 +131,32 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 			 */
 			ms = (db[j] == qr[i]) ? match : mismatch;
 
-			tmp  = cell_nw->score_northwest + ms;
-			tmp2 = FROM_NORTHWEST_NORTHWEST;
+			if (!revcmpl) {
+				tmp  = cell_nw->score_northwest + ms;
+				tmp2 = FROM_NORTHWEST_NORTHWEST;
 
-			if (cell_nw->score_north + ms > tmp) {
-				tmp  = cell_nw->score_north + ms;
-				tmp2 = FROM_NORTHWEST_NORTH;
-			}
+				if (cell_nw->score_north + ms > tmp) {
+					tmp  = cell_nw->score_north + ms;
+					tmp2 = FROM_NORTHWEST_NORTH;
+				}
 
-			if (cell_nw->score_west + ms > tmp) {
+				if (cell_nw->score_west + ms > tmp) {
+					tmp  = cell_nw->score_west + ms;
+					tmp2 = FROM_NORTHWEST_WEST;
+				}
+			} else {
 				tmp  = cell_nw->score_west + ms;
 				tmp2 = FROM_NORTHWEST_WEST;
+
+				if (cell_nw->score_north + ms > tmp) {
+					tmp  = cell_nw->score_north + ms;
+					tmp2 = FROM_NORTHWEST_NORTH;
+				}
+
+				if (cell_nw->score_northwest + ms > tmp) {
+					tmp  = cell_nw->score_northwest + ms;
+					tmp2 = FROM_NORTHWEST_NORTHWEST;
+				}
 			}
 
 			if (tmp <= 0)
@@ -153,12 +169,22 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 			/*
 			 * north
 			 */
-			tmp  = cell_n->score_northwest - b_go - b_ge;
-			tmp2 = FROM_NORTH_NORTHWEST;
+			if (!revcmpl) {
+				tmp  = cell_n->score_northwest - b_go - b_ge;
+				tmp2 = FROM_NORTH_NORTHWEST;
 
-			if (cell_n->score_north - b_ge > tmp) {
+				if (cell_n->score_north - b_ge > tmp) {
+					tmp  = cell_n->score_north - b_ge;
+					tmp2 = FROM_NORTH_NORTH;
+				}
+			} else {
 				tmp  = cell_n->score_north - b_ge;
 				tmp2 = FROM_NORTH_NORTH;
+
+				if (cell_n->score_northwest - b_go - b_ge > tmp) {
+					tmp  = cell_n->score_northwest - b_go - b_ge;
+					tmp2 = FROM_NORTH_NORTHWEST;
+				}
 			}
 
 			if (tmp <= 0)
@@ -171,12 +197,22 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret)
 			/*
 			 * west
 			 */
-			tmp  = cell_w->score_northwest - a_go - a_ge;
-			tmp2 = FROM_WEST_NORTHWEST;
+			if (!revcmpl) {
+				tmp  = cell_w->score_northwest - a_go - a_ge;
+				tmp2 = FROM_WEST_NORTHWEST;
 
-			if (cell_w->score_west - a_ge > tmp) {
+				if (cell_w->score_west - a_ge > tmp) {
+					tmp  = cell_w->score_west - a_ge;
+					tmp2 = FROM_WEST_WEST;
+				}
+			} else {
 				tmp  = cell_w->score_west - a_ge;
 				tmp2 = FROM_WEST_WEST;
+
+				if (cell_w->score_northwest - a_go - a_ge > tmp) {
+					tmp  = cell_w->score_northwest - a_go - a_ge;
+					tmp2 = FROM_WEST_NORTHWEST;
+				}
 			}
 
 			if (tmp <= 0)
@@ -431,7 +467,7 @@ sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    int threshscore, int maxscore, struct sw_full_results *sfr)
+    int threshscore, int maxscore, struct sw_full_results *sfr, bool revcmpl)
 {
 	struct sw_full_results scratch;
 	uint64_t before;
@@ -461,7 +497,7 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	for (i = 0; i < rlen; i++)
 		qr[i] = (int8_t)EXTRACT(read, i);
 
-	sfr->score = full_sw(glen, rlen, threshscore, maxscore, &i, &j);
+	sfr->score = full_sw(glen, rlen, threshscore, maxscore, &i, &j,revcmpl);
 	k = do_backtrace(glen, i, j, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;

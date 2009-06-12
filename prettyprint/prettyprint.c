@@ -74,6 +74,7 @@ static uint64_t    nalignments;
 static uint64_t    nalignments_revcmpl;
 
 static bool Rflag = false;		/* don't output read sequence */
+static bool Tflag = false;		/* reverse tie-breaks on neg strand */
 
 static bool seen_probs = false;		/* set if ever seen normodds, etc */
 
@@ -113,11 +114,11 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		sw_full_cs(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len, read->initbp,
-		    fpo->input.score, &sfr);
+		    fpo->input.score, &sfr, revcmpl && Tflag);
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
-		    fpo->input.score, fpo->input.score, &sfr);
+		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag);
 	}
 
 	if (sfr.score != fpo->input.score) {
@@ -500,9 +501,9 @@ main(int argc, char **argv)
 	progname = argv[0];
 
 	if (shrimp_mode == MODE_COLOUR_SPACE)
-		optstr = "m:i:g:e:x:R";
+		optstr = "m:i:g:e:x:RT";
 	else
-		optstr = "m:i:g:e:R";
+		optstr = "m:i:g:e:RT";
 
 	while ((ch = getopt(argc, argv, optstr)) != -1) {
 		switch (ch) {
@@ -534,6 +535,9 @@ main(int argc, char **argv)
 			break;
 		case 'R':
 			Rflag = true;
+			break;
+		case 'T':
+			Tflag = true;
 			break;
 		default:
 			usage(progname);
