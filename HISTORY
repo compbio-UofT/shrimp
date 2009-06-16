@@ -19,6 +19,9 @@ $Id$
 	  passing multiple '-s' arguments to rmapper.
 	- Add the 'shrimp_var' utility, which prints detailed variations
 	  detected for specific hits.
+	- Handle uracil better for rna alignments, especially in colourspace.
+	- Fix a bug that was pruning kmers with wobble bases or
+	  uracil unnecessarily.
 	- Misc. bug fixes.
 	- Misc. documentation updates.
 

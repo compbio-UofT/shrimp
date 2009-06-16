@@ -57,9 +57,9 @@ typedef struct _fasta_stats_t {
 
 fasta_t	  fasta_open(const char *, int);
 void	  fasta_close(fasta_t);
-bool	  fasta_get_next(fasta_t, char **, char **);
+bool	  fasta_get_next(fasta_t, char **, char **, bool *);
 int	  fasta_get_initial_base(fasta_t, char *);
-uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t);
+uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t, bool);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
 fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);

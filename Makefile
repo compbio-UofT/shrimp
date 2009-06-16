@@ -119,13 +119,13 @@ common/input.o: common/input.c common/input.h
 common/output.o: common/output.c common/output.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h
+common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-common.h
+common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-common.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/sw-vector.o: common/sw-vector.c common/sw-vector.h
+common/sw-vector.o: common/sw-vector.c common/sw-vector.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h

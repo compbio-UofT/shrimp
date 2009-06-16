@@ -60,7 +60,7 @@ static uint64_t swticks, swcells, swinvocs;
  */
 static int
 vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
-    int8_t *ls_seqA, int initbp)
+    int8_t *ls_seqA, int initbp, bool is_rna)
 {
 	int i, j, score = 0;
 	__m128i v_score, v_zero, v_match, v_mismatch;
@@ -119,7 +119,7 @@ vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 			b_gap[i] =(uint16_t)MAX((nogap[i] - b_gap_open - b_gap_ext),
 			    (b_gap[i] - b_gap_ext));
 
-			a = lstocs(ls_seqA[i], initbp);
+			a = lstocs(ls_seqA[i], initbp, is_rna);
 			ms = (a == seqB[0]) ? match : mismatch;
 
 			last_nogap = MAX((prev_nogap + ms), 0);
@@ -220,7 +220,7 @@ vect_sw_diff_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 
 static int
 vect_sw_same_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
-    int8_t *ls_seqA, int initbp)
+    int8_t *ls_seqA, int initbp, bool is_rna)
 {
 	int i, j, score = 0;
 	__m128i v_score, v_zero, v_match, v_mismatch;
@@ -279,7 +279,7 @@ vect_sw_same_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 			b_gap[i] =(uint16_t)MAX((nogap[i] - b_gap_open - b_gap_ext),
 			    (b_gap[i] - b_gap_ext));
 
-			a = lstocs(ls_seqA[i], initbp);
+			a = lstocs(ls_seqA[i], initbp, is_rna);
 			ms = (a == seqB[0]) ? match : mismatch;
 
 			last_nogap = MAX((prev_nogap + ms), 0);
@@ -439,7 +439,7 @@ sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 int
 sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    uint32_t *genome_ls, int initbp)
+    uint32_t *genome_ls, int initbp, bool is_rna)
 {
 	uint64_t before;
 	int i, score;
@@ -470,10 +470,10 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 
 	if (a_gap_open == b_gap_open && a_gap_ext == b_gap_ext) {
 		score = vect_sw_same_gap(&db[0], glen, &qr[7], rlen,
-		    &db_ls[0], initbp);
+		    &db_ls[0], initbp, is_rna);
 	} else { 
 		score = vect_sw_diff_gap(&db[0], glen, &qr[7], rlen,
-		    &db_ls[0], initbp);
+		    &db_ls[0], initbp, is_rna);
 	}
 
 	swcells += (glen * rlen);

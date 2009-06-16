@@ -76,6 +76,7 @@ static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static uint32_t *genome;			/* genome -- always in letter*/
 static uint32_t *genome_cs;			/* genome -- colourspace */
 static uint32_t	 genome_len;
+static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 static char     *contig_name;			/* name of contig in genome */
 static uint32_t  ncontigs;			/* number of contigs read */
 
@@ -372,6 +373,11 @@ kmer_to_mapidx_orig(uint32_t *kmer, u_int seednum)
 		seed_span = strlen(spaced_seed);
 	}
 
+	/*
+	 * XXX- This algorithm only considers bases 0-3, which implies overlap
+  	 *      when we have other bases (mainly uracil, but also wobble codes).
+	 *      This won't affect sensitivity, but may cause extra S-W calls. 
+	 */
 	mapidx = 0;
 	for (i = seed_span - 1; i >= 0; i--) {
 		if (spaced_seed[i] == '1') {
@@ -566,7 +572,7 @@ scan(int contig_num, bool revcmpl)
 		/*
 		 * Ignore kmers that contain an 'N'.
 		 */
-		if (base > 3)
+		if (base == BASE_N || base == BASE_X)
 			skip = seed_span - 1;
 
 		if (skip > 0) {
@@ -626,23 +632,23 @@ scan(int contig_num, bool revcmpl)
 					if (shrimp_mode == MODE_COLOUR_SPACE) {
 						score1 = sw_vector(scan_genome, goff, glen,
 						    re->ri->read1, re->ri->read1_len,
-						    genome, re->ri->initbp);
+						    genome, re->ri->initbp, genome_is_rna);
 						thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 						if (score1 >= thresh)
 							meets_thresh = true;
 					} else if (shrimp_mode == MODE_LETTER_SPACE) {
 						score1 = sw_vector(scan_genome, goff, glen,
-						    re->ri->read1, re->ri->read1_len, NULL, -1);
+						    re->ri->read1, re->ri->read1_len, NULL, -1, genome_is_rna);
 						thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 						if (score1 >= thresh)
 							meets_thresh = true;
 					} else if (shrimp_mode == MODE_HELICOS_SPACE) {
 						score1 = sw_vector(scan_genome, goff, glen,
-						    re->ri->read1, re->ri->read1_len, NULL, -1);
+						    re->ri->read1, re->ri->read1_len, NULL, -1, genome_is_rna);
 						thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 						if (score1 >= thresh) {
 							score2 = sw_vector(scan_genome, goff, glen,
-							    re->ri->read2, re->ri->read2_len, NULL, -1);
+							    re->ri->read2, re->ri->read2_len, NULL, -1, genome_is_rna);
 							thresh = get_sw_threshold(re, sw_vect_threshold, 2);
 							if (score2 >= thresh) {
 								score1 = score1 * re->ri->read1_len;
@@ -753,7 +759,7 @@ load_reads_lscs(const char *file)
 		if (Bflag && (nreads % 17) == 0) 
 			fprintf(stderr, "\r- Loading reads... %u", nreads);
 
-		if (!fasta_get_next(fasta, &name, &seq))
+		if (!fasta_get_next(fasta, &name, &seq, NULL))
 			break;
 
 		if (strchr(name, '\t') != NULL || strchr(seq, '\t') != NULL) {
@@ -813,7 +819,7 @@ load_reads_lscs(const char *file)
 			/*
 			 * Ignore kmers that contain an 'N'.
 			 */
-			if (base > 3)
+			if (base == BASE_N || base == BASE_X)
 				skip = MAX(seed_span - 1, skip);
 
 			if (skip > 0) {
@@ -906,8 +912,8 @@ load_reads_dag(const char *file)
 		if (Bflag && (nreads % 17) == 0) 
 			fprintf(stderr, "\r- Loading read pairs... %u", nreads);
 
-		b1 = fasta_get_next(fasta, &name1, &seq1);
-		b2 = fasta_get_next(fasta, &name2, &seq2);
+		b1 = fasta_get_next(fasta, &name1, &seq1, NULL);
+		b2 = fasta_get_next(fasta, &name2, &seq2, NULL);
 
 		if (b1 == false)
 			break;
@@ -1216,7 +1222,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 			tryoff = goff + trylen / 2;
 			assert(tryoff < (goff + glen));
 			score = sw_vector(genome, tryoff, trylen,
-			    re->ri->read1, re->ri->read1_len, NULL, -1);
+			    re->ri->read1, re->ri->read1_len, NULL, -1, genome_is_rna);
 			if (score == rs->score) {
 				goff = tryoff;
 				glen = trylen;
@@ -1227,7 +1233,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			sw_full_cs(genome, goff, glen, re->ri->read1,
 			    re->ri->read1_len, re->ri->initbp, thresh,
-			    rs->sfrp, revcmpl && Tflag);
+			    rs->sfrp, revcmpl && Tflag, genome_is_rna);
 		} else {
 			sw_full_ls(genome, goff, glen, re->ri->read1,
 			    re->ri->read1_len, thresh, rs->score,
@@ -1342,7 +1348,7 @@ final_pass_contig(struct re_score *scores, struct re_score *scores_revcmpl)
 		uint64_t before;
 
 		before = gettimeinusecs();
-		reverse_complement(genome, NULL, genome_len);
+		reverse_complement(genome, NULL, genome_len, genome_is_rna);
 		revcmpl_usecs += (gettimeinusecs() - before);
 		generate_output(scores_revcmpl, true);
 	}
@@ -1355,6 +1361,7 @@ final_pass(char **files, u_int nfiles)
 	u_int i, j, hits = 0;
 	fasta_t fasta;
 	char *name, *sequence;
+	bool is_rna = false;
 
 	scores = (struct re_score **)xmalloc(sizeof(*scores) * ncontigs);
 	scores_revcmpl = (struct re_score**)xmalloc(sizeof(*scores) * ncontigs);
@@ -1413,7 +1420,7 @@ final_pass(char **files, u_int nfiles)
 			exit(1);
 		}
 
-		while (fasta_get_next(fasta, &name, &sequence)) {
+		while (fasta_get_next(fasta, &name, &sequence, &is_rna)) {
 			assert(j < ncontigs);
 
 			if (strchr(name, '\t') != NULL || strchr(sequence, '\t') != NULL) {
@@ -1424,6 +1431,7 @@ final_pass(char **files, u_int nfiles)
 
 			contig_name = name;
 			genome_len = strlen(sequence);
+			genome_is_rna = is_rna;
 
 			genome = fasta_sequence_to_bitfield(fasta, sequence);
 			if (genome == NULL) {
@@ -1516,9 +1524,9 @@ scan_genomes_contig()
 
 		before = gettimeinusecs();
 		if (shrimp_mode == MODE_COLOUR_SPACE)
-			reverse_complement(genome, genome_cs, genome_len);
+			reverse_complement(genome, genome_cs, genome_len, genome_is_rna);
 		else
-			reverse_complement(genome, NULL, genome_len);
+			reverse_complement(genome, NULL, genome_len, genome_is_rna);
 		revcmpl_usecs += (gettimeinusecs() - before);
 
 		before = gettimeinusecs();
@@ -1535,6 +1543,7 @@ scan_genomes(char **files, int nfiles)
 {
 	fasta_t fasta;
 	char *name, *sequence;
+	bool is_rna = false;
 	int i;
 
 	for (i = 0; i < nfiles; i++) {
@@ -1548,9 +1557,10 @@ scan_genomes(char **files, int nfiles)
 			return (1);
 		}
 
-		while (fasta_get_next(fasta, &name, &sequence)) { 
+		while (fasta_get_next(fasta, &name, &sequence, &is_rna)) { 
 			contig_name = name;
 			genome_len = strlen(sequence);
+			genome_is_rna = is_rna;
  
 			if (strchr(name, '\t') != NULL || strchr(sequence, '\t') != NULL) {
 				fprintf(stderr, "error: tabs are not permitted in fasta names "
@@ -1564,7 +1574,7 @@ scan_genomes(char **files, int nfiles)
 				exit(1);
 			}
 			if (shrimp_mode == MODE_COLOUR_SPACE)
-				genome_cs = fasta_bitfield_to_colourspace(fasta, genome, genome_len);
+				genome_cs = fasta_bitfield_to_colourspace(fasta, genome, genome_len, genome_is_rna);
 
 			fprintf(stderr, "  - Loaded %s letters from contig \"%s\"\n",
 			    comma_integer(genome_len), name);

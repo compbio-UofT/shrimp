@@ -148,12 +148,12 @@ load_reads_file(char *fpath, struct stat *sb, void *arg)
 
 	fasta = fasta_open(fpath, space);
 	if (fasta == NULL) {
-		fprintf(stderr, "error: failed to reads parse fasta file "
+		fprintf(stderr, "error: failed to parse reads fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq)) {
+	while (fasta_get_next(fasta, &name, &seq, NULL)) {
 		uint32_t *bf = fasta_sequence_to_bitfield(fasta, seq);
 		uint32_t seqlen = strlen(seq);
 		int initbp = -1;

@@ -63,7 +63,7 @@ void		bitfield_prepend(uint32_t *, uint32_t, uint32_t);
 void		bitfield_insert(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
-void		reverse_complement(uint32_t *, uint32_t *, uint32_t);
+void		reverse_complement(uint32_t *, uint32_t *, uint32_t, bool);
 uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
@@ -83,10 +83,10 @@ extern char *optarg;
 extern int   optind;
 
 static inline int
-complement_base(int base)
+complement_base(int base, bool is_rna)
 {
 	static const int cmpl[16] = {
-		BASE_T,		/* A -> T */
+		BASE_T,		/* A -> T (or U) */
 		BASE_G,		/* C -> G */
 		BASE_C,		/* G -> C */
 		BASE_A,		/* T -> A */
@@ -107,7 +107,7 @@ complement_base(int base)
 	assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
 	    (base == BASE_X || base == BASE_N));
 
-	return (cmpl[base]);
+	return ((is_rna && cmpl[base] == BASE_T) ? BASE_U : cmpl[base]);
 }
 
 /*
@@ -115,19 +115,28 @@ complement_base(int base)
  * itself, obtain the next letter.
  */
 static inline int
-cstols(int first_letter, int colour)
+cstols(int first_letter, int colour, bool is_rna)
 {
-	assert(first_letter >= 0 && first_letter <= 3);
+	assert((first_letter >= 0 && first_letter <= 3 && !is_rna) ||
+	       (first_letter >= 0 && first_letter <= 4 &&  is_rna));
 	assert(colour >= 0 && colour <= 3);
+	int ret;
+
+	if (is_rna && first_letter == BASE_U)
+		first_letter = BASE_T;
 
 	if ((first_letter % 2) == 0)
-		return ((4 + first_letter + colour) % 4);
+		ret = ((4 + first_letter + colour) % 4);
 	else
-		return ((4 + first_letter - colour) % 4);
+		ret = ((4 + first_letter - colour) % 4);
+
+	if (is_rna && ret == BASE_T)
+		return (BASE_U);
+	return (ret);
 }
 
 static inline int
-lstocs(int first_letter, int second_letter)
+lstocs(int first_letter, int second_letter, bool is_rna)
 {
 	const int colourmat[4][4] = {
 		{ 0, 1, 2, 3 },
@@ -138,6 +147,13 @@ lstocs(int first_letter, int second_letter)
 
 	assert(first_letter  >= 0 && first_letter  <= 15);
 	assert(second_letter >= 0 && second_letter <= 15);
+
+	if (is_rna) {
+		if (first_letter == BASE_U)
+			first_letter = BASE_T;
+		if (second_letter == BASE_U)
+			second_letter = BASE_T;
+	}
 
 	/* XXX - convert anything non-{A,C,G,T} to N */
 	if (first_letter > BASE_T || second_letter > BASE_T)

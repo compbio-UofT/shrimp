@@ -396,7 +396,7 @@ swap_nibbles(uint32_t i)
  * any performance improvements by speeding it up.
  */
 void
-reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
+reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len, bool is_rna)
 {
 	uint32_t i, j, tmp, fudge, up, down;
 
@@ -410,14 +410,14 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 		if (i != j)
 			g_ls[j] = swap_nibbles(tmp);
 
-		g_ls[i]=(complement_base((g_ls[i] & 0x0000000f) >>  0) <<  0) |
-			(complement_base((g_ls[i] & 0x000000f0) >>  4) <<  4) |
-			(complement_base((g_ls[i] & 0x00000f00) >>  8) <<  8) |
-			(complement_base((g_ls[i] & 0x0000f000) >> 12) << 12) |
-			(complement_base((g_ls[i] & 0x000f0000) >> 16) << 16) |
-			(complement_base((g_ls[i] & 0x00f00000) >> 20) << 20) |
-			(complement_base((g_ls[i] & 0x0f000000) >> 24) << 24) |
-			(complement_base((g_ls[i] & 0xf0000000) >> 28) << 28);
+		g_ls[i]=(complement_base((g_ls[i] & 0x0000000f) >>  0, is_rna) <<  0) |
+			(complement_base((g_ls[i] & 0x000000f0) >>  4, is_rna) <<  4) |
+			(complement_base((g_ls[i] & 0x00000f00) >>  8, is_rna) <<  8) |
+			(complement_base((g_ls[i] & 0x0000f000) >> 12, is_rna) << 12) |
+			(complement_base((g_ls[i] & 0x000f0000) >> 16, is_rna) << 16) |
+			(complement_base((g_ls[i] & 0x00f00000) >> 20, is_rna) << 20) |
+			(complement_base((g_ls[i] & 0x0f000000) >> 24, is_rna) << 24) |
+			(complement_base((g_ls[i] & 0xf0000000) >> 28, is_rna) << 28);
 
 		/* Don't swap twice if we're at the same index */
 		if (i == j) {
@@ -429,14 +429,14 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 				continue;
 		}
 
-		g_ls[j]=(complement_base((g_ls[j] & 0x0000000f) >>  0) <<  0) |
-			(complement_base((g_ls[j] & 0x000000f0) >>  4) <<  4) |
-			(complement_base((g_ls[j] & 0x00000f00) >>  8) <<  8) |
-			(complement_base((g_ls[j] & 0x0000f000) >> 12) << 12) |
-			(complement_base((g_ls[j] & 0x000f0000) >> 16) << 16) |
-			(complement_base((g_ls[j] & 0x00f00000) >> 20) << 20) |
-			(complement_base((g_ls[j] & 0x0f000000) >> 24) << 24) |
-			(complement_base((g_ls[j] & 0xf0000000) >> 28) << 28);
+		g_ls[j]=(complement_base((g_ls[j] & 0x0000000f) >>  0, is_rna) <<  0) |
+			(complement_base((g_ls[j] & 0x000000f0) >>  4, is_rna) <<  4) |
+			(complement_base((g_ls[j] & 0x00000f00) >>  8, is_rna) <<  8) |
+			(complement_base((g_ls[j] & 0x0000f000) >> 12, is_rna) << 12) |
+			(complement_base((g_ls[j] & 0x000f0000) >> 16, is_rna) << 16) |
+			(complement_base((g_ls[j] & 0x00f00000) >> 20, is_rna) << 20) |
+			(complement_base((g_ls[j] & 0x0f000000) >> 24, is_rna) << 24) |
+			(complement_base((g_ls[j] & 0xf0000000) >> 28, is_rna) << 28);
 	}
 
 	/*
@@ -462,7 +462,7 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len)
 		lastbp = BASE_T;
 		for (i = 0; i < g_len; i++) {
 			base = EXTRACT(g_ls, i);
-			bitfield_append(g_cs, i, lstocs(lastbp, base));
+			bitfield_append(g_cs, i, lstocs(lastbp, base, is_rna));
 			lastbp = base;
 		}
 	}

@@ -146,7 +146,7 @@ extract_name(char *buffer)
 }
 
 bool
-fasta_get_next(fasta_t fasta, char **name, char **sequence)
+fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 {
 	static int categories[256] = { 42 };
 	enum { CAT_SPACE, CAT_NEWLINE, CAT_NUL, CAT_ELSE };
@@ -261,8 +261,27 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence)
 	*sequence = (char *)xmalloc(sequence_length + 17);
 	memcpy(*sequence, readinseq, sequence_length);
 	memset(*sequence + sequence_length, 0, 17);
-	free(readinseq);
 
+	/* check if the sequence is rna (contains uracil and not thymine) */
+	if (is_rna != NULL) {
+		bool got_uracil = false;
+		bool got_thymine = false;
+		unsigned int j;
+
+		for (j = 0; j < sequence_length; j++) {
+			unsigned char chr = readinseq[j];
+			got_thymine |= (chr == 'T' || chr == 't');
+			got_uracil  |= (chr == 'U' || chr == 'u');
+		}
+
+		if (got_uracil && got_thymine)
+			fprintf(stderr, "WARNING: sequence has both uracil and "
+			    "thymine!?!\n");
+
+		*is_rna = (got_uracil && !got_thymine);
+	}
+
+	free(readinseq);
 	assert(*name != NULL);
 	assert(*sequence != NULL);
 	total_ticks += (rdtsc() - before);
@@ -294,7 +313,7 @@ fasta_get_initial_base(fasta_t fasta, char *sequence)
 }
 
 uint32_t *
-fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length)
+fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length, bool is_rna)
 {
 	int a, lastbp = BASE_T;
 	uint32_t *dst;
@@ -308,7 +327,7 @@ fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length)
 
 	for (i = 0; i < length; i++) {
 		a = EXTRACT(source, i);
-		bitfield_insert(dst, i, lstocs(lastbp, a));
+		bitfield_insert(dst, i, lstocs(lastbp, a, is_rna));
 		lastbp = a;
 	}
 

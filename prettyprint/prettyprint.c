@@ -66,6 +66,7 @@ struct sequence {
 	uint32_t  sequence_len;
 	int	  initbp;		/* initial base pair (colourspace) */
 	bool	  revcmpl;
+	bool	  is_rna;
 };
 
 static struct fpo *alignments_ordered;	/* alignments in order of input */
@@ -114,7 +115,8 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		sw_full_cs(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len, read->initbp,
-		    fpo->input.score, &sfr, revcmpl && Tflag);
+		    fpo->input.score, &sfr, revcmpl && Tflag,
+		    contig->is_rna);
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
@@ -269,6 +271,7 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 	fasta_t fasta;
 	struct sequence *s;
 	char *name, *seq;
+	bool is_rna = false;
 
 	/* shut up, icc */
 	(void)sb;
@@ -281,7 +284,7 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq)) {
+	while (fasta_get_next(fasta, &name, &seq, &is_rna)) {
 		bool found;
 		struct contig_ll *cll;
 
@@ -291,6 +294,7 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 		s->name = name;
 		s->initbp = -1;
 		s->revcmpl = false;
+		s->is_rna = is_rna;
 		free(seq);
 
 		/* add to our dynhash */
@@ -307,7 +311,7 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 			for (fpo = cll->head; fpo != NULL; fpo = fpo->next_contig)
 				compute_alignment(fpo, s);
 
-			reverse_complement(s->sequence, NULL, s->sequence_len);
+			reverse_complement(s->sequence, NULL, s->sequence_len, s->is_rna);
 			s->revcmpl = true;
 
 			for (fpo = cll->head_revcmpl; fpo != NULL; fpo = fpo->next_contig)
@@ -344,12 +348,12 @@ load_reads_file(char *fpath, struct stat *sb, void *arg)
 
 	fasta = fasta_open(fpath, space);
 	if (fasta == NULL) {
-		fprintf(stderr, "error: failed to reads parse fasta file "
+		fprintf(stderr, "error: failed to parse reads fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq)) {
+	while (fasta_get_next(fasta, &name, &seq, NULL)) {
 		void *key, *val;
 		bool found;
 

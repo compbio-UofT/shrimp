@@ -964,7 +964,7 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
-    int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl)
+    int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna)
 {
 	struct sw_full_results scratch;
 	uint64_t before;
@@ -1006,7 +1006,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 				qr[i][j] = BASE_N;
 				letter = (i + initbp) % 4;
 			} else {
-				qr[i][j] = (int8_t)cstols(letter, base);
+				qr[i][j] = (int8_t)cstols(letter, base, is_rna);
 				letter = qr[i][j];
 			}
 		}
