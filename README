@@ -3,6 +3,13 @@ $Id$
 README for SHRiMP: SHort Read Mapping Package version 1.2.1
 http://compbio.cs.toronto.edu/shrimp
 
+This document describes the programs of which SHRiMP is comprised, including
+their use, output formats, and various parameters. The algorithms employed are
+also briefly described. For more details, see the following publication:
+    Rumble SM, Lacroute P, Dalca AV, Fiume M, Sidow A, et al.
+    (2009) SHRiMP: Accurate Mapping of Short Color-space Reads.
+    PLoS Comput Biol 5(5): e1000386. doi:10.1371/journal.pcbi.1000386
+
 SHRiMP is brought to you by:
 	Stephen M. Rumble
 	Michael Brudno
@@ -696,7 +703,8 @@ next line of this README file and does not appear in the actual output):
     25      25      2020    18x2x3
 
 Additionally, the beginning of each output file begins with a specification of
-the tab-delimited fields. For example, the follow applies to the above read hit:
+the tab-delimited fields. For example, the following applies to the above read
+hit:
 
     #FORMAT: readname contigname strand contigstart contigend readstart readend\
      readlength score editstring
@@ -724,7 +732,7 @@ Additionally, probcalc output adds the following columns:
 	'normodds'	Normalized pgenome/pchance.
 
 The 'editstring' column contains a short description of the alignment with
-reference to the database sequence. This allows at a glance analysis of
+reference to the database sequence. This allows at-a-glance analysis of
 alignments, including identification of miscalls, SNPs, indels, etc.
 
 The edit string consists of numbers, characters and the following additional
@@ -744,7 +752,7 @@ For example:
  
  
     
-The 'probcalc_mp' has the following output:
+The 'probcalc_mp' program has the following output:
 	#FORMAT: fwd_name fwd_chr fwd_editstring fwd_strand fwd_start\
 	fwd_end fwd_pg rev_name rev_chr rev_editstring rev_strand rev_start\
 	rev_end rev_pg distance normodds pgenome pchance
