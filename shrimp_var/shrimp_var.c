@@ -415,7 +415,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 		}
 		
 		// check if it is a nucleotide
-		isnuc = (ech == 'A' || ech == 'C' || ech == 'T' || ech == 'G');
+		isnuc = (ech == 'A' || ech == 'C' || ech == 'T' || ech == 'G' || ech == 'N');
 		
 		// SNP
 		if (!inins & isnuc) {
@@ -487,6 +487,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 int assert_editstring_char(char echar) {
 	return
 		echar == 'A' || echar == 'C' || echar == 'G' || echar == 'T' ||
+	        echar == 'N' || 
 		echar == '1' || echar == '2' || echar == '3' || echar == '4' || 
 		echar == '5' || echar == '6' || echar == '7' || echar == '8' || 
 		echar == '9' || echar == '(' || echar == ')' || echar == '-' ||
@@ -502,6 +503,7 @@ int complement(char ech) {
 	if (ech == 'T') return 'A';
 	if (ech == 'C') return 'G';
 	if (ech == 'G') return 'C';
+	if (ech == 'N') return 'N';
 	assert(0);
 	return -1;
 }
