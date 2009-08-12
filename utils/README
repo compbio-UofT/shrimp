@@ -8,3 +8,4 @@ findseq.py		find all sequence occurrences in a fasta file
 revcmpl.py		reverse-complement a contig
 splitreads.py		split fasta read files into smaller chunks
 splittigs.py		split fasta contig files into one file per contig
+create_WIG_file_from_SHRiMP_prob_output_v1.pl	Probcalc -> UCSC genome browser converter
