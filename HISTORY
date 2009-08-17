@@ -1,5 +1,10 @@
 $Id$
 
+1.2.2: ?, 2009
+	- Fix unknown base ('N') handling in shrimp_var (Stéphane Audic).
+	- Added a SHRiMP to SAM output converter (Nils Homer).
+	- Added a Probcalc to WIG output converter (Elizabeth Chun). 
+
 1.2.1: June 30, 2009
 	- Fix a few Sun Studio Compiler portability bugs. 
 	- rmapper-ls: make it clear when S-W Threshold is absolute vs.
