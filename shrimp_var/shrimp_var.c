@@ -146,13 +146,8 @@ int file_iterator(char *path) {
 			exit(1);
 		}
 
-#if defined(DT_REG) && defined(DT_LNK)
-		if (de->d_type != DT_REG && de->d_type != DT_LNK)
-			continue;
-#else
 		if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))
 			continue;
-#endif
 
 		/* ensure it's a regular file or link to one */
 		if (S_ISREG(sb.st_mode)) {
