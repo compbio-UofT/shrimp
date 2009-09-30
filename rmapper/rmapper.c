@@ -635,7 +635,7 @@ scan(int contig_num, bool revcmpl)
 		   && goff < re->last_swCall_idx + re->window_len/4) {
 	  fprintf(stderr, "\tskipping: previous sw invocation too close\n");
 	} else if (!are_hits_colinear(re)) {
-	  //fprintf(stderr, "\tskipping: hits not colinear\n");
+	  fprintf(stderr, "\tskipping: hits not colinear\n");
 	}
 #endif
 
@@ -643,7 +643,7 @@ scan(int contig_num, bool revcmpl)
 	    && re->hits[(re->lastHit + 1) % num_matches].g_idx >= goff
 	    && (re->last_swCall_idx == UINT32_MAX
 		|| goff >= re->last_swCall_idx + re->window_len/4)
-	    //&& are_hits_colinear(re)
+	    && are_hits_colinear(re)
 	    )
 	  {
 	    bool meets_thresh = false;
