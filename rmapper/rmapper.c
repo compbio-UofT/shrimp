@@ -1941,11 +1941,15 @@ print_statistics()
       && (reads_profile_file = fopen(reads_profile_file_name, "w")) != NULL) {
 
     for (i = 0; i < nreads; i++) {
-      int l = 0;
+      uint l = 0;
 
       if (reads[i].freq_hits_sz != 0) {
-	while (l < reads[i].freq_hits_sz && reads[i].freq_hits[l].count != 0)
+	uint crt = reads[i].head;
+	while (l < reads[i].freq_hits_sz
+	       && reads[i].freq_hits[crt].count != 0) {
 	  l++;
+	  crt = (crt + reads[i].freq_hits_sz - 1) % reads[i].freq_hits_sz;
+	}
       }
       fprintf(reads_profile_file, "%-20s\t%u\t%u\t%u\t%u\t%u\n",
 	      reads[i].name,

@@ -132,8 +132,8 @@ struct read_entry_scan {
 };
 
 typedef uint32_t hash_t;
-uint const hits_pool_min_size = 16;
-uint const hits_pool_max_size = 16;
+uint const hits_pool_min_size = 2;
+uint const hits_pool_max_size = 32;
 
 struct freq_hits {
   hash_t	hash_val;
