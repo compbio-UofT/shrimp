@@ -126,7 +126,7 @@ static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int Aflag = false;			/* use anchors to limit full sw */
+static int Aflag = true;			/* use anchors to limit full sw */
 
 /* Scan stats */
 static uint64_t shortest_scanned_kmer_list;
@@ -499,6 +499,7 @@ get_sw_threshold(struct read_entry * re, double which, int readnum)
  */
 static inline hash_t
 hash_window(uint32_t * scan_genome, uint goff, uint glen) {
+  /*
   uint i, j;
   uint8_t base;
   uint32_t hash = 0;
@@ -513,9 +514,130 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
     }
     hash = SuperFastHash((char const *)&buffer, sizeof(bitmap_type), hash);
   }
+  */
+
+  uint i;
+  uint32_t hash = 0;
+  uint8_t base;
+
+  for (i = 0; i < glen; i++) {
+    base = EXTRACT(scan_genome, goff + i);
+    hash ^= (base & 0x3) << i%16;
+  }
 
   return (hash_t)hash;
 }
+
+
+/*
+ * SW filter cache manipulation routines.
+ */
+
+/* Initialize cache */
+static inline void
+cache_init(struct read_entry * re) {
+  assert(re != NULL && re->cache == NULL && re->cache_sz == 0);
+
+  re->cache = (struct cache_entry *)
+    xcalloc(cache_min_size * sizeof(struct cache_entry));
+  re->cache_sz = cache_min_size;
+}
+
+/* Possibly double cache size; moving the tail of the queue */
+static inline void
+cache_maybe_resize(struct read_entry * re) {
+  assert(re != NULL && re->cache != NULL && re->cache_sz > 0);
+
+  if (re->cache_sz < cache_max_size
+      //&& (re->cache_sz < 16 || 3 * re->filter_calls_bypassed > re->filter_calls)
+      // only get 32 if more than .33 calls bypassed
+      ) {
+    re->cache = (struct cache_entry *)
+      xrealloc(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry));
+    if (re->head != re->cache_sz - 1) {
+      memcpy(&re->cache[(re->head + 1) + re->cache_sz],
+	     &re->cache[re->head + 1],
+	     ((re->cache_sz - 1) - re->head) * sizeof(struct cache_entry));
+    }
+    memset(&re->cache[re->head + 1], 0,
+	   re->cache_sz * sizeof(struct cache_entry));
+    re->cache_sz *= 2;
+  }
+}
+
+/* Lookup key */
+static inline void
+cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs_pos) {
+  assert(re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
+  assert(re->head < re->cache_sz);
+
+  (*abs_pos) = re->head;
+  (*rel_pos) = 0;
+  while (*rel_pos < re->cache_sz
+	 && re->cache[*abs_pos].count != 0
+	 && re->cache[*abs_pos].hash_val != hash_val) {
+    (*rel_pos)++;
+    (*abs_pos) = ((*abs_pos) + re->cache_sz - 1) % re->cache_sz; // -= 1 mod ..
+  }
+  /*
+   * Outcomes:
+   *   *rel_pos == re->cache_sz:
+   *     key not found; cache full
+   *   *rel_pos < re->cache_sz && re->cache[*abs_pos].count == 0:
+   *     key not found; cache not full
+   *   *rel_pos < re->cache_sz && re->cache[*abs_pos].count != 0:
+   *     key found at *abs_pos
+   */
+  if (cache_policy == CACHE_LRU) {
+    // if success; move entry to the head of the queue
+    if (*rel_pos < re->cache_sz && re->cache[*abs_pos].count != 0) {
+      if (*abs_pos < re->head) {
+	struct cache_entry tmp = re->cache[*abs_pos];
+	memmove(&re->cache[*abs_pos], &re->cache[*abs_pos + 1],
+		(re->head - *abs_pos) * sizeof(struct cache_entry));
+	re->cache[re->head] = tmp;
+	*abs_pos = re->head;
+      } else if (re->head + 1 == *abs_pos) {
+	re->head = *abs_pos;
+      } else if (re->head + 1 < *abs_pos) {
+	struct cache_entry tmp = re->cache[*abs_pos];
+	memmove(&re->cache[re->head + 2], &re->cache[re->head + 1],
+		(*abs_pos - 1 - re->head) * sizeof(struct cache_entry));
+	re->cache[re->head + 1] = tmp;
+	re->head++;
+	*abs_pos = re->head;
+      }
+      *rel_pos = 0;
+    }
+  }
+}
+
+/* Predicates valid only after lookup call */
+static inline bool
+cache_key_found(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+  assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
+
+  return *rel_pos < re->cache_sz && re->cache[*abs_pos].count != 0;
+}
+static inline bool
+cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+  assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
+
+  return *rel_pos == re->cache_sz;
+}
+
+/* Add key */
+static inline void
+cache_add_key(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+  assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
+
+  *abs_pos = (re->head + 1) % re->cache_sz;
+  re->head = *abs_pos;
+  /*
+   * The caller must fill in the fields of freq_hits[*abs_pos]
+   */
+}
+
 
 
 /*
@@ -743,7 +865,7 @@ scan(int contig_num, bool revcmpl)
 	    struct read_entry * re = &reads[rme1->offset];
 	    bool meets_thresh = false;
 	    hash_t hash_val;
-	    uint l, crt;
+	    uint rel_pos, abs_pos;
 
 	    assert(re->offset == rme1->offset);
 
@@ -773,74 +895,61 @@ scan(int contig_num, bool revcmpl)
 	       * CS and LS
 	       */
 
-	      if (hash_filter_calls) {
-		if (re->freq_hits_sz == 0) {
-		  add_to_stat64(&reads_filtered, 1);
+	      if (hash_filter_calls) // Use cache
+		{
+		  if (re->cache_sz == 0) {
+		    add_to_stat64(&reads_filtered, 1);
 
-		  re->freq_hits_sz = hits_pool_min_size;
-		  re->freq_hits = (struct freq_hits *)
-		    xcalloc(re->freq_hits_sz * sizeof(struct freq_hits));
-		}
-
-		hash_val = hash_window(scan_genome, goff, glen);
-		//fprintf(stderr, "%08llX\n", (long long unsigned int)hash_val);
-
-		assert(re->head < re->freq_hits_sz);
-		l = 0;
-		crt = re->head;
-		while (l < re->freq_hits_sz
-		       && re->freq_hits[crt].count != 0
-		       && re->freq_hits[crt].hash_val != hash_val) {
-		  l++;
-		  crt = (crt + re->freq_hits_sz - 1) % re->freq_hits_sz; // crt -= 1 mod..
-		}
-	      }
-
-	      if (hash_filter_calls && l < re->freq_hits_sz && re->freq_hits[crt].count != 0) {
-		/*
-		 * We have run vector SW on this region before; use previous score.
-		 */
-		score1 = re->freq_hits[crt].score;
-		re->freq_hits[crt].count++;
-
-		add_to_stat64(&total_filter_calls_bypassed, 1);
-		add_to_stat32(&re->filter_calls_bypassed, 1);
-	      } else {
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-		  score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				     genome, re->initbp, genome_is_rna);
-		} else if (shrimp_mode == MODE_LETTER_SPACE) {
-		  score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				     NULL, -1, genome_is_rna);
-		}
-
-		if (hash_filter_calls) {
-		  /* save score */
-		  if (l == re->freq_hits_sz && re->freq_hits_sz < hits_pool_max_size) {
-		    /* double array; move tail of queue */
-		    re->freq_hits = (struct freq_hits *)
-		      xrealloc(re->freq_hits, 2 * re->freq_hits_sz * sizeof(struct freq_hits));
-		    if (re->head != re->freq_hits_sz - 1) {
-		      memcpy(&re->freq_hits[(re->head + 1) + re->freq_hits_sz],
-			     &re->freq_hits[re->head + 1],
-			     ((re->freq_hits_sz - 1) - re->head) * sizeof(struct freq_hits));
-		    }
-		    memset(&re->freq_hits[re->head + 1], 0, re->freq_hits_sz * sizeof(struct freq_hits));
-		    re->freq_hits_sz *= 2;
+		    cache_init(re);
 		  }
 
-		  crt = (re->head + 1) % re->freq_hits_sz;
-		  re->freq_hits[crt].hash_val = hash_val;
-		  re->freq_hits[crt].count = 1;
-		  re->freq_hits[crt].score = score1;
-		  re->head = crt;
+		  hash_val = hash_window(scan_genome, goff, glen);
+		  //fprintf(stderr, "%08llX\n", (long long unsigned int)hash_val);
+		  cache_lookup(re, hash_val, &rel_pos, &abs_pos);
+
+		  if (cache_key_found(re, &rel_pos, &abs_pos)) {
+		    /*
+		     * We have run vector SW on this region before; use previous score.
+		     */
+		    score1 = re->cache[abs_pos].score;
+		    re->cache[abs_pos].count++;
+
+		    add_to_stat64(&total_filter_calls_bypassed, 1);
+		    add_to_stat32(&re->filter_calls_bypassed, 1);
+		  } else {
+		    if (shrimp_mode == MODE_COLOUR_SPACE) {
+		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					 genome, re->initbp, genome_is_rna);
+		    } else if (shrimp_mode == MODE_LETTER_SPACE) {
+		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					 NULL, -1, genome_is_rna);
+		    }
+
+		    /* save score */
+		    if (cache_is_full(re, &rel_pos, &abs_pos))
+		      cache_maybe_resize(re);
+
+		    cache_add_key(re, &rel_pos, &abs_pos);
+		    re->cache[abs_pos].hash_val = hash_val;
+		    re->cache[abs_pos].count = 1;
+		    re->cache[abs_pos].score = score1;
+		  }
 		}
-	      }
+	      else  // Don't use cache
+		{
+		  if (shrimp_mode == MODE_COLOUR_SPACE) {
+		    score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+				       genome, re->initbp, genome_is_rna);
+		  } else if (shrimp_mode == MODE_LETTER_SPACE) {
+		    score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+				       NULL, -1, genome_is_rna);
+		  }
+		}
 
 	      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 	      if (score1 >= thresh)
 		meets_thresh = true;
-	    }
+	    } // CS and LS
 
 	    if (meets_thresh) {
 	      add_to_stat64(&total_filter_passes, 1);
@@ -1943,12 +2052,12 @@ print_statistics()
     for (i = 0; i < nreads; i++) {
       uint l = 0;
 
-      if (reads[i].freq_hits_sz != 0) {
+      if (reads[i].cache_sz != 0) {
 	uint crt = reads[i].head;
-	while (l < reads[i].freq_hits_sz
-	       && reads[i].freq_hits[crt].count != 0) {
+	while (l < reads[i].cache_sz
+	       && reads[i].cache[crt].count != 0) {
 	  l++;
-	  crt = (crt + reads[i].freq_hits_sz - 1) % reads[i].freq_hits_sz;
+	  crt = (crt + reads[i].cache_sz - 1) % reads[i].cache_sz;
 	}
       }
       fprintf(reads_profile_file, "%-20s\t%u\t%u\t%u\t%u\t%u\n",
@@ -2255,10 +2364,10 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:A:X:BCFHPRTUZ";
+    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:A:X:BCFHPRTUZY:";
     break;
   case MODE_LETTER_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:A:X:BCFHPRTUZ";
+    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:A:X:BCFHPRTUZY:";
     break;
   case MODE_HELICOS_SPACE:
     optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRU";
@@ -2471,6 +2580,27 @@ main(int argc, char **argv)
       break;
     case 'Z':
       hash_filter_calls = 0;
+      break;
+    case 'Y':
+      charP = strtok(optarg, ",");
+      assert(charP != NULL);
+      cache_min_size = atoi(charP);
+      assert(cache_min_size > 0);
+
+      charP = strtok(NULL, ",");
+      assert(charP != NULL);
+      cache_max_size = atoi(charP);
+
+      charP = strtok(NULL, ",");
+      assert(charP != NULL);
+      switch (*charP) {
+      case 'l':
+	cache_policy = CACHE_LRU;
+	break;
+      case 'q':
+	cache_policy = CACHE_QUEUE;
+	break;
+      }
       break;
     default:
       usage(progname);
@@ -2685,6 +2815,8 @@ main(int argc, char **argv)
   }
   fprintf(stderr, "    Hash filter SW calls:                 %s\n",
 	  hash_filter_calls ? "yes" : "no");
+  fprintf(stderr, "    Cache settings:                       (%d,%d,%d)\n",
+	  cache_min_size, cache_max_size, cache_policy);
   fprintf(stderr, "\n");
 
   dag_setup(dag_read_match, dag_read_mismatch, dag_read_gap, dag_ref_match,

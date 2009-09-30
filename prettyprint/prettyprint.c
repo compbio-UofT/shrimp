@@ -553,8 +553,8 @@ main(int argc, char **argv)
 	if (argc != 3)
 		usage(progname);
 
-	if (a_gap_open_set && !b_gap_open_set ||
-	    a_gap_extend_set && !b_gap_extend_set)
+	if ((a_gap_open_set && !b_gap_open_set)
+	    || (a_gap_extend_set && !b_gap_extend_set))
 		fputc('\n', stderr);
 	if (a_gap_open_set && !b_gap_open_set) {
 		fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
@@ -564,8 +564,8 @@ main(int argc, char **argv)
 		fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
 		b_gap_extend = a_gap_extend;
 	}
-	if (a_gap_open_set && !b_gap_open_set ||
-	    a_gap_extend_set && !b_gap_extend_set)
+	if ((a_gap_open_set && !b_gap_open_set)
+	    || (a_gap_extend_set && !b_gap_extend_set))
 		fputc('\n', stderr);
 
 	fprintf(stderr, "Settings:\n");

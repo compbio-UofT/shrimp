@@ -13,8 +13,8 @@ extern const bool use_dag;
 //#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
 //#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 //#define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
-#define	DEF_WINDOW_LEN		150.0		/* 115% of read length */
-#define DEF_NUM_MATCHES		2
+#define	DEF_WINDOW_LEN		135.0		/* 115% of read length */
+#define DEF_NUM_MATCHES		4
 #define DEF_HIT_TABOO_LEN	5
 #define DEF_SEED_TABOO_LEN	0
 #define DEF_NUM_OUTPUTS		100
@@ -23,15 +23,18 @@ extern const bool use_dag;
 
 static int const default_spaced_seeds_cs_cnt = 4;
 static char const * const default_spaced_seeds_cs[] =
-  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
 
 static int const default_spaced_seeds_ls_cnt = 4;
 static char const * const default_spaced_seeds_ls[] =
-  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
 
 static int const default_spaced_seeds_hs_cnt = 4;
 static char const * const default_spaced_seeds_hs[] =
-  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
 
 /* DAG Scores/Parameters */
 #define DEF_DAG_EPSILON		  0
@@ -67,7 +70,7 @@ static char const * const default_spaced_seeds_hs[] =
 #define DEF_SW_VECT_THRESHOLD_DAG 50.0	/* smaller for Helicos DAG */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
-#define DEF_EXTRA_WIDTH		5	/* extra width around anchors */
+#define DEF_EXTRA_WIDTH		0	/* extra width around anchors */
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
@@ -132,10 +135,14 @@ struct read_entry_scan {
 };
 
 typedef uint32_t hash_t;
-uint const hits_pool_min_size = 2;
-uint const hits_pool_max_size = 32;
+static uint cache_min_size = 2;
+static uint cache_max_size = 16;
 
-struct freq_hits {
+#define CACHE_QUEUE 0
+#define CACHE_LRU 1
+static int cache_policy = CACHE_QUEUE;
+
+struct cache_entry {
   hash_t	hash_val;
   uint16_t	score;		/* scores <= 2^15-1 (cf., sw-vector.c) */
   uint16_t	count;
@@ -150,26 +157,26 @@ struct read_entry {
   uint32_t *	read1;		/* the read as a bitstring */
   uint32_t *	read2;		/* second of Helicos pair */
   dag_cookie_t	dag_cookie;	/* kmer graph cookie for glue */
-  struct freq_hits * freq_hits;
+  struct cache_entry * cache;
 
   int16_t	initbp;		/* colour space init letter */
-  uint8_t	freq_hits_sz;
+  uint8_t	cache_sz;
   uint8_t	head;		/* this works like a queue */
 
   uint32_t	read1_len;
   uint32_t	read2_len;
   uint32_t	offset;		/* offset in read array */
   int		swhits;		/* num of hits with sw */
-#ifndef EXTRA_STATS
-  union {
-#endif
+  //#ifndef EXTRA_STATS
+  //union {
+  //#endif
   uint32_t	final_matches;	/* num of final output matches*/
-    uint32_t	filter_calls;
-    uint32_t	filter_calls_bypassed;
-    uint32_t	filter_passes;
-#ifndef EXTRA_STATS
-  };
-#endif
+  uint32_t	filter_calls;
+  uint32_t	filter_calls_bypassed;
+  uint32_t	filter_passes;
+  //#ifndef EXTRA_STATS
+  //};
+  //#endif
 
 };
 
