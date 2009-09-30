@@ -155,6 +155,14 @@ xmalloc(size_t size)
 } 
 
 void *
+xmalloc_c(size_t size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, size);
+  return xmalloc(size);
+}
+
+void *
 xcalloc(size_t size)
 {
   void *ptr;
@@ -169,17 +177,34 @@ xcalloc(size_t size)
 }
 
 void *
+xcalloc_c(size_t size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, size);
+  return xcalloc(size);
+}
+
+void *
 xrealloc(void *ptr, size_t size)
 {
 
-	ptr = realloc(ptr, size);
-	if (ptr == NULL) {
-		fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
-		exit(1);
-	}
+  ptr = realloc(ptr, size);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
 
-	return (ptr);
+  return (ptr);
 }
+
+void *
+xrealloc_c(void *ptr, size_t size, size_t old_size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, (int64_t)size - (int64_t)old_size);
+  return xrealloc(ptr, size);
+}
+
 
 char *
 xstrdup(const char *str)

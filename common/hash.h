@@ -65,4 +65,31 @@ SuperFastHash (const char * data, int len, uint32_t hash) {
   return hash;
 }
 
+
+static inline void
+hash_accumulate(uint32_t * key, uint32_t val) {
+  assert(key != NULL);
+
+  uint32_t tmp;
+
+  *key += (val >> 16); // high 16 bits
+  tmp = ((val & 0xFFFF) << 11) ^ *key; // high 16 bits
+  *key = (*key << 16) ^ tmp;
+  *key += *key >> 11;
+}
+
+
+static inline void
+hash_finalize(uint32_t * key) {
+  assert(key != NULL);
+
+  *key ^= *key << 3;
+  *key += *key >> 5;
+  *key ^= *key << 4;
+  *key += *key >> 17;
+  *key ^= *key << 25;
+  *key += *key >> 6;
+}
+
+
 #endif

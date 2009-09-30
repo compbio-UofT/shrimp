@@ -1,4 +1,7 @@
 /*	$Id: util.h,v 1.22 2009/06/16 23:26:21 rumble Exp $	*/
+#ifndef _UTIL_H
+#define _UTIL_H
+
 
 #include <assert.h>
 #include <ctype.h>
@@ -10,6 +13,7 @@
 #include <sys/stat.h>
 
 #include "../common/fasta.h"
+#include "../common/stats.h"
 
 typedef enum {
 	MODE_LETTER_SPACE = 1,
@@ -53,8 +57,11 @@ bool		is_number(const char *);
 bool		is_whitespace(const char *);
 void		xstat(const char *, struct stat *);
 void	       *xmalloc(size_t);
+void	       *xmalloc_c(size_t, count_t *);
 void	       *xcalloc(size_t);
+void	       *xcalloc_c(size_t, count_t *);
 void	       *xrealloc(void *, size_t);
+void	       *xrealloc_c(void *, size_t, size_t, count_t *);
 char	       *xstrdup(const char *);
 uint32_t	hash_string(const char *);
 double		ls_factorial(u_int);
@@ -78,6 +85,7 @@ void	        strbuf_append(strbuf_t, char *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
 char	       *comma_integer(uint64_t);
+
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;
@@ -162,3 +170,6 @@ lstocs(int first_letter, int second_letter, bool is_rna)
 
 	return (colourmat[first_letter][second_letter]);
 }
+
+
+#endif

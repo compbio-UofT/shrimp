@@ -134,19 +134,7 @@ struct read_entry_scan {
   struct read_hit hits[0];	/* size depends on num_matches*/
 };
 
-typedef uint32_t hash_t;
-static uint cache_min_size = 2;
-static uint cache_max_size = 16;
-
-#define CACHE_QUEUE 0
-#define CACHE_LRU 1
-static int cache_policy = CACHE_QUEUE;
-
-struct cache_entry {
-  hash_t	hash_val;
-  uint16_t	score;		/* scores <= 2^15-1 (cf., sw-vector.c) */
-  uint16_t	count;
-};
+struct cache_entry; // in cache.h
 
 /*
  * Main entry for every read.
