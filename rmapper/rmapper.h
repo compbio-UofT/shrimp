@@ -1,5 +1,7 @@
 /*	$Id: rmapper.h,v 1.32 2009/06/07 06:37:47 rumble Exp $	*/
 
+#include "../common/bitmap.h"
+
 extern const bool use_colours;
 extern const bool use_dag;
 
@@ -7,7 +9,7 @@ extern const bool use_dag;
 #define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
 #define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 #define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
-#define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
+#define	DEF_WINDOW_LEN		200.0		/* 115% of read length */
 #define DEF_NUM_MATCHES		2
 #define DEF_HIT_TABOO_LEN	4
 #define DEF_SEED_TABOO_LEN	0
@@ -113,8 +115,8 @@ struct read_elem {
 	/* the following are used during scan() */
 	uint32_t	  last_swhit_idx;	/* index of last sw hit */
 	uint16_t	  window_len;		/* per-read window length */
-	uint8_t	  	  prev_hit;		/* prev index in 'hits' */
-	uint8_t		  next_hit;		/* next index in 'hits' */
+  uint8_t readLen;
+	uint8_t	  	  lastHit;		/* index in 'hits'; goes around */
 	struct read_hit	  hits[0];		/* size depends on num_matches*/
 };
 
@@ -126,4 +128,9 @@ struct read_elem {
 struct readmap_entry {
 	uint32_t	offset;		/* offset to the read in array */
 	uint32_t	r_idx;		/* kmer's index in the read sequence */
+};
+
+struct readmapHolder {
+  struct readmap_entry *rmeP;
+  uint32_t len;
 };

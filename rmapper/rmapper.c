@@ -93,8 +93,7 @@ static u_int	longest_read_len;		/* longest read we've seen */
 static u_int	nduphits;			/* number of duplicate hits */
 
 /* Kmer to read index */
-static struct readmap_entry **readmap;		/* kmer to read map */
-static uint32_t		     *readmap_len;	/* entries in each readmap[n] */
+static struct readmapHolder *readmap;		/* kmer to read map */
 
 /* Flags */
 static int Bflag = false;			/* print a progress bar */
@@ -421,12 +420,12 @@ readmap_prune()
 
 	mean = 0;
 	for (i = 0; i < j; i++)
-		mean += readmap_len[i];
+		mean += readmap[i].len;
 	mean /= j;
 
 	stddev = 0;
 	for (i = 0; i < j; i++)
-		stddev += pow((double)readmap_len[i] - mean, 2);
+		stddev += pow((double)readmap[i].len - mean, 2);
 	stddev = sqrt(stddev / j);
 
 	fprintf(stderr, "- Pruning kmers; mu: %f, sigma: %f, "
@@ -437,8 +436,9 @@ readmap_prune()
 		    "prune kmers?\n");
 
 	for (i = 0; i < j; i++) {
-		if (readmap_len[i] > mean + (kmer_stddev_limit * stddev)) {
-			readmap[i] = NULL;
+		if (readmap[i].len > mean + (kmer_stddev_limit * stddev)) {
+		  readmap[i].rmeP = NULL; // Perhaps deallocate memory pointed at?!
+		  readmap[i].len = 0;
 			pruned++;
 		}
 	}
@@ -456,8 +456,7 @@ reset_reads()
 		struct read_elem *re = OFFSET_TO_READ(i);
 
 		re->last_swhit_idx = UINT32_MAX;
-		re->prev_hit = 0;
-		re->next_hit = 0;
+		re->lastHit = 0;
 		for (j = 0; j < num_matches; j++)
 			re->hits[j].g_idx = re->hits[j].r_idx = UINT32_MAX;
 	}
@@ -494,17 +493,17 @@ get_sw_threshold(struct read_elem *re, double which, int readnum)
  * Determine whether or not the kmer hits seen within this read
  * were colinear.
  */ 
-static int
+static inline int
 are_hits_colinear(struct read_elem *re)
 {
 	int i, prev, crt;
 
-	for (i = 1, prev = re->next_hit, crt = (prev + 1) % num_matches;
+	for (i = 1, prev = (re->lastHit + 1) % num_matches, crt = (prev + 1) % num_matches;
 	     i < num_matches;
 	     i++, prev = crt, crt = (crt + 1) % num_matches) {
-	  assert(re->hits[prev].g_idx < re->hits[crt].g_idx);
-	  assert(re->hits[prev].r_idx != UINT32_MAX);
-	  assert(re->hits[crt].r_idx != UINT32_MAX);
+	  //assert(re->hits[prev].g_idx < re->hits[crt].g_idx);
+	  //assert(re->hits[prev].r_idx != UINT32_MAX);
+	  //assert(re->hits[crt].r_idx != UINT32_MAX);
 	  if (re->hits[prev].r_idx > re->hits[crt].r_idx)
 	    return 0;
 	}
@@ -518,9 +517,10 @@ scan(int contig_num, bool revcmpl)
 {
 	struct read_elem *re;
 	struct readmap_entry *rme1, *rme2;
-	uint32_t *kmer, *scan_genome, *mapidxs, *next_mapidxs;
-	uint32_t i, j, k, pf, idx, snum;
-	uint32_t base, skip, score1, score2;
+	//struct readmapHolder *rmh;
+	uint32_t *kmer, *scan_genome, *mapidxs, *mapidxs_p1;
+	uint32_t i, j, k, pf, idx, snum, n;
+	uint32_t base, skip, score1, score2, base_p1;
 	uint32_t goff, glen, prevhit;
 	u_int seed_span;
 	u_int thresh;
@@ -542,42 +542,61 @@ scan(int contig_num, bool revcmpl)
 
 	mapidxs = (uint32_t *)xmalloc(sizeof(mapidxs[0]) * nspaced_seeds);
 	memset(mapidxs, 0, sizeof(mapidxs[0]) * nspaced_seeds);
+	mapidxs_p1 = (uint32_t *)xmalloc(sizeof(mapidxs_p1[0]) * nspaced_seeds);
+	memset(mapidxs_p1, 0, sizeof(mapidxs_p1[0]) * nspaced_seeds);
 
-	next_mapidxs = (uint32_t *)xmalloc(sizeof(next_mapidxs[0]) * nspaced_seeds);
-	memset(next_mapidxs, 0, sizeof(next_mapidxs[0]) * nspaced_seeds);
+	skip = 0;
+	for (i = 0 ; i < genome_len && i < seed_span; i++) {
+	  base_p1 = EXTRACT(scan_genome, i);
+	  bitfield_prepend(kmer, seed_span, base_p1);
+	  if (base == BASE_N || base == BASE_X)
+	    skip = seed_span;
+	  if (skip > 0)
+	    skip--;
+	}
 
-	skip = seed_span - 1;
-	for (i = 0; i < genome_len; i++) {
+	// 1 ahead for i=seed_span
+	n = 0;
+	do {
+	  mapidxs_p1[n] = kmer_to_mapidx(kmer, n);
+#ifdef USE_PREFETCH
+	  _mm_prefetch((const char *)&readmap[mapidxs_p1[n]], PF_HINT);
+#endif
+	} while (++n < nspaced_seeds);
+
+	for ( ; i < genome_len; i++) {
 		PROGRESS_BAR(stderr, i, genome_len, 10);
 
-		base = EXTRACT(scan_genome, i);
-		if (i == (seed_span - 1)) {
-			int n;
-			bitfield_prepend(kmer, seed_span, base);
-			for (n = 0; n < (int)nspaced_seeds; n++)
-				mapidxs[n] = kmer_to_mapidx(kmer, n);
-		} else {
-			int n;
-			for (n = 0; n < (int)nspaced_seeds; n++)
-				mapidxs[n] = next_mapidxs[n];
-		}
+		// shift 1 ahead to 0 ahead
+		base = base_p1;
+		n = 0;
+		do {
+		  mapidxs[n] = mapidxs_p1[n];
+		} while (++n < nspaced_seeds);
 
-		/* compute next kmer early and prefetch the readmap entry */
-		if ((i + 1) < genome_len) {
-			int tmp = EXTRACT(scan_genome, i + 1);
-			int n;
-			bitfield_prepend(kmer, seed_span, tmp);
-			for (n = 0; n < (int)nspaced_seeds; n++) {
-				next_mapidxs[n] = kmer_to_mapidx(kmer, n);
 #ifdef USE_PREFETCH
-				_mm_prefetch((const char *)&readmap[next_mapidxs[n]], PF_HINT);
+		_mm_prefetch((const char *)(readmap[mapidxs[0]].rmeP), PF_HINT);
 #endif
-			}
+
+		// 1 ahead for i+1
+		if (i + 1 < genome_len) {
+		  base_p1 = EXTRACT(scan_genome, i+1);
+		  bitfield_prepend(kmer, seed_span, base_p1);
+
+		  n = 0;
+		  do {
+		    mapidxs_p1[n] = kmer_to_mapidx(kmer, n);
+#ifdef USE_PREFETCH
+		    _mm_prefetch((const char *)&readmap[mapidxs_p1[n]], PF_HINT);
+#endif
+		  } while (++n < nspaced_seeds);
+
 		}
 
-		/*
-		 * Ignore kmers that contain an 'N'.
-		 */
+		// 0 ahead, real work; we use
+		//   base
+		//   rmes
+
 		if (base == BASE_N || base == BASE_X)
 			skip = seed_span - 1;
 
@@ -588,8 +607,9 @@ scan(int contig_num, bool revcmpl)
 
 		idx = i - (seed_span - 1);
 
-		for (snum = 0; snum < nspaced_seeds; snum++) {
-			rme1 = rme2 = readmap[mapidxs[snum]];
+		snum = 0;
+		do {
+			rme1 = rme2 = readmap[mapidxs[snum]].rmeP;
 			if (rme1 == NULL) {
 				kmer_lists_scanned++;
 				continue;
@@ -610,34 +630,33 @@ scan(int contig_num, bool revcmpl)
 					_mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), PF_HINT);
 #endif
 
-				prevhit = re->hits[re->prev_hit].g_idx;
+				prevhit = re->hits[re->lastHit].g_idx;
 				if ((idx - prevhit) <= hit_taboo_len && prevhit != UINT32_MAX)
 					continue;
 
-				re->hits[re->next_hit].g_idx = idx;
-				re->hits[re->next_hit].r_idx = rme1->r_idx;
-				re->prev_hit = re->next_hit;
-				re->next_hit = (uint8_t)((re->next_hit + 1) % num_matches);
+				re->lastHit = (re->lastHit + 1) % num_matches;
+				re->hits[re->lastHit].g_idx = idx;
+				re->hits[re->lastHit].r_idx = rme1->r_idx;
 
-				if (idx < rme1->r_idx + (re->window_len - re->ri->read1_len)/2)
+				if (idx < rme1->r_idx + (re->window_len - re->readLen)/2)
 				  goff = 0;
 				else
-				  goff = idx - (rme1->r_idx + (re->window_len - re->ri->read1_len)/2);
+				  goff = idx - (rme1->r_idx + (re->window_len - re->readLen)/2);
 
 #ifdef DEBUG_HITS
 				fprintf(stderr, "found potential hit:\n");
 				fprintf(stderr, "\tcontig_num=%u read=%s idx=%u i=%u goff=%u r_idx=%u\n",
 					contig_num, re->ri->name, idx, i, goff, rme1->r_idx);
 				fprintf(stderr, "\tprevious hits:\n");
-				for (_i = 0, _k = re->next_hit;
+				for (_i = 0, _k = (re->lastHit + 1) % num_matches;
 				     _i < num_matches;
 				     _i++, _k = (_k + 1) % num_matches) {
 				  fprintf(stderr, "\tg_idx=%u r_idx=%u\n",
 					  re->hits[_k].g_idx, re->hits[_k].r_idx);
 				}
-				if (re->hits[re->next_hit].g_idx == UINT32_MAX) {
+				if (re->hits[(re->lastHit + 1) % num_matches].g_idx == UINT32_MAX) {
 				  fprintf(stderr, "\tskipping: 1st hit\n");
-				} else if (re->hits[re->next_hit].g_idx < goff) {
+				} else if (re->hits[(re->lastHit + 1) % num_matches].g_idx < goff) {
 				  fprintf(stderr, "\tskipping: previous hit too far back\n");
 				} else if (re->last_swhit_idx != UINT32_MAX
 					   && goff < re->last_swhit_idx + re->window_len/4) {
@@ -647,11 +666,11 @@ scan(int contig_num, bool revcmpl)
 				}
 #endif
 
-				if (re->hits[re->next_hit].g_idx != UINT32_MAX
-				    && re->hits[re->next_hit].g_idx >= goff
+				if (re->hits[(re->lastHit + 1) % num_matches].g_idx != UINT32_MAX
+				    && re->hits[(re->lastHit + 1) % num_matches].g_idx >= goff
 				    && (re->last_swhit_idx == UINT32_MAX
-					|| goff >= re->last_swhit_idx + re->window_len/4)
-				    && are_hits_colinear(re)
+					|| goff >= re->last_swhit_idx + re->readLen)
+				    //&& are_hits_colinear(re)
 				    )
 				  {
 					bool meets_thresh = false;
@@ -704,16 +723,17 @@ scan(int contig_num, bool revcmpl)
 					}
 				}
 				j++;
-			}
+			} // loop over read_elems
 
-			assert(k == readmap_len[mapidxs[snum]]);
+			//assert(k == readmap[mapidxs[snum]].len);
 
 			kmer_list_entries_scanned += j;
 			shortest_scanned_kmer_list = MIN(shortest_scanned_kmer_list, j);
 			longest_scanned_kmer_list = MAX(longest_scanned_kmer_list, j);
 			kmer_lists_scanned++;
-		} // loop over read_elems
-	} // loop over spaced seeds
+
+		} while (++snum < nspaced_seeds);// loop over spaced seeds
+	} // loop over genome
 
 	if (Bflag) {
 		PROGRESS_BAR(stderr, genome_len, genome_len, 10);
@@ -722,7 +742,7 @@ scan(int contig_num, bool revcmpl)
 
 	free(kmer);
 	free(mapidxs);
-	free(next_mapidxs);
+	free(mapidxs_p1);
 }
 
 static struct read_elem *
@@ -772,6 +792,9 @@ load_reads_lscs(const char *file)
 	size_t seqlen, skip = 0;
 	ssize_t bases = 0;
 	int space;
+#ifdef DEBUG_KMERS
+	uint seed_weight = strchrcnt(spaced_seeds[0], '1');
+#endif
 
 	seed_span = strlen(spaced_seeds[0]);
 
@@ -784,6 +807,8 @@ load_reads_lscs(const char *file)
 		fprintf(stderr, "error: failed to open reads file [%s]\n",
 		    file);
 		return (false);
+	} else {
+		fprintf(stderr, "- Processing reads file [%s]\n", file);
 	}
 
 	fprintf(stderr, "- Loading reads...");
@@ -835,10 +860,16 @@ load_reads_lscs(const char *file)
 			exit(1);
 		}
 		re->ri->read1_len = seqlen;
+		re->readLen = seqlen;
 		longest_read_len = MAX(re->ri->read1_len, longest_read_len);
 
 		if (shrimp_mode == MODE_COLOUR_SPACE)
 			re->ri->initbp = fasta_get_initial_base(fasta, seq);
+#ifdef DEBUG_KMERS
+		fprintf(stderr, "processing read:\"%s\" length:%u sequence:\"%s\" bitfield:%s\n",
+			re->ri->name, re->readLen, seq,
+			bitmap32VString(re->ri->read1, re->readLen, 4, true, false, false));
+#endif
 
 		kmer = (uint32_t *)xmalloc(BPTO32BW(seed_span) * sizeof(uint32_t));
 		memset(kmer, 0, BPTO32BW(seed_span) * sizeof(uint32_t));
@@ -882,18 +913,26 @@ load_reads_lscs(const char *file)
 			for (n = 0; n < (int)nspaced_seeds; n++) {
 				uint32_t mapidx = kmer_to_mapidx(kmer, n);
 
+#ifdef DEBUG_KMERS
+				fprintf(stderr, "\tfound kmer:%s",
+					bitmap32VString(&mapidx, seed_weight, 2, false, false, false));
+				fprintf(stderr, " in kmerWindow:%s using seed:%u\n",
+					bitmap32VString(kmer, seed_span, 4, false, false, false),
+					n);
+#endif
+
 				/* permit only one kmer reference per read */
-				if (readmap[mapidx] != NULL &&
-				    readmap[mapidx][readmap_len[mapidx] - 1].offset == re->ri->offset)
+				if (readmap[mapidx].rmeP != NULL &&
+				    (readmap[mapidx].rmeP)[readmap[mapidx].len - 1].offset == re->ri->offset)
 					continue;
 				
-				readmap_len[mapidx]++;
-				readmap[mapidx] = (struct readmap_entry *)xrealloc(
-				    readmap[mapidx], (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
-				readmap[mapidx][readmap_len[mapidx] - 1].offset	= re->ri->offset;
-				readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= i - (seed_span - 1);
-				readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
-				readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
+				readmap[mapidx].len++;
+				readmap[mapidx].rmeP = (struct readmap_entry *)xrealloc(
+				    readmap[mapidx].rmeP, (readmap[mapidx].len + 1) * sizeof(*readmap[0].rmeP));
+				readmap[mapidx].rmeP[readmap[mapidx].len - 1].offset = re->ri->offset;
+				readmap[mapidx].rmeP[readmap[mapidx].len - 1].r_idx = i - (seed_span - 1);
+				readmap[mapidx].rmeP[readmap[mapidx].len].offset = UINT32_MAX;
+				readmap[mapidx].rmeP[readmap[mapidx].len].r_idx = UINT32_MAX;
 				nkmers++;
 			}
 
@@ -1026,17 +1065,17 @@ load_reads_dag(const char *file)
 				uint32_t mapidx = kmer_to_mapidx(kmer, n);
 
 				/* permit only one kmer reference per read */
-				if (readmap[mapidx] != NULL &&
-				    readmap[mapidx][readmap_len[mapidx] - 1].offset == re->ri->offset)
+				if (readmap[mapidx].rmeP != NULL &&
+				    readmap[mapidx].rmeP[readmap[mapidx].len - 1].offset == re->ri->offset)
 					continue;
 
-				readmap_len[mapidx]++;
-				readmap[mapidx] = (struct readmap_entry *)xrealloc(
-				    readmap[mapidx], (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
-				readmap[mapidx][readmap_len[mapidx] - 1].offset	= re->ri->offset;
-				readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= UINT32_MAX;
-				readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
-				readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
+				readmap[mapidx].len++;
+				readmap[mapidx].rmeP = (struct readmap_entry *)xrealloc(
+				    readmap[mapidx].rmeP, (readmap[mapidx].len + 1) * sizeof(*readmap[0].rmeP));
+				readmap[mapidx].rmeP[readmap[mapidx].len - 1].offset	= re->ri->offset;
+				readmap[mapidx].rmeP[readmap[mapidx].len - 1].r_idx	= UINT32_MAX;
+				readmap[mapidx].rmeP[readmap[mapidx].len].offset	= UINT32_MAX;
+				readmap[mapidx].rmeP[readmap[mapidx].len].r_idx	= UINT32_MAX;
 				nkmers++;
 			}
 
@@ -1076,15 +1115,8 @@ load_reads(const char *file)
 		bytes = sizeof(readmap[0]) * power(4, HASH_TABLE_POWER);
 	else
 		bytes = sizeof(readmap[0]) * power(4, seed_weight);
-	readmap = (struct readmap_entry **)xmalloc(bytes);
+	readmap = (struct readmapHolder *)xmalloc(bytes);
 	memset(readmap, 0, bytes);
-
-	if (Hflag)
-		bytes = sizeof(readmap_len[0]) * power(4, HASH_TABLE_POWER);
-	else
-		bytes = sizeof(readmap_len[0]) * power(4, seed_weight);
-	readmap_len = (uint32_t *)xmalloc(bytes);
-	memset(readmap_len, 0, bytes);
 
 	if (shrimp_mode == MODE_HELICOS_SPACE)
 		ret = load_reads_dag(file);
@@ -1974,6 +2006,7 @@ main(int argc, char **argv)
 	u_int max_window_len, maxTrueWindowLen;
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
+	char *charP;
 
 	set_mode_from_argv(argv);
 
@@ -2006,7 +2039,7 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "rmapper: %s.\nSHRiMP %s [%s]\n", get_mode_string(),
+	fprintf(stderr, "rmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
 	    SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
@@ -2016,11 +2049,23 @@ main(int argc, char **argv)
 	while ((ch = getopt(argc, argv, optstr)) != -1) {
 		switch (ch) {
 		case 's':
+		  if (strchr(optarg, ',') == NULL) {
 			if (sflags++ == 0)
 				spaced_seeds[0] = xstrdup(optarg);
 			else
 				add_spaced_seed(optarg);
 			break;
+		  } else {
+		    //fprintf(stderr, "found -s parameter with many seeds; optarg=\"%s\"\n", optarg);
+		    if (sflags++ == 0) {
+		      nspaced_seeds = 0; // effectively erase default seed which is already loaded
+		    }
+		    charP = strtok(optarg, ",");
+		    do {
+		      add_spaced_seed(charP);
+		      charP = strtok(NULL, ",");
+		    } while (charP != NULL);
+		  }
 		case 'n':
 			num_matches = atoi(optarg);
 			break;

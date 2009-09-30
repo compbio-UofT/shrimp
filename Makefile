@@ -1,6 +1,6 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 CXX=gcc
-CXXFLAGS=-O3 -mmmx -msse -msse2
+CXXFLAGS=-O3 -mmmx -msse -msse2 -DNDEBUG
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
 endif
