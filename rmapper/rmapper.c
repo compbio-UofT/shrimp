@@ -71,6 +71,7 @@ static int	xover_penalty		= DEF_XOVER_PENALTY;
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static int	extra_width		= DEF_EXTRA_WIDTH;
+static int	hash_filter_calls	= 1;
 
 /*
  * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
@@ -131,10 +132,33 @@ static uint64_t shortest_scanned_kmer_list;
 static uint64_t longest_scanned_kmer_list;
 static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
+
+/* Extra stats, computed ifdef EXTRA_STATS */
 static uint64_t colin_checks;
-static uint64_t filter_sw_passes;
+static uint64_t total_filter_passes;
 static uint64_t reads_filtered;
-static uint64_t filter_sw_bypassed;
+static uint64_t total_filter_calls_bypassed;
+
+char const * reads_profile_file_name;
+
+#ifdef EXTRA_STATS
+static inline void
+add_to_stat64(uint64_t * stat, int d) {
+  (*stat) += d;
+}
+
+static inline void
+add_to_stat32(uint32_t * stat, int d) {
+  (*stat) += d;
+}
+#else
+static inline void
+add_to_stat64(uint64_t * stat, int d) { }
+
+static inline void
+add_to_stat32(uint32_t * stat, int d) { }
+#endif
+
 
 /* Misc stats */
 static uint64_t scan_usecs;
@@ -272,8 +296,6 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
   struct read_entry * re = &reads[read_id];
   struct read_entry_scan * res = get_re_scan(read_id);
   struct re_score * scores = re->scores;
-
-  filter_sw_passes++;
 
 #ifdef DEBUG_HITS
   fprintf(stderr, "\tsaving hit: contig_num=%u read=%s idx=%u revcmpl=%s score=%u\n",
@@ -498,7 +520,7 @@ are_hits_colinear(struct read_entry_scan *res)
 {
   int i, prev, crt;
 
-  colin_checks++;
+  add_to_stat64(&colin_checks, 1);
 
   for (i = 1, prev = (res->last_hit + 1) % num_matches, crt = (prev + 1) % num_matches;
        i < num_matches;
@@ -700,7 +722,7 @@ scan(int contig_num, bool revcmpl)
 	  if (!are_hits_colinear(res)) {
 	    fprintf(stderr, "\tskipping: hits not colinear\n");
 	  }
-	  colin_checks--;
+	  add_to_stat64(&colin_checks, -1);
 	}
 #endif
 
@@ -717,6 +739,8 @@ scan(int contig_num, bool revcmpl)
 	    uint l;
 
 	    assert(re->offset == rme1->offset);
+
+	    add_to_stat32(&re->filter_calls, 1);
 
 	    glen = res->window_len;
 	    if (goff + glen > genome_len)
@@ -742,26 +766,30 @@ scan(int contig_num, bool revcmpl)
 	       * CS and LS
 	       */
 
-	      if (re->freq_hits == NULL) {
-		reads_filtered++;
-		re->freq_hits = (struct freq_hits *)xcalloc(sizeof(struct freq_hits));
+	      if (hash_filter_calls) {
+		if (re->freq_hits == NULL) {
+		  add_to_stat64(&reads_filtered, 1);
+		  re->freq_hits = (struct freq_hits *)xcalloc(sizeof(struct freq_hits));
+		}
+
+		hash_val = hash_window(scan_genome, goff, glen);
+
+		l = 0;
+		while (l < hits_pool_size
+		       && re->freq_hits->count[l] != 0
+		       && re->freq_hits->pool[l] != hash_val)
+		  l++;
 	      }
 
-	      hash_val = hash_window(scan_genome, goff, glen);
-
-	      l = 0;
-	      while (l < hits_pool_size
-		     && re->freq_hits->count[l] != 0
-		     && re->freq_hits->pool[l] != hash_val)
-		l++;
-
-	      if (l < hits_pool_size && re->freq_hits->count[l] != 0) {
+	      if (hash_filter_calls && l < hits_pool_size && re->freq_hits->count[l] != 0) {
 		/*
 		 * We have run vector SW on this region before; use previous score.
 		 */
 		score1 = re->freq_hits->score[l];
 		re->freq_hits->count[l]++;
-                filter_sw_bypassed++;
+
+		add_to_stat64(&total_filter_calls_bypassed, 1);
+		add_to_stat32(&re->filter_calls_bypassed, 1);
 	      } else {
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 		  score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
@@ -771,7 +799,7 @@ scan(int contig_num, bool revcmpl)
 				     NULL, -1, genome_is_rna);
 		}
 
-		if (l < hits_pool_size) { // save score
+		if (hash_filter_calls && l < hits_pool_size) { // save score
 		  re->freq_hits->pool[l] = hash_val;
 		  re->freq_hits->count[l] = 1;
 		  re->freq_hits->score[l] = score1;
@@ -784,6 +812,9 @@ scan(int contig_num, bool revcmpl)
 	    }
 
 	    if (meets_thresh) {
+	      add_to_stat64(&total_filter_passes, 1);
+	      add_to_stat32(&re->filter_passes, 1);
+
 	      save_score(re->offset, score1, goff, contig_num, revcmpl);
 	      res->last_swhit_idx = goff;
 	      re->swhits++;
@@ -1793,8 +1824,10 @@ print_statistics()
   fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
 	  (kmer_lists_scanned == 0) ? 0 :
 	  (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
+#ifdef EXTRA_STATS
   fprintf(stderr, "        Colinearity Checks:     %s\n",
 	  comma_integer(colin_checks));
+#endif
   fprintf(stderr, "\n");
 
   fprintf(stderr, "    Vector Smith-Waterman:\n");
@@ -1802,12 +1835,14 @@ print_statistics()
 	  (cellspersec == 0) ? 0 : cells / cellspersec);
   fprintf(stderr, "        Invocations:            %s\n",
 	  comma_integer(invocs));
+#ifdef EXTRA_STATS
   fprintf(stderr, "        Passed threshold:       %s\n",
-          comma_integer(filter_sw_passes));
-  fprintf(stderr, "        Bypassed calls:         %s\n",
-          comma_integer(filter_sw_bypassed));
+          comma_integer(total_filter_passes));
   fprintf(stderr, "        Reads filtered:         %s\n",
 	  comma_integer(reads_filtered));
+  fprintf(stderr, "        Bypassed calls:         %s\n",
+	  comma_integer(total_filter_calls_bypassed));
+#endif
   fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	  (double)cells / 1.0e6);
   fprintf(stderr, "        Cells per Second:       %.2f million\n",
@@ -1868,6 +1903,31 @@ print_statistics()
 				      (double)reads_matched));
   fprintf(stderr, "        Duplicate Hits Pruned:  %s\n",
 	  comma_integer(nduphits));
+
+#ifdef EXTRA_STATS
+  FILE * reads_profile_file;
+  if (reads_profile_file_name != NULL
+      && (reads_profile_file = fopen(reads_profile_file_name, "w")) != NULL) {
+
+    for (i = 0; i < nreads; i++) {
+      int l = 0;
+
+      if (reads[i].freq_hits != NULL) {
+	while (l < hits_pool_size && reads[i].freq_hits->count[l] != 0)
+	  l++;
+      }
+      fprintf(reads_profile_file, "%-20s\t%u\t%u\t%u\t%u\t%u\n",
+	      reads[i].name,
+	      reads[i].filter_calls,
+	      reads[i].filter_calls_bypassed,
+	      l,
+	      reads[i].filter_passes,
+	      reads[i].final_matches);
+    }
+    fclose(reads_profile_file);
+  }
+#endif
+    
 }
 
 static bool
@@ -2160,10 +2220,10 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:A:BCFHPRTU";
+    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:A:X:BCFHPRTUZ";
     break;
   case MODE_LETTER_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:BCFHPRTU";
+    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:A:X:BCFHPRTUZ";
     break;
   case MODE_HELICOS_SPACE:
     optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRU";
@@ -2370,6 +2430,12 @@ main(int argc, char **argv)
 		optarg);
 	exit(1);
       }
+      break;
+    case 'X':
+      reads_profile_file_name = optarg;
+      break;
+    case 'Z':
+      hash_filter_calls = 0;
       break;
     default:
       usage(progname);
@@ -2582,6 +2648,8 @@ main(int argc, char **argv)
     fprintf(stderr, "    Use anchors:                          yes (width:%d)\n",
 	    extra_width);
   }
+  fprintf(stderr, "    Hash filter SW calls:                 %s\n",
+	  hash_filter_calls ? "yes" : "no");
   fprintf(stderr, "\n");
 
   dag_setup(dag_read_match, dag_read_mismatch, dag_read_gap, dag_ref_match,

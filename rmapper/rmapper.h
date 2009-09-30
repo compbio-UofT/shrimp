@@ -157,7 +157,16 @@ struct read_entry {
   uint32_t	offset;		/* offset in read array */
   int		initbp;		/* colour space init letter */
   int		swhits;		/* num of hits with sw */
+#ifndef EXTRA_STATS
+  union {
+#endif
   uint32_t	final_matches;	/* num of final output matches*/
+    uint32_t	filter_calls;
+    uint32_t	filter_calls_bypassed;
+    uint32_t	filter_passes;
+#ifndef EXTRA_STATS
+  };
+#endif
 
 };
 
