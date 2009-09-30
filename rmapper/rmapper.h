@@ -131,14 +131,14 @@ struct read_entry_scan {
   struct read_hit hits[0];	/* size depends on num_matches*/
 };
 
-typedef int16_t hash_t;
-#define DEF_HITS_POOL_SIZE 16
-uint const hits_pool_size = DEF_HITS_POOL_SIZE;
+typedef uint32_t hash_t;
+uint const hits_pool_min_size = 16;
+uint const hits_pool_max_size = 16;
 
 struct freq_hits {
-  hash_t	pool[DEF_HITS_POOL_SIZE];
-  uint16_t	count[DEF_HITS_POOL_SIZE];
-  uint16_t	score[DEF_HITS_POOL_SIZE];	/* scores <= 2^15-1 (cf., sw-vector.c) */
+  hash_t	hash_val;
+  uint16_t	score;		/* scores <= 2^15-1 (cf., sw-vector.c) */
+  uint16_t	count;
 };
 
 /*
@@ -152,10 +152,13 @@ struct read_entry {
   dag_cookie_t	dag_cookie;	/* kmer graph cookie for glue */
   struct freq_hits * freq_hits;
 
+  int16_t	initbp;		/* colour space init letter */
+  uint8_t	freq_hits_sz;
+  uint8_t	head;		/* this works like a queue */
+
   uint32_t	read1_len;
   uint32_t	read2_len;
   uint32_t	offset;		/* offset in read array */
-  int		initbp;		/* colour space init letter */
   int		swhits;		/* num of hits with sw */
 #ifndef EXTRA_STATS
   union {
