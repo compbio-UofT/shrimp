@@ -9,7 +9,7 @@ extern const bool use_dag;
 #define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
 #define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 #define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
-#define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
+#define	DEF_WINDOW_LEN		150.0		/* 115% of read length */
 #define DEF_NUM_MATCHES		2
 #define DEF_HIT_TABOO_LEN	4
 #define DEF_SEED_TABOO_LEN	0
@@ -63,6 +63,11 @@ extern const bool use_dag;
 #endif
 
 /*
+ * We hold seeds as bitmaps to reduce cache footprint.
+ */
+#define MAX_SEED_SPAN		64
+
+/*
  * For larger seeds we'll just use a hash table. Presently, we're restricted to
  * 128 bytes in kmer_to_mapidx, but it's trivially extended.
  */
@@ -105,19 +110,22 @@ struct read_int {
 };
 
 struct read_hit {
-	uint32_t  g_idx;		/* kmer index in genome */
-	uint32_t  r_idx;		/* kmer index in read */
+  uint32_t  g_idx;		/* kmer index in genome */
+  uint16_t  r_idx;		/* kmer index in read */
+  uint8_t r_idx_last;
+  uint8_t  sn;			/* seed where kmer originates from */
+  // aligned to 8B
 };
 
 struct read_elem {
-	struct read_int  *ri;			/* pointer to the meat */
+  struct read_int  *ri;			/* pointer to the meat */
 
-	/* the following are used during scan() */
-	uint32_t	  last_swhit_idx;	/* index of last sw hit */
-	uint16_t	  window_len;		/* per-read window length */
+  /* the following are used during scan() */
+  uint32_t last_swCall_idx;	/* index of last sw call */
+  uint16_t window_len;		/* per-read window length */
   uint8_t readLen;
-	uint8_t	  	  lastHit;		/* index in 'hits'; goes around */
-	struct read_hit	  hits[0];		/* size depends on num_matches*/
+  uint8_t lastHit;		/* index in 'hits'; goes around */
+  struct read_hit hits[0];		/* size depends on num_matches*/
 };
 
 /*
@@ -126,11 +134,15 @@ struct read_elem {
  * as well as track where in the read the kmer exists for colinearity checking.
  */
 struct readmap_entry {
-	uint32_t	offset;		/* offset to the read in array */
-	uint32_t	r_idx;		/* kmer's index in the read sequence */
+  uint32_t	offset;		/* offset to the read in array */
+  uint16_t	r_idx;		/* kmer's index in the read sequence (could be uint8_t) */
+  uint16_t	r_idx_last;
+  // aligned to 8B
 };
 
-struct readmapHolder {
-  struct readmap_entry *rmeP;
-  uint32_t len;
+struct seedType {
+  BITMAP_TYPE mask[1];	// a bitmask, least significant bit = rightmost match
+  uint32_t span;	// max 64 (could be uint8_t)
+  uint32_t weight;	// max 64
+  // keep it aligned to 16B (currently mask has 8B)
 };

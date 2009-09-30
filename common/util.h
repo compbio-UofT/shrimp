@@ -53,6 +53,7 @@ bool		is_number(const char *);
 bool		is_whitespace(const char *);
 void		xstat(const char *, struct stat *);
 void	       *xmalloc(size_t);
+void	       *xcalloc(size_t);
 void	       *xrealloc(void *, size_t);
 char	       *xstrdup(const char *);
 uint32_t	hash_string(const char *);

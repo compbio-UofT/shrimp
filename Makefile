@@ -1,6 +1,6 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 CXX=gcc
-CXXFLAGS=-O3 -mmmx -msse -msse2 -DNDEBUG
+CXXFLAGS=-O3 -DNDEBUG -mmmx -msse -msse2
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
 endif
@@ -32,7 +32,7 @@ bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
 	$(LN) -sf rmapper bin/rmapper-hs
 	$(LN) -sf rmapper bin/rmapper-ls
 
-rmapper/rmapper.o: rmapper/rmapper.c
+rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

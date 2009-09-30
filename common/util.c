@@ -155,6 +155,20 @@ xmalloc(size_t size)
 } 
 
 void *
+xcalloc(size_t size)
+{
+  void *ptr;
+
+  ptr = calloc(size, 1);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: calloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  return ptr;
+}
+
+void *
 xrealloc(void *ptr, size_t size)
 {
 
