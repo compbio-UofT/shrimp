@@ -1,6 +1,6 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 CXX=gcc
-CXXFLAGS=-O3 -DNDEBUG -mmmx -msse -msse2
+CXXFLAGS=-O3 -DNDEBUG -mmmx -msse -msse2 -Wall
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
 endif
@@ -26,13 +26,13 @@ all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/
 bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
-    common/output.o common/util.o
+    common/output.o common/util.o common/anchors.o common/bitmap.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf rmapper bin/rmapper-cs
 	$(LN) -sf rmapper bin/rmapper-hs
 	$(LN) -sf rmapper bin/rmapper-ls
 
-rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h
+rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -73,7 +73,7 @@ shrimp_var/shrimp_var.o: shrimp_var/shrimp_var.c
 
 bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
-    common/util.o
+    common/util.o common/anchors.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-hs
@@ -121,7 +121,7 @@ common/input.o: common/input.c common/input.h
 common/output.o: common/output.c common/output.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h common/util.h
+common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h common/util.h common/anchors.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-common.h common/util.h
@@ -131,6 +131,12 @@ common/sw-vector.o: common/sw-vector.c common/sw-vector.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/anchors.o: common/anchors.c common/anchors.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/bitmap.o: common/bitmap.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

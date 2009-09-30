@@ -1,110 +1,85 @@
-#ifndef __BITMAP_H
-#define __BITMAP_H
+#ifndef _BITMAP_H
+#define _BITMAP_H
 
-#include <stdio.h>
 #include <assert.h>
-
-#ifdef NDEBUG
-#define INLINE_ND inline
-#else
-#define INLINE_ND
-#endif
+#include <inttypes.h>
+#include <sys/types.h>
+#include <stdbool.h>
 
 
-#define BITMAP_TYPE uint64_t
+/*
+ * Public declarations
+ */
 
+typedef uint64_t bitmap_type;
+//#define bitmap_type uint64_t
 
-#define BITMAP_ALL1_FIELD(_bitsPerField) \
-  ((((BITMAP_TYPE)1) << (_bitsPerField)) - 1)
+static inline void bitmap_insert_clean(bitmap_type * a, uint bits_per_field, uint index, uint value);
+static inline void bitmap_clear(bitmap_type * a, uint bits_per_field, uint index);
+static inline void bitmap_prepend(bitmap_type * a, uint bits_per_field, uint value);
+static inline uint bitmap_extract(bitmap_type * a, uint bits_per_field, uint index);
 
-#define BITMAP32_ALL1_FIELD(_bitsPerField) \
-  ((((uint32_t)1) << (_bitsPerField)) - 1)
+static inline uint bitmap32_extract(uint32_t * a, uint bits_per_field, uint index);
 
+char const * bitmap32v_string(uint32_t * a, uint n_fields, uint bits_per_field,
+			      bool reverse, bool use_bits, bool use_commas);
 
+/*
+ * Inline definitions
+ */
 
-INLINE_ND void
-bitmapInsertClean(BITMAP_TYPE *a, uint bitsPerField, uint index, uint value) {
-  assert(index < 64/bitsPerField);
-  assert((value & ~BITMAP_ALL1_FIELD(bitsPerField)) == 0);
-
-  (*a) |= (((BITMAP_TYPE)value) << index*bitsPerField);
+static inline bitmap_type
+bitmap_all1_field(uint bits_per_field) {
+  return ((bitmap_type)1 << bits_per_field) - 1;
 }
 
 
-INLINE_ND void
-bitmapClear(BITMAP_TYPE *a, uint bitsPerField, uint index) {
-  assert(index < 64/bitsPerField);
-
-  (*a) &= ~(BITMAP_ALL1_FIELD(bitsPerField) << index*bitsPerField);
+static inline uint32_t
+bitmap32_all1_field(uint bits_per_field) {
+  return ((uint32_t)1 << bits_per_field) - 1;
 }
 
 
-INLINE_ND void
-bitmapPrepend(BITMAP_TYPE *a, uint bitsPerField, uint value) {
-  assert((value & ~BITMAP_ALL1_FIELD(bitsPerField)) == 0);
+static inline void
+bitmap_insert_clean(bitmap_type * a, uint bits_per_field, uint index, uint value) {
+  assert(index < (8 * sizeof(bitmap_type)) / bits_per_field);
+  assert((value & ~bitmap_all1_field(bits_per_field)) == 0);
 
-  (*a) <<= bitsPerField;
-  (*a) |= value;
+  *a |= ((bitmap_type)value << index * bits_per_field);
 }
 
 
+static inline void
+bitmap_clear(bitmap_type * a, uint bits_per_field, uint index) {
+  assert(index < (8 * sizeof(bitmap_type)) / bits_per_field);
 
-INLINE_ND uint
-bitmapExtract(BITMAP_TYPE *a, uint bitsPerField, uint index) {
-  assert(index < 64/bitsPerField);
-
-  return ((*a) >> bitsPerField*index) & BITMAP_ALL1_FIELD(bitsPerField);
+  *a &= ~(bitmap_all1_field(bits_per_field) << index * bits_per_field);
 }
 
 
-INLINE_ND uint
-bitmap32Extract(uint32_t *a, uint bitsPerField, uint index) {
-  assert(index < 32/bitsPerField);
+static inline void
+bitmap_prepend(bitmap_type * a, uint bits_per_field, uint value) {
+  assert((value & ~bitmap_all1_field(bits_per_field)) == 0);
 
-  return ((*a) >> bitsPerField*index) & BITMAP32_ALL1_FIELD(bitsPerField);
+  *a <<= bits_per_field;
+  *a |= value;
 }
 
 
-char *
-bitmap32VString(uint32_t *a, uint nFields, uint bitsPerField,
-		bool reverse, bool useBits, bool useCommas) {
-  static char buffer[1001];
+static inline uint
+bitmap_extract(bitmap_type * a, uint bits_per_field, uint index) {
+  assert(index < (8 * sizeof(bitmap_type)) / bits_per_field);
 
-  int i, j, k;
-  uint32_t val;
-  uint fieldsPerByte = 32/bitsPerField;
-
-  int first, last, increment;
-
-  if (!reverse) {
-    first = nFields - 1;
-    last = 0;
-    increment = -1;
-  } else {
-    first = 0;
-    last = nFields - 1;
-    increment = 1;
-  }
-
-  for (i = first, j = 0;
-       i != last + increment && j < 990;
-       i += increment) {
-    val = ((a[i/fieldsPerByte] >> bitsPerField*(i%fieldsPerByte))
-	   & ((((uint32_t)1) << bitsPerField) - 1));
-    if (useBits) {
-      for (k = bitsPerField - 1; k >= 0; k--) {
-	buffer[j++] = (bitmap32Extract(&val, 1, k) == 1? '1' : '0');
-      }
-    } else {
-      j += sprintf(&buffer[j], "%u", val); // unsafe
-    }
-    if (useCommas && i != last)
-      buffer[j++] = ',';
-  }
-  buffer[j] = 0;
-
-  return buffer;
+  return (*a >> bits_per_field * index) & bitmap_all1_field(bits_per_field);
 }
-      
+
+
+static inline uint
+bitmap32_extract(uint32_t * a, uint bits_per_field, uint index) {
+  assert(index < 32/bits_per_field);
+
+  return (*a >> bits_per_field * index) & bitmap32_all1_field(bits_per_field);
+}
+
 
 #endif

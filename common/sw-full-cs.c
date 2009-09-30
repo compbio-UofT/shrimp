@@ -101,6 +101,7 @@ static int		xover_penalty;
 static struct swcell   *swmatrix;
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
+static int extra_width;
 
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
@@ -109,6 +110,35 @@ static uint64_t		swticks, swcells, swinvocs;
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)
 
+inline static void
+init_cell(int idx) {
+  swmatrix[idx].from[0].score_nw = 0;
+  swmatrix[idx].from[0].score_n  = -gap_open;
+  swmatrix[idx].from[0].score_w  = -gap_open;
+  swmatrix[idx].from[1].score_nw = xover_penalty;
+  swmatrix[idx].from[1].score_n  = -gap_open + xover_penalty;
+  swmatrix[idx].from[1].score_w  = -gap_open + xover_penalty;
+  swmatrix[idx].from[2].score_nw = xover_penalty;
+  swmatrix[idx].from[2].score_n  = -gap_open + xover_penalty;
+  swmatrix[idx].from[2].score_w  = -gap_open + xover_penalty;
+  swmatrix[idx].from[3].score_nw = xover_penalty;
+  swmatrix[idx].from[3].score_n  = -gap_open + xover_penalty;
+  swmatrix[idx].from[3].score_w  = -gap_open + xover_penalty;
+
+  swmatrix[idx].from[0].back_nw = 0;
+  swmatrix[idx].from[0].back_n  = 0;
+  swmatrix[idx].from[0].back_w  = 0;
+  swmatrix[idx].from[1].back_nw = 0;
+  swmatrix[idx].from[1].back_n  = 0;
+  swmatrix[idx].from[1].back_w  = 0;
+  swmatrix[idx].from[2].back_nw = 0;
+  swmatrix[idx].from[2].back_n  = 0;
+  swmatrix[idx].from[2].back_w  = 0;
+  swmatrix[idx].from[3].back_nw = 0;
+  swmatrix[idx].from[3].back_n  = 0;
+  swmatrix[idx].from[3].back_w  = 0;
+}
+
 /*
  * Perform a full Smith-Waterman alignment. For the colour case, this means
  * computing each possible letter space read string and doing a four layer
@@ -116,12 +146,14 @@ static uint64_t		swticks, swcells, swinvocs;
  */
 static int
 full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
-	int *kret, bool revcmpl)
+	int *kret, bool revcmpl,
+	struct anchor * anchors, uint anchors_cnt)
 {
   int i, j, k, l, max_i, max_j, max_k;
   int score, ms, go, ge, tmp, resetval;
-  int sw_band, ne_band;
+  //int sw_band, ne_band;
   int8_t tmp2;
+  struct anchor rectangle;
 
   /* shut up gcc */
   max_i = max_j = max_k = j = 0;
@@ -131,64 +163,12 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   ge = gap_ext;
 
   for (j = 0; j < lena + 1; j++) {
-    int idx = j;
-
-    swmatrix[idx].from[0].score_nw = 0;
-    swmatrix[idx].from[0].score_n  = -go;
-    swmatrix[idx].from[0].score_w  = -go;
-    swmatrix[idx].from[1].score_nw = xover_penalty;
-    swmatrix[idx].from[1].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[1].score_w  = -go + xover_penalty;
-    swmatrix[idx].from[2].score_nw = xover_penalty;
-    swmatrix[idx].from[2].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[2].score_w  = -go + xover_penalty;
-    swmatrix[idx].from[3].score_nw = xover_penalty;
-    swmatrix[idx].from[3].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[3].score_w  = -go + xover_penalty;
-
-    swmatrix[idx].from[0].back_nw = 0;
-    swmatrix[idx].from[0].back_n  = 0;
-    swmatrix[idx].from[0].back_w  = 0;
-    swmatrix[idx].from[1].back_nw = 0;
-    swmatrix[idx].from[1].back_n  = 0;
-    swmatrix[idx].from[1].back_w  = 0;
-    swmatrix[idx].from[2].back_nw = 0;
-    swmatrix[idx].from[2].back_n  = 0;
-    swmatrix[idx].from[2].back_w  = 0;
-    swmatrix[idx].from[3].back_nw = 0;
-    swmatrix[idx].from[3].back_n  = 0;
-    swmatrix[idx].from[3].back_w  = 0;
+    init_cell(j);
   }
 
-  for (j = 0; j < lenb + 1; j++) {
-    int idx = j * (lena + 1);
-
-    swmatrix[idx].from[0].score_nw = 0;
-    swmatrix[idx].from[0].score_n  = -go;
-    swmatrix[idx].from[0].score_w  = -go;
-    swmatrix[idx].from[1].score_nw = xover_penalty;
-    swmatrix[idx].from[1].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[1].score_w  = -go + xover_penalty;
-    swmatrix[idx].from[2].score_nw = xover_penalty;
-    swmatrix[idx].from[2].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[2].score_w  = -go + xover_penalty;
-    swmatrix[idx].from[3].score_nw = xover_penalty;
-    swmatrix[idx].from[3].score_n  = -go + xover_penalty;
-    swmatrix[idx].from[3].score_w  = -go + xover_penalty;
-
-    swmatrix[idx].from[0].back_nw = 0;
-    swmatrix[idx].from[0].back_n  = 0;
-    swmatrix[idx].from[0].back_w  = 0;
-    swmatrix[idx].from[1].back_nw = 0;
-    swmatrix[idx].from[1].back_n  = 0;
-    swmatrix[idx].from[1].back_w  = 0;
-    swmatrix[idx].from[2].back_nw = 0;
-    swmatrix[idx].from[2].back_n  = 0;
-    swmatrix[idx].from[2].back_w  = 0;
-    swmatrix[idx].from[3].back_nw = 0;
-    swmatrix[idx].from[3].back_n  = 0;
-    swmatrix[idx].from[3].back_w  = 0;
-  }
+  //for (j = 0; j < lenb + 1; j++) {
+  //init_cell(j * (lena + 1));
+  //}
 
   /*
    * Figure out our band.
@@ -196,11 +176,47 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
    *   cells, which could never be part of an alignment corresponding
    *   to our threshhold score.
    */
-  sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
-  ne_band = lena - (lenb - sw_band);
+  //sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
+  //ne_band = lena - (lenb - sw_band);
+
+  if (anchors != NULL) {
+    join_anchors(anchors, anchors_cnt, &rectangle);
+    widen_anchor(&rectangle, extra_width);
+  } else {
+    struct anchor tmp[2];
+
+    tmp[0].x = 0;
+    tmp[0].y = (lenb * match - threshscore) / match;
+    tmp[0].length = 1;
+    tmp[0].width = 1;
+    tmp[0].more_than_once = 0;
+
+    tmp[1].x = lena-1;
+    tmp[1].y = lenb-1-tmp[0].y;
+    tmp[1].length = 1;
+    tmp[1].width = 1;
+    tmp[1].more_than_once = 0;
+
+    join_anchors(tmp, 2, &rectangle);
+  }
 
   for (i = 0; i < lenb; i++) {
-    for (j = 0; j < lena; j++) {
+    /*
+     * computing row i of virtual matrix, stored in row i+1
+     */
+    int x_min, x_max;
+
+    get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
+    //if (x_min > 0) {
+    init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
+    //}
+
+    swcells += x_max - x_min + 1;
+
+    for (j = x_min; j <= x_max; j++) {
+      /*
+       * computing column j of virtual matrix, stored in column j+1
+       */
       struct swcell *cell_nw, *cell_n, *cell_w, *cell_cur;
 
       cell_nw  = &swmatrix[i * (lena + 1) + j];
@@ -209,14 +225,14 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
       cell_cur = cell_w + 1;
 
       /* banding */
-      if (i >= sw_band + j) {
-	memset(cell_cur, 0, sizeof(*cell_cur));
-	continue;
-      }
-      if (j >= ne_band + i) {
-	memset(cell_cur, 0, sizeof(*cell_cur));
-	break;
-      }
+      //if (i >= sw_band + j) {
+      //memset(cell_cur, 0, sizeof(*cell_cur));
+      //continue;
+      //}
+      //if (j >= ne_band + i) {
+      //memset(cell_cur, 0, sizeof(*cell_cur));
+      //break;
+      //}
 
       for (k = 0; k < 4; k++) {
 	if (k != 0)
@@ -454,6 +470,15 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 		 (cell_cur->from[k].back_w >> 2 == FROM_WEST_NORTHWEST ? "nw" : "w")));
 #endif
 
+      }
+    }
+
+    if (i+1 < lenb) {
+      int next_x_min, next_x_max;
+
+      get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
+      for (j = x_max + 1; j <= next_x_max; j++) {
+	init_cell((i + 1) * (lena + 1) + (j + 1));
       }
     }
   }
@@ -866,7 +891,8 @@ pretty_print(int i, int j, int k)
 
 int
 sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
-		 int _match, int _mismatch, int _xover_penalty, bool reset_stats)
+		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
+		 int _extra_width)
 {
   int i;
 
@@ -908,6 +934,8 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
   if (reset_stats)
     swticks = swcells = swinvocs = 0;
 
+  extra_width = _extra_width;
+
   initialised = 1;
 
   return (0);
@@ -933,7 +961,8 @@ sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
-	   int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna)
+	   int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna,
+	   struct anchor * anchors, uint anchors_cnt)
 {
   struct sw_full_results scratch;
   uint64_t before;
@@ -994,7 +1023,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   }
 #endif
 
-  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl);
+  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt);
   k = do_backtrace(glen, i, j, k, sfr);
   pretty_print(sfr->read_start, sfr->genome_start, k);
   sfr->gmapped = j - sfr->genome_start + 1;
@@ -1003,6 +1032,6 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   sfr->dbalign = xstrdup(dbalign);
   sfr->qralign = xstrdup(qralign);
 
-  swcells += (glen * rlen);
+  //swcells += (glen * rlen);
   swticks += (rdtsc() - before);
 }

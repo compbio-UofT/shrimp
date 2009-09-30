@@ -116,7 +116,7 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 		sw_full_cs(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len, read->initbp,
 		    fpo->input.score, &sfr, revcmpl && Tflag,
-		    contig->is_rna);
+		    contig->is_rna, NULL, 0);
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
@@ -610,7 +610,7 @@ main(int argc, char **argv)
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
-		    xover_penalty, false);
+		    xover_penalty, false, 0);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value,
