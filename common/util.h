@@ -55,7 +55,6 @@ void		xstat(const char *, struct stat *);
 void	       *xmalloc(size_t);
 void	       *xcalloc(size_t);
 void	       *xrealloc(void *, size_t);
-void	       *xrealloc_count(void *, size_t, size_t);
 char	       *xstrdup(const char *);
 uint32_t	hash_string(const char *);
 double		ls_factorial(u_int);
@@ -79,11 +78,6 @@ void	        strbuf_append(strbuf_t, char *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
 char	       *comma_integer(uint64_t);
-
-#ifdef MEMORY_STATS
-uint64_t	get_memory_usage(void);
-#endif
-
 
 /* for optarg (and to shut up icc) */
 extern char *optarg;

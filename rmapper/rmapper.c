@@ -320,7 +320,7 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
 
     /* We do the array doubling trick for O(1) amortised alloc. */
     if (scores[0].heap_elems > scores[0].heap_alloc) {
-      unsigned int alloc_slots, old_alloc_slots = scores[0].heap_alloc;
+      unsigned int alloc_slots;
 
       assert(scores[0].heap_elems > 0);
 
@@ -333,8 +333,7 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
 
       scores[0].heap_alloc = alloc_slots;
       scores = (struct re_score *)
-	xrealloc_count(scores, sizeof(struct re_score) * (alloc_slots + 1),
-		       sizeof(struct re_score) * (old_alloc_slots + 1));
+	xrealloc(scores, sizeof(struct re_score) * (alloc_slots + 1));
       memset(&scores[idx], 0, sizeof(struct re_score) * (alloc_slots + 1 - idx));
       re->scores = scores;
     }
@@ -546,6 +545,12 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
     hash = (hash << 16) ^ tmp;
     hash += hash >> 11;
   }
+  hash ^= hash << 3;
+  hash += hash >> 5;
+  hash ^= hash << 4;
+  hash += hash >> 17;
+  hash ^= hash << 25;
+  hash += hash >> 6;
 
   return (hash_t)hash;
 }
@@ -575,8 +580,7 @@ cache_maybe_resize(struct read_entry * re) {
       // only get 32 if more than .33 calls bypassed
       ) {
     re->cache = (struct cache_entry *)
-      xrealloc_count(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry),
-		     re->cache_sz * sizeof(struct cache_entry));
+      xrealloc(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry));
     if (re->head != re->cache_sz - 1) {
       memcpy(&re->cache[(re->head + 1) + re->cache_sz],
 	     &re->cache[re->head + 1],
@@ -1032,10 +1036,10 @@ readalloc()
     bytes_scan = reads_allocated * read_scan_size;
     bytes = reads_allocated * sizeof(struct read_entry);
 
-    reads_scan = (struct read_entry_scan *)xrealloc_count(reads_scan, bytes_scan, prevbytes_scan);
+    reads_scan = (struct read_entry_scan *)xrealloc(reads_scan, bytes_scan);
     memset((char *)reads_scan + prevbytes_scan, 0, bytes_scan - prevbytes_scan);
 
-    reads = (struct read_entry *)xrealloc_count(reads, bytes, prevbytes);
+    reads = (struct read_entry *)xrealloc(reads, bytes);
     memset((char *)reads + prevbytes, 0, bytes - prevbytes);
   }
 
@@ -1208,8 +1212,7 @@ load_reads_lscs(const char *file)
 				
 	readmap_len[sn][mapidx]++;
 	readmap[sn][mapidx] = (struct readmap_entry *)
-	  xrealloc_count(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1),
-			 sizeof(struct readmap_entry)*readmap_len[sn][mapidx]);
+	  xrealloc(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1));
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset = re->offset;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = i;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = i;
@@ -1364,8 +1367,7 @@ load_reads_dag(const char *file)
 				
 	readmap_len[sn][mapidx]++;
 	readmap[sn][mapidx] = (struct readmap_entry *)
-	  xrealloc_count(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1),
-			 sizeof(struct readmap_entry)*readmap_len[sn][mapidx]);
+	  xrealloc(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1));
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset = re->offset;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = UINT16_MAX; // ???
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = UINT16_MAX; // ???
@@ -2096,11 +2098,6 @@ print_statistics()
     fclose(reads_profile_file);
   }
 #endif
-
-#ifdef MEMORY_STATS
-  fprintf(stderr, "        Memory allocated:       %s\n",
-	  comma_integer(get_memory_usage()));
-#endif
     
 }
 
@@ -2109,8 +2106,7 @@ add_spaced_seed(const char *seedStr)
 {
   int i;
 
-  seed = (struct seed_type *)xrealloc_count(seed, sizeof(struct seed_type) * (n_seeds + 1),
-					    sizeof(struct seed_type) * n_seeds);
+  seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
   seed[n_seeds].mask[0] = 0x0;
   seed[n_seeds].span = strlen(seedStr);
   seed[n_seeds].weight = strchrcnt(seedStr, '1');
