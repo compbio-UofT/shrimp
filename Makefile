@@ -1,10 +1,10 @@
 # $Id$
 ifndef CXXFLAGS
-CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
+CXXFLAGS=-O3 -DNDEBUG -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
 LD=$(CXX)
-LDFLAGS=-lm -lz -lc
+LDFLAGS=-lm -lz -lc -lstdc++
 LN=ln
 
 # statically compile on all but OS X.
@@ -24,13 +24,13 @@ all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/
 bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
-    common/output.o common/util.o
+    common/output.o common/util.o common/anchors.o common/bitmap.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf rmapper bin/rmapper-cs
 	$(LN) -sf rmapper bin/rmapper-hs
 	$(LN) -sf rmapper bin/rmapper-ls
 
-rmapper/rmapper.o: rmapper/rmapper.c
+rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -71,7 +71,7 @@ shrimp_var/shrimp_var.o: shrimp_var/shrimp_var.c
 
 bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o common/output.o \
-    common/util.o
+    common/util.o common/anchors.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-hs
@@ -119,7 +119,7 @@ common/input.o: common/input.c common/input.h
 common/output.o: common/output.c common/output.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h common/util.h
+common/sw-full-cs.o: common/sw-full-cs.c common/sw-full-cs.h common/sw-full-common.h common/util.h common/anchors.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-common.h common/util.h
@@ -129,6 +129,12 @@ common/sw-vector.o: common/sw-vector.c common/sw-vector.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/anchors.o: common/anchors.c common/anchors.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/bitmap.o: common/bitmap.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

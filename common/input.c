@@ -9,8 +9,8 @@
 #include <unistd.h>
 #include <zlib.h>
 
-#include "../common/input.h"
 #include "../common/sw-full-common.h"
+#include "../common/input.h"
 #include "../common/util.h"
 
 enum {
@@ -33,7 +33,7 @@ enum {
 };
 
 struct _field_table {
-	char *field;
+	char const *field;
 	int   type;
 } field_table[] = {
 	{ "#FORMAT:",		F_SKIP		},

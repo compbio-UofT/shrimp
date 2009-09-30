@@ -116,11 +116,12 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 		sw_full_cs(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len, read->initbp,
 		    fpo->input.score, &sfr, revcmpl && Tflag,
-		    contig->is_rna);
+		    contig->is_rna, NULL, 0);
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
-		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag);
+		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag,
+		    NULL, 0);
 	}
 
 	if (sfr.score != fpo->input.score) {
@@ -476,7 +477,8 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	char *fpout, *readsdir, *genomedir, *progname, *optstr;
+	char *fpout, *readsdir, *genomedir, *progname;
+	char const * optstr;
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
 	int ch, ret;
@@ -553,8 +555,8 @@ main(int argc, char **argv)
 	if (argc != 3)
 		usage(progname);
 
-	if (a_gap_open_set && !b_gap_open_set ||
-	    a_gap_extend_set && !b_gap_extend_set)
+	if ((a_gap_open_set && !b_gap_open_set)
+	    || (a_gap_extend_set && !b_gap_extend_set))
 		fputc('\n', stderr);
 	if (a_gap_open_set && !b_gap_open_set) {
 		fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
@@ -564,8 +566,8 @@ main(int argc, char **argv)
 		fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
 		b_gap_extend = a_gap_extend;
 	}
-	if (a_gap_open_set && !b_gap_open_set ||
-	    a_gap_extend_set && !b_gap_extend_set)
+	if ((a_gap_open_set && !b_gap_open_set)
+	    || (a_gap_extend_set && !b_gap_extend_set))
 		fputc('\n', stderr);
 
 	fprintf(stderr, "Settings:\n");
@@ -610,11 +612,11 @@ main(int argc, char **argv)
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
-		    xover_penalty, false);
+		    xover_penalty, false, -1);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value,
-		    mismatch_value, false);
+		    mismatch_value, false, -1);
 	}
 	if (ret) {
 		fprintf(stderr, "failed to initialise scalar Smith-Waterman "

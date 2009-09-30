@@ -22,6 +22,8 @@
 #include "../common/util.h"
 #include "../common/sw-vector.h"
 
+#define USE_PREFETCH
+
 static int	initialised;
 static int8_t  *db, *db_ls, *qr;
 static int	dblen, qrlen;
@@ -445,6 +447,10 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	int i, score;
 
 	before = rdtsc();
+
+#ifdef USE_PREFETCH
+        _mm_prefetch((const char *)read, _MM_HINT_NTA);
+#endif
 
 	if (!initialised)
 		abort();

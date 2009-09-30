@@ -1,19 +1,41 @@
 /*	$Id$	*/
 
+#ifndef _RMAPPER_H
+#define _RMAPPER_H
+
+#include "../common/bitmap.h"
+#include "../common/anchors.h"
+
 extern const bool use_colours;
 extern const bool use_dag;
 
 /* default parameters - optimised for human */
-#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
-#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
-#define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
-#define	DEF_WINDOW_LEN		115.0		/* 115% of read length */
-#define DEF_NUM_MATCHES		2
+//#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
+//#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
+//#define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
+#define	DEF_WINDOW_LEN		135.0		/* 115% of read length */
+#define DEF_WINDOW_OVERLAP	80.0
+#define DEF_NUM_MATCHES		4
 #define DEF_HIT_TABOO_LEN	4
 #define DEF_SEED_TABOO_LEN	0
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
 #define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */
+
+static int const default_spaced_seeds_cs_cnt = 4;
+static char const * const default_spaced_seeds_cs[] =
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+
+static int const default_spaced_seeds_ls_cnt = 4;
+static char const * const default_spaced_seeds_ls[] =
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+
+static int const default_spaced_seeds_hs_cnt = 4;
+static char const * const default_spaced_seeds_hs[] =
+  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
 
 /* DAG Scores/Parameters */
 #define DEF_DAG_EPSILON		  0
@@ -49,6 +71,9 @@ extern const bool use_dag;
 #define DEF_SW_VECT_THRESHOLD_DAG 50.0	/* smaller for Helicos DAG */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
+#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
+#define DEF_HASH_FILTER_CALLS	true
+
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
  * upper limit on our lookup table allocation size. The memory usage of
@@ -59,6 +84,11 @@ extern const bool use_dag;
 #ifndef MAX_SEED_WEIGHT
 #define MAX_SEED_WEIGHT		14
 #endif
+
+/*
+ * We hold seeds as bitmaps to reduce cache footprint.
+ */
+#define MAX_SEED_SPAN		64
 
 /*
  * For larger seeds we'll just use a hash table. Presently, we're restricted to
@@ -72,50 +102,67 @@ extern const bool use_dag;
 #define MAX_READ_LENGTH	15000
 
 struct re_score {
-	struct read_elem *parent;		/* associated read_elem */
-	struct re_score  *next;			/* linked list (final pass) */
-	struct sw_full_results *sfrp;		/* alignment results (final pass) */
-	u_int		  contig_num;		/* contig index (for filename)*/
-	bool		  revcmpl;		/* from contig's reverse cmpl */
-	int32_t		  score;		/* doubles as heap cnt in [0] */
-	uint32_t	  index;		/* doubles as heap alloc in [0]*/
-};
-
-/*
- * Keep juicy bits of reads separate from the read structure itself. This significantly
- * reduces the cache footprint due to reads during scan() and hence speeds things up
- * enough to justify the ugliness.
- */
-struct read_int {
-	uint32_t	  offset;		/* offset in read array */
-	char		 *name;
-	uint32_t	 *read1;		/* the read as a bitstring */
-	uint32_t	  read1_len;
-	uint32_t	 *read2;		/* second of Helicos pair */
-	uint32_t	  read2_len;
-	int		  initbp;		/* colour space init letter */
-
-	dag_cookie_t	  dag_cookie;		/* kmer graph cookie for glue */
-
-	int		  swhits;		/* num of hits with sw */
-	struct re_score  *scores;		/* top 'num_ouputs' scores */
-	uint32_t	  final_matches;	/* num of final output matches*/
+  struct read_entry *	parent;		/* associated read_elem */
+  struct re_score  *	next;		/* linked list (final pass) */
+  struct sw_full_results * sfrp;	/* alignment results (final pass) */
+  struct anchor *	anchors;
+  u_int			contig_num;	/* contig index (for filename)*/
+  union {
+    int32_t		score;		/* doubles as heap cnt in [0] */
+    uint32_t		heap_elems;
+  };
+  union {
+    uint32_t		index;		/* doubles as heap alloc in [0]*/
+    uint32_t		heap_alloc;
+  };
+  bool			revcmpl;	/* from contig's reverse cmpl */
 };
 
 struct read_hit {
-	uint32_t  g_idx;		/* kmer index in genome */
-	uint32_t  r_idx;		/* kmer index in read */
+  uint32_t	g_idx_start;		/* kmer index in genome */
+  uint8_t	r_idx_end_first;	/* start index of first kmer hit in read */
+  uint8_t	r_idx_end_last;		/* end index of last kmer hit in read */
+  uint8_t	more_than_once;		/* set to 1 if kmer hits read more than once */
+  uint8_t	sn;			/* seed where kmer originates from */
+  // aligned to 8B
 };
 
-struct read_elem {
-	struct read_int  *ri;			/* pointer to the meat */
+/* the following are used during genome scan */
+struct read_entry_scan {
+  uint32_t	last_swhit_idx;		/* index of last sw call */
+  uint16_t	window_len;		/* per-read window length */
+  uint8_t	read_len;
+  uint8_t	last_hit;		/* index in 'hits'; goes around */
+  struct read_hit hits[0];	/* size depends on num_matches*/
+};
 
-	/* the following are used during scan() */
-	uint32_t	  last_swhit_idx;	/* index of last sw hit */
-	uint16_t	  window_len;		/* per-read window length */
-	uint8_t	  	  prev_hit;		/* prev index in 'hits' */
-	uint8_t		  next_hit;		/* next index in 'hits' */
-	struct read_hit	  hits[0];		/* size depends on num_matches*/
+struct cache_entry; // in cache.h
+
+/*
+ * Main entry for every read.
+ */
+struct read_entry {
+  struct re_score * scores;	/* top 'num_ouputs' scores */
+  char *	name;
+  uint32_t *	read1;		/* the read as a bitstring */
+  uint32_t *	read2;		/* second of Helicos pair */
+  dag_cookie_t	dag_cookie;	/* kmer graph cookie for glue */
+  struct cache_entry * cache;
+
+  int16_t	initbp;		/* colour space init letter */
+  uint8_t	cache_sz;
+  uint8_t	head;		/* this works like a queue */
+
+  uint32_t	read1_len;
+  uint32_t	read2_len;
+  uint32_t	offset;		/* offset in read array */
+  int		swhits;		/* num of hits with sw */
+  uint32_t	final_matches;	/* num of final output matches*/
+#ifdef EXTRA_STATS		/* computed only ifdef EXTRA_STATS */
+  count32_t	es_filter_calls;
+  count32_t	es_filter_calls_bypassed;
+  count32_t	es_filter_passes;
+#endif
 };
 
 /*
@@ -124,6 +171,18 @@ struct read_elem {
  * as well as track where in the read the kmer exists for colinearity checking.
  */
 struct readmap_entry {
-	uint32_t	offset;		/* offset to the read in array */
-	uint32_t	r_idx;		/* kmer's index in the read sequence */
+  uint32_t	offset;		/* offset to the read in array */
+  uint16_t	r_idx_end_first;/* start index of first kmer hit in read (could use uint8_t) */
+  uint16_t	r_idx_end_last;	/* end index of last kmer hit in read */
+  // aligned to 8B
 };
+
+struct seed_type {
+  bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */
+  uint32_t	span;		/* max 64 (could be uint8_t) */
+  uint32_t	weight;		/* max 64 */
+  // aligned to 8B
+};
+
+
+#endif

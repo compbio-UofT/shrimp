@@ -155,17 +155,56 @@ xmalloc(size_t size)
 } 
 
 void *
+xmalloc_c(size_t size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, size);
+  return xmalloc(size);
+}
+
+void *
+xcalloc(size_t size)
+{
+  void *ptr;
+
+  ptr = calloc(size, 1);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: calloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  return ptr;
+}
+
+void *
+xcalloc_c(size_t size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, size);
+  return xcalloc(size);
+}
+
+void *
 xrealloc(void *ptr, size_t size)
 {
 
-	ptr = realloc(ptr, size);
-	if (ptr == NULL) {
-		fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
-		exit(1);
-	}
+  ptr = realloc(ptr, size);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
 
-	return (ptr);
+  return (ptr);
 }
+
+void *
+xrealloc_c(void *ptr, size_t size, size_t old_size, count_t * c)
+{
+  if (c != NULL)
+    count_add(c, (int64_t)size - (int64_t)old_size);
+  return xrealloc(ptr, size);
+}
+
 
 char *
 xstrdup(const char *str)
@@ -544,7 +583,7 @@ file_iterator_n(char **paths, int npaths,
 	return (files);
 }
 
-char *
+char const *
 get_compiler()
 {
 
@@ -634,7 +673,7 @@ strbuf_string(strbuf_t sbp, int *length)
 }
 
 void
-strbuf_append(strbuf_t sbp, char *fmt, ...)
+strbuf_append(strbuf_t sbp, char const *fmt, ...)
 {
 	va_list ap;
 	int bytes;

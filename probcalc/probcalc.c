@@ -546,7 +546,7 @@ calc_probs(void *arg, void *key, void *val)
 
 	for (i = 0; i < j && i < top_matches; i++) {
 		struct input *rs = rspv[i].rs;
-		char *readseq = "";
+		char *readseq = (char *)"";
 
 		if (rspv[i].normodds < normodds_cutoff) {
 			if (sort_field == SORT_NORMODDS)
@@ -570,7 +570,7 @@ calc_probs(void *arg, void *key, void *val)
 		if (rs->read_seq != NULL && rs->read_seq[0] != '\0')
 			readseq = rs->read_seq;
 		else if (Rflag)
-			readseq = " ";
+		  readseq = (char *)" ";
 
 		/* the only sane way is to reproduce the output code, sadly. */
 		printf(">%s\t%s\t%c", rs->read, rs->genome,
@@ -1002,7 +1002,7 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
-	fprintf(stderr, "probcalc. (SHRiMP %s [%s])\n",
+	fprintf(stderr, "probcalc.\nSHRiMP %s\n[%s])\n",
 	    SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");

@@ -48,9 +48,9 @@ static uint64_t gl_uniq_reads = 0;		// bool: done the mean calculation
 // settings
 static int do_unique = 0;				// calc mean only on unique mappings 
 static int print_max = PRINT_MAX;		// the number of matepair scores to print
-static char * fwd_suffix = "";			// forward suffix
+static char * fwd_suffix = (char *)"";			// forward suffix
 static int fwdsuflen = 0;				// forward suffix length
-static char * rev_suffix = "";			// reverse (backward) suffix
+static char * rev_suffix = (char *)"";			// reverse (backward) suffix
 static int revsuflen = 0;				// reverse suffix length
 static int Rflag = false;				// Rflag included in probcalc output
 static uint64_t distcutoff = 0;			// hard distance cutoff (M).
@@ -101,8 +101,8 @@ int main(int argc, char **argv) {
 	char *progname = argv[0];
 	int ch;
 	
-	char *mappingfilename = "";
-	char * inputfiletype = "ascii";
+	char *mappingfilename = (char *)"";
+	char * inputfiletype = (char *)"ascii";
 	
 	// check for given input
 	int givenr = 1;
