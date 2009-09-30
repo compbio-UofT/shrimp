@@ -11,7 +11,9 @@
 
 #include "../common/dag_align.h"
 #include "../common/dag_glue.h"
+extern "C" {
 #include "../common/util.h"
+}
 
 using namespace std;
 

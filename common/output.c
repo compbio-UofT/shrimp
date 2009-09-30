@@ -328,12 +328,12 @@ output_normal(const char *readname, const char *contigname,
 
 	edit = editstr(dbalign, qralign);
 	ret = editstr_to_sfr(edit, &sfr_tmp);
-	assert(ret);
-	assert(sfr->matches == sfr_tmp.matches);
-	assert(sfr->mismatches == sfr_tmp.mismatches);
-	assert(sfr->crossovers == sfr_tmp.crossovers);
-	assert(sfr->insertions == sfr_tmp.insertions);
-	assert(sfr->deletions == sfr_tmp.deletions);
+	assert(ret &&
+	    sfr->matches == sfr_tmp.matches &&
+	    sfr->mismatches == sfr_tmp.mismatches &&
+	    sfr->crossovers == sfr_tmp.crossovers &&
+	    sfr->insertions == sfr_tmp.insertions &&
+	    sfr->deletions == sfr_tmp.deletions);
 
 	strbuf_append(sb, "\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%s", idx_genome_start + 1,
 	    idx_genome_end + 1, sfr->read_start + 1,

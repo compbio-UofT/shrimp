@@ -32,7 +32,7 @@ static int	match, mismatch;
 static int	use_colours;
 
 /* statistics */
-static uint64_t swticks, swcells, swinvocs, copyTicks;
+static uint64_t swticks, swcells, swinvocs;
 
 /*
  * Calculate the Smith-Waterman score.
@@ -412,7 +412,7 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 	use_colours = _use_colours;
 
 	if (reset_stats)
-		swticks = copyTicks = swcells = swinvocs = 0;
+		swticks = swcells = swinvocs = 0;
 
 	initialised = 1;
 
@@ -421,7 +421,7 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 
 void
 sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
-		double *cellspersec, uint64_t *_copyTicks)
+    double *cellspersec)
 {
 	
 	if (invoc != NULL)
@@ -435,15 +435,13 @@ sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 		if (isnan(*cellspersec))
 			*cellspersec = 0;
 	}
-	if (_copyTicks != NULL)
-	  *_copyTicks = copyTicks;
 }
 
 int
 sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     uint32_t *genome_ls, int initbp, bool is_rna)
 {
-  uint64_t before;
+	uint64_t before;
 	int i, score;
 
 	before = rdtsc();
@@ -469,8 +467,6 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 
 	for (i = 0; i < rlen; i++)
 		qr[i+7] = (int8_t)EXTRACT(read, i);
-
-	copyTicks += (rdtsc() - before);
 
 	if (a_gap_open == b_gap_open && a_gap_ext == b_gap_ext) {
 		score = vect_sw_same_gap(&db[0], glen, &qr[7], rlen,

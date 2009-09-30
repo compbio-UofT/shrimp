@@ -126,6 +126,8 @@ static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
 #define PF_HINT _MM_HINT_T2
 #define USE_PREFETCH
 
+//#define DEBUG_HITS
+
 static size_t
 power(size_t base, size_t exp)
 {
@@ -198,6 +200,11 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
     bool revcmpl)
 {
 	struct re_score *scores;
+
+#ifdef DEBUG_HITS
+	fprintf(stderr, "\tsaving hit: contig_num=%u read=%s idx=%u\n",
+		contig_num, re->ri->name, index);
+#endif
 
 	scores = re->ri->scores;
 
@@ -487,27 +494,23 @@ get_sw_threshold(struct read_elem *re, double which, int readnum)
  * Determine whether or not the kmer hits seen within this read
  * were colinear.
  */ 
-#if 0
 static int
 are_hits_colinear(struct read_elem *re)
 {
-	int i, prev, this;
+	int i, prev, crt;
 
-	this = prev = re->next_hit;
-	for (i = 1; i < num_matches; i++) {
-		this = (this + 1) % num_matches;
-
-		if (re->hits[prev].r_idx > re->hits[this].r_idx &&
-		    re->hits[prev].r_idx != UINT32_MAX && re->hits[this].r_idx != UINT32_MAX) {
-			return (1);
-		}
-
-		prev = this;
+	for (i = 1, prev = re->next_hit, crt = (prev + 1) % num_matches;
+	     i < num_matches;
+	     i++, prev = crt, crt = (crt + 1) % num_matches) {
+	  assert(re->hits[prev].g_idx < re->hits[crt].g_idx);
+	  assert(re->hits[prev].r_idx != UINT32_MAX);
+	  assert(re->hits[crt].r_idx != UINT32_MAX);
+	  if (re->hits[prev].r_idx > re->hits[crt].r_idx)
+	    return 0;
 	}
 
 	return (1);
 }
-#endif
 
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
@@ -521,6 +524,9 @@ scan(int contig_num, bool revcmpl)
 	uint32_t goff, glen, prevhit;
 	u_int seed_span;
 	u_int thresh;
+#ifdef DEBUG_HITS
+	uint32_t _i, _k;
+#endif
 
 	if (shrimp_mode == MODE_COLOUR_SPACE)
 		scan_genome = genome_cs;
@@ -565,8 +571,8 @@ scan(int contig_num, bool revcmpl)
 				next_mapidxs[n] = kmer_to_mapidx(kmer, n);
 #ifdef USE_PREFETCH
 				_mm_prefetch((const char *)&readmap[next_mapidxs[n]], PF_HINT);
-			}
 #endif
+			}
 		}
 
 		/*
@@ -613,21 +619,46 @@ scan(int contig_num, bool revcmpl)
 				re->prev_hit = re->next_hit;
 				re->next_hit = (uint8_t)((re->next_hit + 1) % num_matches);
 
-				if ((idx - re->hits[re->next_hit].g_idx) < re->window_len &&
-				    (re->last_swhit_idx == UINT32_MAX ||
-				     (i - re->last_swhit_idx) >= re->window_len) &&
-				    re->hits[re->next_hit].g_idx != UINT32_MAX) { // && are_hits_colinear(re)) {
+				if (idx < rme1->r_idx + (re->window_len - re->ri->read1_len)/2)
+				  goff = 0;
+				else
+				  goff = idx - (rme1->r_idx + (re->window_len - re->ri->read1_len)/2);
+
+#ifdef DEBUG_HITS
+				fprintf(stderr, "found potential hit:\n");
+				fprintf(stderr, "\tcontig_num=%u read=%s idx=%u i=%u goff=%u r_idx=%u\n",
+					contig_num, re->ri->name, idx, i, goff, rme1->r_idx);
+				fprintf(stderr, "\tprevious hits:\n");
+				for (_i = 0, _k = re->next_hit;
+				     _i < num_matches;
+				     _i++, _k = (_k + 1) % num_matches) {
+				  fprintf(stderr, "\tg_idx=%u r_idx=%u\n",
+					  re->hits[_k].g_idx, re->hits[_k].r_idx);
+				}
+				if (re->hits[re->next_hit].g_idx == UINT32_MAX) {
+				  fprintf(stderr, "\tskipping: 1st hit\n");
+				} else if (re->hits[re->next_hit].g_idx < goff) {
+				  fprintf(stderr, "\tskipping: previous hit too far back\n");
+				} else if (re->last_swhit_idx != UINT32_MAX
+					   && goff < re->last_swhit_idx + re->window_len/4) {
+				  fprintf(stderr, "\tskipping: previous sw invocation too close\n");
+				} else if (!are_hits_colinear(re)) {
+				  fprintf(stderr, "\tskipping: hits not colinear\n");
+				}
+#endif
+
+				if (re->hits[re->next_hit].g_idx != UINT32_MAX
+				    && re->hits[re->next_hit].g_idx >= goff
+				    && (re->last_swhit_idx == UINT32_MAX
+					|| goff >= re->last_swhit_idx + re->window_len/4)
+				    && are_hits_colinear(re)
+				    )
+				  {
 					bool meets_thresh = false;
 
-					if (i < re->window_len)
-						goff = 0;
-					else
-						goff = i - re->window_len;
-
-					if (goff + (re->window_len * 2) >= genome_len)
-						glen = genome_len - goff;
-					else
-						glen = re->window_len * 2;
+					glen = re->window_len;
+					if (goff + glen > genome_len)
+					  glen = genome_len - goff;
 
 					if (shrimp_mode == MODE_COLOUR_SPACE) {
 						score1 = sw_vector(scan_genome, goff, glen,
@@ -661,10 +692,15 @@ scan(int contig_num, bool revcmpl)
 					}
 
 					if (meets_thresh) {
-						save_score(re, score1, i, contig_num,
+						save_score(re, score1, goff, contig_num,
 						    revcmpl);
-						re->last_swhit_idx = i;
+						re->last_swhit_idx = goff;
 						re->ri->swhits++;
+#ifdef DEBUG_HITS
+					} else {
+					  fprintf(stderr, "\thit doesn't meet SW vector threshold: %d<%d\n",
+						  score1, thresh);
+#endif
 					}
 				}
 				j++;
@@ -855,7 +891,7 @@ load_reads_lscs(const char *file)
 				readmap[mapidx] = (struct readmap_entry *)xrealloc(
 				    readmap[mapidx], (readmap_len[mapidx] + 1) * sizeof(*readmap[0]));
 				readmap[mapidx][readmap_len[mapidx] - 1].offset	= re->ri->offset;
-				readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= UINT32_MAX;
+				readmap[mapidx][readmap_len[mapidx] - 1].r_idx	= i - (seed_span - 1);
 				readmap[mapidx][readmap_len[mapidx]].offset	= UINT32_MAX;
 				readmap[mapidx][readmap_len[mapidx]].r_idx	= UINT32_MAX;
 				nkmers++;
@@ -1076,17 +1112,12 @@ generate_output_dag(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 
 		re = rs->parent;
 
-		if (rs->index < re->window_len)
-			goff = 0;
-		else
-			goff = rs->index - re->window_len;
-
+		goff = rs->index;
 		assert(goff < genome_len);
 
-		if (goff + (re->window_len * 2) >= genome_len)
-			glen = genome_len - goff;
-		else
-			glen = re->window_len * 2;
+		glen = re->window_len;
+		if (goff + glen > genome_len)
+		  glen = genome_len - goff;
 
 		u_int j;
 		char *refseq = (char *)xmalloc(glen + 1);
@@ -1186,17 +1217,12 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 		struct re_score *rs = &rs_array[i];
 		struct read_elem *re = rs->parent;
 
-		if (rs->index < re->window_len)
-			goff = 0;
-		else
-			goff = rs->index - re->window_len;
-
+		goff = rs->index;
 		assert(goff < genome_len);
 
-		if (goff + (re->window_len * 2) >= genome_len)
-			glen = genome_len - goff;
-		else
-			glen = re->window_len * 2;
+		glen = re->window_len;
+		if (goff + glen > genome_len)
+		  glen = genome_len - goff;
 
 		if (IS_ABSOLUTE(sw_full_threshold)) {
 			thresh = (u_int)-sw_full_threshold;
@@ -1627,7 +1653,7 @@ static void
 print_statistics()
 {
 	double cellspersec, hz, seedscantime;
-	uint64_t invocs, cells, reads_matched, total_matches, fasta_load_ticks, vticks, copyTicks;
+	uint64_t invocs, cells, reads_matched, total_matches, fasta_load_ticks, vticks;
 	fasta_stats_t fs;
 	uint32_t i;
 
@@ -1644,7 +1670,7 @@ print_statistics()
 		total_matches += re->ri->final_matches;
 	}
 
-	sw_vector_stats(&invocs, &cells, &vticks, &cellspersec, &copyTicks);
+	sw_vector_stats(&invocs, &cells, &vticks, &cellspersec);
 
 	seedscantime = ((double)scan_usecs / 1000000.0) - (vticks / hz);
 	seedscantime = MAX(0, seedscantime);
@@ -1667,8 +1693,6 @@ print_statistics()
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
 	fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	    (cellspersec == 0) ? 0 : cells / cellspersec);
-	fprintf(stderr, "        Copy time:              %.2f seconds\n",
-		((double)copyTicks)/hz);
 	fprintf(stderr, "        Invocations:            %s\n",
 	    comma_integer(invocs));
 	fprintf(stderr, "        Cells Computed:         %.2f million\n",
@@ -1947,7 +1971,7 @@ main(int argc, char **argv)
 	char *reads_file, *progname, *optstr = "";
 	char **genome_files;
 	int i, ch, ret, ngenome_files, sflags = 0;
-	u_int max_window_len;
+	u_int max_window_len, maxTrueWindowLen;
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
 
@@ -2361,10 +2385,11 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "  - Configuring window lengths...\n");
 	max_window_len = set_window_lengths();
+	maxTrueWindowLen = max_window_len;
 	fprintf(stderr, "  - Maximum window length: %u\n", max_window_len);
 		
 
-	if (sw_vector_setup(max_window_len * 2, longest_read_len, a_gap_open,
+	if (sw_vector_setup(maxTrueWindowLen, longest_read_len, a_gap_open,
 	    a_gap_extend, b_gap_open, b_gap_extend, match_value, mismatch_value,
 	    shrimp_mode == MODE_COLOUR_SPACE, false)) {
 		fprintf(stderr, "failed to initialise vector "
@@ -2374,11 +2399,11 @@ main(int argc, char **argv)
 
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 /* XXX - a vs. b gap */
-		ret = sw_full_cs_setup(max_window_len * 2, longest_read_len,
+		ret = sw_full_cs_setup(maxTrueWindowLen, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
 		    xover_penalty, false);
 	} else {
-		ret = sw_full_ls_setup(max_window_len * 2, longest_read_len,
+		ret = sw_full_ls_setup(maxTrueWindowLen, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend,
 		    match_value, mismatch_value, false);
 	}

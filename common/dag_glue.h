@@ -1,5 +1,9 @@
 /*	$Id: dag_glue.h,v 1.1 2008/05/15 16:32:02 rumble Exp $	*/
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct _dag_cookie_t {
 	void *dag;
 	bool  loops_added;
@@ -28,7 +32,11 @@ dag_cookie_t	       dag_build_kmer_graph(char *, char *, int);
 void                   dag_free_kmer_graph(dag_cookie_t);
 char                 **dag_get_kmers(dag_cookie_t, int);
 void                   dag_free_kmers(char **);
-struct dag_alignment  *dag_build_alignment(char *, dag_cookie_t);
+extern struct dag_alignment  *dag_build_alignment(char *, dag_cookie_t);
 void		       dag_free_alignment(struct dag_alignment *);
 struct dag_statistics *dag_get_statistics(void);
 void		       dag_free_statistics(struct dag_statistics *);
+
+#ifdef __cplusplus
+}
+#endif
