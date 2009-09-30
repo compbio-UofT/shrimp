@@ -124,11 +124,21 @@ struct read_hit {
 
 /* the following are used during genome scan */
 struct read_entry_scan {
-  uint32_t	last_swCall_idx;	/* index of last sw call */
+  uint32_t	last_swhit_idx;		/* index of last sw call */
   uint16_t	window_len;		/* per-read window length */
   uint8_t	read_len;
   uint8_t	last_hit;		/* index in 'hits'; goes around */
   struct read_hit hits[0];	/* size depends on num_matches*/
+};
+
+typedef int16_t hash_t;
+#define DEF_HITS_POOL_SIZE 16
+uint const hits_pool_size = DEF_HITS_POOL_SIZE;
+
+struct freq_hits {
+  hash_t	pool[DEF_HITS_POOL_SIZE];
+  uint16_t	count[DEF_HITS_POOL_SIZE];
+  uint16_t	score[DEF_HITS_POOL_SIZE];	/* scores <= 2^15-1 (cf., sw-vector.c) */
 };
 
 /*
@@ -140,6 +150,7 @@ struct read_entry {
   uint32_t *	read1;		/* the read as a bitstring */
   uint32_t *	read2;		/* second of Helicos pair */
   dag_cookie_t	dag_cookie;	/* kmer graph cookie for glue */
+  struct freq_hits * freq_hits;
 
   uint32_t	read1_len;
   uint32_t	read2_len;
@@ -147,6 +158,7 @@ struct read_entry {
   int		initbp;		/* colour space init letter */
   int		swhits;		/* num of hits with sw */
   uint32_t	final_matches;	/* num of final output matches*/
+
 };
 
 /*

@@ -133,6 +133,8 @@ static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
 static uint64_t colin_checks;
 static uint64_t filter_sw_passes;
+static uint64_t reads_filtered;
+static uint64_t filter_sw_bypassed;
 
 /* Misc stats */
 static uint64_t scan_usecs;
@@ -447,18 +449,18 @@ reset_reads()
   for (i = 0; i < nreads; i++) {
     struct read_entry_scan * res = get_re_scan(i);
 
-    res->last_swCall_idx = UINT32_MAX;
+    res->last_swhit_idx = UINT32_MAX;
     res->last_hit = 0;
     for (j = 0; j < num_matches; j++)
       res->hits[j].g_idx_start = UINT32_MAX;
+
+    /* Perhaps reset freq_hits? */
   }
 }
 
-static int
-get_sw_threshold(uint32_t read_id, double which, int readnum)
+static inline int
+get_sw_threshold(struct read_entry * re, double which, int readnum)
 {
-  struct read_entry * re = &reads[read_id];
-
   assert(readnum == 1
 	 || (readnum == 2 && shrimp_mode == MODE_HELICOS_SPACE));
 
@@ -466,6 +468,24 @@ get_sw_threshold(uint32_t read_id, double which, int readnum)
     return (int)abs_or_pct(which, match_value * re->read1_len);
   else
     return (int)abs_or_pct(which, match_value * re->read2_len);
+}
+
+
+/*
+ * Compute a hash value for this genome region.
+ */
+static inline hash_t
+hash_window(uint32_t * scan_genome, uint goff, uint glen) {
+  uint i;
+  hash_t result = 0;
+  uint8_t base;
+
+  for (i = 0; i < glen; i++) {
+    base = EXTRACT(scan_genome, goff + i);
+    result ^= (base & 0x3) << i%8;
+  }
+
+  return result;
 }
 
 
@@ -502,7 +522,7 @@ scan(int contig_num, bool revcmpl)
   struct readmap_entry *rme1, *rme2;
   uint32_t *kmerWindow, *scan_genome, *mapidxs, *mapidxs_p1;
   uint32_t i, j, k, pf, idx, sn;
-  uint32_t base, skip, score1, score2, base_p1 = 0;
+  uint32_t base, skip, score1 = 0, score2, base_p1 = 0;
   uint32_t goff, glen, prevhit;
   u_int thresh;
 #ifdef DEBUG_HITS
@@ -673,8 +693,8 @@ scan(int contig_num, bool revcmpl)
 	  fprintf(stderr, "\tskipping: 1st hit\n");
 	} else if (goff > res->hits[(res->last_hit + 1) % num_matches].g_idx_start) {
 	  fprintf(stderr, "\tskipping: previous hit too far back\n");
-	} else if (res->last_swCall_idx != UINT32_MAX
-		   && goff < res->last_swCall_idx + res->window_len/4) {
+	} else if (res->last_swhit_idx != UINT32_MAX
+		   && goff < res->last_swhit_idx + res->window_len/4) {
 	  fprintf(stderr, "\tskipping: previous sw invocation too close\n");
 	} else {
 	  if (!are_hits_colinear(res)) {
@@ -686,13 +706,15 @@ scan(int contig_num, bool revcmpl)
 
 	if (res->hits[(res->last_hit + 1) % num_matches].g_idx_start != UINT32_MAX
 	    && goff <= res->hits[(res->last_hit + 1) % num_matches].g_idx_start
-	    && (res->last_swCall_idx == UINT32_MAX
-		|| goff >= res->last_swCall_idx + res->window_len/4)
+	    && (res->last_swhit_idx == UINT32_MAX
+		|| goff >= res->last_swhit_idx + res->window_len/4)
 	    && are_hits_colinear(res)
 	    )
 	  {
 	    struct read_entry * re = &reads[rme1->offset];
 	    bool meets_thresh = false;
+	    hash_t hash_val;
+	    uint l;
 
 	    assert(re->offset == rme1->offset);
 
@@ -700,26 +722,14 @@ scan(int contig_num, bool revcmpl)
 	    if (goff + glen > genome_len)
 	      glen = genome_len - goff;
 
-	    if (shrimp_mode == MODE_COLOUR_SPACE) {
-	      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				 genome, re->initbp, genome_is_rna);
-	      thresh = get_sw_threshold(re->offset, sw_vect_threshold, 1);
-	      if (score1 >= thresh)
-		meets_thresh = true;
-	    } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	    if (shrimp_mode == MODE_HELICOS_SPACE) {
 	      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
 				 NULL, -1, genome_is_rna);
-	      thresh = get_sw_threshold(re->offset, sw_vect_threshold, 1);
-	      if (score1 >= thresh)
-		meets_thresh = true;
-	    } else if (shrimp_mode == MODE_HELICOS_SPACE) {
-	      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				 NULL, -1, genome_is_rna);
-	      thresh = get_sw_threshold(re->offset, sw_vect_threshold, 1);
+	      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 	      if (score1 >= thresh) {
 		score2 = sw_vector(scan_genome, goff, glen, re->read2, re->read2_len,
 				   NULL, -1, genome_is_rna);
-		thresh = get_sw_threshold(re->offset, sw_vect_threshold, 2);
+		thresh = get_sw_threshold(re, sw_vect_threshold, 2);
 		if (score2 >= thresh) {
 		  score1 = score1 * re->read1_len;
 		  score2 = score2 * re->read2_len;
@@ -727,11 +737,55 @@ scan(int contig_num, bool revcmpl)
 		  meets_thresh = true;
 		}
 	      }
+	    } else {
+	      /*
+	       * CS and LS
+	       */
+
+	      if (re->freq_hits == NULL) {
+		reads_filtered++;
+		re->freq_hits = (struct freq_hits *)xcalloc(sizeof(struct freq_hits));
+	      }
+
+	      hash_val = hash_window(scan_genome, goff, glen);
+
+	      l = 0;
+	      while (l < hits_pool_size
+		     && re->freq_hits->count[l] != 0
+		     && re->freq_hits->pool[l] != hash_val)
+		l++;
+
+	      if (l < hits_pool_size && re->freq_hits->count[l] != 0) {
+		/*
+		 * We have run vector SW on this region before; use previous score.
+		 */
+		score1 = re->freq_hits->score[l];
+		re->freq_hits->count[l]++;
+                filter_sw_bypassed++;
+	      } else {
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+		  score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+				     genome, re->initbp, genome_is_rna);
+		} else if (shrimp_mode == MODE_LETTER_SPACE) {
+		  score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+				     NULL, -1, genome_is_rna);
+		}
+
+		if (l < hits_pool_size) { // save score
+		  re->freq_hits->pool[l] = hash_val;
+		  re->freq_hits->count[l] = 1;
+		  re->freq_hits->score[l] = score1;
+		}
+	      }
+
+	      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+	      if (score1 >= thresh)
+		meets_thresh = true;
 	    }
 
 	    if (meets_thresh) {
 	      save_score(re->offset, score1, goff, contig_num, revcmpl);
-	      res->last_swCall_idx = goff;
+	      res->last_swhit_idx = goff;
 	      re->swhits++;
 #ifdef DEBUG_HITS
 	    } else {
@@ -874,7 +928,7 @@ load_reads_lscs(const char *file)
     re = &reads[read_id];
     res = get_re_scan(read_id);
 
-    res->last_swCall_idx = UINT32_MAX;
+    res->last_swhit_idx = UINT32_MAX;
     re->name = name;
 
     re->read1 = fasta_sequence_to_bitfield(fasta, seq);
@@ -1065,7 +1119,7 @@ load_reads_dag(const char *file)
     re = &reads[read_id];
     res = get_re_scan(read_id);
 
-    res->last_swCall_idx = UINT32_MAX;
+    res->last_swhit_idx = UINT32_MAX;
     re->name = name1;
     re->read1 = fasta_sequence_to_bitfield(fasta, seq1);
     if (re->read1 == NULL) {
@@ -1491,7 +1545,7 @@ final_pass(char **files, u_int nfiles)
       /* extra sanity */
 #ifndef NDEBUG
       if (shrimp_mode != MODE_HELICOS_SPACE) {
-	int thresh = get_sw_threshold(i, sw_vect_threshold, 1);
+	int thresh = get_sw_threshold(re, sw_vect_threshold, 1);
 	assert(rs->score >= thresh);
       }
 #endif
@@ -1748,6 +1802,12 @@ print_statistics()
 	  (cellspersec == 0) ? 0 : cells / cellspersec);
   fprintf(stderr, "        Invocations:            %s\n",
 	  comma_integer(invocs));
+  fprintf(stderr, "        Passed threshold:       %s\n",
+          comma_integer(filter_sw_passes));
+  fprintf(stderr, "        Bypassed calls:         %s\n",
+          comma_integer(filter_sw_bypassed));
+  fprintf(stderr, "        Reads filtered:         %s\n",
+	  comma_integer(reads_filtered));
   fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	  (double)cells / 1.0e6);
   fprintf(stderr, "        Cells per Second:       %.2f million\n",
@@ -1765,8 +1825,6 @@ print_statistics()
 	    (cellspersec == 0) ? 0 : cells / cellspersec);
     fprintf(stderr, "        Invocations:            %s\n",
 	    comma_integer(invocs));
-    fprintf(stderr, "        Passed threshold        %s\n",
-            comma_integer(filter_sw_passes));
     fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	    (double)cells / 1.0e6);
     fprintf(stderr, "        Cells per Second:       %.2f million\n",
