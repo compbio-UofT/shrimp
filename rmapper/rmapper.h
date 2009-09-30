@@ -110,10 +110,11 @@ struct read_int {
 };
 
 struct read_hit {
-  uint32_t  g_idx;		/* kmer index in genome */
-  uint16_t  r_idx;		/* kmer index in read */
-  uint8_t r_idx_last;
-  uint8_t  sn;			/* seed where kmer originates from */
+  uint32_t  gIdxStart;		/* kmer index in genome */
+  uint8_t   rIdxEnd;		/* kmer index in read */
+  uint8_t   rIdxStart;
+  uint8_t   moreThanOnce;
+  uint8_t   sn;			/* seed where kmer originates from */
   // aligned to 8B
 };
 
@@ -135,8 +136,12 @@ struct read_elem {
  */
 struct readmap_entry {
   uint32_t	offset;		/* offset to the read in array */
-  uint16_t	r_idx;		/* kmer's index in the read sequence (could be uint8_t) */
-  uint16_t	r_idx_last;
+  uint16_t	rIdxStart;	/* kmer's index in the read sequence (could use uint8_t) */
+  uint16_t	rIdxEnd;	/* kmer's end in the read */
+				/*
+				 * if kmer occurs several times in this read,
+				 * end-start >= seed_span
+				 */
   // aligned to 8B
 };
 

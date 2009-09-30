@@ -118,6 +118,7 @@ static uint64_t shortest_scanned_kmer_list;
 static uint64_t longest_scanned_kmer_list;
 static uint64_t kmer_lists_scanned;
 static uint64_t kmer_list_entries_scanned;
+static uint64_t colinChecks;
 
 /* Misc stats */
 static uint64_t scan_usecs;
@@ -397,16 +398,16 @@ readmap_prune()
 static void
 reset_reads()
 {
-	uint32_t i, j;
+  uint32_t i, j;
 
-	for (i = 0; i < nreads; i++) {
-		struct read_elem *re = OFFSET_TO_READ(i);
+  for (i = 0; i < nreads; i++) {
+    struct read_elem *re = OFFSET_TO_READ(i);
 
-		re->last_swCall_idx = UINT32_MAX;
-		re->lastHit = 0;
-		for (j = 0; j < num_matches; j++)
-		  re->hits[j].g_idx = UINT32_MAX;
-	}
+    re->last_swCall_idx = UINT32_MAX;
+    re->lastHit = 0;
+    for (j = 0; j < num_matches; j++)
+      re->hits[j].gIdxStart = UINT32_MAX;
+  }
 }
 
 static int
@@ -443,20 +444,23 @@ get_sw_threshold(struct read_elem *re, double which, int readnum)
 static inline int
 are_hits_colinear(struct read_elem *re)
 {
-	int i, prev, crt;
+  int i, prev, crt;
 
-	for (i = 1, prev = (re->lastHit + 1) % num_matches, crt = (prev + 1) % num_matches;
-	     i < num_matches;
-	     i++, prev = crt, crt = (crt + 1) % num_matches) {
+  colinChecks++;
 
-	  // this might fail when dealing with seeds of different span
-	  //assert(re->hits[prev].g_idx < re->hits[crt].g_idx);
+  for (i = 1, prev = (re->lastHit + 1) % num_matches, crt = (prev + 1) % num_matches;
+       i < num_matches;
+       i++, prev = crt, crt = (crt + 1) % num_matches) {
+    assert(re->hits[prev].gIdxStart + seed[re->hits[prev].sn].span - 1
+	   <= re->hits[crt].gIdxStart + seed[re->hits[crt].sn].span - 1);
 
-	  if (re->hits[prev].r_idx >= re->hits[crt].r_idx_last)
-	    return 0;
-	}
+    //if (re->hits[prev].rIdxStart + (seed[re->hits[prev].sn].span - 1) > re->hits[crt].rIdxEnd)
+    if (!re->hits[prev].moreThanOnce && re->hits[prev].rIdxEnd > re->hits[crt].rIdxEnd)
+    //if (re->hits[prev].rIdxStart >= re->hits[crt].rIdxEnd - (seed[re->hits[crt].sn].span - 1))
+      return 0;
+  }
 
-	return (1);
+  return 1;
 }
 
 /* scan the genome by kmers, running S-W as needed, and updating scores */
@@ -594,53 +598,63 @@ scan(int contig_num, bool revcmpl)
 	  _mm_prefetch((const char *)readmap[sn+1][mapidxs[sn+1]], PF_HINT);	  
 #endif
 
-	prevhit = re->hits[re->lastHit].g_idx;
+	prevhit = re->hits[re->lastHit].gIdxStart;
 	if (prevhit != UINT32_MAX
 	    && idx - prevhit <= hit_taboo_len
-	    //&& re->hits[re->lastHit].sn == sn
-	    // currently, disallow close hits from different seeds
-	    )
+	    ) {
+#ifdef DEBUG_HITS
+	  fprintf(stderr, "found potential hit i=%u:\n", i);
+	  fprintf(stderr, "\tcontig_num=%u read=%s idx=%u rIdxEnd=%u seed=%u\n",
+		  contig_num, re->ri->name, idx, rme1->rIdxEnd, sn);
+	  fprintf(stderr, "\tskipping, lastHit.gIdxStart=%u hit_taboo_len=%u\n",
+		  re->hits[re->lastHit].gIdxStart, hit_taboo_len);
+#endif
 	  continue;
+	}
 
 	re->lastHit = (re->lastHit + 1) % num_matches;
-	re->hits[re->lastHit].g_idx = idx;
-	re->hits[re->lastHit].r_idx = rme1->r_idx;
-	re->hits[re->lastHit].r_idx_last = rme1->r_idx_last;
+	re->hits[re->lastHit].gIdxStart = idx;
+	re->hits[re->lastHit].rIdxEnd = rme1->rIdxEnd;
+	re->hits[re->lastHit].rIdxStart = rme1->rIdxStart;
+	re->hits[re->lastHit].moreThanOnce = (rme1->rIdxEnd - rme1->rIdxStart == seed[sn].span - 1? 0 : 1);
 	re->hits[re->lastHit].sn = sn;
 
 	/*
 	 * Compute start of window in genome for potential SW call.
 	 */
-	if (idx < rme1->r_idx + (re->window_len - re->readLen)/2)
+	if (idx < rme1->rIdxStart + (re->window_len - re->readLen)/2)
 	  goff = 0;
 	else
-	  goff = idx - (rme1->r_idx + (re->window_len - re->readLen)/2);
+	  goff = idx - (rme1->rIdxStart + (re->window_len - re->readLen)/2);
 
 #ifdef DEBUG_HITS
-	fprintf(stderr, "found potential hit:\n");
-	fprintf(stderr, "\tcontig_num=%u read=%s idx=%u i=%u goff=%u r_idx=%u seed=%u\n",
-		contig_num, re->ri->name, idx, i, goff, rme1->r_idx, sn);
+	fprintf(stderr, "found potential hit i=%u:\n", i);
+	fprintf(stderr, "\tcontig_num=%u read=%s idx=%u goff=%u rIdxEnd=%u seed=%u\n",
+		contig_num, re->ri->name, idx, goff, rme1->rIdxEnd, sn);
 	fprintf(stderr, "\tprevious hits:\n");
 	for (_i = 0, _k = (re->lastHit + 1) % num_matches;
 	     _i < num_matches;
 	     _i++, _k = (_k + 1) % num_matches) {
-	  fprintf(stderr, "\tg_idx=%u r_idx=%u r_idx_last=%u sn=%u\n",
-		  re->hits[_k].g_idx, re->hits[_k].r_idx, re->hits[_k].r_idx_last, re->hits[_k].sn);
+	  fprintf(stderr, "\tgIdxStart=%u rIdxEnd=%u moreThanOnce=%u sn=%u\n",
+		  re->hits[_k].gIdxStart, re->hits[_k].rIdxEnd, re->hits[_k].moreThanOnce, re->hits[_k].sn);
 	}
-	if (re->hits[(re->lastHit + 1) % num_matches].g_idx == UINT32_MAX) {
+	if (re->hits[(re->lastHit + 1) % num_matches].gIdxStart == UINT32_MAX) {
 	  fprintf(stderr, "\tskipping: 1st hit\n");
-	} else if (re->hits[(re->lastHit + 1) % num_matches].g_idx < goff) {
+	} else if (goff > re->hits[(re->lastHit + 1) % num_matches].gIdxStart) {
 	  fprintf(stderr, "\tskipping: previous hit too far back\n");
 	} else if (re->last_swCall_idx != UINT32_MAX
 		   && goff < re->last_swCall_idx + re->window_len/4) {
 	  fprintf(stderr, "\tskipping: previous sw invocation too close\n");
-	} else if (!are_hits_colinear(re)) {
-	  fprintf(stderr, "\tskipping: hits not colinear\n");
+	} else {
+	  if (!are_hits_colinear(re)) {
+	    fprintf(stderr, "\tskipping: hits not colinear\n");
+	  }
+	  colinChecks--;
 	}
 #endif
 
-	if (re->hits[(re->lastHit + 1) % num_matches].g_idx != UINT32_MAX
-	    && re->hits[(re->lastHit + 1) % num_matches].g_idx >= goff
+	if (re->hits[(re->lastHit + 1) % num_matches].gIdxStart != UINT32_MAX
+	    && goff <= re->hits[(re->lastHit + 1) % num_matches].gIdxStart
 	    && (re->last_swCall_idx == UINT32_MAX
 		|| goff >= re->last_swCall_idx + re->window_len/4)
 	    && are_hits_colinear(re)
@@ -744,7 +758,7 @@ readalloc()
 	re->ri->offset = nreads;
 
 	for (i = 0; i < num_matches; i++)
-	  re->hits[i].g_idx = UINT32_MAX;
+	  re->hits[i].gIdxStart = UINT32_MAX;
 
 	bytes = sizeof(struct re_score) * 1;
 	re->ri->scores = (struct re_score *)xmalloc(bytes);
@@ -897,10 +911,10 @@ load_reads_lscs(const char *file)
 			    sn);
 #endif
 
-		    /* permit only one kmer reference per read */
+		    /* permit only one kmer reference per read; but update rIdxEnd */
 		    if (readmap[sn][mapidx] != NULL &&
 			readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].offset == re->ri->offset) {
-		      readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].r_idx_last = i - (seed[sn].span - 1);
+		      readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].rIdxEnd = i;
 		      continue;
 		    }
 				
@@ -908,8 +922,8 @@ load_reads_lscs(const char *file)
 		    readmap[sn][mapidx] = (struct readmap_entry *)
 		      xrealloc(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmapLen[sn][mapidx] + 1));
 		    readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].offset = re->ri->offset;
-		    readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].r_idx = i - (seed[sn].span - 1);
-		    readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].r_idx_last = i - (seed[sn].span - 1);
+		    readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].rIdxStart = i - (seed[sn].span - 1);
+		    readmap[sn][mapidx][readmapLen[sn][mapidx] - 1].rIdxEnd = i;
 		    readmap[sn][mapidx][readmapLen[sn][mapidx]].offset = UINT32_MAX;
 
 		    nkmers++;
@@ -1690,6 +1704,8 @@ print_statistics()
 	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
 	    (kmer_lists_scanned == 0) ? 0 :
 	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
+	fprintf(stderr, "        Colinearity Checks:     %s\n",
+	    comma_integer(colinChecks));
 	fprintf(stderr, "\n");
 
 	fprintf(stderr, "    Vector Smith-Waterman:\n");
