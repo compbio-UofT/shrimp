@@ -69,12 +69,12 @@ void join_anchors(struct anchor * anchors, uint anchors_cnt,
 }
 
 
-inline void widen_anchor(struct anchor * anchor, uint width) {
+void widen_anchor(struct anchor * anchor, uint width) {
   assert(anchor != NULL);
 
-  anchor->x -= width;
-  anchor->y += width;
-  anchor->width += 2*width;
+  anchor->x -= width/2;
+  anchor->y += width/2;
+  anchor->width += width;
 }
 
 
@@ -91,7 +91,7 @@ void get_x_range(struct anchor * anchor, uint x_len, uint y_len, int y,
   }
 
   if (*x_min < 0) *x_min = 0;
-  if (*x_min >= x_len) *x_min = x_len - 1;
+  if ((uint)*x_min >= x_len) *x_min = x_len - 1;
 
   if (y < anchor->y - (anchor->width - 1)) {
     *x_max = anchor->x + (anchor->width - 1) - 1;
@@ -102,5 +102,5 @@ void get_x_range(struct anchor * anchor, uint x_len, uint y_len, int y,
   }
   
   if (*x_max < 0) *x_max = 0;
-  if (*x_max >= x_len) *x_max = x_len - 1;
+  if ((uint)*x_max >= x_len) *x_max = x_len - 1;
 }

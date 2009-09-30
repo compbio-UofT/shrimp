@@ -1,6 +1,6 @@
 /*	$Id: probcalc.h,v 1.9 2008/10/31 23:25:36 dalcaadr Exp $	*/
 
-#define DEF_PCHANCE_CUTOFF	0.05
+#define DEF_PCHANCE_CUTOFF	0.001
 #define DEF_PGENOME_CUTOFF	0.0
 #define DEF_NORMODDS_CUTOFF	0.0
 #define DEF_TOP_MATCHES		10

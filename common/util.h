@@ -2,6 +2,13 @@
 #ifndef _UTIL_H
 #define _UTIL_H
 
+/*
+ * Force use of C linking for util.c, even if using g++.
+ */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #include <assert.h>
 #include <ctype.h>
@@ -76,12 +83,12 @@ uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
 		    void (*)(char *, struct stat *, void *), void *);
-char           *get_compiler(void);
+char const	*get_compiler(void);
 char	       *strrev(char *);
 char	       *strtrim(char *);
 strbuf_t	strbuf_create(void);
 char	       *strbuf_string(strbuf_t, int *);
-void	        strbuf_append(strbuf_t, char *, ...);
+void	        strbuf_append(strbuf_t, char const *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
 char	       *comma_integer(uint64_t);
@@ -171,5 +178,8 @@ lstocs(int first_letter, int second_letter, bool is_rna)
 	return (colourmat[first_letter][second_letter]);
 }
 
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

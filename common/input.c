@@ -33,7 +33,7 @@ enum {
 };
 
 struct _field_table {
-	char *field;
+	char const *field;
 	int   type;
 } field_table[] = {
 	{ "#FORMAT:",		F_SKIP		},

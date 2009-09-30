@@ -43,8 +43,9 @@ static uint max_seed_span = 0;
 
 /* External parameters */
 static double	window_len		= DEF_WINDOW_LEN;
+static double	window_overlap		= DEF_WINDOW_OVERLAP;
 static u_int	num_matches		= DEF_NUM_MATCHES;
-static u_int	hit_taboo_len		= DEF_HIT_TABOO_LEN;
+static int	hit_taboo_len		= DEF_HIT_TABOO_LEN;
 static u_int	seed_taboo_len		= DEF_SEED_TABOO_LEN;
 static u_int	num_outputs		= DEF_NUM_OUTPUTS;
 static int	kmer_stddev_limit  	= DEF_KMER_STDDEV_LIMIT;
@@ -72,8 +73,8 @@ static int	b_gap_extend		= DEF_B_GAP_EXTEND;
 static int	xover_penalty		= DEF_XOVER_PENALTY;
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
-static int	extra_width		= DEF_EXTRA_WIDTH;
-static int	hash_filter_calls	= 1;
+static int	anchor_width		= DEF_ANCHOR_WIDTH;
+static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 
 /*
  * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
@@ -127,7 +128,6 @@ static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int Aflag = true;			/* use anchors to limit full sw */
 static int Mflag = true;			/* print memory usage stats */
 
 /* Scan stats */
@@ -142,29 +142,27 @@ static count_t mem_scores;
 
 
 /* Extra stats, computed ifdef EXTRA_STATS */
-static uint64_t colin_checks;
-static uint64_t total_filter_passes;
-static uint64_t reads_filtered;
-static uint64_t total_filter_calls_bypassed;
+#ifdef EXTRA_STATS
+
+static count_t es_colin_checks;
+static count_t es_total_filter_passes;
+static count_t es_reads_filtered;
+static count_t es_total_filter_calls_bypassed;
 
 char const * reads_profile_file_name;
 
-#ifdef EXTRA_STATS
-static inline void
-add_to_stat64(uint64_t * stat, int d) {
-  (*stat) += d;
-}
+#define ES_count_add(c, v) count_add((c), (v))
+#define ES_count32_add(c, v) count32_add((c), (v))
+#define ES_count_increment(c) count_increment((c))
+#define ES_count32_increment(c) count32_increment((c))
 
-static inline void
-add_to_stat32(uint32_t * stat, int d) {
-  (*stat) += d;
-}
 #else
-static inline void
-add_to_stat64(uint64_t * stat, int d) { }
 
-static inline void
-add_to_stat32(uint32_t * stat, int d) { }
+#define ES_count_add(c, v) ((void)0)
+#define ES_count32_add(c, v) ((void)0)
+#define ES_count_increment(c) ((void)0)
+#define ES_count32_increment(c) ((void)0)
+
 #endif
 
 
@@ -275,7 +273,7 @@ seed_to_string(uint sn)
 static void
 save_anchors(struct read_entry_scan * res, uint32_t g_index,
 	     struct anchor * anchors) {
-  int i, crt;
+  uint i, crt;
 
   assert(res != NULL && anchors != NULL);
 
@@ -379,7 +377,7 @@ kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
   static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
 
   uint32_t mapidx = 0;
-  int i;
+  uint i;
 
   assert(seed_hash_mask != NULL);
 
@@ -430,7 +428,7 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
 static void
 readmap_prune()
 {
-  int sn;
+  uint sn;
 
   if (kmer_stddev_limit < 0)
     return;
@@ -565,9 +563,9 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
 static inline int
 are_hits_colinear(struct read_entry_scan *res)
 {
-  int i, prev, crt;
+  uint i, prev, crt;
 
-  add_to_stat64(&colin_checks, 1);
+  ES_count_increment(&es_colin_checks);
 
   for (i = 1, prev = (res->last_hit + 1) % num_matches, crt = (prev + 1) % num_matches;
        i < num_matches;
@@ -700,7 +698,7 @@ scan(int contig_num, bool revcmpl)
       /* prefetch first FETCH_AHEAD struct read_elem's */
 #ifdef USE_PREFETCH
       for (pf = 0; rme2->offset != UINT32_MAX && pf < FETCH_AHEAD; pf++)
-	_mm_prefetch(get_re_scan((rme2++)->offset), _MM_HINT_T0);
+	_mm_prefetch((const char *)get_re_scan((rme2++)->offset), _MM_HINT_T0);
 #endif
 
       for (res = get_re_scan(rme1->offset), j = k = 0;
@@ -713,14 +711,15 @@ scan(int contig_num, bool revcmpl)
 	 */
 #ifdef USE_PREFETCH
 	if (rme2->offset != UINT32_MAX)
-	  _mm_prefetch(get_re_scan((rme2++)->offset), _MM_HINT_T0);
+	  _mm_prefetch((const char *)get_re_scan((rme2++)->offset), _MM_HINT_T0);
 	else if (sn + 1 < n_seeds)
-	  _mm_prefetch(readmap[sn+1][mapidxs[sn+1]], _MM_HINT_NTA);
+	  _mm_prefetch((const char *)readmap[sn+1][mapidxs[sn+1]], _MM_HINT_NTA);
 #endif
 
 	prevhit = res->hits[res->last_hit].g_idx_start;
-	if (prevhit != UINT32_MAX
-	    && idx - prevhit < hit_taboo_len
+	if (hit_taboo_len >= 0
+	    && prevhit != UINT32_MAX
+	    && idx - prevhit <= (uint)hit_taboo_len
 	    ) {
 #ifdef DEBUG_HITS
 	  fprintf(stderr, "found potential hit i=%u:\n", i);
@@ -742,7 +741,7 @@ scan(int contig_num, bool revcmpl)
 	/*
 	 * Compute start of window in genome for potential SW call.
 	 */
-	if (i < rme1->r_idx_end_first + (res->window_len - res->read_len)/2)
+	if (i < rme1->r_idx_end_first + (uint)(res->window_len - res->read_len)/2)
 	  goff = 0;
 	else
 	  goff = i - (rme1->r_idx_end_first + (res->window_len - res->read_len)/2);
@@ -769,14 +768,14 @@ scan(int contig_num, bool revcmpl)
 	  if (!are_hits_colinear(res)) {
 	    fprintf(stderr, "\tskipping: hits not colinear\n");
 	  }
-	  add_to_stat64(&colin_checks, -1);
+	  ES_count_add(&es_colin_checks, -1);
 	}
 #endif
 
 	if (res->hits[(res->last_hit + 1) % num_matches].g_idx_start != UINT32_MAX
 	    && goff <= res->hits[(res->last_hit + 1) % num_matches].g_idx_start
 	    && (res->last_swhit_idx == UINT32_MAX
-		|| goff >= res->last_swhit_idx + res->window_len - res->read_len/2)
+		|| goff >= res->last_swhit_idx + res->window_len - (int)abs_or_pct(window_overlap, res->read_len))
 	    && are_hits_colinear(res)
 	    )
 	  {
@@ -787,7 +786,7 @@ scan(int contig_num, bool revcmpl)
 
 	    assert(re->offset == rme1->offset);
 
-	    add_to_stat32(&re->filter_calls, 1);
+	    ES_count32_increment(&re->es_filter_calls);
 
 	    glen = res->window_len;
 	    if (goff + glen > genome_len)
@@ -816,7 +815,7 @@ scan(int contig_num, bool revcmpl)
 	      if (hash_filter_calls) // Use cache
 		{
 		  if (re->cache_sz == 0) {
-		    add_to_stat64(&reads_filtered, 1);
+		    ES_count_increment(&es_reads_filtered);
 
 		    cache_init(re, &mem_reads);
 		  }
@@ -832,8 +831,8 @@ scan(int contig_num, bool revcmpl)
 		    score1 = re->cache[abs_pos].score;
 		    re->cache[abs_pos].count++;
 
-		    add_to_stat64(&total_filter_calls_bypassed, 1);
-		    add_to_stat32(&re->filter_calls_bypassed, 1);
+		    ES_count_increment(&es_total_filter_calls_bypassed);
+		    ES_count32_increment(&re->es_filter_calls_bypassed);
 		  } else {
 		    if (shrimp_mode == MODE_COLOUR_SPACE) {
 		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
@@ -870,8 +869,8 @@ scan(int contig_num, bool revcmpl)
 	    } // CS and LS
 
 	    if (meets_thresh) {
-	      add_to_stat64(&total_filter_passes, 1);
-	      add_to_stat32(&re->filter_passes, 1);
+	      ES_count_increment(&es_total_filter_passes);
+	      ES_count32_increment(&re->es_filter_passes);
 
 	      save_score(re->offset, score1, goff, contig_num, revcmpl);
 	      res->last_swhit_idx = goff;
@@ -1046,7 +1045,7 @@ load_reads_lscs(const char *file)
     kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 
     for (i = 0, load = 0; i < seqlen; i++) {
-      int base, sn;
+      uint base, sn;
 
       base = EXTRACT(re->read1, i);
       bitfield_prepend(kmerWindow, max_seed_span, base);
@@ -1154,7 +1153,7 @@ load_reads_dag(const char *file)
   fasta_t fasta;
   size_t seq1len, seq2len;
   ssize_t bases = 0;
-  int sn;
+  uint sn;
 
   fasta = fasta_open(file, LETTER_SPACE);
   if (fasta == NULL) {
@@ -1304,7 +1303,7 @@ load_reads_dag(const char *file)
 static bool
 load_reads(const char *file)
 {
-  int sn;
+  uint sn;
   ssize_t ret, bytes;
 
   // allocate as many readmaps as we have seeds
@@ -1492,12 +1491,24 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
     if (shrimp_mode == MODE_COLOUR_SPACE) {
       sw_full_cs(genome, goff, glen, re->read1, re->read1_len,
 		 re->initbp, thresh, rs->sfrp, revcmpl && Tflag, genome_is_rna,
-		 Aflag? rs->anchors : NULL, num_matches);
+		 rs->anchors, num_matches);
     } else {
-      sw_full_ls(genome, goff, glen, re->read1,
-		 re->read1_len, thresh, rs->score,
-		 rs->sfrp, revcmpl && Tflag);
-      assert(rs->sfrp->score == rs->score);
+      /*
+       * The full SW in letter space assumes it's given the correct max score.
+       * This might not be true just yet if we're using hashing&caching because
+       * of possible hash collosions.
+       */
+      rs->score = sw_vector(genome, goff, glen, re->read1, re->read1_len,
+			    NULL, -1, genome_is_rna);
+      if (rs->score >= thresh) {
+	sw_full_ls(genome, goff, glen, re->read1, re->read1_len,
+		   thresh, rs->score, rs->sfrp, revcmpl && Tflag);
+	assert(rs->sfrp->score == rs->score);
+      } else { // this wouldn't have passed the filter; eliminated in loop below
+	rs->sfrp->score = rs->score;
+	rs->sfrp->dbalign = NULL;
+	rs->sfrp->qralign = NULL;
+      }
     }
     rs->score = rs->sfrp->score;
   }
@@ -1546,8 +1557,10 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
     }
 
     last_sfr = *rs->sfrp;
-    free(rs->sfrp->dbalign);
-    free(rs->sfrp->qralign);
+    if (rs->sfrp->dbalign != NULL)
+      free(rs->sfrp->dbalign);
+    if (rs->sfrp->qralign != NULL)
+      free(rs->sfrp->qralign);
     free(rs->sfrp);
   }
 }
@@ -1720,14 +1733,14 @@ final_pass(char **files, u_int nfiles)
 static bool
 valid_spaced_seeds()
 {
-  int i;
+  uint sn;
 
-  for (i = 0; i < n_seeds; i++) {
-    if (seed[i].weight > MAX_SEED_WEIGHT && !Hflag)
+  for (sn = 0; sn < n_seeds; sn++) {
+    if (seed[sn].weight > MAX_SEED_WEIGHT && !Hflag)
       return false;
 
-    if (Hflag && (seed[i].span > MAX_HASH_SEED_SPAN ||
-		  seed[i].weight > MAX_HASH_SEED_WEIGHT))
+    if (Hflag && (seed[sn].span > MAX_HASH_SEED_SPAN ||
+		  seed[sn].weight > MAX_HASH_SEED_WEIGHT))
       return false;
   }
 
@@ -1895,7 +1908,7 @@ print_statistics()
 	  (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
 #ifdef EXTRA_STATS
   fprintf(stderr, "        Colinearity Checks:     %s\n",
-	  comma_integer(colin_checks));
+	  comma_integer(count_get_count(&es_colin_checks)));
 #endif
   fprintf(stderr, "\n");
 
@@ -1906,11 +1919,11 @@ print_statistics()
 	  comma_integer(invocs));
 #ifdef EXTRA_STATS
   fprintf(stderr, "        Passed threshold:       %s\n",
-          comma_integer(total_filter_passes));
+          comma_integer(count_get_count(&es_total_filter_passes)));
   fprintf(stderr, "        Reads filtered:         %s\n",
-	  comma_integer(reads_filtered));
+	  comma_integer(count_get_count(&es_reads_filtered)));
   fprintf(stderr, "        Bypassed calls:         %s\n",
-	  comma_integer(total_filter_calls_bypassed));
+	  comma_integer(count_get_count(&es_total_filter_calls_bypassed)));
 #endif
   fprintf(stderr, "        Cells Computed:         %.2f million\n",
 	  (double)cells / 1.0e6);
@@ -1991,10 +2004,10 @@ print_statistics()
       }
       fprintf(reads_profile_file, "%-20s\t%u\t%u\t%u\t%u\t%u\n",
 	      reads[i].name,
-	      reads[i].filter_calls,
-	      reads[i].filter_calls_bypassed,
+	      reads[i].es_filter_calls,
+	      reads[i].es_filter_calls_bypassed,
 	      l,
-	      reads[i].filter_passes,
+	      reads[i].es_filter_passes,
 	      reads[i].final_matches);
     }
     fclose(reads_profile_file);
@@ -2015,7 +2028,7 @@ print_statistics()
 static bool
 add_spaced_seed(const char *seedStr)
 {
-  int i;
+  uint i;
 
   seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
   seed[n_seeds].mask[0] = 0x0;
@@ -2064,7 +2077,8 @@ load_default_seeds() {
 static void
 init_seed_hash_mask(void)
 {
-  int sn, i;
+  uint sn;
+  int i;
 
   seed_hash_mask = (uint32_t **)xmalloc(sizeof(seed_hash_mask[0])*n_seeds);
   for (sn = 0; sn < n_seeds; sn++) {
@@ -2078,11 +2092,11 @@ init_seed_hash_mask(void)
 
 
 static void
-usage(char *progname)
+usage(char * progname, bool full_usage)
 {
   char *slash;
   double vect_sw_threshold = -1;
-  int sn;
+  uint sn;
 
   switch (shrimp_mode) {
   case MODE_LETTER_SPACE:
@@ -2132,8 +2146,12 @@ usage(char *progname)
   }
 
   fprintf(stderr,
-	  "    -w    Seed Window Length                      (default: "
-	  "%.02f%%)\n", DEF_WINDOW_LEN);
+	  "    -w    Seed Window Length                      (default: %.02f%%)\n",
+	  DEF_WINDOW_LEN);
+
+  fprintf(stderr,
+	  "    -W    Seed Window Overlap Length              (default: %.02f%%)\n",
+	  DEF_WINDOW_OVERLAP);
 
   fprintf(stderr,
 	  "    -o    Maximum Hits per Read                   (default: %d)\n",
@@ -2244,8 +2262,22 @@ usage(char *progname)
 	    "    -h    S-W Hit Threshold                       "
 	    "(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
   }
-  fprintf(stderr,
-	  "    -A    Use anchors to limit full SW            (default: disabled)\n");
+
+  if (full_usage) {
+    fprintf(stderr, "\n");
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      fprintf(stderr,
+	      "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
+	      DEF_ANCHOR_WIDTH);
+    }
+#ifdef EXTRA_STATS
+    fprintf(stderr,
+	    "    -D    Dump per-read scan statistics in file\n");
+#endif
+    fprintf(stderr,
+	    "    -Y    Cache sizes for genome scan             (default: %d,%d)\n",
+	    cache_min_size, cache_max_size);
+  }
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
@@ -2279,6 +2311,18 @@ usage(char *progname)
   fprintf(stderr,
 	  "    -U    Print Unmapped Read Names in Output           (default: "
 	  "disabled)\n");
+  fprintf(stderr,
+	  "    -M    Toggle brief memory usage statistics          (default: %s)\n",
+	  Mflag? "enabled" : "disabled");
+  fprintf(stderr,
+	  "    -?    Full list of parameters and options\n");
+
+  if (full_usage) {
+    fprintf(stderr, "\n");
+    fprintf(stderr,
+	    "    -Z    Toggle hashing of genome windows              (default: %s)\n",
+	    hash_filter_calls? "enabled" : "disabled");
+  }
 
   exit(1);
 }
@@ -2287,13 +2331,14 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-  char *reads_file, *progname, *optstr = "";
+  char *reads_file, * progname = argv[0];
+  char const * optstr = "";
   char **genome_files;
-  int i, ch, ret, ngenome_files, sflags = 0;
-  u_int max_window_len, maxTrueWindowLen;
+  int i, ch, ret, ngenome_files;
+  u_int max_window_len;
   bool a_gap_open_set, b_gap_open_set;
   bool a_gap_extend_set, b_gap_extend_set;
-  char *charP;
+  char *c;
 
   set_mode_from_argv(argv);
 
@@ -2302,13 +2347,13 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:A:X:BCFHPRTUZY:M";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:D:ZY:MW:";
     break;
   case MODE_LETTER_SPACE:
-    optstr = "s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:A:X:BCFHPRTUZY:M";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUD:ZY:MW:";
     break;
   case MODE_HELICOS_SPACE:
-    optstr = "s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUM";
+    optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUD:ZY:MW:";
     match_value = DEF_MATCH_VALUE_DAG;
     mismatch_value = DEF_MISMATCH_VALUE_DAG;
     a_gap_open = DEF_A_GAP_OPEN_DAG;
@@ -2328,32 +2373,23 @@ main(int argc, char **argv)
   fprintf(stderr, "--------------------------------------------------"
 	  "------------------------------\n");
 
-  progname = argv[0];
-
   while ((ch = getopt(argc, argv, optstr)) != -1) {
     switch (ch) {
     case 's':
-      /*
-       * Erase default seed (already loaded)
-       */
-      if (sflags++ == 0)
-	n_seeds = 0;
-
       if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
 	if (!add_spaced_seed(optarg)) {
 	  fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
 	  exit (1);
 	}
       } else {
-	//fprintf(stderr, "found -s parameter with many seeds; optarg=\"%s\"\n", optarg);
-	charP = strtok(optarg, ",");
+	c = strtok(optarg, ",");
 	do {
-	  if (!add_spaced_seed(charP)) {
-	    fprintf(stderr, "error: invalid spaced seed \"%s\"\n", charP);
+	  if (!add_spaced_seed(c)) {
+	    fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
 	    exit (1);
 	  }
-	  charP = strtok(NULL, ",");
-	} while (charP != NULL);
+	  c = strtok(NULL, ",");
+	} while (c != NULL);
       }
       break;
     case 'n':
@@ -2504,36 +2540,63 @@ main(int argc, char **argv)
     case 'U':
       Uflag = true;
       break;
+    /*
+     * New options/parameters since SHRiMP 1.2.1
+     */
     case 'A':
-      Aflag = true;
-      extra_width = atoi(optarg);
-      if (extra_width < 0 || extra_width >= 100) {
-	fprintf(stderr, "error: extra_width requested is invalid (%s)\n",
+      anchor_width = atoi(optarg);
+      if (anchor_width < -1 || anchor_width >= 100) {
+	fprintf(stderr, "error: anchor_width requested is invalid (%s)\n",
 		optarg);
 	exit(1);
       }
       break;
-    case 'X':
+    case 'D':
+#ifdef EXTRA_STATS
       reads_profile_file_name = optarg;
+#else
+      fprintf(stderr, "warning: option -D is used only if -DEXTRA_STATS is defined at compile time; ignoring it\n");
+#endif
       break;
     case 'Z':
-      hash_filter_calls = 0;
+      hash_filter_calls = !hash_filter_calls;
       break;
     case 'Y':
-      charP = strtok(optarg, ",");
-      assert(charP != NULL);
-      cache_min_size = atoi(charP);
-      assert(cache_min_size > 0);
-
-      charP = strtok(NULL, ",");
-      assert(charP != NULL);
-      cache_max_size = atoi(charP);
+      c = strtok(optarg, ",");
+      if (c == NULL) {
+	fprintf(stderr, "error: format for cache sizes is \"-Y 2,16\"\n");
+	exit(1);
+      }
+      cache_min_size = (uint)atoi(c);
+      c = strtok(NULL, ",");
+      if (c == NULL) {
+	fprintf(stderr, "error: format for cache sizes is \"-Y 2,16\"\n");
+	exit(1);
+      }
+      cache_max_size = (uint)atoi(c);
+      if (cache_min_size > DEF_CACHE_MAX_SIZE || cache_max_size > DEF_CACHE_MAX_SIZE) {
+	fprintf(stderr, "error: cache size too big (%d,%d)\n",
+		cache_min_size, cache_max_size);
+	exit(1);
+      }
       break;
     case 'M':
-      Mflag = true;
+      Mflag = !Mflag;
+      break;
+    case 'W':
+      window_overlap = atof(optarg);
+      if (window_overlap <= 0.0) {
+	fprintf(stderr, "error: invalid window overlap\n");
+	exit(1);
+      }
+      if (strcspn(optarg, "%.") == strlen(optarg))
+	window_overlap = -window_overlap;		//absol.
+      break;
+    case '?':
+      usage(progname, true);
       break;
     default:
-      usage(progname);
+      usage(progname, false);
     }
   }
   argc -= optind;
@@ -2560,7 +2623,7 @@ main(int argc, char **argv)
   if (argc < 2) {
     fprintf(stderr, "error: %sgenome_file(s) not specified\n",
 	    (argc == 0) ? "reads_file, " : "");
-    usage(progname);
+    usage(progname, false);
   }
 
   reads_file    = argv[0];
@@ -2658,6 +2721,14 @@ main(int argc, char **argv)
 	    "%.02f%%\n", window_len);
   }
 
+  if (IS_ABSOLUTE(window_overlap)) {
+    fprintf(stderr, "    Seed Window Overlap Length:           %u\n",
+	    (u_int)-window_overlap);
+  } else {
+    fprintf(stderr, "    Seed Window Overlap Length:           %.02f%%\n",
+	    window_overlap);
+  }
+
   fprintf(stderr, "    Maximum Hits per Read:                %u\n",
 	  num_outputs);
   fprintf(stderr, "    Kmer Std. Deviation Limit:            %d%s\n",
@@ -2737,11 +2808,11 @@ main(int argc, char **argv)
 	      "        %.02f%%\n", sw_full_threshold);
     }
   }
-  if (!Aflag) {
-    fprintf(stderr, "    Use anchors:                          no\n");
-  } else {
-    fprintf(stderr, "    Use anchors:                          yes (width:%d)\n",
-	    extra_width);
+
+  fprintf(stderr, "\n");
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    fprintf(stderr, "    Anchor width:                         %d%s\n",
+	    anchor_width, anchor_width == -1 ? " (disabled)" : "");
   }
   fprintf(stderr, "    Hash filter SW calls:                 %s\n",
 	  hash_filter_calls ? "yes" : "no");
@@ -2759,11 +2830,10 @@ main(int argc, char **argv)
 
   fprintf(stderr, "  - Configuring window lengths...\n");
   max_window_len = set_window_lengths();
-  maxTrueWindowLen = max_window_len;
   fprintf(stderr, "  - Maximum window length: %u\n", max_window_len);
 		
 
-  if (sw_vector_setup(maxTrueWindowLen, longest_read_len, a_gap_open,
+  if (sw_vector_setup(max_window_len, longest_read_len, a_gap_open,
 		      a_gap_extend, b_gap_open, b_gap_extend, match_value, mismatch_value,
 		      shrimp_mode == MODE_COLOUR_SPACE, false)) {
     fprintf(stderr, "failed to initialise vector "
@@ -2773,11 +2843,11 @@ main(int argc, char **argv)
 
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     /* XXX - a vs. b gap */
-    ret = sw_full_cs_setup(maxTrueWindowLen, longest_read_len,
+    ret = sw_full_cs_setup(max_window_len, longest_read_len,
 			   a_gap_open, a_gap_extend, match_value, mismatch_value,
-			   xover_penalty, false, extra_width);
+			   xover_penalty, false, anchor_width);
   } else {
-    ret = sw_full_ls_setup(maxTrueWindowLen, longest_read_len,
+    ret = sw_full_ls_setup(max_window_len, longest_read_len,
 			   a_gap_open, a_gap_extend, b_gap_open, b_gap_extend,
 			   match_value, mismatch_value, false);
   }

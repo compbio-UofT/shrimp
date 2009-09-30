@@ -476,7 +476,8 @@ usage(char *progname)
 int
 main(int argc, char **argv)
 {
-	char *fpout, *readsdir, *genomedir, *progname, *optstr;
+	char *fpout, *readsdir, *genomedir, *progname;
+	char const * optstr;
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
 	int ch, ret;

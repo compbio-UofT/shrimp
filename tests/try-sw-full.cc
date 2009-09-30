@@ -62,9 +62,9 @@ int main(int argc, char *argv[]) {
   free(name);
   free(sequence);
 
-  sw_full_cs_setup(dbLen, qrLen, costGapOpen, costGapExtend, costMatch, costMismatch, costCrossover, false);
+  sw_full_cs_setup(dbLen, qrLen, costGapOpen, costGapExtend, costMatch, costMismatch, costCrossover, false, 0);
 
-  sw_full_cs(db, 0, dbLen, qr, qrLen, initbp, 0, &sfr, false, false);
+  sw_full_cs(db, 0, dbLen, qr, qrLen, initbp, 0, &sfr, false, false, NULL, 0);
 
   cout << sfr.dbalign << endl;
   cout << sfr.qralign << endl;

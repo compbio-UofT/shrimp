@@ -14,8 +14,9 @@ extern const bool use_dag;
 //#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 //#define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
 #define	DEF_WINDOW_LEN		135.0		/* 115% of read length */
+#define DEF_WINDOW_OVERLAP	80.0
 #define DEF_NUM_MATCHES		4
-#define DEF_HIT_TABOO_LEN	5
+#define DEF_HIT_TABOO_LEN	4
 #define DEF_SEED_TABOO_LEN	0
 #define DEF_NUM_OUTPUTS		100
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
@@ -70,7 +71,8 @@ static char const * const default_spaced_seeds_hs[] =
 #define DEF_SW_VECT_THRESHOLD_DAG 50.0	/* smaller for Helicos DAG */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
-#define DEF_EXTRA_WIDTH		0	/* extra width around anchors */
+#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
+#define DEF_HASH_FILTER_CALLS	true
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
@@ -155,17 +157,12 @@ struct read_entry {
   uint32_t	read2_len;
   uint32_t	offset;		/* offset in read array */
   int		swhits;		/* num of hits with sw */
-  //#ifndef EXTRA_STATS
-  //union {
-  //#endif
   uint32_t	final_matches;	/* num of final output matches*/
-  uint32_t	filter_calls;
-  uint32_t	filter_calls_bypassed;
-  uint32_t	filter_passes;
-  //#ifndef EXTRA_STATS
-  //};
-  //#endif
-
+#ifdef EXTRA_STATS		/* computed only ifdef EXTRA_STATS */
+  count32_t	es_filter_calls;
+  count32_t	es_filter_calls_bypassed;
+  count32_t	es_filter_passes;
+#endif
 };
 
 /*

@@ -127,7 +127,8 @@ output_pretty(const char *readname, const char *contigname,
     const struct sw_full_results *sfr, uint32_t *genome, uint32_t genome_len,
     bool use_colours, uint32_t *read, u_int readlen, int initbp, bool revcmpl)
 {
-	char *str, *gpre, *gpost, *lspre, *lspost, *mpre, *nospace = "";
+	char *str, *gpre, *gpost, *lspre, *lspost, *mpre;
+	char const * nospace = "";
 	const char *dbalign, *qralign;
 	strbuf_t sb;
 	u_int j, len;
@@ -166,7 +167,7 @@ output_pretty(const char *readname, const char *contigname,
 	len = strlen(dbalign);
 	assert(len == strlen(qralign));
 
-	gpre = gpost = lspre = lspost = mpre = nospace;
+	gpre = gpost = lspre = lspost = mpre = (char *)nospace;
 	if (read_start > 0) {
 		gpre  = (char *)xmalloc(read_start + 1);
 		lspre = (char *)xmalloc(read_start + 1);

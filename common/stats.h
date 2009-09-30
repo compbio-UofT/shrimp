@@ -119,4 +119,38 @@ count_get_count(count_t * c) {
 }
 
 
+typedef int32_t count32_t;
+
+static inline count32_t *
+count32_init(count32_t * c) {
+  if (c == NULL)
+    c = (count32_t *)calloc(sizeof(count32_t), 1);
+  else
+    *c = 0;
+
+  return c;
+}
+
+static inline void
+count32_increment(count32_t * c) {
+  assert(c != NULL);
+
+  (*c)++;
+}
+
+static inline void
+count32_add(count32_t * c, int32_t val) {
+  assert(c != NULL);
+
+  *c += val;
+}
+
+static inline int32_t
+count32_get_count(count32_t * c) {
+  assert(c != NULL);
+
+  return *c;
+}
+
+
 #endif

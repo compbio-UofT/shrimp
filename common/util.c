@@ -588,7 +588,7 @@ file_iterator_n(char **paths, int npaths,
 	return (files);
 }
 
-char *
+char const *
 get_compiler()
 {
 
@@ -678,7 +678,7 @@ strbuf_string(strbuf_t sbp, int *length)
 }
 
 void
-strbuf_append(strbuf_t sbp, char *fmt, ...)
+strbuf_append(strbuf_t sbp, char const *fmt, ...)
 {
 	va_list ap;
 	int bytes;

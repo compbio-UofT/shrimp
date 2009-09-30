@@ -15,7 +15,9 @@ struct read_entry; // in rmapper.h
 
 typedef uint32_t cache_key_t;
 static uint cache_min_size = 2;
-static uint cache_max_size = 16;
+static uint cache_max_size = 32;
+
+#define DEF_CACHE_MAX_SIZE 127 /* cannot be set to more than this value */
 
 struct cache_entry {
   cache_key_t	key;

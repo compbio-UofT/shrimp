@@ -101,7 +101,7 @@ static int		xover_penalty;
 static struct swcell   *swmatrix;
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
-static int extra_width;
+static int		anchor_width;
 
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
@@ -179,9 +179,9 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   //sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
   //ne_band = lena - (lenb - sw_band);
 
-  if (anchors != NULL) {
+  if (anchors != NULL && anchor_width >= 0) {
     join_anchors(anchors, anchors_cnt, &rectangle);
-    widen_anchor(&rectangle, extra_width);
+    widen_anchor(&rectangle, (uint)anchor_width);
   } else {
     struct anchor tmp[2];
 
@@ -892,7 +892,7 @@ pretty_print(int i, int j, int k)
 int
 sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
-		 int _extra_width)
+		 int _anchor_width)
 {
   int i;
 
@@ -934,7 +934,7 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
   if (reset_stats)
     swticks = swcells = swinvocs = 0;
 
-  extra_width = _extra_width;
+  anchor_width = _anchor_width;
 
   initialised = 1;
 
@@ -1013,12 +1013,12 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 #ifdef DEBUG_SW
   fprintf(stderr, "db: ");
   for (j = 0; j < glen; j++)
-    fprintf(stderr, "%u", db[j]);
+    fprintf(stderr, "%c", base_translate(db[j], false));
   fprintf(stderr, "\n");
   for (i = 0; i < 4; i++) {
     fprintf(stderr, "qr[%u]: ", i);
     for (j = 0; j < rlen; j++)
-      fprintf(stderr, "%u", qr[i][j]);
+      fprintf(stderr, "%c", base_translate(qr[i][j], false));
     fprintf(stderr, "\n");
   }
 #endif
