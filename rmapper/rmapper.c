@@ -201,8 +201,8 @@ save_score(struct read_elem *re, int score, int index, int contig_num,
 	struct re_score *scores;
 
 #ifdef DEBUG_HITS
-	fprintf(stderr, "\tsaving hit: contig_num=%u read=%s idx=%u\n",
-		contig_num, re->ri->name, index);
+	fprintf(stderr, "\tsaving hit: contig_num=%u read=%s idx=%u revcmpl=%s score=%u\n",
+		contig_num, re->ri->name, index, revcmpl? "yes" : "no", score);
 #endif
 
 	scores = re->ri->scores;
@@ -669,8 +669,8 @@ scan(int contig_num, bool revcmpl)
 				if (re->hits[(re->lastHit + 1) % num_matches].g_idx != UINT32_MAX
 				    && re->hits[(re->lastHit + 1) % num_matches].g_idx >= goff
 				    && (re->last_swhit_idx == UINT32_MAX
-					|| goff >= re->last_swhit_idx + re->readLen)
-				    //&& are_hits_colinear(re)
+					|| goff >= re->last_swhit_idx + re->window_len/4)
+				    && are_hits_colinear(re)
 				    )
 				  {
 					bool meets_thresh = false;
