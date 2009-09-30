@@ -120,7 +120,8 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
-		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag);
+		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag,
+		    NULL, 0);
 	}
 
 	if (sfr.score != fpo->input.score) {
@@ -611,11 +612,11 @@ main(int argc, char **argv)
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
-		    xover_penalty, false, 0);
+		    xover_penalty, false, -1);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value,
-		    mismatch_value, false);
+		    mismatch_value, false, -1);
 	}
 	if (ret) {
 		fprintf(stderr, "failed to initialise scalar Smith-Waterman "

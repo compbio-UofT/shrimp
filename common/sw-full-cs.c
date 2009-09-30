@@ -183,21 +183,21 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     join_anchors(anchors, anchors_cnt, &rectangle);
     widen_anchor(&rectangle, (uint)anchor_width);
   } else {
-    struct anchor tmp[2];
+    struct anchor tmp_anchors[2];
 
-    tmp[0].x = 0;
-    tmp[0].y = (lenb * match - threshscore) / match;
-    tmp[0].length = 1;
-    tmp[0].width = 1;
-    tmp[0].more_than_once = 0;
+    tmp_anchors[0].x = 0;
+    tmp_anchors[0].y = (lenb * match - threshscore) / match;
+    tmp_anchors[0].length = 1;
+    tmp_anchors[0].width = 1;
+    tmp_anchors[0].more_than_once = 0;
 
-    tmp[1].x = lena-1;
-    tmp[1].y = lenb-1-tmp[0].y;
-    tmp[1].length = 1;
-    tmp[1].width = 1;
-    tmp[1].more_than_once = 0;
+    tmp_anchors[1].x = lena-1;
+    tmp_anchors[1].y = lenb-1-tmp_anchors[0].y;
+    tmp_anchors[1].length = 1;
+    tmp_anchors[1].width = 1;
+    tmp_anchors[1].more_than_once = 0;
 
-    join_anchors(tmp, 2, &rectangle);
+    join_anchors(tmp_anchors, 2, &rectangle);
   }
 
   for (i = 0; i < lenb; i++) {

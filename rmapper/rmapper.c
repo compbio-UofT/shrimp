@@ -1502,7 +1502,8 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
 			    NULL, -1, genome_is_rna);
       if (rs->score >= thresh) {
 	sw_full_ls(genome, goff, glen, re->read1, re->read1_len,
-		   thresh, rs->score, rs->sfrp, revcmpl && Tflag);
+		   thresh, rs->score, rs->sfrp, revcmpl && Tflag,
+		   rs->anchors, num_matches);
 	assert(rs->sfrp->score == rs->score);
       } else { // this wouldn't have passed the filter; eliminated in loop below
 	rs->sfrp->score = rs->score;
@@ -2265,7 +2266,7 @@ usage(char * progname, bool full_usage)
 
   if (full_usage) {
     fprintf(stderr, "\n");
-    if (shrimp_mode == MODE_COLOUR_SPACE) {
+    if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
       fprintf(stderr,
 	      "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
 	      DEF_ANCHOR_WIDTH);
@@ -2350,7 +2351,7 @@ main(int argc, char **argv)
     optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:D:ZY:MW:";
     break;
   case MODE_LETTER_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUD:ZY:MW:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:D:ZY:MW:";
     break;
   case MODE_HELICOS_SPACE:
     optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUD:ZY:MW:";
@@ -2810,7 +2811,7 @@ main(int argc, char **argv)
   }
 
   fprintf(stderr, "\n");
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
+  if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
     fprintf(stderr, "    Anchor width:                         %d%s\n",
 	    anchor_width, anchor_width == -1 ? " (disabled)" : "");
   }
@@ -2849,7 +2850,7 @@ main(int argc, char **argv)
   } else {
     ret = sw_full_ls_setup(max_window_len, longest_read_len,
 			   a_gap_open, a_gap_extend, b_gap_open, b_gap_extend,
-			   match_value, mismatch_value, false);
+			   match_value, mismatch_value, false, anchor_width);
   }
   if (ret) {
     fprintf(stderr, "failed to initialise scalar "
