@@ -454,9 +454,8 @@ are_hits_colinear(struct read_elem *re)
     assert(re->hits[prev].gIdxStart + seed[re->hits[prev].sn].span - 1
 	   <= re->hits[crt].gIdxStart + seed[re->hits[crt].sn].span - 1);
 
-    if (re->hits[prev].rIdxStart + (seed[re->hits[prev].sn].span - 1) > re->hits[crt].rIdxEnd)
-    //if (!re->hits[prev].moreThanOnce
-    //&& re->hits[prev].rIdxEnd > re->hits[crt].rIdxEnd)
+    //if (re->hits[prev].rIdxStart + (seed[re->hits[prev].sn].span - 1) > re->hits[crt].rIdxEnd)
+    if (!re->hits[prev].moreThanOnce && re->hits[prev].rIdxEnd > re->hits[crt].rIdxEnd)
     //if (re->hits[prev].rIdxStart >= re->hits[crt].rIdxEnd - (seed[re->hits[crt].sn].span - 1))
       return 0;
   }
@@ -512,7 +511,7 @@ scan(int contig_num, bool revcmpl)
   do {
     mapidxs_p1[sn] = kmer_to_mapidx(kmerWindow, sn);
 #ifdef USE_PREFETCH
-    _mm_prefetch((const char *)&readmap[sn][mapidxs_p1[sn]], PF_HINT);
+    _mm_prefetch((const char *)&readmap[sn][mapidxs_p1[sn]], _MM_HINT_NTA);
 #endif
   } while (++sn < n_seeds);
 
@@ -535,13 +534,16 @@ scan(int contig_num, bool revcmpl)
      * Prefetch start of readmap_entry list for seed 0
      */
 #ifdef USE_PREFETCH
-    _mm_prefetch((const char *)(readmap[0][mapidxs[0]]), PF_HINT);
+    _mm_prefetch((const char *)(readmap[0][mapidxs[0]]), _MM_HINT_NTA);
 #endif
 
     /*
      * 1 ahead for i+1
      */
     if (i + 1 < genome_len) {
+#ifdef USE_PREFETCH
+      //_mm_prefetch((const char *)&scan_genome[((i/8) + 8) & (~0x7u)], _MM_HINT_T2);
+#endif
       base_p1 = EXTRACT(scan_genome, i+1);
       bitfield_prepend(kmerWindow, maxSeedSpan, base_p1);
 
@@ -549,7 +551,7 @@ scan(int contig_num, bool revcmpl)
       do {
 	mapidxs_p1[sn] = kmer_to_mapidx(kmerWindow, sn);
 #ifdef USE_PREFETCH
-	_mm_prefetch((const char *)&readmap[sn][mapidxs_p1[sn]], PF_HINT);
+	_mm_prefetch((const char *)&readmap[sn][mapidxs_p1[sn]], _MM_HINT_NTA);
 #endif
       } while (++sn < n_seeds);
 
@@ -581,7 +583,7 @@ scan(int contig_num, bool revcmpl)
       /* prefetch first FETCH_AHEAD struct read_elem's */
 #ifdef USE_PREFETCH
       for (pf = 0; rme2->offset != UINT32_MAX && pf < FETCH_AHEAD; pf++)
-	_mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), PF_HINT);
+	_mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), _MM_HINT_T2);
 #endif
 
       for (re = OFFSET_TO_READ(rme1->offset), j = k = 0;
@@ -594,9 +596,9 @@ scan(int contig_num, bool revcmpl)
 	 */
 #ifdef USE_PREFETCH
 	if (rme2->offset != UINT32_MAX)
-	  _mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), PF_HINT);
+	  _mm_prefetch((const char *)OFFSET_TO_READ((rme2++)->offset), _MM_HINT_T1);
 	else if (sn + 1 < n_seeds)
-	  _mm_prefetch((const char *)readmap[sn+1][mapidxs[sn+1]], PF_HINT);	  
+	  _mm_prefetch((const char *)readmap[sn+1][mapidxs[sn+1]], _MM_HINT_NTA);
 #endif
 
 	prevhit = re->hits[re->lastHit].gIdxStart;
@@ -623,10 +625,10 @@ scan(int contig_num, bool revcmpl)
 	/*
 	 * Compute start of window in genome for potential SW call.
 	 */
-	if (i < rme1->rIdxEnd + (re->window_len - re->readLen)/2)
+	if (idx < rme1->rIdxStart + (re->window_len - re->readLen)/2)
 	  goff = 0;
 	else
-	  goff = i - (rme1->rIdxEnd + (re->window_len - re->readLen)/2);
+	  goff = idx - (rme1->rIdxStart + (re->window_len - re->readLen)/2);
 
 #ifdef DEBUG_HITS
 	fprintf(stderr, "found potential hit i=%u:\n", i);
@@ -661,6 +663,9 @@ scan(int contig_num, bool revcmpl)
 	    && are_hits_colinear(re)
 	    )
 	  {
+#ifdef USE_PREFETCH
+            //_mm_prefetch((const char *)re->ri->scores, _MM_HINT_NTA);
+#endif
 	    bool meets_thresh = false;
 
 	    glen = re->window_len;
@@ -720,6 +725,10 @@ scan(int contig_num, bool revcmpl)
       longest_scanned_kmer_list = MAX(longest_scanned_kmer_list, j);
       kmer_lists_scanned++;
 
+#ifdef USE_PREFETCH
+      //_mm_clflush(readmap[sn][mapidxs[sn]]);
+      //_mm_clflush(&readmap[sn][mapidxs[sn]]);
+#endif
     } while (++sn < n_seeds);// loop over spaced seeds
   } // loop over genome
 
@@ -1702,6 +1711,8 @@ print_statistics()
 	    comma_integer(shortest_scanned_kmer_list));
 	fprintf(stderr, "        Maximal Reads/Kmer:     %s\n",
 	    comma_integer(longest_scanned_kmer_list));
+	fprintf(stderr, "        Kmer List Entries:      %s\n",
+		comma_integer(kmer_list_entries_scanned));
 	fprintf(stderr, "        Average Reads/Kmer:     %.2f\n",
 	    (kmer_lists_scanned == 0) ? 0 :
 	    (double)kmer_list_entries_scanned / (double)kmer_lists_scanned);
@@ -2492,7 +2503,7 @@ main(int argc, char **argv)
 		exit(1);
 
 	fprintf(stderr, "\nGenerating output...\n");
-	final_pass(genome_files, ngenome_files);
+	//final_pass(genome_files, ngenome_files);
 
 	if (Uflag) {
 		unsigned int j;
