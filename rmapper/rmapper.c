@@ -535,7 +535,7 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
 
 /* Initialize cache */
 static inline void
-cache_init(struct read_entry * re) {
+NO_cache_init(struct read_entry * re) {
   assert(re != NULL && re->cache == NULL && re->cache_sz == 0);
 
   re->cache = (struct cache_entry *)
@@ -545,7 +545,7 @@ cache_init(struct read_entry * re) {
 
 /* Possibly double cache size; moving the tail of the queue */
 static inline void
-cache_maybe_resize(struct read_entry * re) {
+NO_cache_maybe_resize(struct read_entry * re) {
   assert(re != NULL && re->cache != NULL && re->cache_sz > 0);
 
   if (re->cache_sz < cache_max_size
@@ -567,7 +567,7 @@ cache_maybe_resize(struct read_entry * re) {
 
 /* Lookup key */
 static inline void
-cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs_pos) {
+NO_cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs_pos) {
   assert(re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
   assert(re->head < re->cache_sz);
 
@@ -614,13 +614,13 @@ cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs
 
 /* Predicates valid only after lookup call */
 static inline bool
-cache_key_found(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+NO_cache_key_found(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   return *rel_pos < re->cache_sz && re->cache[*abs_pos].count != 0;
 }
 static inline bool
-cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+NO_cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   return *rel_pos == re->cache_sz;
@@ -628,7 +628,7 @@ cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
 
 /* Add key */
 static inline void
-cache_add_key(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+NO_cache_add_key(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   *abs_pos = (re->head + 1) % re->cache_sz;
@@ -900,14 +900,27 @@ scan(int contig_num, bool revcmpl)
 		  if (re->cache_sz == 0) {
 		    add_to_stat64(&reads_filtered, 1);
 
-		    cache_init(re);
+		    //cache_init(re);
+		    re->cache = (struct cache_entry *)
+		      xcalloc(cache_min_size * sizeof(struct cache_entry));
+		    re->cache_sz = cache_min_size;
 		  }
 
 		  hash_val = hash_window(scan_genome, goff, glen);
 		  //fprintf(stderr, "%08llX\n", (long long unsigned int)hash_val);
-		  cache_lookup(re, hash_val, &rel_pos, &abs_pos);
+		  //cache_lookup(re, hash_val, &rel_pos, &abs_pos);
+		  (abs_pos) = re->head;
+		  (rel_pos) = 0;
+		  while (rel_pos < re->cache_sz
+			 && re->cache[abs_pos].count != 0
+			 && re->cache[abs_pos].hash_val != hash_val) {
+		    (rel_pos)++;
+		    (abs_pos) = ((abs_pos) + re->cache_sz - 1) % re->cache_sz; // -= 1 mod ..
+		  }
 
-		  if (cache_key_found(re, &rel_pos, &abs_pos)) {
+		  if (//cache_key_found(re, &rel_pos, &abs_pos)
+		      rel_pos < re->cache_sz && re->cache[abs_pos].count != 0
+		      ) {
 		    /*
 		     * We have run vector SW on this region before; use previous score.
 		     */
@@ -926,10 +939,27 @@ scan(int contig_num, bool revcmpl)
 		    }
 
 		    /* save score */
-		    if (cache_is_full(re, &rel_pos, &abs_pos))
-		      cache_maybe_resize(re);
+		    if (//cache_is_full(re, &rel_pos, &abs_pos)
+			rel_pos == re->cache_sz
+			) {
+		      //cache_maybe_resize(re);
+		      if (re->cache_sz < cache_max_size) {
+			re->cache = (struct cache_entry *)
+			  xrealloc(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry));
+			if (re->head != re->cache_sz - 1) {
+			  memcpy(&re->cache[(re->head + 1) + re->cache_sz],
+				 &re->cache[re->head + 1],
+				 ((re->cache_sz - 1) - re->head) * sizeof(struct cache_entry));
+			}
+			memset(&re->cache[re->head + 1], 0,
+			       re->cache_sz * sizeof(struct cache_entry));
+			re->cache_sz *= 2;
+		      }
+		    }
 
-		    cache_add_key(re, &rel_pos, &abs_pos);
+		    //cache_add_key(re, &rel_pos, &abs_pos);
+		    abs_pos = (re->head + 1) % re->cache_sz;
+		    re->head = abs_pos;
 		    re->cache[abs_pos].hash_val = hash_val;
 		    re->cache[abs_pos].count = 1;
 		    re->cache[abs_pos].score = score1;
