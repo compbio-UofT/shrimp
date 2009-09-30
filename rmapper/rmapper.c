@@ -454,8 +454,9 @@ are_hits_colinear(struct read_elem *re)
     assert(re->hits[prev].gIdxStart + seed[re->hits[prev].sn].span - 1
 	   <= re->hits[crt].gIdxStart + seed[re->hits[crt].sn].span - 1);
 
-    //if (re->hits[prev].rIdxStart + (seed[re->hits[prev].sn].span - 1) > re->hits[crt].rIdxEnd)
-    if (!re->hits[prev].moreThanOnce && re->hits[prev].rIdxEnd > re->hits[crt].rIdxEnd)
+    if (re->hits[prev].rIdxStart + (seed[re->hits[prev].sn].span - 1) > re->hits[crt].rIdxEnd)
+    //if (!re->hits[prev].moreThanOnce
+    //&& re->hits[prev].rIdxEnd > re->hits[crt].rIdxEnd)
     //if (re->hits[prev].rIdxStart >= re->hits[crt].rIdxEnd - (seed[re->hits[crt].sn].span - 1))
       return 0;
   }
@@ -622,10 +623,10 @@ scan(int contig_num, bool revcmpl)
 	/*
 	 * Compute start of window in genome for potential SW call.
 	 */
-	if (idx < rme1->rIdxStart + (re->window_len - re->readLen)/2)
+	if (i < rme1->rIdxEnd + (re->window_len - re->readLen)/2)
 	  goff = 0;
 	else
-	  goff = idx - (rme1->rIdxStart + (re->window_len - re->readLen)/2);
+	  goff = i - (rme1->rIdxEnd + (re->window_len - re->readLen)/2);
 
 #ifdef DEBUG_HITS
 	fprintf(stderr, "found potential hit i=%u:\n", i);
