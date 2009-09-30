@@ -320,7 +320,7 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
 
     /* We do the array doubling trick for O(1) amortised alloc. */
     if (scores[0].heap_elems > scores[0].heap_alloc) {
-      unsigned int alloc_slots;
+      unsigned int alloc_slots, old_alloc_slots = scores[0].heap_alloc;
 
       assert(scores[0].heap_elems > 0);
 
@@ -333,7 +333,8 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
 
       scores[0].heap_alloc = alloc_slots;
       scores = (struct re_score *)
-	xrealloc(scores, sizeof(struct re_score) * (alloc_slots + 1));
+	xrealloc_count(scores, sizeof(struct re_score) * (alloc_slots + 1),
+		       sizeof(struct re_score) * (old_alloc_slots + 1));
       memset(&scores[idx], 0, sizeof(struct re_score) * (alloc_slots + 1 - idx));
       re->scores = scores;
     }
@@ -516,6 +517,7 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
   }
   */
 
+  /*
   uint i;
   uint32_t hash = 0;
   uint8_t base;
@@ -523,6 +525,26 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
   for (i = 0; i < glen; i++) {
     base = EXTRACT(scan_genome, goff + i);
     hash ^= (base & 0x3) << i%16;
+  }
+  */
+
+  uint i, j;
+  uint8_t base;
+  uint32_t hash = 0, tmp;
+  uint32_t buffer;
+  static uint const bases_per_buffer = 16;
+
+  for (i = 0; i < ((glen - 1) / bases_per_buffer) + 1; i++) {
+    buffer = 0;
+    for (j = 0; j < bases_per_buffer && i * bases_per_buffer + j < glen; j++) {
+      base = EXTRACT(scan_genome, goff + i * bases_per_buffer + j);
+      buffer <<= 2;
+      buffer |= (base & 0x03);
+    }
+    hash += (buffer >> 16); // high 16 bits
+    tmp = ((buffer & 0xFFFF) << 11) ^ hash; // low 16 bits
+    hash = (hash << 16) ^ tmp;
+    hash += hash >> 11;
   }
 
   return (hash_t)hash;
@@ -535,7 +557,7 @@ hash_window(uint32_t * scan_genome, uint goff, uint glen) {
 
 /* Initialize cache */
 static inline void
-NO_cache_init(struct read_entry * re) {
+cache_init(struct read_entry * re) {
   assert(re != NULL && re->cache == NULL && re->cache_sz == 0);
 
   re->cache = (struct cache_entry *)
@@ -545,7 +567,7 @@ NO_cache_init(struct read_entry * re) {
 
 /* Possibly double cache size; moving the tail of the queue */
 static inline void
-NO_cache_maybe_resize(struct read_entry * re) {
+cache_maybe_resize(struct read_entry * re) {
   assert(re != NULL && re->cache != NULL && re->cache_sz > 0);
 
   if (re->cache_sz < cache_max_size
@@ -553,7 +575,8 @@ NO_cache_maybe_resize(struct read_entry * re) {
       // only get 32 if more than .33 calls bypassed
       ) {
     re->cache = (struct cache_entry *)
-      xrealloc(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry));
+      xrealloc_count(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry),
+		     re->cache_sz * sizeof(struct cache_entry));
     if (re->head != re->cache_sz - 1) {
       memcpy(&re->cache[(re->head + 1) + re->cache_sz],
 	     &re->cache[re->head + 1],
@@ -567,7 +590,7 @@ NO_cache_maybe_resize(struct read_entry * re) {
 
 /* Lookup key */
 static inline void
-NO_cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs_pos) {
+cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * abs_pos) {
   assert(re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
   assert(re->head < re->cache_sz);
 
@@ -614,13 +637,13 @@ NO_cache_lookup(struct read_entry * re, hash_t hash_val, uint * rel_pos, uint * 
 
 /* Predicates valid only after lookup call */
 static inline bool
-NO_cache_key_found(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+cache_key_found(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   return *rel_pos < re->cache_sz && re->cache[*abs_pos].count != 0;
 }
 static inline bool
-NO_cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   return *rel_pos == re->cache_sz;
@@ -628,7 +651,7 @@ NO_cache_is_full(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
 
 /* Add key */
 static inline void
-NO_cache_add_key(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
+cache_add_key(struct read_entry * re, uint * rel_pos, uint * abs_pos) {
   assert (re != NULL && re->cache != NULL && rel_pos != NULL && abs_pos != NULL);
 
   *abs_pos = (re->head + 1) % re->cache_sz;
@@ -900,27 +923,14 @@ scan(int contig_num, bool revcmpl)
 		  if (re->cache_sz == 0) {
 		    add_to_stat64(&reads_filtered, 1);
 
-		    //cache_init(re);
-		    re->cache = (struct cache_entry *)
-		      xcalloc(cache_min_size * sizeof(struct cache_entry));
-		    re->cache_sz = cache_min_size;
+		    cache_init(re);
 		  }
 
 		  hash_val = hash_window(scan_genome, goff, glen);
 		  //fprintf(stderr, "%08llX\n", (long long unsigned int)hash_val);
-		  //cache_lookup(re, hash_val, &rel_pos, &abs_pos);
-		  (abs_pos) = re->head;
-		  (rel_pos) = 0;
-		  while (rel_pos < re->cache_sz
-			 && re->cache[abs_pos].count != 0
-			 && re->cache[abs_pos].hash_val != hash_val) {
-		    (rel_pos)++;
-		    (abs_pos) = ((abs_pos) + re->cache_sz - 1) % re->cache_sz; // -= 1 mod ..
-		  }
+		  cache_lookup(re, hash_val, &rel_pos, &abs_pos);
 
-		  if (//cache_key_found(re, &rel_pos, &abs_pos)
-		      rel_pos < re->cache_sz && re->cache[abs_pos].count != 0
-		      ) {
+		  if (cache_key_found(re, &rel_pos, &abs_pos)) {
 		    /*
 		     * We have run vector SW on this region before; use previous score.
 		     */
@@ -939,27 +949,10 @@ scan(int contig_num, bool revcmpl)
 		    }
 
 		    /* save score */
-		    if (//cache_is_full(re, &rel_pos, &abs_pos)
-			rel_pos == re->cache_sz
-			) {
-		      //cache_maybe_resize(re);
-		      if (re->cache_sz < cache_max_size) {
-			re->cache = (struct cache_entry *)
-			  xrealloc(re->cache, 2 * re->cache_sz * sizeof(struct cache_entry));
-			if (re->head != re->cache_sz - 1) {
-			  memcpy(&re->cache[(re->head + 1) + re->cache_sz],
-				 &re->cache[re->head + 1],
-				 ((re->cache_sz - 1) - re->head) * sizeof(struct cache_entry));
-			}
-			memset(&re->cache[re->head + 1], 0,
-			       re->cache_sz * sizeof(struct cache_entry));
-			re->cache_sz *= 2;
-		      }
-		    }
+		    if (cache_is_full(re, &rel_pos, &abs_pos))
+		      cache_maybe_resize(re);
 
-		    //cache_add_key(re, &rel_pos, &abs_pos);
-		    abs_pos = (re->head + 1) % re->cache_sz;
-		    re->head = abs_pos;
+		    cache_add_key(re, &rel_pos, &abs_pos);
 		    re->cache[abs_pos].hash_val = hash_val;
 		    re->cache[abs_pos].count = 1;
 		    re->cache[abs_pos].score = score1;
@@ -1039,10 +1032,10 @@ readalloc()
     bytes_scan = reads_allocated * read_scan_size;
     bytes = reads_allocated * sizeof(struct read_entry);
 
-    reads_scan = (struct read_entry_scan *)xrealloc(reads_scan, bytes_scan);
+    reads_scan = (struct read_entry_scan *)xrealloc_count(reads_scan, bytes_scan, prevbytes_scan);
     memset((char *)reads_scan + prevbytes_scan, 0, bytes_scan - prevbytes_scan);
 
-    reads = (struct read_entry *)xrealloc(reads, bytes);
+    reads = (struct read_entry *)xrealloc_count(reads, bytes, prevbytes);
     memset((char *)reads + prevbytes, 0, bytes - prevbytes);
   }
 
@@ -1215,7 +1208,8 @@ load_reads_lscs(const char *file)
 				
 	readmap_len[sn][mapidx]++;
 	readmap[sn][mapidx] = (struct readmap_entry *)
-	  xrealloc(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1));
+	  xrealloc_count(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1),
+			 sizeof(struct readmap_entry)*readmap_len[sn][mapidx]);
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset = re->offset;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = i;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = i;
@@ -1370,7 +1364,8 @@ load_reads_dag(const char *file)
 				
 	readmap_len[sn][mapidx]++;
 	readmap[sn][mapidx] = (struct readmap_entry *)
-	  xrealloc(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1));
+	  xrealloc_count(readmap[sn][mapidx], sizeof(struct readmap_entry)*(readmap_len[sn][mapidx] + 1),
+			 sizeof(struct readmap_entry)*readmap_len[sn][mapidx]);
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset = re->offset;
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = UINT16_MAX; // ???
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = UINT16_MAX; // ???
@@ -2101,6 +2096,11 @@ print_statistics()
     fclose(reads_profile_file);
   }
 #endif
+
+#ifdef MEMORY_STATS
+  fprintf(stderr, "        Memory allocated:       %s\n",
+	  comma_integer(get_memory_usage()));
+#endif
     
 }
 
@@ -2109,7 +2109,8 @@ add_spaced_seed(const char *seedStr)
 {
   int i;
 
-  seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
+  seed = (struct seed_type *)xrealloc_count(seed, sizeof(struct seed_type) * (n_seeds + 1),
+					    sizeof(struct seed_type) * n_seeds);
   seed[n_seeds].mask[0] = 0x0;
   seed[n_seeds].span = strlen(seedStr);
   seed[n_seeds].weight = strchrcnt(seedStr, '1');

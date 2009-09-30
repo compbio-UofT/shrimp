@@ -22,6 +22,10 @@
 
 shrimp_mode_t shrimp_mode = MODE_LETTER_SPACE;
 
+#ifdef MEMORY_STATS
+uint64_t memory_allocated = 0;
+#endif
+
 void
 set_mode_from_argv(char **argv)
 {
@@ -151,6 +155,10 @@ xmalloc(size_t size)
 		exit(1);
 	}
 
+#ifdef MEMORY_STATS
+	memory_allocated += size;
+#endif
+
 	return (ptr);
 } 
 
@@ -165,6 +173,10 @@ xcalloc(size_t size)
     exit(1);
   }
 
+#ifdef MEMORY_STATS
+  memory_allocated += size;
+#endif
+
   return ptr;
 }
 
@@ -172,14 +184,40 @@ void *
 xrealloc(void *ptr, size_t size)
 {
 
-	ptr = realloc(ptr, size);
-	if (ptr == NULL) {
-		fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
-		exit(1);
-	}
+  ptr = realloc(ptr, size);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
 
-	return (ptr);
+  return (ptr);
 }
+
+void *
+xrealloc_count(void *ptr, size_t size, size_t old_size)
+{
+
+  ptr = realloc(ptr, size);
+  if (ptr == NULL) {
+    fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
+    exit(1);
+  }
+
+#ifdef MEMORY_STATS
+  memory_allocated += (size - old_size);
+#endif
+
+  return (ptr);
+}
+
+#ifdef MEMORY_STATS
+uint64_t
+get_memory_usage()
+{
+  return memory_allocated;
+}
+#endif
+
 
 char *
 xstrdup(const char *str)
