@@ -147,3 +147,6 @@ clean:
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f
+
+cleanall: clean
+	find . -name '*~' |xargs rm -f

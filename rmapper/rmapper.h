@@ -22,20 +22,37 @@ extern const bool use_dag;
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
 #define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */
 
-static int const default_spaced_seeds_cs_cnt = 4;
-static char const * const default_spaced_seeds_cs[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+#define DEF_MAX_N_DEFAULT_SEEDS 4
+typedef char const * const default_seed_array_t[DEF_MAX_N_DEFAULT_SEEDS];
 
-static int const default_spaced_seeds_ls_cnt = 4;
-static char const * const default_spaced_seeds_ls[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+static int const default_seed_min_weight_cs = 8;
+static int const default_seed_max_weight_cs = 12;
+static int const default_seed_weight_cs = 12;
+static int const default_seeds_cnt_cs[5] = { 1, 1, 4, 4, 4 };
+static default_seed_array_t const default_seeds_cs[5]=
+  { { "1111001111" },
+    { "11111001111" },
+    { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
+    { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
+    { "111110001111111", "111100111001001111", "111001001000111001111", "1111001000010001001001111" } };
 
-static int const default_spaced_seeds_hs_cnt = 4;
-static char const * const default_spaced_seeds_hs[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+static int const default_seed_min_weight_ls = 8;
+static int const default_seed_max_weight_ls = 12;
+static int const default_seed_weight_ls = 12;
+static int const default_seeds_cnt_ls[5] = { 1, 1, 4, 4, 4 };
+static default_seed_array_t const default_seeds_ls[5] =
+  { { "111101111" },
+    { "1111101111" },
+    { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
+    { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
+    { "111101101011111", "111010110011001111", "1110110001011010111", "11110010100000100110111" } };
+
+static int const default_seed_min_weight_hs = 7;
+static int const default_seed_max_weight_hs = 7;
+static int const default_seed_weight_hs = 7;
+static int const default_seeds_cnt_hs[1] = { 1 };
+static default_seed_array_t const default_seeds_hs[1] =
+  { { "11110111" } };
 
 /* DAG Scores/Parameters */
 #define DEF_DAG_EPSILON		  0

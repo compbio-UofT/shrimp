@@ -2053,25 +2053,50 @@ add_spaced_seed(const char *seedStr)
 }
 
 
-static void
-load_default_seeds() {
+/*
+ * Load default seeds of a given weight. If passed -1, load default seeds for default weight.
+ * Returns 1 if there are no default seeds of given weight, 0 otherwise.
+ */
+static int
+load_default_seeds(int requested_weight) {
   int i;
+  int default_seed_weight = 0, default_seed_min_weight = 0, default_seed_max_weight = 0;
+  int const * default_seeds_cnt = NULL;
+  default_seed_array_t * default_seeds = NULL;
 
-  n_seeds = 0;
   switch(shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    for (i = 0; i < default_spaced_seeds_cs_cnt; i++)
-      add_spaced_seed(default_spaced_seeds_cs[i]);
+    default_seed_weight = default_seed_weight_cs;
+    default_seed_min_weight = default_seed_min_weight_cs;
+    default_seed_max_weight = default_seed_max_weight_cs;
+    default_seeds_cnt = default_seeds_cnt_cs;
+    default_seeds = default_seeds_cs;
     break;
   case MODE_LETTER_SPACE:
-    for (i = 0; i < default_spaced_seeds_ls_cnt; i++)
-      add_spaced_seed(default_spaced_seeds_ls[i]);
+    default_seed_weight = default_seed_weight_ls;
+    default_seed_min_weight = default_seed_min_weight_ls;
+    default_seed_max_weight = default_seed_max_weight_ls;
+    default_seeds_cnt = default_seeds_cnt_ls;
+    default_seeds = default_seeds_ls;
     break;
   case MODE_HELICOS_SPACE:
-    for (i = 0; i < default_spaced_seeds_hs_cnt; i++)
-      add_spaced_seed(default_spaced_seeds_hs[i]);
+    default_seed_weight = default_seed_weight_hs;
+    default_seed_min_weight = default_seed_min_weight_hs;
+    default_seed_max_weight = default_seed_max_weight_hs;
+    default_seeds_cnt = default_seeds_cnt_hs;
+    default_seeds = default_seeds_hs;
     break;
   }
+  
+  if (requested_weight == -1)
+    requested_weight = default_seed_weight;
+  if (requested_weight < default_seed_min_weight
+      || requested_weight > default_seed_max_weight)
+    return 1;
+  for (i = 0; i < default_seeds_cnt[requested_weight - default_seed_min_weight]; i++)
+    add_spaced_seed(default_seeds[requested_weight - default_seed_min_weight][i]);
+
+  return 0;
 }
 
 
@@ -2113,7 +2138,8 @@ usage(char * progname, bool full_usage)
     assert(0);
   }
 
-  load_default_seeds();
+  if (n_seeds == 0)
+    load_default_seeds(-1);
 
   slash = strrchr(progname, '/');
   if (slash != NULL)
@@ -2125,11 +2151,12 @@ usage(char * progname, bool full_usage)
   fprintf(stderr, "Parameters:\n");
 
   fprintf(stderr,
-	  "    -s    Spaced Seed(s)                          (default: ");
+	  "    -s    Spaced Seed(s) (weight/span)            (default: ");
   for (sn = 0; sn < n_seeds; sn++) {
     if (sn > 0)
       fprintf(stderr, "                                                            ");
-    fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
+    fprintf(stderr, "%s (%u/%u)%s\n", seed_to_string(sn), seed[sn].weight, seed[sn].span,
+	    (sn == n_seeds - 1? ")" : ","));
   }
 
   fprintf(stderr,
@@ -2340,6 +2367,7 @@ main(int argc, char **argv)
   bool a_gap_open_set, b_gap_open_set;
   bool a_gap_extend_set, b_gap_extend_set;
   char *c;
+  int requested_weight;
 
   set_mode_from_argv(argv);
 
@@ -2377,7 +2405,13 @@ main(int argc, char **argv)
   while ((ch = getopt(argc, argv, optstr)) != -1) {
     switch (ch) {
     case 's':
-      if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
+      if (optarg[0] == 'w') { // request default seeds of given weight
+	requested_weight = atoi(&optarg[1]);
+	if (load_default_seeds(requested_weight)) {
+	  fprintf(stderr, "error: no default seeds of given weight (%d)\n", requested_weight);
+	  exit(1);
+	}
+      } else if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
 	if (!add_spaced_seed(optarg)) {
 	  fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
 	  exit (1);
@@ -2607,7 +2641,7 @@ main(int argc, char **argv)
    * Add default seeds if none specified
    */
   if (n_seeds == 0)
-    load_default_seeds();
+    load_default_seeds(-1);
 
   kmer_to_mapidx = kmer_to_mapidx_orig;
   if (Hflag)
@@ -2697,12 +2731,12 @@ main(int argc, char **argv)
     fputc('\n', stderr);
 
   fprintf(stderr, "Settings:\n");
-  fprintf(stderr, "    Spaced Seed%s:                         %s%s span:%u weight:%u\n",
+  fprintf(stderr, "    Spaced Seed%s (weight/span)            %s%s (%u/%u)\n",
 	  (n_seeds == 1) ? "" : "s", (n_seeds == 1) ? " " : "",
-	  seed_to_string(0), seed[0].span, seed[0].weight);
+	  seed_to_string(0), seed[0].weight, seed[0].span);
   for (i = 1; i < (int)n_seeds; i++) {
-    fprintf(stderr, "                                          %s span:%u weight:%u\n",
-	    seed_to_string(i), seed[i].span, seed[i].weight);
+    fprintf(stderr, "                                          %s (%u/%u)\n",
+	    seed_to_string(i), seed[i].weight, seed[i].span);
   }
   fprintf(stderr, "    Seed Matches per Window:              %u\n",
 	  num_matches);

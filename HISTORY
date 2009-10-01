@@ -4,6 +4,8 @@ $Id$
 	- Proper support for multiple seeds. We now have one readmap per seed,
 	  and we keep track of which seed every kmer originates from.
 	- Seeds can now have different spans and weights.
+	- Parameter -s now accepts: a single seed, or a comma-separated list of
+	  seeds, or "w<weight>" for loading default seeds of weight <weight>.
 	- New meaning for "window length" (-w) parameter. Now, this value
 	  controls the size of the genome window against which a read is
 	  matched. Default is 135% of the read length. To trigger an SW filter
