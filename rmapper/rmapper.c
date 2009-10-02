@@ -139,7 +139,6 @@ static uint64_t kmer_list_entries_scanned;
 static count_t mem_readmap;
 static count_t mem_reads;
 static count_t mem_scores;
-static count_t mem_genomemap;
 
 
 /* Extra stats, computed ifdef EXTRA_STATS */
@@ -2330,9 +2329,8 @@ usage(char * progname, bool full_usage)
 	exit(1);
 }
 
-//real main
 int
-main_real(int argc, char **argv)
+main(int argc, char **argv)
 {
 	char *reads_file, * progname = argv[0];
 	char const * optstr = "";
@@ -2883,17 +2881,4 @@ main_real(int argc, char **argv)
 	print_statistics();
 
 	return (0);
-}
-
-//testing main
-int main(int argc, char **argv){
-	char *genome_file;
-	if (argc > 1){
-		genome_file = argv[1];
-		set_mode_from_argv(argv);
-		load_genome_lscs(genome_file);
-	}
-	if (0){
-		main_real(argc, argv);
-	}
 }

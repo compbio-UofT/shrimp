@@ -15,7 +15,7 @@ override CXXFLAGS+=-static
 endif
 endif
 
-all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
+all: bin/gmapper bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
 
 #
 # rmapper/
@@ -31,6 +31,16 @@ bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
 	$(LN) -sf rmapper bin/rmapper-ls
 
 rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# gmapper /
+#
+
+bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	
+gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

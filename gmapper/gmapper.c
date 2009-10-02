@@ -17,10 +17,18 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
-#include "../common/hash.h"
 
+#include "../common/hash.h"
 #include "../common/fasta.h"
 #include "../common/util.h"
+#include "../gmapper/gmapper.h"
+
+//TODO refactor all of this and ensure that they are loaded
+static struct seed_type *seed = NULL;
+static uint32_t **seed_hash_mask = NULL;
+static uint max_seed_span = 0;
+static uint n_seeds = 0;
+static u_int	nkmers;				/* total kmers of reads loaded*/
 
 /* Kmer to genome index */
 static uint32_t ***genomemap;
@@ -29,6 +37,56 @@ static uint32_t **genomemap_len;
 /* offset info for genome contigs */
 static uint32_t *genome_offsets;
 static uint32_t num_contigs;
+
+static count_t mem_genomemap;
+
+//TODO refactor this
+static size_t
+power(size_t base, size_t exp)
+{
+	size_t result = 1;
+
+	while (exp > 0) {
+		if ((exp % 2) == 1)
+			result *= base;
+		base *= base;
+		exp /= 2;
+	}
+
+	return (result);
+}
+
+//TODO refactor this
+/* pulled off the web; this may or may not be any good */
+static uint32_t
+hash(uint32_t a)
+{
+	a = (a+0x7ed55d16) + (a<<12);
+	a = (a^0xc761c23c) ^ (a>>19);
+	a = (a+0x165667b1) + (a<<5);
+	a = (a+0xd3a2646c) ^ (a<<9);
+	a = (a+0xfd7046c5) + (a<<3);
+	a = (a^0xb55a4f09) ^ (a>>16);
+	return (a);
+}
+
+//TODO refactor this
+/* hash-based version or kmer -> map index function for larger seeds */
+static uint32_t
+kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
+{
+	static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
+
+	uint32_t mapidx = 0;
+	uint i;
+
+	assert(seed_hash_mask != NULL);
+
+	for (i = 0; i < BPTO32BW(max_seed_span); i++)
+		mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
+
+	return mapidx & maxidx;
+}
 
 /*
  * index the kmers in the genome contained in.
@@ -46,9 +104,6 @@ load_genome_lscs(const char *file)
 	uint32_t *kmerWindow;
 	uint sn;
 
-
-	kmer_to_mapidx = kmer_to_mapidx_hash; ///TODO when integrated with rest of program remove
-
 	//allocate memory for the genome map
 	genomemap = (uint32_t ***) xmalloc_c(n_seeds * sizeof(genomemap[0]),
 			&mem_genomemap);
@@ -61,7 +116,7 @@ load_genome_lscs(const char *file)
 		bytes = sizeof(uint32_t) * power(4, HASH_TABLE_POWER);
 
 		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
-		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_readmap);
+		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
 	}
 
 	if (shrimp_mode == MODE_LETTER_SPACE)
@@ -159,7 +214,7 @@ load_genome_lscs(const char *file)
 				if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
 					continue;
 
-				uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
+				uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
 
 				genomemap_len[sn][mapidx]++;
 				genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
@@ -181,4 +236,15 @@ load_genome_lscs(const char *file)
 
 	return (true);
 
+}
+
+//testing main
+//TODO ensure variables are initialized properly.
+int main(int argc, char **argv){
+	char *genome_file;
+	if (argc > 1){
+		genome_file = argv[1];
+		set_mode_from_argv(argv);
+		load_genome_lscs(genome_file);
+	}
 }
