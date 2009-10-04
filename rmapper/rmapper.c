@@ -38,8 +38,9 @@
 /* Seed management */
 static struct seed_type *seed = NULL;
 static uint32_t **seed_hash_mask = NULL;
-static uint n_seeds = 0;
-static uint max_seed_span = 0;
+static uint	n_seeds = 0;
+static uint	max_seed_span = 0;
+static int	selected_seed_weight;
 
 /* External parameters */
 static double	window_len		= DEF_WINDOW_LEN;
@@ -64,13 +65,15 @@ static int	dag_ref_mismatch_deletion=DEF_DAG_REF_MISMATCH_DELETION;
 static int	dag_ref_error_insertion	= DEF_DAG_REF_ERROR_INSERTION;
 static double	dag_ref_weighted_thresh = DEF_DAG_REF_WEIGHTED_THRESHOLD;
 
-static int	match_value		= DEF_MATCH_VALUE;
-static int	mismatch_value		= DEF_MISMATCH_VALUE;
-static int	a_gap_open		= DEF_A_GAP_OPEN;
-static int	a_gap_extend		= DEF_A_GAP_EXTEND;
-static int	b_gap_open		= DEF_B_GAP_OPEN;
-static int	b_gap_extend		= DEF_B_GAP_EXTEND;
-static int	xover_penalty		= DEF_XOVER_PENALTY;
+static int	match_score		= DEF_MATCH_VALUE;
+static int	mismatch_score		= DEF_MISMATCH_VALUE;
+static int	a_gap_open_score	= DEF_A_GAP_OPEN;
+static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
+static int	b_gap_open_score	= DEF_B_GAP_OPEN;
+static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
+static int	crossover_score		= DEF_XOVER_PENALTY;
+static int	selected_score_set_id	= default_score_set_id;
+
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
@@ -128,7 +131,6 @@ static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int Mflag = true;			/* print memory usage stats */
 
 /* Scan stats */
 static uint64_t shortest_scanned_kmer_list;
@@ -496,9 +498,9 @@ get_sw_threshold(struct read_entry * re, double which, int readnum)
 	 || (readnum == 2 && shrimp_mode == MODE_HELICOS_SPACE));
 
   if (readnum == 1)
-    return (int)abs_or_pct(which, match_value * re->read1_len);
+    return (int)abs_or_pct(which, match_score * re->read1_len);
   else
-    return (int)abs_or_pct(which, match_value * re->read2_len);
+    return (int)abs_or_pct(which, match_score * re->read2_len);
 }
 
 
@@ -1461,7 +1463,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
     if (goff + glen > genome_len)
       glen = genome_len - goff;
 
-    thresh = (int)abs_or_pct(sw_full_threshold, match_value * re->read1_len);
+    thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read1_len);
 
     /*
      * Hacky Optimisation:
@@ -2015,15 +2017,13 @@ print_statistics()
   }
 #endif
 
-  if (Mflag) {
-    fprintf(stderr, "\n    Memory usage:\n");
-    fprintf(stderr, "        Readmap:                %s\n",
-	    comma_integer(count_get_count(&mem_readmap)));
-    fprintf(stderr, "        Reads:                  %s\n",
-	    comma_integer(count_get_count(&mem_reads)));
-    fprintf(stderr, "        Scores:                 %s\n",
-	    comma_integer(count_get_count(&mem_scores)));
-  }
+  fprintf(stderr, "\n    Memory usage:\n");
+  fprintf(stderr, "        Readmap:                %s\n",
+	  comma_integer(count_get_count(&mem_readmap)));
+  fprintf(stderr, "        Reads:                  %s\n",
+	  comma_integer(count_get_count(&mem_reads)));
+  fprintf(stderr, "        Scores:                 %s\n",
+	  comma_integer(count_get_count(&mem_scores)));
 }
 
 static bool
@@ -2060,27 +2060,24 @@ add_spaced_seed(const char *seedStr)
 static int
 load_default_seeds(int requested_weight) {
   int i;
-  int default_seed_weight = 0, default_seed_min_weight = 0, default_seed_max_weight = 0;
+  int default_seed_min_weight = 0, default_seed_max_weight = 0;
   int const * default_seeds_cnt = NULL;
   default_seed_array_t * default_seeds = NULL;
 
   switch(shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    default_seed_weight = default_seed_weight_cs;
     default_seed_min_weight = default_seed_min_weight_cs;
     default_seed_max_weight = default_seed_max_weight_cs;
     default_seeds_cnt = default_seeds_cnt_cs;
     default_seeds = default_seeds_cs;
     break;
   case MODE_LETTER_SPACE:
-    default_seed_weight = default_seed_weight_ls;
     default_seed_min_weight = default_seed_min_weight_ls;
     default_seed_max_weight = default_seed_max_weight_ls;
     default_seeds_cnt = default_seeds_cnt_ls;
     default_seeds = default_seeds_ls;
     break;
   case MODE_HELICOS_SPACE:
-    default_seed_weight = default_seed_weight_hs;
     default_seed_min_weight = default_seed_min_weight_hs;
     default_seed_max_weight = default_seed_max_weight_hs;
     default_seeds_cnt = default_seeds_cnt_hs;
@@ -2089,7 +2086,7 @@ load_default_seeds(int requested_weight) {
   }
   
   if (requested_weight == -1)
-    requested_weight = default_seed_weight;
+    requested_weight = selected_seed_weight;
   if (requested_weight < default_seed_min_weight
       || requested_weight > default_seed_max_weight)
     return 1;
@@ -2185,9 +2182,11 @@ usage(char * progname, bool full_usage)
 	  "    -o    Maximum Hits per Read                   (default: %d)\n",
 	  DEF_NUM_OUTPUTS);
 
+  /*
   fprintf(stderr,
 	  "    -r    Maximum Read Length                     (default: %d)\n",
 	  DEF_MAX_READ_LEN);
+  */
 
   fprintf(stderr,
 	  "    -d    Kmer Std. Deviation Limit               (default: %d%s)"
@@ -2340,9 +2339,6 @@ usage(char * progname, bool full_usage)
 	  "    -U    Print Unmapped Read Names in Output           (default: "
 	  "disabled)\n");
   fprintf(stderr,
-	  "    -M    Toggle brief memory usage statistics          (default: %s)\n",
-	  Mflag? "enabled" : "disabled");
-  fprintf(stderr,
 	  "    -?    Full list of parameters and options\n");
 
   if (full_usage) {
@@ -2364,31 +2360,33 @@ main(int argc, char **argv)
   char **genome_files;
   int i, ch, ret, ngenome_files;
   u_int max_window_len;
-  bool a_gap_open_set, b_gap_open_set;
-  bool a_gap_extend_set, b_gap_extend_set;
+  bool a_gap_open_score_set = false, b_gap_open_score_set = false;
+  bool a_gap_extend_score_set = false, b_gap_extend_score_set = false;
+  bool match_score_set = false, mismatch_score_set = false, crossover_score_set = false;
   char *c;
   int requested_weight;
 
   set_mode_from_argv(argv);
 
-  a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
-
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:D:ZY:MW:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:D:ZY:W:M:";
+    selected_seed_weight = default_seed_weight_cs;
     break;
   case MODE_LETTER_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:D:ZY:MW:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:D:ZY:W:M:";
+    selected_seed_weight = default_seed_weight_ls;
     break;
   case MODE_HELICOS_SPACE:
-    optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUD:ZY:MW:";
-    match_value = DEF_MATCH_VALUE_DAG;
-    mismatch_value = DEF_MISMATCH_VALUE_DAG;
-    a_gap_open = DEF_A_GAP_OPEN_DAG;
-    b_gap_open = DEF_B_GAP_OPEN_DAG;
-    a_gap_extend = DEF_A_GAP_EXTEND_DAG;
-    b_gap_extend = DEF_B_GAP_EXTEND_DAG;
+    optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUD:ZY:W:";
+    selected_seed_weight = default_seed_weight_hs;
+    match_score = DEF_MATCH_VALUE_DAG;
+    mismatch_score = DEF_MISMATCH_VALUE_DAG;
+    a_gap_open_score = DEF_A_GAP_OPEN_DAG;
+    b_gap_open_score = DEF_B_GAP_OPEN_DAG;
+    a_gap_extend_score = DEF_A_GAP_EXTEND_DAG;
+    b_gap_extend_score = DEF_B_GAP_EXTEND_DAG;
     sw_vect_threshold = DEF_SW_VECT_THRESHOLD_DAG;
     break;
   default:
@@ -2493,30 +2491,33 @@ main(int argc, char **argv)
       dag_ref_weighted_thresh = atof(optarg);
       break;
     case 'm':
-      match_value = atoi(optarg);
+      match_score_set = true;
+      match_score = atoi(optarg);
       break;
     case 'i':
-      mismatch_value = atoi(optarg);
+      mismatch_score_set = true;
+      mismatch_score = atoi(optarg);
       break;
     case 'g':
-      a_gap_open_set = true;
-      a_gap_open = atoi(optarg);
+      a_gap_open_score_set = true;
+      a_gap_open_score = atoi(optarg);
       break;
     case 'q':
-      b_gap_open_set = true;
-      b_gap_open = atoi(optarg);
+      b_gap_open_score_set = true;
+      b_gap_open_score = atoi(optarg);
       break;
     case 'e':
-      a_gap_extend_set = true;
-      a_gap_extend = atoi(optarg);
+      a_gap_extend_score_set = true;
+      a_gap_extend_score = atoi(optarg);
       break;
     case 'f':
-      b_gap_extend_set = true;
-      b_gap_extend = atoi(optarg);
+      b_gap_extend_score_set = true;
+      b_gap_extend_score = atoi(optarg);
       break;
     case 'x':
       assert(shrimp_mode == MODE_COLOUR_SPACE);
-      xover_penalty = atoi(optarg);
+      crossover_score_set = true;
+      crossover_score = atoi(optarg);
       break;
     case 'h':
       assert(shrimp_mode != MODE_HELICOS_SPACE);
@@ -2615,9 +2616,6 @@ main(int argc, char **argv)
 	exit(1);
       }
       break;
-    case 'M':
-      Mflag = !Mflag;
-      break;
     case 'W':
       window_overlap = atof(optarg);
       if (window_overlap <= 0.0) {
@@ -2629,6 +2627,26 @@ main(int argc, char **argv)
       break;
     case '?':
       usage(progname, true);
+      break;
+    case 'M':
+      assert(shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE);
+      if (!strcmp(optarg, "fast") || !strcmp(optarg, "3")) {
+	/* 4 seeds of weight 12; n=4; new scores */
+	/* nothing to do; this is the default */
+      } else if (!strcmp(optarg, "medium") || !strcmp(optarg, "2")) {
+	/* single seed of weight 9; n=3; old scores */
+	selected_seed_weight = 9;
+	num_matches = 3;
+	selected_score_set_id = 0;
+      } else if (!strcmp(optarg, "sensitive") || !strcmp(optarg, "1")) {
+	/* 4 seeds of weight 10; n=2; old scores */
+	selected_seed_weight = 10;
+	num_matches = 2;
+	selected_score_set_id = 0;
+      } else {
+	fprintf(stderr, "error: unrecognized mode (%s)\n", optarg);
+	exit(1);
+      }
       break;
     default:
       usage(progname, false);
@@ -2642,6 +2660,21 @@ main(int argc, char **argv)
    */
   if (n_seeds == 0)
     load_default_seeds(-1);
+
+  if (!match_score_set)
+    match_score = default_score_set[selected_score_set_id][0];
+  if (!mismatch_score_set)
+    mismatch_score = default_score_set[selected_score_set_id][1];
+  if (!a_gap_open_score_set)
+    a_gap_open_score = default_score_set[selected_score_set_id][2];
+  if (!a_gap_extend_score_set)
+    a_gap_extend_score = default_score_set[selected_score_set_id][3];
+  if (!crossover_score_set)
+    crossover_score = default_score_set[selected_score_set_id][4];
+  if (!b_gap_open_score_set)
+    b_gap_open_score = default_score_set[selected_score_set_id][5];
+  if (!b_gap_extend_score_set)
+    b_gap_extend_score = default_score_set[selected_score_set_id][6];
 
   kmer_to_mapidx = kmer_to_mapidx_orig;
   if (Hflag)
@@ -2694,12 +2727,12 @@ main(int argc, char **argv)
     exit(1);
   }
 
-  if (a_gap_open > 0 || b_gap_open > 0) {
+  if (a_gap_open_score > 0 || b_gap_open_score > 0) {
     fprintf(stderr, "error: invalid gap open penalty\n");
     exit(1);
   }
 
-  if (a_gap_extend > 0 || b_gap_extend > 0) {
+  if (a_gap_extend_score > 0 || b_gap_extend_score > 0) {
     fprintf(stderr, "error: invalid gap extend penalty\n");
     exit(1);
   }
@@ -2715,19 +2748,19 @@ main(int argc, char **argv)
     exit(1);
   }
 
-  if ((a_gap_open_set && !b_gap_open_set)
-      || (a_gap_extend_set && !b_gap_extend_set))
+  if ((a_gap_open_score_set && !b_gap_open_score_set)
+      || (a_gap_extend_score_set && !b_gap_extend_score_set))
     fputc('\n', stderr);
-  if (a_gap_open_set && !b_gap_open_set) {
+  if (a_gap_open_score_set && !b_gap_open_score_set) {
     fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
-    b_gap_open = a_gap_open;
+    b_gap_open_score = a_gap_open_score;
   }
-  if (a_gap_extend_set && !b_gap_extend_set) {
+  if (a_gap_extend_score_set && !b_gap_extend_score_set) {
     fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
-    b_gap_extend = a_gap_extend;
+    b_gap_extend_score = a_gap_extend_score;
   }
-  if ((a_gap_open_set && !b_gap_open_set)
-      || (a_gap_extend_set && !b_gap_extend_set))
+  if ((a_gap_open_score_set && !b_gap_open_score_set)
+      || (a_gap_extend_score_set && !b_gap_extend_score_set))
     fputc('\n', stderr);
 
   fprintf(stderr, "Settings:\n");
@@ -2799,21 +2832,21 @@ main(int argc, char **argv)
 
   fprintf(stderr, "\n");
   fprintf(stderr, "    S-W Match Value:                      "
-	  "%d\n", match_value);
+	  "%d\n", match_score);
   fprintf(stderr, "    S-W Mismatch Value:                   "
-	  "%d\n", mismatch_value);
+	  "%d\n", mismatch_score);
   fprintf(stderr, "    S-W Gap Open Penalty (Ref):           "
-	  "%d\n", a_gap_open);
+	  "%d\n", a_gap_open_score);
   fprintf(stderr, "    S-W Gap Open Penalty (Qry):           "
-	  "%d\n", b_gap_open);
+	  "%d\n", b_gap_open_score);
   fprintf(stderr, "    S-W Gap Extend Penalty (Ref):         "
-	  "%d\n", a_gap_extend);
+	  "%d\n", a_gap_extend_score);
   fprintf(stderr, "    S-W Gap Extend Penalty (Qry):         "
-	  "%d\n", b_gap_extend);
+	  "%d\n", b_gap_extend_score);
 
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     fprintf(stderr, "    S-W Crossover Penalty:                "
-	    "%d\n", xover_penalty);
+	    "%d\n", crossover_score);
   }
 
   if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_HELICOS_SPACE) {
@@ -2868,8 +2901,8 @@ main(int argc, char **argv)
   fprintf(stderr, "  - Maximum window length: %u\n", max_window_len);
 		
 
-  if (sw_vector_setup(max_window_len, longest_read_len, a_gap_open,
-		      a_gap_extend, b_gap_open, b_gap_extend, match_value, mismatch_value,
+  if (sw_vector_setup(max_window_len, longest_read_len, a_gap_open_score,
+		      a_gap_extend_score, b_gap_open_score, b_gap_extend_score, match_score, mismatch_score,
 		      shrimp_mode == MODE_COLOUR_SPACE, false)) {
     fprintf(stderr, "failed to initialise vector "
 	    "Smith-Waterman (%s)\n", strerror(errno));
@@ -2879,12 +2912,12 @@ main(int argc, char **argv)
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     /* XXX - a vs. b gap */
     ret = sw_full_cs_setup(max_window_len, longest_read_len,
-			   a_gap_open, a_gap_extend, match_value, mismatch_value,
-			   xover_penalty, false, anchor_width);
+			   a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+			   crossover_score, false, anchor_width);
   } else {
     ret = sw_full_ls_setup(max_window_len, longest_read_len,
-			   a_gap_open, a_gap_extend, b_gap_open, b_gap_extend,
-			   match_value, mismatch_value, false, anchor_width);
+			   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+			   match_score, mismatch_score, false, anchor_width);
   }
   if (ret) {
     fprintf(stderr, "failed to initialise scalar "
