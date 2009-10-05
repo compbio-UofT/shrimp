@@ -1,6 +1,6 @@
 $Id$
 
-README for SHRiMP: SHort Read Mapping Package version 1.2.1
+README for SHRiMP: SHort Read Mapping Package version 1.3.0
 http://compbio.cs.toronto.edu/shrimp
 
 This  document describes the  programs of  which SHRiMP  is comprised, including
@@ -21,6 +21,11 @@ SHRiMP is brought to you by:
 	Matei David
 
 The authors may be contacted at shrimp at cs dot toronto dot edu.
+
+We would like to thank Dr. Lucian Ilie of the  University of Western Ontario for
+providing  us  with sets  of spaced  seeds  especially designed  to achieve good
+sensitivity.
+
 
 --------------------------------------------------------------------------------
 Table of Contents
@@ -47,22 +52,22 @@ Sequencing (NGS)   machines  in mind. It   allows  for  rapid mapping,  accurate
 alignment,  and p-value   computation  for Illumina/Solexa   as well as  Applied
 Biosystems'  SOLiD colourspace   genomic representation. SHRiMP  is   a suite of
 several    programs, which,  employed   in   succession, search for  appropriate
-alignments, analyse alignment statistics, and  print  out visual alignments  for
+alignments, analyze alignment statistics, and  print  out visual alignments  for
 further study.
 
-SHRiMP uses two techniques   to rapidly match  reads to   a  genome: we  use  an
-effective implementation of  the  q-gram filtering technique  (utilizing  spaced
-seeds) to  rapidly identify  potentially  homologous  regions, and   a  vectored
-Smith-Waterman implementation    to speed up the  accurate    alignment of these
-regions  to reads. We also include  in the SHRiMP  package  tools to analyze the
-resultant  alignments, including programs  that  compute for every alignment the
-probability that the  match   would occur  by  chance   (in a genome   with  iid
+SHRiMP uses two techniques to    rapidly match reads    to a genome: we use   an
+effective implementation  of  the q-gram filtering  technique  (utilizing spaced
+seeds)  to rapidly  identify potentially  homologous   regions, and  a  vectored
+Smith-Waterman  implementation  to speed up  the    accurate alignment of  these
+regions to  reads. We also  include in the SHRiMP  package  tools to analyze the
+resultant alignments, including programs that  compute  for every alignment  the
+probability   that the match  would   occur by chance (in   a   genome with  iid
 nucleotides), a prettyprint tool that can help visualize the alignments for each
-read, and  a variation output tool (shrimp_var)  what will output the variations
-detected for a specific hit in detail. For AB SOLiD  colour space reads we use a
-novel  color-space  to   letter-space   Smith Waterman  algorithm   to  identify
+read, and a  variation output tool  (shrimp_var) what will output the variations
+detected for a specific hit in detail. For AB SOLiD colour  space reads we use a
+novel  color-space to   letter-space   Smith  Waterman  algorithm   to  identify
 sequencing errors as well as SNPs and micro-indels. The details of the algorithm
-and the  methods we use to compute  p-values are layed out in  Sections 6 and 7,
+and the  methods we use to  compute p-values are laid out  in Sections  6 and 7,
 respectively.
 
 
@@ -70,7 +75,7 @@ respectively.
 2. Quick Start
 --------------------------------------------------------------------------------
 
-  This section provides a very brief and straightforwrd introduction to using
+  This section provides a very brief and straightforward introduction to using
   SHRiMP. For more details, see Sections 3 and 4.
 
   2.1 Aligning reads
@@ -120,7 +125,7 @@ respectively.
   Use bin/probcalc_mp to combine  the read mappings into  mate pairs. First, one
   should sort the probcalc  output in one large file  (or a binary file with the
   datastructure specified by dbtypes.h/mapping_t). To have one large sorted file
-  pipe the  probcalc output thorugh  '> sort'  and finally combine  all files by
+  pipe the  probcalc output through  '> sort'  and finally combine  all files by
   using '> sort -m'. Finally, run probcalc_mp:
 
   	./probcalc_mp -m  sortedfile -f _F3 -b _R3 -g 3080419480 -M 2000 
@@ -146,7 +151,7 @@ pairs, i.e. 'foo-ls' and 'foo-cs', for letters  and colours, respectively. Other
 utilities lacking any suffix are format-agnostic.
 
 Once 'rmapper' has been run, the standard output format of all alignments may be
-parsed via the  'probcalc'  program. This code   analyses all alignment  output,
+parsed via the  'probcalc'  program. This code   analyzes all alignment  output,
 saving the top 'n' matches per read, and calculates the probability of the match
 randomly occurring in the genome and matching the  read, and the normalized odds
 (P(read match)/P(random)/normalization_factor).  Thresholds can be  set for each
@@ -179,14 +184,21 @@ PLEASE NOTE:
   3)  cd reads
   4)  python $S/utils/splitreads.py 1000 ../reads.csfasta
   5)  cd ..
-  6)  $S/rmapper-cs -m 100 -i -70 -g -100 -e -70 -x -200 -h 70% -v 65% \
+  6)  $S/bin/rmapper-cs -m 8 -i -30 -g -35 -e -7 -x -25 -h 70% -v 65% \
+          -M 70bp,fast \\
+          -o 100 -B \
+          reads/0_to_999.csfasta ciona.fasta > results/ciona.0_to_999.out
+  or
+      $S/bin/rmapper-cs -m 100 -i -70 -g -100 -e -70 -x -200 -h 70% -v 65% \
           -s 111100111 -n 2 -t 4 -w 140% \
           -o 10 -B \
           reads/0_to_999.csfasta ciona.fasta > results/ciona.0_to_999.out
-  7)  $S/probcalc -p 0.4 -t 10 173673243 results/ > ciona.0_to_999.probcalc.out
-  8)  $S/prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
+  7)  $S/bin/probcalc -p 0.4 -t 10 173673243 \
+          results/ > ciona.0_to_999.probcalc.out
+  8)  $S/bin/prettyprint-cs -m 100 -i -70 -g -100 -e -70 -x -200 \
          ciona.0_to_999.probcalc.out genome/ reads/
-  9)  $S/shrimp_var -p ciona.0_to_999.probcalc.out > ciona.0_to_999.probcalc.var 
+  9)  $S/bin/shrimp_var -p \
+         ciona.0_to_999.probcalc.out > ciona.0_to_999.probcalc.var 
 
 Lines 1&2 set up the necessary directory  structure. reads/ contains one or more
 fasta files containing letterspace  or colourspace reads. results/  contains the
@@ -199,27 +211,34 @@ parallelise the computation.
 
 Line 6 maps all reads split into the  file 0_to_999.csfasta against ciona.fasta.
 The various parameters are verbosely documented  later in this file. By default,
-rmapper will  employ  settings geared  toward  human reads  of about   50 bases,
-however, the above  example was tuned specifically for  50bp AB SOLiD reads from
-C. Savignyi.
+rmapper will  employ  settings geared  toward  human reads  of about   50 bases.
 
   Biological Relevance
   --
 
   The options shown on the first line (-m ... -v) are used to set the scores and
-  the score thresholds for matches.  Even though 'rmapper' includes some default
-  settings for these  scores, we  suggest that  you provide your  own scores and
-  score thresholds, because 'rmapper' has no way of knowing what is biologically
-  relevant for the sequences being scanned.
+  the  score  thresholds  for  matches.   Even though  'rmapper'  includes  some
+  sensible default settings for these  scores, we suggest  that you provide your
+  own scores and score thresholds, because 'rmapper' has  no way of knowing what
+  is biologically relevant for the sequences being scanned.
 
-  Sensitivity vs Speed
+  Speed vs Sensitivity
   --
 
-  The options shown on the  second line (-s  ... -w) affect the tradeoff between
-  speed and sensitivity.  By default, 'rmapper' uses 4 spaced seeds of weight 12
-  and requires 4 matches between a read and a genome  window in order to further
-  investigate  that  particular match.  These settings  are targeted for dealing
-  with large (>100,000) number of reads, of about 50bp each. Some guidlines:
+  The  options shown on  the second line  (-M or -s ... -w)  affect the tradeoff
+  between speed and sensitivity.  By  default, 'rmapper' uses  4 spaced seeds of
+  weight 12 and requires 4 matches between  a read and  a genome window in order
+  to further investigate that particular match.  These settings are targeted for
+  dealing with a  large (>100,000) number  of reads,  of  about 50bp  each.
+
+    ********** NEW in SHRiMP 1.3.0
+    * 'rmapper' comes with  several predefined sets of  parameters,  that can be
+    * loaded using the  option '-M' (explained  below).  We _strongly_ reccomend
+    * using one of these sets until becomes familiar with the individual effects
+    * of the other options.
+    **********
+
+ Some further guidlines:
 
     Seeds (-s):
 
@@ -249,8 +268,10 @@ C. Savignyi.
     - By default, reads are aligned against genome windows of 135% the length of
       the read.
 
-    - For smaller reads (e.g.,  35bp or 25bp),  we recommend slightly increasing
-      this to 150% or even 170%.
+    - For  smaller reads (e.g., 35bp  or 25bp), we  recommend increasing this to
+      150% or even 170%.
+
+    - For longer reads, we recommend a slightly lower setting, say 125%.
 
   Note: The options given to 'rmapper' need not  be ordered in  the way they are
   in the example.
@@ -305,14 +326,23 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	[ -M mode ]
 
-	Selects one  of the default sets of  parameters. The possible values are
-	{'fast'/'medium'/'sensitive'}, {'35bp'/'50bp'/'70bp'}. Several modes can
-	be given as '-M 35bp -M sensitive', but you should give at most one mode
-	from each set above. By default, 'rmapper' uses '50bp' and 'fast'.
+	Selects one of the default sets of  parameters.  The possible values are
+	{'fast'/'sensitive'}, {'35bp'/'50bp'/'70bp'}. Several modes can be given
+	as '-M 35bp -M sensitive' or comma-separated as  '-M fast,70bp', but you
+	should  specify  at most one   value from each  set   above. By default,
+	'rmapper' uses '50bp' and 'fast'.
 
-	The values 'fast'/'medium'/'sensitive' provide basic tradeoffs between
-	speed and sensitivity. The values '35bp'/'50bp'/'70bp' load settings
-	suggested for dealing with reads of (around) that length.
+	The values 'fast'/'sensitive' provide basic  tradeoffs between speed and
+	sensitivity. The values '35bp'/'50bp'/'70bp' load settings suggested for
+	dealing with reads of (around) that length.
+
+	The   mode    currently sets:   the    seeds, 'seed_matches_per_window',
+	'seed_taboo_length'   and  'seed_window_length'  (see  their  individual
+	descriptions  below).  If any  of these is explicitly   set with its own
+	flag, that value  overrides the value that  would have been selected  by
+	the mode.
+
+	Modes are not available in Helicos space.
 
 	[ -s spaced_seed ]
 
@@ -321,9 +351,12 @@ run-down of these options (in some strange, non-alphabetical order).
 	matching, whereas 1's dictate positions that must match. A string of all
 	1's will result in a simple kmer scan.
 
-	Multiple  -s arguments may be  provided, in which  case rmapper will use
-	all of the spaced seeds. Note that  currently all spaced seeds must have
-	the same span and weight.
+	Multiple -s  arguments may be  provided, in which  case rmapper will use
+	all of  the spaced  seeds.   Multiple seeds  can  also be specifed  as a
+	comma-separated  list,  e.g., '-s   1101,111011'.  'rmapper' comes  with
+	several predefined sets of spaced seeds  for specific weights. These can
+	be selected by prefixing the weight with a 'w', e.g., '-s w10' loads the
+	default (4) seeds of weight 10.
 
 	Note that, by  default, our implementation  creates a lookup table based
 	on the kmer size (spaced seed 'weight', or number of 1's).  Hence memory
@@ -626,6 +659,7 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	None for now.
 
+
 'probcalc' takes a few optional parameters as well:
 
 	[-g rates_file]
@@ -692,6 +726,7 @@ run-down of these options (in some strange, non-alphabetical order).
  	probcalc normally mandates that results from rmapper for a specific read
  	appear  in at  most  one  file, this   option  does  not have the   same
  	restriction.
+
 
 'probcalc_mp' takes quite a few parameters. 
 
@@ -766,6 +801,7 @@ run-down of these options (in some strange, non-alphabetical order).
 		
 	do not print matepairs with hits on different chromosomes
 
+
 'shrimp_var' takes only few parameters:
 
     Mandatory
@@ -780,6 +816,7 @@ run-down of these options (in some strange, non-alphabetical order).
 		
 	indicator that the  read sequence is included  in the input, as  used by
 	probcalc
+
 		
 --------------------------------------------------------------------------------
 5.0 Output Format
@@ -1046,19 +1083,10 @@ The program website is
 The authors of this software may be contacted at the following e-mail address:
 	shrimp at cs dot toronto dot edu
 
-The individual authors' email addresses are:
-	brudno at cs dot toronto dot edu	(Michael Brudno)
-	rumble at cs dot toronto dot edu	(Stephen M. Rumble)
-However, we generally prefer that you use the shrimp@ address, unless you are
-trying to reach a specific person.
-
 
 --------------------------------------------------------------------------------
 9. Acknowledgements
 --------------------------------------------------------------------------------
-
-We would like to thank Dr. Lucian Ilie of the  University of Western Ontario for
-providing us with sets of spaced seeds designed to achieve good sensitivity.
 
 Development  was performed at the University  of Toronto's Computational Biology
 lab in collaboration with the Stanford University Sidow Lab.

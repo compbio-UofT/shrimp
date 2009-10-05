@@ -35,6 +35,9 @@
 #include "../rmapper/rmapper.h"
 #include "../rmapper/cache.h"
 
+static int	mode_read_length	= def_mode_50bp;
+static int	mode_speed_tradeoff	= def_mode_fast;
+
 /* Seed management */
 static struct seed_type *seed = NULL;
 static uint32_t **seed_hash_mask = NULL;
@@ -72,7 +75,7 @@ static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
 static int	b_gap_open_score	= DEF_B_GAP_OPEN;
 static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
 static int	crossover_score		= DEF_XOVER_PENALTY;
-static int	selected_score_set_id	= default_score_set_id;
+//static int	selected_score_set_id	= default_score_set_id;
 
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
@@ -568,6 +571,9 @@ are_hits_colinear(struct read_entry_scan *res)
   uint i, prev, crt;
 
   ES_count_increment(&es_colin_checks);
+
+  if (shrimp_mode == MODE_HELICOS_SPACE) // no checking in HELICOS mode
+    return 1;
 
   for (i = 1, prev = (res->last_hit + 1) % num_matches, crt = (prev + 1) % num_matches;
        i < num_matches;
@@ -1229,6 +1235,7 @@ load_reads_dag(const char *file)
       exit(1);
     }
     re->read1_len = seq1len;
+    res->read_len = seq1len;
     re->read2_len = seq2len;
 
     longest_read_len = MAX(re->read1_len, longest_read_len);
@@ -1260,7 +1267,7 @@ load_reads_dag(const char *file)
 	/* permit only one kmer reference per read; but update r_idx_end_last */
 	if (readmap[sn][mapidx] != NULL &&
 	    readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset == re->offset) {
-	  readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = UINT16_MAX; // ???
+	  readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = (res->read_len*3)/4; // ???
 	  continue;
 	}
 				
@@ -1270,8 +1277,8 @@ load_reads_dag(const char *file)
 		     sizeof(struct readmap_entry)*readmap_len[sn][mapidx],
 		     &mem_readmap);
 	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].offset = re->offset;
-	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = UINT16_MAX; // ???
-	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = UINT16_MAX; // ???
+	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_first = (res->read_len*3)/4; // ???
+	readmap[sn][mapidx][readmap_len[sn][mapidx] - 1].r_idx_end_last = (res->read_len*3)/4; // ???
 	readmap[sn][mapidx][readmap_len[sn][mapidx]].offset = UINT32_MAX;
 
 	nkmers++;
@@ -2352,6 +2359,107 @@ usage(char * progname, bool full_usage)
 }
 
 
+static int
+set_mode_from_string(char const * s) {
+  if (!strcmp(s, "fast")) {
+    mode_speed_tradeoff = def_mode_fast;
+  } else if (!strcmp(s, "sensitive")) {
+    mode_speed_tradeoff = def_mode_sensitive;
+  } else if (!strcmp(s, "35bp")) {
+    mode_read_length = def_mode_35bp;
+  } else if (!strcmp(s, "50bp")) {
+    mode_read_length = def_mode_50bp;
+  } else if (!strcmp(s, "70bp")) {
+    mode_read_length = def_mode_70bp;
+  } else
+    return 0;
+  return 1;
+}
+
+
+static void
+set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_len_set) {
+  switch (mode_speed_tradeoff) {
+  case def_mode_fast:
+
+    if (n_seeds == 0)
+      load_default_seeds(12);
+    switch (mode_read_length) {
+    case def_mode_35bp:
+
+      if (!num_matches_set)
+	num_matches = 3;
+      if (!window_len_set)
+	window_len = 150.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = 2;
+      break;
+
+    case def_mode_50bp:
+
+      if (!num_matches_set)
+	num_matches = 4;
+      if (!window_len_set)
+	window_len = 135.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = 3;
+      break;
+
+    case def_mode_70bp:
+
+      if (!num_matches_set)
+	num_matches = 6;
+      if (!window_len_set)
+	window_len = 125.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = 4;
+      break;
+
+    }
+    break;
+
+  case def_mode_sensitive:
+    
+    if (n_seeds == 0)
+      load_default_seeds(10);
+    anchor_width = -1;
+    switch (mode_read_length) {
+    case def_mode_35bp:
+
+      if (!num_matches_set)
+	num_matches = 1;
+      if (!window_len_set)
+	window_len = 165.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = -1;
+      break;
+
+    case def_mode_50bp:
+
+      if (!num_matches_set)
+	num_matches = 2;
+      if (!window_len_set)
+	window_len = 150.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = -1;
+      break;
+
+    case def_mode_70bp:
+
+      if (!num_matches_set)
+	num_matches = 3;
+      if (!window_len_set)
+	window_len = 135.0;
+      if (!hit_taboo_len_set)
+	hit_taboo_len = -1;
+      break;
+
+    }
+    break;
+  }
+}
+
+
 int
 main(int argc, char **argv)
 {
@@ -2363,6 +2471,7 @@ main(int argc, char **argv)
   bool a_gap_open_score_set = false, b_gap_open_score_set = false;
   bool a_gap_extend_score_set = false, b_gap_extend_score_set = false;
   bool match_score_set = false, mismatch_score_set = false, crossover_score_set = false;
+  bool num_matches_set = false, window_len_set = false, hit_taboo_len_set = false;
   char *c;
   int requested_weight;
 
@@ -2409,11 +2518,6 @@ main(int argc, char **argv)
 	  fprintf(stderr, "error: no default seeds of given weight (%d)\n", requested_weight);
 	  exit(1);
 	}
-      } else if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
-	if (!add_spaced_seed(optarg)) {
-	  fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
-	  exit (1);
-	}
       } else {
 	c = strtok(optarg, ",");
 	do {
@@ -2426,9 +2530,11 @@ main(int argc, char **argv)
       }
       break;
     case 'n':
+      num_matches_set = true;
       num_matches = atoi(optarg);
       break;
     case 't':
+      hit_taboo_len_set = true;
       hit_taboo_len = atoi(optarg);
       break;
     case '9':
@@ -2436,6 +2542,7 @@ main(int argc, char **argv)
       seed_taboo_len = atoi(optarg);
       break;
     case 'w':
+      window_len_set = true;
       window_len = atof(optarg);
       if (window_len <= 0.0) {
 	fprintf(stderr, "error: invalid window "
@@ -2630,23 +2737,15 @@ main(int argc, char **argv)
       break;
     case 'M':
       assert(shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE);
-      if (!strcmp(optarg, "fast") || !strcmp(optarg, "3")) {
-	/* 4 seeds of weight 12; n=4; new scores */
-	/* nothing to do; this is the default */
-      } else if (!strcmp(optarg, "medium") || !strcmp(optarg, "2")) {
-	/* single seed of weight 9; n=3; old scores */
-	selected_seed_weight = 9;
-	num_matches = 3;
-	selected_score_set_id = 0;
-      } else if (!strcmp(optarg, "sensitive") || !strcmp(optarg, "1")) {
-	/* 4 seeds of weight 10; n=2; old scores */
-	selected_seed_weight = 10;
-	num_matches = 2;
-	selected_score_set_id = 0;
-      } else {
-	fprintf(stderr, "error: unrecognized mode (%s)\n", optarg);
-	exit(1);
-      }
+
+      c = strtok(optarg, ",");
+      do {
+	if (!set_mode_from_string(c)) {
+	  fprintf(stderr, "error: unrecognized mode (%s)\n", c);
+	  exit(1);
+	}
+	c = strtok(NULL, ",");
+      } while (c != NULL);
       break;
     default:
       usage(progname, false);
@@ -2655,12 +2754,15 @@ main(int argc, char **argv)
   argc -= optind;
   argv += optind;
 
-  /*
-   * Add default seeds if none specified
-   */
-  if (n_seeds == 0)
-    load_default_seeds(-1);
+  /* Parameters from mode */
+  if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
+    set_params_from_mode(num_matches_set, window_len_set, hit_taboo_len_set);
+  } else { // helicos
+    if (n_seeds == 0)
+      load_default_seeds(-1);
+  }
 
+  /*
   if (!match_score_set)
     match_score = default_score_set[selected_score_set_id][0];
   if (!mismatch_score_set)
@@ -2675,6 +2777,7 @@ main(int argc, char **argv)
     b_gap_open_score = default_score_set[selected_score_set_id][5];
   if (!b_gap_extend_score_set)
     b_gap_extend_score = default_score_set[selected_score_set_id][6];
+  */
 
   kmer_to_mapidx = kmer_to_mapidx_orig;
   if (Hflag)
@@ -2773,8 +2876,8 @@ main(int argc, char **argv)
   }
   fprintf(stderr, "    Seed Matches per Window:              %u\n",
 	  num_matches);
-  fprintf(stderr, "    Seed Hit Taboo Length:                %u\n",
-	  hit_taboo_len);
+  fprintf(stderr, "    Seed Hit Taboo Length:                %d%s\n",
+	  hit_taboo_len, hit_taboo_len == -1 ? " (disabled)" : "");
 
   if (shrimp_mode != MODE_HELICOS_SPACE) {
     fprintf(stderr, "    Seed Generation Taboo Length:         %u\n",
