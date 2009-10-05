@@ -75,7 +75,7 @@ respectively.
 2. Quick Start
 --------------------------------------------------------------------------------
 
-  This section provides a very brief and straightforward introduction to using
+  This section provides a very  brief and straightforward introduction to  using
   SHRiMP. For more details, see Sections 3 and 4.
 
   2.1 Aligning reads
@@ -207,7 +207,7 @@ probabilities of them being poor matches.
 
 Lines 3&4   split the  reads.csfasta  file,  which  contains a  large  number of
 colourspace reads into smaller chunks. This both saves memory, and permits us to
-parallelise the computation.
+parallelize the computation.
 
 Line 6 maps all reads split into the  file 0_to_999.csfasta against ciona.fasta.
 The various parameters are verbosely documented  later in this file. By default,
@@ -233,12 +233,12 @@ rmapper will  employ  settings geared  toward  human reads  of about   50 bases.
 
     ********** NEW in SHRiMP 1.3.0
     * 'rmapper' comes with  several predefined sets of  parameters,  that can be
-    * loaded using the  option '-M' (explained  below).  We _strongly_ reccomend
+    * loaded using the  option '-M' (explained  below).  We _strongly_ recommend
     * using one of these sets until becomes familiar with the individual effects
     * of the other options.
     **********
 
- Some further guidlines:
+ Some further guidelines:
 
     Seeds (-s):
 
@@ -277,7 +277,7 @@ rmapper will  employ  settings geared  toward  human reads  of about   50 bases.
   in the example.
 
 The output of 'rmapper' is piped into a file in the results/ directory for later
-evaluation.   This step could be   parallelised  across all *_to_*.csfasta files
+evaluation.   This step could be   parallelized  across all *_to_*.csfasta files
 created by splitreads.  Note that the genomic  file  may contain one or  several
 contigs,  that  multiple  genome  files  may  be  specified,  and  that  reverse
 complements are automatically scanned as well.
@@ -351,10 +351,10 @@ run-down of these options (in some strange, non-alphabetical order).
 	matching, whereas 1's dictate positions that must match. A string of all
 	1's will result in a simple kmer scan.
 
-	Multiple -s  arguments may be  provided, in which  case rmapper will use
-	all of  the spaced  seeds.   Multiple seeds  can  also be specifed  as a
-	comma-separated  list,  e.g., '-s   1101,111011'.  'rmapper' comes  with
-	several predefined sets of spaced seeds  for specific weights. These can
+	Multiple -s arguments  may be provided,  in which case rmapper  will use
+	all of the spaced   seeds.  Multiple seeds  can  also be specified as  a
+	comma-separated  list, e.g.,   '-s 1101,111011'.  'rmapper'   comes with
+	several predefined sets of spaced  seeds for specific weights. These can
 	be selected by prefixing the weight with a 'w', e.g., '-s w10' loads the
 	default (4) seeds of weight 10.
 
@@ -369,8 +369,8 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	The number of seed matches per window dictates how many seeds must match
 	within some window length of the genome before that region is considered
-	for Smith-Waterman alignment.  A  lower value will  increase sensitivity
-	while  drastically increasing runnig time. Higher   values will have the
+	for  Smith-Waterman alignment.  A lower  value will increase sensitivity
+	while drastically increasing  running time. Higher  values will have the
 	opposite effect.
 
 	[ -t seed_taboo_length ]
@@ -381,11 +381,11 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	[ -w seed_window_length ]
 
-	This parameter specifies the length in bases (or colours) of a genomic
-	window against which a read is aligned. It is either an absolute value
-	(e.g., '-w 67'), or a percentage of the read length (e.g., '-w 150%').
-	In order for a read to be given consideration by the Smith-Waterman
-	alignment machinery, 'seed_matches_per_window' must be detected within
+	This parameter specifies  the length in bases (or  colours) of a genomic
+	window against which a read  is aligned. It is  either an absolute value
+	(e.g., '-w 67'), or a percentage  of the read  length (e.g., '-w 150%').
+	In  order for  a read  to  be given consideration by  the Smith-Waterman
+	alignment machinery, 'seed_matches_per_window'  must be  detected within
 	such a genomic window.
 
 	[ -W window_overlap_length ]
@@ -453,7 +453,7 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	In letter-space, this parameter determines the  threshold score for both
 	vectored  and full Smith-Waterman alignments. Any  values less than this
-	quanitity will be thrown away.
+	quantity will be thrown away.
 
 	In colour-space,  this parameter affects only   the full Smith- Waterman
 	alignment, which   is performed in   letter-space. The threshold  of the
@@ -492,7 +492,7 @@ run-down of these options (in some strange, non-alphabetical order).
 	This option simply  prints a  progress bar to  stderr during  the spaced
 	seed scan   and  vectored Smith-Waterman phases.  It   exists to  give a
 	general feel for run-time when  testing parameters.  Since it will  slow
-	down execution speed noticably (25% or so), it is not enabled by default
+	down execution speed noticeably (25% or so), it is not enabled by default
 	and should only be used during manual, interactive execution.
 
 	[ -C ]
@@ -582,13 +582,13 @@ run-down of these options (in some strange, non-alphabetical order).
 	[ -x crossover_penalty ]
 
 	This specifies  the  penalty     applied when   transitioning    between
-	Smith-Waterman matricies during the  full scan phase. While the vectored
+	Smith-Waterman matrices during the  full scan phase. While the vectored
 	scan applies  to  colour-space,  the  final full  alignment is  done  in
 	letter-space.   Since each next letter  in   letter-space depends on the
 	previous letter  and colour,  any error on   the colour space  read will
 	affect  all following  letters when converting   to text space. For this
 	reason, we must perform our alignment of all  four possible letter space
-	translations of the read  and permit jumping  between matricies (at  the
+	translations of the read  and permit jumping  between matrices (at  the
 	crossover_penalty) cost, when errors occur.
 
 	[ -v sw_vector_hit_threshold ]
@@ -668,7 +668,7 @@ run-down of these options (in some strange, non-alphabetical order).
 	output file, assume the ones provided in 'rates_file'.  This may be used
 	to run probcalc in parallel by  first running all  instances with the -G
 	flag, concatenating  those outputs into a  single 'rates_file', and then
-	running once more with the -g parameter to generate probabil- ities.
+	running once more with the -g parameter to generate probabilities.- .
 
 	[-n normodds_cutoff]
 
@@ -738,7 +738,7 @@ run-down of these options (in some strange, non-alphabetical order).
 		
 	[-f forward_suffix]
 		
-	the suffix for foward reads. For e.g.: "_F3"
+	the suffix for forward reads. For e.g.: "_F3"
 		
 	[-b reverse_suffix] 
 		
@@ -799,7 +799,7 @@ run-down of these options (in some strange, non-alphabetical order).
 		
 	[-c ] 
 		
-	do not print matepairs with hits on different chromosomes
+	do not print mate-pairs with hits on different chromosomes
 
 
 'shrimp_var' takes only few parameters:
@@ -916,7 +916,7 @@ The 'probcalc_mp' program has the following output:
 	'rev_end'		Reverse End of alignment in genome (inclusive).
 	'rev_pg'		Reverse pgenome.
 	'distance'		Distance between the mate pairs
-	'pgenome'		Probability that the matepair hits were
+	'pgenome'		Probability that the mate-pair hits were
 				generated via common evolutionary events
 				characteristic of the genome.
 	'pchance'		Probability that a mate pair will align with a
@@ -999,7 +999,7 @@ of desired matches within a window,  the window length, and Smith-Waterman score
 thresholds.   For example, aligning   22e6  25-colour  reads against  the  Ciona
 Savignyi genome (173.67 Mbases) takes approximately 4.5 hours on a cluster of 50
 4-way P4 Xeon  3.2GHz  Hyperthreaded CPUs  (200 cores) using   a spaced seed  of
-length  8,  weight 7,  a   window lenght of  30,  2  matches per window,   and a
+length  8,  weight 7,  a   window length of  30,  2  matches per window,   and a
 Smith-Waterman threshold of 1875 (penalties: 100 for  matches, -70 mismatch, -75
 gap open, -25 gap extend, -200 crossover).
 
@@ -1063,12 +1063,12 @@ more distant one will lead to large discrepancies.
 8. Mate Pairs
 --------------------------------------------------------------------------------
 
-The probcalc_mp project takes  in  a sorted file   (ascii or binary filled  with
+The probcalc_mp project  takes  in a  sorted file (ascii  or binary  filled with
 mapping_t structures as defined in dbtypes.h). This is a file with read mappings
-as outputted by the 'probcalc' tool. Assuming the binary file  is sorted by read
-id,    probcalc_mp   will find all     the mate   pair    mappings, assign  them
+as outputted by the 'probcalc' tool. Assuming the binary  file is sorted by read
+id,    probcalc_mp  will  find  all   the    mate  pair   mappings, assign  them
 probability-based confidence values (see the SHRiMP paper), and output them. How
-and which computations are done, and which matepair are outputted depends on the
+and which computations are done, and which mate-pairs are  output depends on the
 given parameters. Due to the  fact that this software is  aimed at being used in
 current NGS research, many parameters are provided.
 
