@@ -17,11 +17,19 @@ endif
 
 all: bin/gmapper bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
 
+
+#
+# mapper /
+#
+
+mapper/mapper.o: mapper/mapper.c mapper/mapper.h
+	 $(CXX) $(CXXFLAGS) -c -o $@ $<
+
 #
 # rmapper/
 #
 
-bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
+bin/rmapper: mapper/mapper.o rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
     common/output.o common/util.o common/anchors.o common/bitmap.o
@@ -37,7 +45,7 @@ rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 # gmapper /
 #
 
-bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o
+bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h

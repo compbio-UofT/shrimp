@@ -22,13 +22,7 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 #include "../gmapper/gmapper.h"
-
-//TODO refactor all of this and ensure that they are loaded
-static struct seed_type *seed = NULL;
-static uint32_t **seed_hash_mask = NULL;
-static uint max_seed_span = 0;
-static uint n_seeds = 0;
-static u_int	nkmers;				/* total kmers of reads loaded*/
+#include "../mapper/mapper.h"
 
 /* Kmer to genome index */
 static uint32_t ***genomemap;
@@ -40,53 +34,11 @@ static uint32_t num_contigs;
 
 static count_t mem_genomemap;
 
-//TODO refactor this
-static size_t
-power(size_t base, size_t exp)
-{
-	size_t result = 1;
+extern size_t
+power(size_t base, size_t exp);
 
-	while (exp > 0) {
-		if ((exp % 2) == 1)
-			result *= base;
-		base *= base;
-		exp /= 2;
-	}
-
-	return (result);
-}
-
-//TODO refactor this
-/* pulled off the web; this may or may not be any good */
-static uint32_t
-hash(uint32_t a)
-{
-	a = (a+0x7ed55d16) + (a<<12);
-	a = (a^0xc761c23c) ^ (a>>19);
-	a = (a+0x165667b1) + (a<<5);
-	a = (a+0xd3a2646c) ^ (a<<9);
-	a = (a+0xfd7046c5) + (a<<3);
-	a = (a^0xb55a4f09) ^ (a>>16);
-	return (a);
-}
-
-//TODO refactor this
-/* hash-based version or kmer -> map index function for larger seeds */
-static uint32_t
-kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
-{
-	static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
-
-	uint32_t mapidx = 0;
-	uint i;
-
-	assert(seed_hash_mask != NULL);
-
-	for (i = 0; i < BPTO32BW(max_seed_span); i++)
-		mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
-
-	return mapidx & maxidx;
-}
+extern uint32_t
+kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn);
 
 /*
  * index the kmers in the genome contained in.

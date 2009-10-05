@@ -177,12 +177,5 @@ struct readmap_entry {
   // aligned to 8B
 };
 
-struct seed_type {
-  bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */
-  uint32_t	span;		/* max 64 (could be uint8_t) */
-  uint32_t	weight;		/* max 64 */
-  // aligned to 8B
-};
-
 
 #endif
