@@ -27,8 +27,6 @@ struct seed_type {
   // aligned to 8B
 };
 
-//TODO ensure that they are loaded in gmapper
-
 extern size_t
 power(size_t base, size_t exp);
 

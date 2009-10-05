@@ -29,7 +29,8 @@ static uint32_t ***genomemap;
 static uint32_t **genomemap_len;
 
 /* offset info for genome contigs */
-static uint32_t *genome_offsets;
+static uint32_t *contig_offsets;
+static char **contig_names;
 static uint32_t num_contigs;
 
 static count_t mem_genomemap;
@@ -39,6 +40,35 @@ power(size_t base, size_t exp);
 
 extern uint32_t
 kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn);
+
+static bool save_genome_map(const char *file) {
+	gzFile fp = gzopen(file, "wb");
+	if (fp == NULL){
+		return false;
+	}
+
+	//write the header
+	uint32_t i;
+	for (i = 0; i < num_contigs; i++) {
+		gzprintf(fp, "%s|%u\n", contig_names[i], contig_offsets[i]);
+	}
+	//write the seeds and genome_maps
+	for (i = 0; i < n_seeds; i++) {
+		gzwrite(fp,&seed[i], sizeof(seed_type));
+
+		//write the genome_map for this seed
+		uint32_t j;
+		uint32_t p = power(4, HASH_TABLE_POWER);
+		gzwrite(fp,&p, sizeof(uint32_t));
+		for (j = 0; j < p; j++) {
+			uint32_t len = genomemap_len[i][j];
+			gzwrite(fp, &len, sizeof(uint32_t));
+			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
+		}
+	}
+	gzclose(fp);
+	return true;
+}
 
 /*
  * index the kmers in the genome contained in.
@@ -91,8 +121,11 @@ load_genome_lscs(const char *file)
 	while(fasta_get_next(fasta, &name, &seq, NULL)){
 
 		num_contigs++;
-		genome_offsets = (uint32_t *)xrealloc(genome_offsets,sizeof(uint32_t)*num_contigs);
-		genome_offsets[num_contigs] = i;
+		contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+		contig_offsets[num_contigs] = i;
+		contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
+		contig_names[num_contigs] = name;
+
 
 		if (strchr(name, '\t') != NULL || strchr(seq, '\t') != NULL) {
 			fprintf(stderr, "error: tabs are not permitted in fasta names "
@@ -134,7 +167,7 @@ load_genome_lscs(const char *file)
 
 		u_int load;
 
-		for (load = 0; i < seqlen + genome_offsets[num_contigs]; i++) {
+		for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
 			uint base, sn;
 
 			base = EXTRACT(read, i);
@@ -198,5 +231,6 @@ int main(int argc, char **argv){
 		genome_file = argv[1];
 		set_mode_from_argv(argv);
 		load_genome_lscs(genome_file);
+		save_genome_map("testfile.gz");
 	}
 }
