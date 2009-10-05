@@ -35,8 +35,8 @@
 #include "../rmapper/rmapper.h"
 #include "../rmapper/cache.h"
 
-static int	mode_read_length	= def_mode_50bp;
-static int	mode_speed_tradeoff	= def_mode_fast;
+static int	mode_read_length	= DEF_MODE_50BP;
+static int	mode_speed_tradeoff	= DEF_MODE_FAST;
 
 /* Seed management */
 static struct seed_type *seed = NULL;
@@ -2362,15 +2362,15 @@ usage(char * progname, bool full_usage)
 static int
 set_mode_from_string(char const * s) {
   if (!strcmp(s, "fast")) {
-    mode_speed_tradeoff = def_mode_fast;
+    mode_speed_tradeoff = DEF_MODE_FAST;
   } else if (!strcmp(s, "sensitive")) {
-    mode_speed_tradeoff = def_mode_sensitive;
+    mode_speed_tradeoff = DEF_MODE_SENSITIVE;
   } else if (!strcmp(s, "35bp")) {
-    mode_read_length = def_mode_35bp;
+    mode_read_length = DEF_MODE_35BP;
   } else if (!strcmp(s, "50bp")) {
-    mode_read_length = def_mode_50bp;
+    mode_read_length = DEF_MODE_50BP;
   } else if (!strcmp(s, "70bp")) {
-    mode_read_length = def_mode_70bp;
+    mode_read_length = DEF_MODE_70BP;
   } else
     return 0;
   return 1;
@@ -2380,12 +2380,12 @@ set_mode_from_string(char const * s) {
 static void
 set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_len_set) {
   switch (mode_speed_tradeoff) {
-  case def_mode_fast:
+  case DEF_MODE_FAST:
 
     if (n_seeds == 0)
       load_default_seeds(12);
     switch (mode_read_length) {
-    case def_mode_35bp:
+    case DEF_MODE_35BP:
 
       if (!num_matches_set)
 	num_matches = 3;
@@ -2395,7 +2395,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
 	hit_taboo_len = 2;
       break;
 
-    case def_mode_50bp:
+    case DEF_MODE_50BP:
 
       if (!num_matches_set)
 	num_matches = 4;
@@ -2405,7 +2405,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
 	hit_taboo_len = 3;
       break;
 
-    case def_mode_70bp:
+    case DEF_MODE_70BP:
 
       if (!num_matches_set)
 	num_matches = 6;
@@ -2418,13 +2418,13 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
     }
     break;
 
-  case def_mode_sensitive:
+  case DEF_MODE_SENSITIVE:
     
     if (n_seeds == 0)
       load_default_seeds(10);
     anchor_width = -1;
     switch (mode_read_length) {
-    case def_mode_35bp:
+    case DEF_MODE_35BP:
 
       if (!num_matches_set)
 	num_matches = 1;
@@ -2434,7 +2434,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
 	hit_taboo_len = -1;
       break;
 
-    case def_mode_50bp:
+    case DEF_MODE_50BP:
 
       if (!num_matches_set)
 	num_matches = 2;
@@ -2444,7 +2444,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
 	hit_taboo_len = -1;
       break;
 
-    case def_mode_70bp:
+    case DEF_MODE_70BP:
 
       if (!num_matches_set)
 	num_matches = 3;

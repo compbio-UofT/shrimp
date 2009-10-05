@@ -9,12 +9,12 @@
 extern const bool use_colours;
 extern const bool use_dag;
 
-static int const def_mode_50bp = 0;
-static int const def_mode_35bp = 1;
-static int const def_mode_70bp = 2;
+#define DEF_MODE_50BP 0
+#define DEF_MODE_35BP 1
+#define DEF_MODE_70BP 2
 
-static int const def_mode_fast = 0;
-static int const def_mode_sensitive = 1;
+#define DEF_MODE_FAST 0
+#define DEF_MODE_SENSITIVE 1
 
 /* default parameters - optimised for human */
 //#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */

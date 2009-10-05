@@ -22,10 +22,6 @@ When building with gcc, execute the following:
     gmake CXX="g++" CXXFLAGS="-O3 -mmmx -msse -msse2"
 GCC 4 users should also supply appropriate -ftree-vectorize and -march flags.
 
-Debugging and assertion features may be turned off by adding "-NDEBUG" to the
-CXXFLAGS argument. However, at present assertions don't appear to cost much and
-any improvement in performance will be very small (probably imperceptible).
-
 You may want to adjust your flags depending on your hardware and compiler
 versions. The above icc CXXFLAGS seemed optimal for both Pentium 4 and Core 2
 architectures.
