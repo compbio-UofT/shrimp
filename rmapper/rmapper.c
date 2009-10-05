@@ -2390,7 +2390,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
       if (!num_matches_set)
 	num_matches = 3;
       if (!window_len_set)
-	window_len = 150.0;
+	window_len = 140.0;
       if (!hit_taboo_len_set)
 	hit_taboo_len = 2;
       break;
@@ -2427,7 +2427,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
     case DEF_MODE_35BP:
 
       if (!num_matches_set)
-	num_matches = 1;
+	num_matches = 2;
       if (!window_len_set)
 	window_len = 165.0;
       if (!hit_taboo_len_set)
