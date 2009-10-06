@@ -52,195 +52,256 @@ static int		match, mismatch;
 static struct swcell   *swmatrix;
 static int8_t	       *backtrace;
 static char	       *dbalign, *qralign;
+static int		anchor_width;
 
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
+
+inline static void
+init_cell(int idx) {
+  swmatrix[idx].score_northwest = 0;
+  swmatrix[idx].score_north = 0;
+  swmatrix[idx].score_west = 0;
+
+  swmatrix[idx].back_northwest = 0;
+  swmatrix[idx].back_north = 0;
+  swmatrix[idx].back_west = 0;
+}
+
+
 static int
-full_sw(int lena, int lenb, int threshscore, int maxscore,
-    int *iret, int *jret, bool revcmpl)
+full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret, bool revcmpl,
+	struct anchor * anchors, uint anchors_cnt)
 {
-	int i, j;
-	int sw_band, ne_band;
-	int score, ms, a_go, a_ge, b_go, b_ge, tmp;
-	int8_t tmp2;
+  int i, j;
+  //int sw_band, ne_band;
+  int score, ms, a_go, a_ge, b_go, b_ge, tmp;
+  int8_t tmp2;
+  struct anchor rectangle;
 
-	/* shut up gcc */
-	j = 0;
+  /* shut up gcc */
+  j = 0;
 
-	score = 0;
-	a_go = a_gap_open;
-	a_ge = a_gap_ext;
-	b_go = b_gap_open;
-	b_ge = b_gap_ext;
+  score = 0;
+  a_go = a_gap_open;
+  a_ge = a_gap_ext;
+  b_go = b_gap_open;
+  b_ge = b_gap_ext;
 
-	for (i = 0; i < lena + 1; i++) {
-		int idx = i;
+  if (anchors != NULL && anchor_width >= 0) {
+    join_anchors(anchors, anchors_cnt, &rectangle);
+    widen_anchor(&rectangle, (uint)anchor_width);
+  } else {
+    struct anchor tmp_anchors[2];
 
-		swmatrix[idx].score_northwest = 0;
-		swmatrix[idx].score_north = 0;
-		swmatrix[idx].score_west = 0;
+    tmp_anchors[0].x = 0;
+    tmp_anchors[0].y = (int16_t)((lenb * match - threshscore) / match);
+    tmp_anchors[0].length = 1;
+    tmp_anchors[0].width = 1;
+    tmp_anchors[0].more_than_once = 0;
 
-		swmatrix[idx].back_northwest = 0;
-		swmatrix[idx].back_north = 0;
-		swmatrix[idx].back_west = 0;
+    tmp_anchors[1].x = (int16_t)(lena - 1);
+    tmp_anchors[1].y = (int16_t)(lenb - 1 - tmp_anchors[0].y);
+    tmp_anchors[1].length = 1;
+    tmp_anchors[1].width = 1;
+    tmp_anchors[1].more_than_once = 0;
+
+    join_anchors(tmp_anchors, 2, &rectangle);
+  }
+
+  for (j = 0; j < lena + 1; j++) {
+    init_cell(j);
+  }
+
+  /*
+  for (i = 0; i < lenb + 1; i++) {
+    int idx = i * (lena + 1);
+
+    swmatrix[idx].score_northwest = 0;
+    swmatrix[idx].score_north = 0;
+    swmatrix[idx].score_west = 0;
+
+    swmatrix[idx].back_northwest = 0;
+    swmatrix[idx].back_north = 0;
+    swmatrix[idx].back_west = 0;
+  }
+  */
+
+  /*
+   * Figure out our band.
+   *   We can actually skip computation of a significant number of
+   *   cells, which could never be part of an alignment corresponding
+   *   to our threshhold score.
+   */
+  //sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
+  //ne_band = lena - (lenb - sw_band);
+
+  for (i = 0; i < lenb; i++) {
+    /*
+     * computing row i of virtual matrix, stored in row i+1
+     */
+    int x_min, x_max;
+
+    get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
+    //if (x_min > 0) {
+    init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
+    //}
+
+    swcells += x_max - x_min + 1;
+
+    for (j = x_min; j <= x_max; j++) {
+      /*
+       * computing column j of virtual matrix, stored in column j+1
+       */
+      struct swcell *cell_nw, *cell_n, *cell_w, *cell_cur;
+
+      cell_nw  = &swmatrix[i * (lena + 1) + j];
+      cell_n   = cell_nw + 1; 
+      cell_w   = cell_nw + (lena + 1);
+      cell_cur = cell_w + 1;
+
+      /* banding */
+      //if (i >= sw_band + j) {
+      //memset(cell_cur, 0, sizeof(*cell_cur));
+      //continue;
+      //}
+      //if (j >= ne_band + i) {
+      //memset(cell_cur, 0, sizeof(*cell_cur));
+      //break;
+      //}
+
+      /*
+       * northwest
+       */
+      ms = (db[j] == qr[i]) ? match : mismatch;
+
+      if (!revcmpl) {
+	tmp  = cell_nw->score_northwest + ms;
+	tmp2 = FROM_NORTHWEST_NORTHWEST;
+
+	if (cell_nw->score_north + ms > tmp) {
+	  tmp  = cell_nw->score_north + ms;
+	  tmp2 = FROM_NORTHWEST_NORTH;
 	}
 
-	for (i = 0; i < lenb + 1; i++) {
-		int idx = i * (lena + 1);
+	if (cell_nw->score_west + ms > tmp) {
+	  tmp  = cell_nw->score_west + ms;
+	  tmp2 = FROM_NORTHWEST_WEST;
+	}
+      } else {
+	tmp  = cell_nw->score_west + ms;
+	tmp2 = FROM_NORTHWEST_WEST;
 
-		swmatrix[idx].score_northwest = 0;
-		swmatrix[idx].score_north = -a_go;
-		swmatrix[idx].score_west = -a_go;
-
-		swmatrix[idx].back_northwest = 0;
-		swmatrix[idx].back_north = 0;
-		swmatrix[idx].back_west = 0;
+	if (cell_nw->score_north + ms > tmp) {
+	  tmp  = cell_nw->score_north + ms;
+	  tmp2 = FROM_NORTHWEST_NORTH;
 	}
 
-	/*
-	 * Figure out our band.
-	 *   We can actually skip computation of a significant number of
-	 *   cells, which could never be part of an alignment corresponding
-	 *   to our threshhold score.
-	 */
-	sw_band = ((lenb * match - threshscore + match - 1) / match) + 1;
-	ne_band = lena - (lenb - sw_band);
+	if (cell_nw->score_northwest + ms > tmp) {
+	  tmp  = cell_nw->score_northwest + ms;
+	  tmp2 = FROM_NORTHWEST_NORTHWEST;
+	}
+      }
 
-	for (i = 0; i < lenb; i++) {
-		for (j = 0; j < lena; j++) {
-                        struct swcell *cell_nw, *cell_n, *cell_w, *cell_cur;
+      if (tmp <= 0)
+	tmp = tmp2 = 0;
 
-                        cell_nw  = &swmatrix[i * (lena + 1) + j];
-                        cell_n   = cell_nw + 1; 
-                        cell_w   = cell_nw + (lena + 1);
-                        cell_cur = cell_w + 1;
-
-			/* banding */
-			if (i >= sw_band + j) {
-				memset(cell_cur, 0, sizeof(*cell_cur));
-				continue;
-			}
-			if (j >= ne_band + i) {
-				memset(cell_cur, 0, sizeof(*cell_cur));
-				break;
-			}
-
-			/*
-			 * northwest
-			 */
-			ms = (db[j] == qr[i]) ? match : mismatch;
-
-			if (!revcmpl) {
-				tmp  = cell_nw->score_northwest + ms;
-				tmp2 = FROM_NORTHWEST_NORTHWEST;
-
-				if (cell_nw->score_north + ms > tmp) {
-					tmp  = cell_nw->score_north + ms;
-					tmp2 = FROM_NORTHWEST_NORTH;
-				}
-
-				if (cell_nw->score_west + ms > tmp) {
-					tmp  = cell_nw->score_west + ms;
-					tmp2 = FROM_NORTHWEST_WEST;
-				}
-			} else {
-				tmp  = cell_nw->score_west + ms;
-				tmp2 = FROM_NORTHWEST_WEST;
-
-				if (cell_nw->score_north + ms > tmp) {
-					tmp  = cell_nw->score_north + ms;
-					tmp2 = FROM_NORTHWEST_NORTH;
-				}
-
-				if (cell_nw->score_northwest + ms > tmp) {
-					tmp  = cell_nw->score_northwest + ms;
-					tmp2 = FROM_NORTHWEST_NORTHWEST;
-				}
-			}
-
-			if (tmp <= 0)
-				tmp = tmp2 = 0;
-
-			cell_cur->score_northwest = tmp;
-			cell_cur->back_northwest  = tmp2;
+      cell_cur->score_northwest = tmp;
+      cell_cur->back_northwest  = tmp2;
 
 
-			/*
-			 * north
-			 */
-			if (!revcmpl) {
-				tmp  = cell_n->score_northwest - b_go - b_ge;
-				tmp2 = FROM_NORTH_NORTHWEST;
+      /*
+       * north
+       */
+      if (!revcmpl) {
+	tmp  = cell_n->score_northwest - b_go - b_ge;
+	tmp2 = FROM_NORTH_NORTHWEST;
 
-				if (cell_n->score_north - b_ge > tmp) {
-					tmp  = cell_n->score_north - b_ge;
-					tmp2 = FROM_NORTH_NORTH;
-				}
-			} else {
-				tmp  = cell_n->score_north - b_ge;
-				tmp2 = FROM_NORTH_NORTH;
+	if (cell_n->score_north - b_ge > tmp) {
+	  tmp  = cell_n->score_north - b_ge;
+	  tmp2 = FROM_NORTH_NORTH;
+	}
+      } else {
+	tmp  = cell_n->score_north - b_ge;
+	tmp2 = FROM_NORTH_NORTH;
 
-				if (cell_n->score_northwest - b_go - b_ge > tmp) {
-					tmp  = cell_n->score_northwest - b_go - b_ge;
-					tmp2 = FROM_NORTH_NORTHWEST;
-				}
-			}
+	if (cell_n->score_northwest - b_go - b_ge > tmp) {
+	  tmp  = cell_n->score_northwest - b_go - b_ge;
+	  tmp2 = FROM_NORTH_NORTHWEST;
+	}
+      }
 
-			if (tmp <= 0)
-				tmp = tmp2 = 0;
+      if (tmp <= 0)
+	tmp = tmp2 = 0;
 				
-			cell_cur->score_north = tmp;
-			cell_cur->back_north  = tmp2;
+      cell_cur->score_north = tmp;
+      cell_cur->back_north  = tmp2;
 
 			
-			/*
-			 * west
-			 */
-			if (!revcmpl) {
-				tmp  = cell_w->score_northwest - a_go - a_ge;
-				tmp2 = FROM_WEST_NORTHWEST;
+      /*
+       * west
+       */
+      if (!revcmpl) {
+	tmp  = cell_w->score_northwest - a_go - a_ge;
+	tmp2 = FROM_WEST_NORTHWEST;
 
-				if (cell_w->score_west - a_ge > tmp) {
-					tmp  = cell_w->score_west - a_ge;
-					tmp2 = FROM_WEST_WEST;
-				}
-			} else {
-				tmp  = cell_w->score_west - a_ge;
-				tmp2 = FROM_WEST_WEST;
-
-				if (cell_w->score_northwest - a_go - a_ge > tmp) {
-					tmp  = cell_w->score_northwest - a_go - a_ge;
-					tmp2 = FROM_WEST_NORTHWEST;
-				}
-			}
-
-			if (tmp <= 0)
-				tmp = tmp2 = 0;
-
-			cell_cur->score_west = tmp;
-			cell_cur->back_west  = tmp2;
-
-
-			/*
-			 * max score
-			 */
-			score = MAX(score, cell_cur->score_northwest);
-			score = MAX(score, cell_cur->score_north);
-			score = MAX(score, cell_cur->score_west);
-
-			if (score == maxscore)
-				break;
-		}
-
-		if (score == maxscore)
-			break;
+	if (cell_w->score_west - a_ge > tmp) {
+	  tmp  = cell_w->score_west - a_ge;
+	  tmp2 = FROM_WEST_WEST;
 	}
+      } else {
+	tmp  = cell_w->score_west - a_ge;
+	tmp2 = FROM_WEST_WEST;
 
-	*iret = i;
-	*jret = j;
+	if (cell_w->score_northwest - a_go - a_ge > tmp) {
+	  tmp  = cell_w->score_northwest - a_go - a_ge;
+	  tmp2 = FROM_WEST_NORTHWEST;
+	}
+      }
 
-	return (score);
+      if (tmp <= 0)
+	tmp = tmp2 = 0;
+
+      cell_cur->score_west = tmp;
+      cell_cur->back_west  = tmp2;
+
+
+      /*
+       * max score
+       */
+      score = MAX(score, cell_cur->score_northwest);
+      score = MAX(score, cell_cur->score_north);
+      score = MAX(score, cell_cur->score_west);
+
+      if (score == maxscore)
+	break;
+    }
+
+    if (score == maxscore)
+      break;
+ 
+   if (i+1 < lenb) {
+      int next_x_min, next_x_max;
+
+      get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
+      for (j = x_max + 1; j <= next_x_max; j++) {
+	init_cell((i + 1) * (lena + 1) + (j + 1));
+      }
+    }
+  }
+
+  *iret = i;
+  *jret = j;
+
+  if (score == maxscore)
+    return score;
+  else if (anchors != NULL)
+    return full_sw(lena, lenb, threshscore, maxscore, iret, jret, revcmpl, NULL, 0);
+  else {
+    assert(0);
+    return 0;
+  }
 }
 
 /*
@@ -403,7 +464,7 @@ pretty_print(int i, int j, int k)
 int
 sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
     int _b_gap_open, int _b_gap_ext, int _match, int _mismatch,
-    bool reset_stats)
+		 bool reset_stats, int _anchor_width)
 {
 
 	dblen = _dblen;
@@ -442,6 +503,8 @@ sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 	if (reset_stats)
 		swticks = swcells = swinvocs = 0;
 
+	anchor_width = _anchor_width;
+
 	initialised = 1;
 
 	return (0);
@@ -467,7 +530,8 @@ sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
 
 void
 sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
-    int threshscore, int maxscore, struct sw_full_results *sfr, bool revcmpl)
+    int threshscore, int maxscore, struct sw_full_results *sfr, bool revcmpl,
+    struct anchor * anchors, uint anchors_cnt)
 {
 	struct sw_full_results scratch;
 	uint64_t before;
@@ -497,7 +561,7 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	for (i = 0; i < rlen; i++)
 		qr[i] = (int8_t)EXTRACT(read, i);
 
-	sfr->score = full_sw(glen, rlen, threshscore, maxscore, &i, &j,revcmpl);
+	sfr->score = full_sw(glen, rlen, threshscore, maxscore, &i, &j,revcmpl, anchors, anchors_cnt);
 	k = do_backtrace(glen, i, j, sfr);
 	pretty_print(sfr->read_start, sfr->genome_start, k);
 	sfr->gmapped = j - sfr->genome_start + 1;
@@ -506,6 +570,6 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	sfr->dbalign = xstrdup(dbalign);
 	sfr->qralign = xstrdup(qralign);
 
-	swcells += (glen * rlen);
+	//swcells += (glen * rlen);
 	swticks += (rdtsc() - before);
 }

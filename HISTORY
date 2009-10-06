@@ -1,5 +1,38 @@
 $Id$
 
+1.3: September 28, 2009
+	- Proper support for multiple seeds. We now have one readmap per seed,
+	  and we keep track of which seed every kmer originates from.
+	- Seeds can now have different spans and weights.
+	- Parameter -s now accepts: a single seed, or a comma-separated list of
+	  seeds, or "w<weight>" for loading default seeds of weight <weight>.
+	- New meaning for "window length" (-w) parameter. Now, this value
+	  controls the size of the genome window against which a read is
+	  matched. Default is 135% of the read length. To trigger an SW filter
+	  call, num_matches (-n) kmers must match between the genome and a read
+	  within such a window.
+	- Implemented colinearity check. To trigger an SW filter call, the kmers
+	  that match the genome and a read must be colinear. Kmers that match a
+	  given read several times are treated as wildcards with respect to this
+	  check.
+	- Implemented an option to restrict full SW run through the use of
+	  "anchors" or "necks" around the kmers which triggered the SW call. The
+	  width of these anchors defaults to 8, and it can be controlled by the
+	  new parameter -A. Anchors are disabled by specifying -1 as width.
+	- Improved prefetching hints.
+	- Added a hash-and-cache option during genome scan, see README for
+	  details. This helps dealing with reads that match many times. It is
+	  enabled by default, and can be disabled by giving the -Z flag. The
+	  minimum and maximum sizes of the (per-read) cache can be set by the
+	  parameter -Y <min>,<max>. The cache grows from <min> in factors of 2
+	  until it becomes greater than or equal to <max>. The defaults are
+	  min=2 and max=32.
+	- Added option -M to display brief memory usage statistics. This is
+	  enabled by default.
+	- Changed default parameters to 4 seeds of weight 12 and n=4 matches per
+	  window. This should be significantly faster than the previous
+ 	  defaults, which used 1 seed of weight 8 and n=2 matches per window.
+
 1.2.2: ?, 2009
 	- Fix unknown base ('N') handling in shrimp_var (Stéphane Audic).
 	- Added a SHRiMP to SAM output converter (Nils Homer).
