@@ -77,26 +77,27 @@ static default_seed_array_t const default_seeds_hs[1] =
 #define DEF_DAG_REF_WEIGHTED_THRESHOLD  8.0
 
 /* SW Scores */
-#define DEF_MATCH_VALUE		8
-#define DEF_MATCH_VALUE_DAG	 5
-#define DEF_MISMATCH_VALUE	-30
-#define DEF_MISMATCH_VALUE_DAG	-6
-#define DEF_A_GAP_OPEN		-35
-#define DEF_A_GAP_OPEN_DAG	 0
+#define DEF_MATCH_VALUE		10
+#define DEF_MISMATCH_VALUE	-15
+#define DEF_A_GAP_OPEN		-40
 #define DEF_B_GAP_OPEN		 DEF_A_GAP_OPEN
-#define DEF_B_GAP_OPEN_DAG	 0
 #define DEF_A_GAP_EXTEND	-7
-#define DEF_A_GAP_EXTEND_DAG	-6
 #define DEF_B_GAP_EXTEND	 DEF_A_GAP_EXTEND
+#define DEF_XOVER_PENALTY	-14	/* CS only */
+
+#define DEF_MATCH_VALUE_DAG	 5
+#define DEF_MISMATCH_VALUE_DAG	-6
+#define DEF_A_GAP_OPEN_DAG	 0
+#define DEF_B_GAP_OPEN_DAG	 0
+#define DEF_A_GAP_EXTEND_DAG	-6
 #define DEF_B_GAP_EXTEND_DAG	-3
-#define DEF_XOVER_PENALTY	-25	/* CS only */
 
 #define DEF_N_SCORE_SETS 2
 typedef int const default_score_array_t[7];	/* match, mismatch, go (db), ge (db), xover, go (qr), ge (qr) */
 static default_score_array_t const default_score_set[DEF_N_SCORE_SETS] =
   { { 10, -15, -40, -7, -14, -40, -7 },		// about 7% seq errors in CS
     { 8, -30, -35, -7, -25, -35, -7 } };	// about 3% seq errors in CS
-static int const default_score_set_id = 1;
+static int const default_score_set_id = 0;
 
 
 #define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */

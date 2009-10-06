@@ -2305,8 +2305,8 @@ usage(char * progname, bool full_usage)
 	      DEF_ANCHOR_WIDTH);
     }
 #ifdef EXTRA_STATS
-    fprintf(stderr,
-	    "    -D    Dump per-read scan statistics in file\n");
+    //fprintf(stderr,
+	//    "    -D    Dump per-read scan statistics in file\n");
 #endif
     fprintf(stderr,
 	    "    -Y    Cache sizes for genome scan             (default: %d,%d)\n",
@@ -2410,7 +2410,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
       if (!num_matches_set)
 	num_matches = 6;
       if (!window_len_set)
-	window_len = 125.0;
+	window_len = 130.0;
       if (!hit_taboo_len_set)
 	hit_taboo_len = 4;
       break;
@@ -2429,7 +2429,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
       if (!num_matches_set)
 	num_matches = 2;
       if (!window_len_set)
-	window_len = 165.0;
+	window_len = 160.0;
       if (!hit_taboo_len_set)
 	hit_taboo_len = -1;
       break;
@@ -2449,7 +2449,7 @@ set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_l
       if (!num_matches_set)
 	num_matches = 3;
       if (!window_len_set)
-	window_len = 135.0;
+	window_len = 140.0;
       if (!hit_taboo_len_set)
 	hit_taboo_len = -1;
       break;
@@ -2480,15 +2480,15 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:D:ZY:W:M:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:ZY:W:M:";
     selected_seed_weight = default_seed_weight_cs;
     break;
   case MODE_LETTER_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:D:ZY:W:M:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:ZY:W:M:";
     selected_seed_weight = default_seed_weight_ls;
     break;
   case MODE_HELICOS_SPACE:
-    optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUD:ZY:W:";
+    optstr = "?s:n:t:w:o:r:d:p:1:y:z:a:b:c:j:k:l:u:2:m:i:g:q:e:f:v:BCFHPRUZY:W:";
     selected_seed_weight = default_seed_weight_hs;
     match_score = DEF_MATCH_VALUE_DAG;
     mismatch_score = DEF_MISMATCH_VALUE_DAG;
@@ -2694,7 +2694,7 @@ main(int argc, char **argv)
 	exit(1);
       }
       break;
-    case 'D':
+    case 'D': // disabled
 #ifdef EXTRA_STATS
       reads_profile_file_name = optarg;
 #else
@@ -2760,6 +2760,7 @@ main(int argc, char **argv)
   } else { // helicos
     if (n_seeds == 0)
       load_default_seeds(-1);
+    anchor_width = -1;
   }
 
   /*
