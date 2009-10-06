@@ -186,13 +186,13 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     struct anchor tmp_anchors[2];
 
     tmp_anchors[0].x = 0;
-    tmp_anchors[0].y = (lenb * match - threshscore) / match;
+    tmp_anchors[0].y = (int16_t)((lenb * match - threshscore) / match);
     tmp_anchors[0].length = 1;
     tmp_anchors[0].width = 1;
     tmp_anchors[0].more_than_once = 0;
 
-    tmp_anchors[1].x = lena-1;
-    tmp_anchors[1].y = lenb-1-tmp_anchors[0].y;
+    tmp_anchors[1].x = (int16_t)(lena - 1);
+    tmp_anchors[1].y = (int16_t)(lenb - 1 - tmp_anchors[0].y);
     tmp_anchors[1].length = 1;
     tmp_anchors[1].width = 1;
     tmp_anchors[1].more_than_once = 0;
