@@ -22,21 +22,6 @@ extern const bool use_dag;
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
 #define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */
 
-static int const default_spaced_seeds_cs_cnt = 4;
-static char const * const default_spaced_seeds_cs[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
-
-static int const default_spaced_seeds_ls_cnt = 4;
-static char const * const default_spaced_seeds_ls[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
-
-static int const default_spaced_seeds_hs_cnt = 4;
-static char const * const default_spaced_seeds_hs[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
-
 /* DAG Scores/Parameters */
 #define DEF_DAG_EPSILON		  0
 #define DEF_DAG_READ_MATCH	  4
@@ -74,29 +59,6 @@ static char const * const default_spaced_seeds_hs[] =
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 #define DEF_HASH_FILTER_CALLS	true
 
-/*
- * The maximum seed weight (maximum number of 1's in the seed) sets an
- * upper limit on our lookup table allocation size. The memory usage of
- * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * (sizeof(void *) +
- * sizeof(uint32_t)). At 16, this is 32GB on 32-bit and 48GB on 64-bit
- * architectures.
- */
-#ifndef MAX_SEED_WEIGHT
-#define MAX_SEED_WEIGHT		14
-#endif
-
-/*
- * We hold seeds as bitmaps to reduce cache footprint.
- */
-#define MAX_SEED_SPAN		64
-
-/*
- * For larger seeds we'll just use a hash table. Presently, we're restricted to
- * 128 bytes in kmer_to_mapidx, but it's trivially extended.
- */
-#define MAX_HASH_SEED_WEIGHT	128
-#define MAX_HASH_SEED_SPAN	128
-#define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
 
 /* Sanity check - pin reads to a fairly small size */
 #define MAX_READ_LENGTH	15000
