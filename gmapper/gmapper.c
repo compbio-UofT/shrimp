@@ -281,7 +281,7 @@ load_genome_lscs(char **files, int nfiles)
 				initbp = fasta_get_initial_base(fasta,seq);
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
-
+			DEBUG("indexing sequnce");
 			u_int load;
 			for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
 				uint base, sn;
@@ -316,7 +316,7 @@ load_genome_lscs(char **files, int nfiles)
 						continue;
 
 					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
-
+					DEBUG("updpdating count");
 					//increase the match count and store the location of the match
 					genomemap_len[sn][mapidx]++;
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
