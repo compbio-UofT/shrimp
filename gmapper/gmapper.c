@@ -218,7 +218,7 @@ load_genome_lscs(char **files, int nfiles)
 
 	for (sn = 0; sn < n_seeds; sn++) {
 
-		bytes = sizeof(uint32_t) * power(4, HASH_TABLE_POWER);
+		bytes = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
 
 		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
