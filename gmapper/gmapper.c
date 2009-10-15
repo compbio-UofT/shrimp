@@ -283,6 +283,7 @@ load_genome_lscs(char **files, int nfiles)
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 			DEBUG("indexing sequnce");
 			u_int load;
+			DEBUG("looping seq");
 			for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
 				uint base, sn;
 
@@ -294,7 +295,7 @@ load_genome_lscs(char **files, int nfiles)
 					load = 0;
 				else if (load < max_seed_span)
 					load++;
-
+				DEBUG("looping seeds");
 				for (sn = 0; sn < n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
@@ -314,14 +315,17 @@ load_genome_lscs(char **files, int nfiles)
 					 */
 					if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
 						continue;
-
+					DEBUG("hashing");
 					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
 					//increase the match count and store the location of the match
+					DEBUG("updating len");
 					genomemap_len[sn][mapidx]++;
+					DEBUG("reallocing map");
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx] + 1),
 							sizeof(uint32_t) * genomemap_len[sn][mapidx],
 							&mem_genomemap);
+					DEBUG("updateing map");
 					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i;
 					nkmers++;
 
