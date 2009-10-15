@@ -187,7 +187,7 @@ xcalloc_c(size_t size, count_t * c)
 void *
 xrealloc(void *ptr, size_t size)
 {
-	  fprintf(stderr,"reallocing1\n");
+	  fprintf(stderr,"reallocing1 %i,%p\n",size,ptr);
   ptr = realloc(ptr, size);
   fprintf(stderr,"reallocing2\n");
   if (ptr == NULL) {
