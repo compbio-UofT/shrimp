@@ -326,11 +326,11 @@ load_genome_lscs(char **files, int nfiles)
 					nkmers++;
 
 				}
-				DEBUG("done indexing sequence");
-				free(seq);
-				free(name);
-				seq = name = NULL;
 			}
+			DEBUG("done indexing sequence");
+			free(seq);
+			free(name);
+			seq = name = NULL;
 
 			free(kmerWindow);
 		}
