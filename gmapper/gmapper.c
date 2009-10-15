@@ -466,6 +466,8 @@ int main(int argc, char **argv){
 
 	fprintf(stderr,"loading gneomfile\n");
 	load_genome_lscs(&genome_file,1);
+	fprintf(stderr, "        Genomemap:                %s\n",
+					comma_integer(count_get_count(&mem_genomemap)));
 	fprintf(stderr,"saving compressed index\n");
 	save_genome_map("testfile.gz");
 	print_info();
