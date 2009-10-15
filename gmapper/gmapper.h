@@ -1,1 +1,1 @@
-#define DEBUG(x) fprintf(stderr,x "\n")
+#define DEBUG(x) fprintf(stderr,"DEBUG: " x "\n")

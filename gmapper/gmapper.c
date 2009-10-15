@@ -316,7 +316,6 @@ load_genome_lscs(char **files, int nfiles)
 						continue;
 
 					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
-					DEBUG("updpdating count");
 					//increase the match count and store the location of the match
 					genomemap_len[sn][mapidx]++;
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
@@ -327,6 +326,7 @@ load_genome_lscs(char **files, int nfiles)
 					nkmers++;
 
 				}
+				DEBUG("done indexing sequence");
 				free(seq);
 				free(name);
 				seq = name = NULL;
