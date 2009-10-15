@@ -321,6 +321,7 @@ load_genome_lscs(char **files, int nfiles)
 					DEBUG("updating len");
 					DEBUG("mapidx:");
 					fprintf(stderr,"%u\n",mapidx);
+					fprintf(stderr,"%u\n",genomemap_len[sn][mapidx]);
 					genomemap_len[sn][mapidx]++;
 					DEBUG("reallocing map");
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
