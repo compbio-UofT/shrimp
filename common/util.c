@@ -188,8 +188,8 @@ void *
 xrealloc(void *ptr, size_t size)
 {
   ptr = realloc(ptr, size);
-  fprintf(stderr,"reallocing2\n");
   if (ptr == NULL) {
+    fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
     exit(1);
   }
 
