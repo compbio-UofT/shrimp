@@ -12,7 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
-#include <pthread.h>
+//#include <pthread.h>
 
 #include <sys/time.h>
 #include <sys/types.h>

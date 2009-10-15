@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <omp.h>
 
 #include <xmmintrin.h>	// for _mm_prefetch
 
@@ -35,6 +36,9 @@ static char **contig_names = NULL;
 static uint32_t num_contigs;
 
 static count_t mem_genomemap;
+
+static uint numThreads = omp_get_num_procs();
+static uint chunkSize = 1000;
 
 extern size_t
 power(size_t base, size_t exp);
@@ -140,11 +144,61 @@ static bool load_genome_map(const char *file){
 }
 
 /*
- * index the kmers in the genome contained in.
+ * Launch the threads that will scan the reads
+ */
+
+static bool
+launch_scan_threads(const char *file){
+	fasta_t fasta;
+	char **seq, **name;
+	int space;
+	int s = chunkSize*numThreads;
+
+	seq = (char **)xmalloc(sizeof(char *)*s);
+	name = (char **)xmalloc(sizeof(char *)*s);
+
+	//open the fasta file and check for errors
+	if (shrimp_mode == MODE_LETTER_SPACE)
+			space = LETTER_SPACE;
+		else
+			space = COLOUR_SPACE;
+	fasta = fasta_open(file,space);
+	if (fasta == NULL) {
+		fprintf(stderr,"error: failded to open read file [%s]\n",file);
+		return (false);
+	} else {
+		fprintf(stderr,"- Processing read file [%s]\n",file);
+	}
+
+	//read the fasta file, s sequences at a time, and process in threads.
+	bool more = true;
+	while (more){
+		int i;
+		for(i = 0; i < s; i++){
+			if(!fasta_get_next(fasta, name + i, seq + i, NULL)){
+				more = false;
+				break;
+			}
+		}
+#pragma omp parallel shared(seq,name,i) num_threads(numThreads)
+		{
+			int j;
+#pragma omp for
+			for (j = 0; j < i; j++){
+				//TODO work here
+			}
+		}
+
+	}
+	return true;
+}
+
+/*
+ * index the kmers in the genome contained in the file.
  * This can then be used to align reads against.
  */
 static bool
-load_genome_lscs(const char *file)
+load_genome_lscs(char **files, int nfiles)
 {
 	fasta_t fasta;
 	int space; //colour space or letter space
@@ -154,6 +208,7 @@ load_genome_lscs(const char *file)
 	int16_t initbp;
 	uint32_t *kmerWindow;
 	uint sn;
+	char *file;
 
 	//allocate memory for the genome map
 	genomemap = (uint32_t ***) xmalloc_c(n_seeds * sizeof(genomemap[0]),
@@ -170,121 +225,118 @@ load_genome_lscs(const char *file)
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
 	}
 
-	if (shrimp_mode == MODE_LETTER_SPACE)
-		space = LETTER_SPACE;
-	else
-		space = COLOUR_SPACE;
-
-	//open the fasta file and check for errors
-	fasta = fasta_open(file,space);
-	if (fasta == NULL) {
-		fprintf(stderr,"error: failded to open genome file [%s]\n",file);
-		return (false);
-	} else {
-		fprintf(stderr,"- Processing genome file [%s]\n",file);
-	}
-
-	//Read the contigs and record their sizes
-	num_contigs = 0;
-	u_int i = 0;
-	while(fasta_get_next(fasta, &name, &seq, NULL)){
-
-		num_contigs++;
-		contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
-		contig_offsets[num_contigs - 1] = i;
-		contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
-		contig_names[num_contigs - 1] = name;
-
-		fprintf(stderr,"- Processing contig %s\n",name);
-
-		if (strchr(name, '\t') != NULL || strchr(seq, '\t') != NULL) {
-			fprintf(stderr, "error: tabs are not permitted in fasta names "
-					"or sequences. Tag: [%s].\n", name);
-			exit(1);
+	int cfile;
+	for(cfile = 0; cfile < nfiles; cfile++){
+		file = files[cfile];
+		//open the fasta file and check for errors
+		fasta = fasta_open(file,LETTER_SPACE);
+		if (fasta == NULL) {
+			fprintf(stderr,"error: failded to open genome file [%s]\n",file);
+			return (false);
+		} else {
+			fprintf(stderr,"- Processing genome file [%s]\n",file);
 		}
 
-		seqlen = strlen(seq);
-		if (seqlen == 0) {
-			fprintf(stderr, "error: genome [%s] had no sequence!\n",
-					name);
-			exit(1);
-		}
-//		if (seqlen > MAX_READ_LENGTH) {
-//			fprintf(stderr, "error: genome [%s] had unreasonable "
-//					"length!\n", name);
-//		}
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			/* the sequence begins with the initial letter base */
-			if (seqlen < 1) {
-				fprintf(stderr, "error: genome [%s] had sequence "
-						"with no colours!\n", name);
+		//Read the contigs and record their sizes
+		num_contigs = 0;
+		u_int i = 0;
+		while(fasta_get_next(fasta, &name, &seq, NULL)){
+
+			num_contigs++;
+			contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+			contig_offsets[num_contigs - 1] = i;
+			contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
+			contig_names[num_contigs - 1] = name;
+
+			fprintf(stderr,"- Processing contig %s\n",name);
+
+			if (strchr(name, '\t') != NULL || strchr(seq, '\t') != NULL) {
+				fprintf(stderr, "error: tabs are not permitted in fasta names "
+						"or sequences. Tag: [%s].\n", name);
 				exit(1);
 			}
-			seqlen--;
-		}
 
-		read = fasta_sequence_to_bitfield(fasta,seq);
-		if (read == NULL) {
-			fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
-			exit(1);
-		}
-
-		if (shrimp_mode == MODE_COLOUR_SPACE){
-			initbp = fasta_get_initial_base(fasta,seq);
-		}
-		kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
-
-		u_int load;
-		for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
-			uint base, sn;
-
-			base = EXTRACT(read, i);
-			bitfield_prepend(kmerWindow, max_seed_span, base);
-
-			//skip past any Ns or Xs
-			if (base == BASE_N || base == BASE_X)
-				load = 0;
-			else if (load < max_seed_span)
-				load++;
-
-			for (sn = 0; sn < n_seeds; sn++) {
-				if (load < seed[sn].span)
-					continue;
-
-				/*
-				 * For simplicity we throw out the first kmer when in colour space. If
-				 * we did not do so, we'd run into a ton of colour-letter space
-				 * headaches. For instance, how should the first read kmer match
-				 * against a kmer from the genome? The first colour of the genome kmer
-				 * depends on the previous letter in the genome, so we may have a
-				 * matching read, but the colour representation doesn't agree due to
-				 * different initialising bases.
-				 *
-				 * If we wanted to be complete, we could compute the four permutations
-				 * and add them, but I'm not so sure that'd be a good idea. Perhaps
-				 * this should be investigated in the future.
-				 */
-				if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
-					continue;
-
-				uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
-
-				genomemap_len[sn][mapidx]++;
-				genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
-						sizeof(uint32_t) * (genomemap_len[sn][mapidx] + 1),
-						sizeof(uint32_t) * genomemap_len[sn][mapidx],
-						&mem_genomemap);
-				genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i;
-				nkmers++;
-
+			seqlen = strlen(seq);
+			if (seqlen == 0) {
+				fprintf(stderr, "error: genome [%s] had no sequence!\n",
+						name);
+				exit(1);
 			}
+			if (shrimp_mode == MODE_COLOUR_SPACE) {
+				/* the sequence begins with the initial letter base */
+				if (seqlen < 1) {
+					fprintf(stderr, "error: genome [%s] had sequence "
+							"with no colours!\n", name);
+					exit(1);
+				}
+				seqlen--;
+			}
+
+			read = fasta_sequence_to_bitfield(fasta,seq);
+			if (read == NULL) {
+				fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
+				exit(1);
+			}
+
+			if (shrimp_mode == MODE_COLOUR_SPACE){
+				initbp = fasta_get_initial_base(fasta,seq);
+			}
+			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+
+			u_int load;
+			for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
+				uint base, sn;
+
+				base = EXTRACT(read, i);
+				bitfield_prepend(kmerWindow, max_seed_span, base);
+
+				//skip past any Ns or Xs
+				if (base == BASE_N || base == BASE_X)
+					load = 0;
+				else if (load < max_seed_span)
+					load++;
+
+				for (sn = 0; sn < n_seeds; sn++) {
+					if (load < seed[sn].span)
+						continue;
+
+					/*
+					 * For simplicity we throw out the first kmer when in colour space. If
+					 * we did not do so, we'd run into a ton of colour-letter space
+					 * headaches. For instance, how should the first read kmer match
+					 * against a kmer from the genome? The first colour of the genome kmer
+					 * depends on the previous letter in the genome, so we may have a
+					 * matching read, but the colour representation doesn't agree due to
+					 * different initialising bases.
+					 *
+					 * If we wanted to be complete, we could compute the four permutations
+					 * and add them, but I'm not so sure that'd be a good idea. Perhaps
+					 * this should be investigated in the future.
+					 */
+					if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
+						continue;
+
+					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
+
+					//increase the match count and store the location of the match
+					genomemap_len[sn][mapidx]++;
+					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
+							sizeof(uint32_t) * (genomemap_len[sn][mapidx] + 1),
+							sizeof(uint32_t) * genomemap_len[sn][mapidx],
+							&mem_genomemap);
+					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i;
+					nkmers++;
+
+				}
+				free(seq);
+				free(name);
+				seq = name = NULL;
+			}
+
+			free(kmerWindow);
 		}
-
-		free(seq);
-		free(kmerWindow);
+		fasta_close(fasta);
 	}
-	fasta_close(fasta);
-
 	fprintf(stderr,"Loaded Genome\n");
 
 	return (true);
@@ -312,7 +364,7 @@ void usage(char *progname,bool full_usage){
 		fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
 	}
 	fprintf(stderr,
-				"    -?    Full list of parameters and options\n");
+			"    -?    Full list of parameters and options\n");
 
 }
 
@@ -366,7 +418,7 @@ int main(int argc, char **argv){
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
-	fprintf(stderr, "rmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
+	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
 			SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
@@ -414,11 +466,13 @@ int main(int argc, char **argv){
 	genome_file = argv[0];
 
 	fprintf(stderr,"loading gneomfile\n");
-	load_genome_lscs(genome_file);
+	load_genome_lscs(&genome_file,1);
 	fprintf(stderr,"saving compressed index\n");
 	save_genome_map("testfile.gz");
 	print_info();
 	fprintf(stderr,"loading compressed index\n");
 	load_genome_map("testfile.gz");
+
+	launch_scan_threads(genome_file);
 
 }
