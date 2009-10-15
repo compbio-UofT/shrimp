@@ -202,6 +202,7 @@ xrealloc_c(void *ptr, size_t size, size_t old_size, count_t * c)
 {
   if (c != NULL)
     count_add(c, (int64_t)size - (int64_t)old_size);
+  fprintf(stderr,"reallocing\n");
   return xrealloc(ptr, size);
 }
 
