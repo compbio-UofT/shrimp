@@ -187,8 +187,9 @@ xcalloc_c(size_t size, count_t * c)
 void *
 xrealloc(void *ptr, size_t size)
 {
-
+	  fprintf(stderr,"reallocing1\n");
   ptr = realloc(ptr, size);
+  fprintf(stderr,"reallocing2\n");
   if (ptr == NULL) {
     fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
     exit(1);
@@ -202,7 +203,6 @@ xrealloc_c(void *ptr, size_t size, size_t old_size, count_t * c)
 {
   if (c != NULL)
     count_add(c, (int64_t)size - (int64_t)old_size);
-  fprintf(stderr,"reallocing\n");
   return xrealloc(ptr, size);
 }
 
