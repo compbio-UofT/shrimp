@@ -222,6 +222,9 @@ load_genome_lscs(char **files, int nfiles)
 
 		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
+
+		memset(genomemap[sn],0,bytes);
+		memset(genomemap_len[sn],0,bytes);
 	}
 
 	int cfile;
