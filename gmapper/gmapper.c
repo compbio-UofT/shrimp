@@ -322,8 +322,8 @@ load_genome_lscs(char **files, int nfiles)
 					genomemap_len[sn][mapidx]++;
 					DEBUG("reallocing map");
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
-							sizeof(uint32_t) * (genomemap_len[sn][mapidx] + 1),
-							sizeof(uint32_t) * genomemap_len[sn][mapidx],
+							sizeof(uint32_t) * (genomemap_len[sn][mapidx]),
+							sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
 							&mem_genomemap);
 					if (genomemap[sn][mapidx] == NULL){
 						DEBUG("realloc returned null");
