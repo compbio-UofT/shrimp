@@ -201,7 +201,6 @@ static bool
 load_genome_lscs(char **files, int nfiles)
 {
 	fasta_t fasta;
-	int space; //colour space or letter space
 	size_t seqlen,  bytes;
 	uint32_t *read;
 	char *seq, *name;
