@@ -26,6 +26,8 @@
 #include "../mapper/mapper.h"
 #include "../common/version.h"
 
+double	window_len		= DEF_WINDOW_LEN;
+
 /* Kmer to genome index */
 static uint32_t ***genomemap;
 static uint32_t **genomemap_len;
@@ -49,6 +51,15 @@ power(size_t base, size_t exp);
 
 extern uint32_t
 kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn);
+
+/* If x is negative, return its absolute value; else return base*x% */
+static inline double
+abs_or_pct(double x, double base) {
+	if (IS_ABSOLUTE(x))
+		return -x;
+	else
+		return base * (x / 100.0);
+}
 
 void print_info(){
 	fprintf(stderr,"num_contigs = %u\n",num_contigs);
@@ -147,14 +158,10 @@ static bool load_genome_map(const char *file){
 	return true;
 }
 
-static read_entry *
-init_read_entry(char *seq, char *name){
-
-}
 
 static uint32_t *
 read_locations(read_entry *re, int *len){
-
+	return NULL;
 }
 
 static void
@@ -163,8 +170,7 @@ scan_read(read_entry *re, uint32_t *list, int len){
 }
 
 static void
-handle_read(char *seq, char *name){
-	read_entry *re  = init_read_entry(seq,name);
+handle_read(read_entry *re){
 	int len;
 	uint32_t *list = read_locations(re,&len);
 	scan_read(re,list,len);
@@ -177,12 +183,12 @@ handle_read(char *seq, char *name){
 static bool
 launch_scan_threads(const char *file){
 	fasta_t fasta;
-	char **seq, **name;
 	int space;
 	int s = chunkSize*numThreads;
+	read_entry *res;
+	char *seq;
 
-	seq = (char **)xmalloc(sizeof(char *)*s);
-	name = (char **)xmalloc(sizeof(char *)*s);
+	res = (read_entry *)xmalloc(sizeof(read_entry)*s);
 
 	//open the fasta file and check for errors
 	if (shrimp_mode == MODE_LETTER_SPACE)
@@ -202,17 +208,23 @@ launch_scan_threads(const char *file){
 	while (more){
 		int i;
 		for(i = 0; i < s; i++){
-			if(!fasta_get_next(fasta, name + i, seq + i, NULL)){
+			if(!fasta_get_next(fasta, &res[i].name, &seq, NULL)){
 				more = false;
 				break;
 			}
+			if (shrimp_mode == MODE_COLOUR_SPACE){
+				res[i].initbp = fasta_get_initial_base(fasta,seq);
+			}
+			res[i].read = fasta_sequence_to_bitfield(fasta, seq);
+			res[i].read_len = strlen(seq);
+			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 		}
-#pragma omp parallel shared(seq,name,i) num_threads(numThreads)
+#pragma omp parallel shared(res,i) num_threads(numThreads)
 		{
 			int j;
 #pragma omp for
 			for (j = 0; j < i; j++){
-				handle_read(seq[j],name[i]);
+				handle_read(&res[i]);
 			}
 		}
 
@@ -250,8 +262,6 @@ load_genome_lscs(char **files, int nfiles)
 		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
 
-		memset(genomemap[sn],0,bytes);
-		memset(genomemap_len[sn],0,bytes);
 	}
 
 	int cfile;
@@ -311,7 +321,6 @@ load_genome_lscs(char **files, int nfiles)
 				initbp = fasta_get_initial_base(fasta,seq);
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
-			DEBUG("indexing sequnce");
 			u_int load;
 			DEBUG("looping seq");
 			for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {

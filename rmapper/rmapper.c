@@ -37,7 +37,7 @@
 #include "../mapper/mapper.h"
 
 /* External parameters */
-static double	window_len		= DEF_WINDOW_LEN;
+double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
 static u_int	num_matches		= DEF_NUM_MATCHES;
 static int	hit_taboo_len		= DEF_HIT_TABOO_LEN;
@@ -70,21 +70,6 @@ static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
-
-/*
- * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
- * we'll set them negative to distinguish.
- */
-#define IS_ABSOLUTE(x)	((x) < 0)
-
-/* If x is negative, return its absolute value; else return base*x% */
-static inline double
-abs_or_pct(double x, double base) {
-	if (IS_ABSOLUTE(x))
-		return -x;
-	else
-		return base * (x / 100.0);
-}
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t *genome;			/* genome -- always in letter*/
@@ -172,6 +157,15 @@ static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
 
 #define FETCH_AHEAD 8
 #define USE_PREFETCH
+
+/* If x is negative, return its absolute value; else return base*x% */
+static inline double
+abs_or_pct(double x, double base) {
+	if (IS_ABSOLUTE(x))
+		return -x;
+	else
+		return base * (x / 100.0);
+}
 
 /* percolate down in our min-heap */
 static void

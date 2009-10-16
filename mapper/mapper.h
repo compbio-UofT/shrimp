@@ -28,6 +28,13 @@
  * We hold seeds as bitmaps to reduce cache footprint.
  */
 #define MAX_SEED_SPAN		64
+#define	DEF_WINDOW_LEN		135.0		/* 115% of read length */
+
+/*
+ * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
+ * we'll set them negative to distinguish.
+ */
+#define IS_ABSOLUTE(x)	((x) < 0)
 
 /*
  * For larger seeds we'll just use a hash table. Presently, we're restricted to

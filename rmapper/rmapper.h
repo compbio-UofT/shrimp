@@ -13,7 +13,6 @@ extern const bool use_dag;
 //#define DEF_SPACED_SEED_CS	"1111001111"	/* handle more adjacencies */
 //#define DEF_SPACED_SEED_LS	"111111011111"	/* longer for solexa/454 reads*/
 //#define DEF_SPACED_SEED_DAG	"11110111"	/* shorter for Helicos */ 
-#define	DEF_WINDOW_LEN		135.0		/* 115% of read length */
 #define DEF_WINDOW_OVERLAP	80.0
 #define DEF_NUM_MATCHES		4
 #define DEF_HIT_TABOO_LEN	4
