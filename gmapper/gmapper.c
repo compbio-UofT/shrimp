@@ -35,6 +35,10 @@ static uint32_t *contig_offsets;
 static char **contig_names = NULL;
 static uint32_t num_contigs;
 
+/* Genomic sequence, stored in 32-bit words, first is in the LSB */
+static uint32_t *genome;			/* genome -- always in letter*/
+static uint32_t	 genome_len;
+
 static count_t mem_genomemap;
 
 static uint numThreads = omp_get_num_procs();
@@ -143,6 +147,29 @@ static bool load_genome_map(const char *file){
 	return true;
 }
 
+static read_entry *
+init_read_entry(char *seq, char *name){
+
+}
+
+static uint32_t *
+read_locations(read_entry *re, int *len){
+
+}
+
+static void
+scan_read(read_entry *re, uint32_t *list, int len){
+
+}
+
+static void
+handle_read(char *seq, char *name){
+	read_entry *re  = init_read_entry(seq,name);
+	int len;
+	uint32_t *list = read_locations(re,&len);
+	scan_read(re,list,len);
+}
+
 /*
  * Launch the threads that will scan the reads
  */
@@ -185,7 +212,7 @@ launch_scan_threads(const char *file){
 			int j;
 #pragma omp for
 			for (j = 0; j < i; j++){
-				//TODO work here
+				handle_read(seq[j],name[i]);
 			}
 		}
 
@@ -339,7 +366,6 @@ load_genome_lscs(char **files, int nfiles)
 			}
 			DEBUG("done indexing sequence");
 			free(seq);
-			free(name);
 			seq = name = NULL;
 
 			free(kmerWindow);
