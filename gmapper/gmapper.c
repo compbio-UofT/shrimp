@@ -164,9 +164,73 @@ read_locations(read_entry *re, int *len){
 	return NULL;
 }
 
+/*
+ * Find matches for the given read.
+ *
+ * list[0..len-1] is a sorted list containing start locations
+ * of matching spaced kmers between this read and the genome.
+ *
+ * Does not assume list of locations is tagged with actual kmer and originating seed.
+ * Instead, use avg_seed_span and center genome window around matching locations.
+ *
+ * Assumes that all contigs (num_contigs) that were indexed
+ * are loaded as letter space bitmaps in genome[].
+ * If the reads are colourspace, we also expect contigs in colour space in genome_cs[].
+ */
 static void
-scan_read(read_entry *re, uint32_t *list, int len){
+scan_read_lscs(read_entry *re, uint32_t *list, int len){
+  uint cn;
+  uint32_t goff, glen, last_sw_hit;
+  uint i, j;
+  int score, thresh;
 
+  // initialize heap of best hits for this read
+  assert(0);
+
+  cn = 0;
+  for (i = num_matches - 1, j = 0; i < len; i++, j++) {
+
+    /* adjust current contig number */
+    while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
+      cn++;
+    assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
+
+    /* test if last num_matches are in same contig and fit in a window of size window_len */
+    if (contig_offsets[cn] <= list[j]
+	&& list[j] + re->window_len >= list[i] + (avg_seed_span - 1)) {
+
+      /* set goff, glen */
+      if ((re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2 <= list[j])
+	goff = list[j] - (re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2;
+      else
+	goff = 0;
+      glen = re->window_len;
+
+      // optionally use cache for this genomic window
+
+      if (shrimp_mode == MODE_COLOUR_SPACE) {
+	score = sw_vector(genome_cs[cn], goff, glen, re->read, re->read_len,
+			  genome[cn], re->initbp, genome_is_rna[cn]);
+      } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	score = sw_vector(genome[cn], goff, glen, re->read, re->read_len,
+			  NULL, -1, genome_is_rna[cn]);
+      }
+
+      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+      if (score >= thresh) {
+	/* save hit */
+	//ES_count_increment(&es_total_filter_passes);
+	//ES_count32_increment(&re->es_filter_passes);
+
+	save_score(re, score, goff, cn, revcmpl);
+	last_sw_hit = goff;
+	re->sw_hits++;
+      }
+    }
+  }
+
+  // do final pass for this read; run full sw on hit locations from heap
+  assert (0);
 }
 
 static void

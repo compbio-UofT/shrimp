@@ -16,4 +16,5 @@ struct read_entry {
   int16_t	initbp;		/* colour space init letter */
   uint32_t	read_len;
   uint16_t  window_len;
+  uint32_t	sw_hits;
 };
