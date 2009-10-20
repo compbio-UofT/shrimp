@@ -38,8 +38,8 @@ static char **contig_names = NULL;
 static uint32_t num_contigs;
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
-static uint32_t *genome;			/* genome -- always in letter*/
-static uint32_t	 genome_len;
+//static uint32_t *genome;			/* genome -- always in letter*/
+//static uint32_t	 genome_len;
 
 static count_t mem_genomemap;
 
@@ -158,10 +158,53 @@ static bool load_genome_map(const char *file){
 	return true;
 }
 
+static int comp(const void *a, const void *b){
+	return *(uint32_t *)a - *(uint32_t *)b;
+}
 
 static uint32_t *
 read_locations(read_entry *re, int *len){
-	return NULL;
+	*len = 0;
+	uint sn,i;
+	uint load;
+	uint32_t *list = NULL;
+	uint32_t *kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+	for (load = 0 ; i < re->read_len; i++){
+		uint base;
+		base = EXTRACT(re->read, i);
+		bitfield_prepend(kmerWindow, max_seed_span, base);
+		//skip past any Ns or Xs
+		if (base == BASE_N || base == BASE_X)
+			load = 0;
+		else if (load < max_seed_span)
+			load++;
+		for (sn = 0; sn < n_seeds; sn++){
+			if (load < seed[sn].span)
+				continue;
+			/*
+			 * For simplicity we throw out the first kmer when in colour space. If
+			 * we did not do so, we'd run into a ton of colour-letter space
+			 * headaches. For instance, how should the first read kmer match
+			 * against a kmer from the genome? The first colour of the genome kmer
+			 * depends on the previous letter in the genome, so we may have a
+			 * matching read, but the colour representation doesn't agree due to
+			 * different initialising bases.
+			 *
+			 * If we wanted to be complete, we could compute the four permutations
+			 * and add them, but I'm not so sure that'd be a good idea. Perhaps
+			 * this should be investigated in the future.
+			 */
+			if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
+				continue;
+
+			uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
+			*len += genomemap_len[sn][mapidx];
+			list = (uint32_t *)xrealloc(list,sizeof(uint32_t)* *len);
+			memcpy(list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+		}
+	}
+	qsort(list,*len,sizeof(uint32_t),&comp);
+	return list;
 }
 
 /*
@@ -403,21 +446,7 @@ load_genome_lscs(char **files, int nfiles)
 					if (load < seed[sn].span)
 						continue;
 
-					/*
-					 * For simplicity we throw out the first kmer when in colour space. If
-					 * we did not do so, we'd run into a ton of colour-letter space
-					 * headaches. For instance, how should the first read kmer match
-					 * against a kmer from the genome? The first colour of the genome kmer
-					 * depends on the previous letter in the genome, so we may have a
-					 * matching read, but the colour representation doesn't agree due to
-					 * different initialising bases.
-					 *
-					 * If we wanted to be complete, we could compute the four permutations
-					 * and add them, but I'm not so sure that'd be a good idea. Perhaps
-					 * this should be investigated in the future.
-					 */
-					if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
-						continue;
+
 					DEBUG("hashing");
 					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
 					//increase the match count and store the location of the match
