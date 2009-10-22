@@ -1313,7 +1313,7 @@ static bool
 load_reads(const char *file)
 {
   uint sn;
-  ssize_t ret, bytes;
+  ssize_t ret, map_size;
 
   // allocate as many readmaps as we have seeds
   readmap = (struct readmap_entry ***)xmalloc_c(n_seeds * sizeof(readmap[0]),
@@ -1323,13 +1323,13 @@ load_reads(const char *file)
 
   for (sn = 0; sn < n_seeds; sn++) {
     if (Hflag)
-      bytes = sizeof(readmap[sn][0]) * power(4, HASH_TABLE_POWER);
+      map_size = power(4, HASH_TABLE_POWER);
     else
-      bytes = sizeof(readmap[sn][0]) * power(4, seed[sn].weight);
+      map_size = power(4, seed[sn].weight);
 
-    readmap[sn] = (struct readmap_entry **)xcalloc_c(bytes,
+    readmap[sn] = (struct readmap_entry **)xcalloc_c(map_size * sizeof(readmap[sn][0]),
 						     &mem_readmap);
-    readmap_len[sn] = (uint32_t *)xcalloc_c(bytes,
+    readmap_len[sn] = (uint32_t *)xcalloc_c(map_size * sizeof(readmap_len[sn][0]),
 					    &mem_readmap);
   }
 

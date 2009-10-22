@@ -185,7 +185,7 @@ PLEASE NOTE:
   4)  python $S/utils/splitreads.py 1000 ../reads.csfasta
   5)  cd ..
   6)  $S/bin/rmapper-cs -m 8 -i -30 -g -35 -e -7 -x -25 -h 70% -v 65% \
-          -M 70bp,fast \\
+          -M 70bp,fast \
           -o 100 -B \
           reads/0_to_999.csfasta ciona.fasta > results/ciona.0_to_999.out
   or
