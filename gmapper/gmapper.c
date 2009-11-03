@@ -38,8 +38,11 @@ static char **contig_names = NULL;
 static uint32_t num_contigs;
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
-//static uint32_t *genome;			/* genome -- always in letter*/
-//static uint32_t	 genome_len;
+static uint32_t **genome_contigs;			/* genome -- always in letter*/
+static uint32_t **genome_cs_contigs;
+static uint32_t	 *genome_len;
+
+static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
 static count_t mem_genomemap;
 
@@ -207,80 +210,81 @@ read_locations(read_entry *re, int *len){
 	return list;
 }
 
-/*
- * Find matches for the given read.
- *
- * list[0..len-1] is a sorted list containing start locations
- * of matching spaced kmers between this read and the genome.
- *
- * Does not assume list of locations is tagged with actual kmer and originating seed.
- * Instead, use avg_seed_span and center genome window around matching locations.
- *
- * Assumes that all contigs (num_contigs) that were indexed
- * are loaded as letter space bitmaps in genome[].
- * If the reads are colourspace, we also expect contigs in colour space in genome_cs[].
- */
-static void
-scan_read_lscs(read_entry *re, uint32_t *list, int len){
-  uint cn;
-  uint32_t goff, glen, last_sw_hit;
-  uint i, j;
-  int score, thresh;
-
-  // initialize heap of best hits for this read
-  assert(0);
-
-  cn = 0;
-  for (i = num_matches - 1, j = 0; i < len; i++, j++) {
-
-    /* adjust current contig number */
-    while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
-      cn++;
-    assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
-
-    /* test if last num_matches are in same contig and fit in a window of size window_len */
-    if (contig_offsets[cn] <= list[j]
-	&& list[j] + re->window_len >= list[i] + (avg_seed_span - 1)) {
-
-      /* set goff, glen */
-      if ((re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2 <= list[j])
-	goff = list[j] - (re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2;
-      else
-	goff = 0;
-      glen = re->window_len;
-
-      // optionally use cache for this genomic window
-
-      if (shrimp_mode == MODE_COLOUR_SPACE) {
-	score = sw_vector(genome_cs[cn], goff, glen, re->read, re->read_len,
-			  genome[cn], re->initbp, genome_is_rna[cn]);
-      } else if (shrimp_mode == MODE_LETTER_SPACE) {
-	score = sw_vector(genome[cn], goff, glen, re->read, re->read_len,
-			  NULL, -1, genome_is_rna[cn]);
-      }
-
-      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
-      if (score >= thresh) {
-	/* save hit */
-	//ES_count_increment(&es_total_filter_passes);
-	//ES_count32_increment(&re->es_filter_passes);
-
-	save_score(re, score, goff, cn, revcmpl);
-	last_sw_hit = goff;
-	re->sw_hits++;
-      }
-    }
-  }
-
-  // do final pass for this read; run full sw on hit locations from heap
-  assert (0);
-}
+///*
+// * Find matches for the given read.
+// *
+// * list[0..len-1] is a sorted list containing start locations
+// * of matching spaced kmers between this read and the genome.
+// *
+// * Does not assume list of locations is tagged with actual kmer and originating seed.
+// * Instead, use avg_seed_span and center genome window around matching locations.
+// *
+// * Assumes that all contigs (num_contigs) that were indexed
+// * are loaded as letter space bitmaps in genome[].
+// * If the reads are colourspace, we also expect contigs in colour space in genome_cs[].
+// */
+//static void
+//scan_read_lscs(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
+//  uint cn;
+//  uint32_t goff, glen, last_sw_hit;
+//  uint i, j;
+//  int score, thresh;
+//
+//  // initialize heap of best hits for this read
+//  assert(0);
+//
+//  cn = 0;
+//  for (i = num_matches - 1, j = 0; i < len; i++, j++) {
+//
+//    /* adjust current contig number */
+//    while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
+//      cn++;
+//    assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
+//
+//    /* test if last num_matches are in same contig and fit in a window of size window_len */
+//    if (contig_offsets[cn] <= list[j]
+//	&& list[j] + re->window_len >= list[i] + (avg_seed_span - 1)) {
+//
+//      /* set goff, glen */
+//      if ((re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2 <= list[j])
+//	goff = list[j] - (re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2;
+//      else
+//	goff = 0;
+//      glen = re->window_len;
+//
+//      // optionally use cache for this genomic window
+//
+//      if (shrimp_mode == MODE_COLOUR_SPACE) {
+//	score = sw_vector(genome_cs_contigs[cn], goff, glen, re->read, re->read_len,
+//			  genome[cn], re->initbp, genome_is_rna[cn]);
+//      } else if (shrimp_mode == MODE_LETTER_SPACE) {
+//	score = sw_vector(genome_contigs[cn], goff, glen, re->read, re->read_len,
+//			  NULL, -1, genome_is_rna[cn]);
+//      }
+//
+//      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
+//      if (score >= thresh) {
+//	/* save hit */
+//	//ES_count_increment(&es_total_filter_passes);
+//	//ES_count32_increment(&re->es_filter_passes);
+//
+//	save_score(re, score, goff, cn, revcmpl);
+//	last_sw_hit = goff;
+//	re->sw_hits++;
+//      }
+//    }
+//  }
+//
+//  // do final pass for this read; run full sw on hit locations from heap
+//  assert (0);
+//}
 
 static void
 handle_read(read_entry *re){
 	int len;
 	uint32_t *list = read_locations(re,&len);
-	scan_read(re,list,len);
+	list = NULL;
+	//scan_read_lscs(re,list,len,false);
 }
 
 /*
@@ -344,7 +348,7 @@ launch_scan_threads(const char *file){
  * This can then be used to align reads against.
  */
 static bool
-load_genome_lscs(char **files, int nfiles)
+load_genome(char **files, int nfiles)
 {
 	fasta_t fasta;
 	size_t seqlen,  bytes;
@@ -354,6 +358,7 @@ load_genome_lscs(char **files, int nfiles)
 	uint32_t *kmerWindow;
 	uint sn;
 	char *file;
+	bool is_rna;
 
 	//allocate memory for the genome map
 	genomemap = (uint32_t ***) xmalloc_c(n_seeds * sizeof(genomemap[0]),
@@ -370,7 +375,8 @@ load_genome_lscs(char **files, int nfiles)
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
 
 	}
-
+	num_contigs = 0;
+	u_int i = 0;
 	int cfile;
 	for(cfile = 0; cfile < nfiles; cfile++){
 		file = files[cfile];
@@ -384,10 +390,9 @@ load_genome_lscs(char **files, int nfiles)
 		}
 
 		//Read the contigs and record their sizes
-		num_contigs = 0;
-		u_int i = 0;
-		while(fasta_get_next(fasta, &name, &seq, NULL)){
 
+		while(fasta_get_next(fasta, &name, &seq, &is_rna)){
+			genome_is_rna = is_rna;
 			num_contigs++;
 			contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
 			contig_offsets[num_contigs - 1] = i;
@@ -408,21 +413,20 @@ load_genome_lscs(char **files, int nfiles)
 						name);
 				exit(1);
 			}
-			if (shrimp_mode == MODE_COLOUR_SPACE) {
-				/* the sequence begins with the initial letter base */
-				if (seqlen < 1) {
-					fprintf(stderr, "error: genome [%s] had sequence "
-							"with no colours!\n", name);
-					exit(1);
-				}
-				seqlen--;
-			}
-
-			read = fasta_sequence_to_bitfield(fasta,seq);
 			if (read == NULL) {
 				fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
 				exit(1);
 			}
+			read = fasta_sequence_to_bitfield(fasta,seq);
+			genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+			genome_contigs[num_contigs-1] = read;
+			if (shrimp_mode == MODE_COLOUR_SPACE){
+				genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
+				genome_cs_contigs[num_contigs-1] = fasta_bitfield_to_colourspace(fasta,genome_contigs[num_contigs -1],seqlen,is_rna);
+			}
+			genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
+			genome_len[num_contigs -1] = seqlen;
+
 
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 				initbp = fasta_get_initial_base(fasta,seq);
@@ -430,10 +434,10 @@ load_genome_lscs(char **files, int nfiles)
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 			u_int load;
 			DEBUG("looping seq");
-			for (load = 0; i < seqlen + contig_offsets[num_contigs]; i++) {
+			for (load = 0; i < seqlen + contig_offsets[num_contigs-1]; i++) {
 				uint base, sn;
 
-				base = EXTRACT(read, i);
+				base = EXTRACT(read, i - contig_offsets[num_contigs-1]);
 				bitfield_prepend(kmerWindow, max_seed_span, base);
 
 				//skip past any Ns or Xs
@@ -505,31 +509,31 @@ void usage(char *progname,bool full_usage){
 
 }
 
-//testing main
-//int main(int argc, char **argv){
-//	char *genome_file;
-//	if (argc > 1){
-//		genome_file = argv[1];
-//		set_mode_from_argv(argv);
-//		if (n_seeds == 0)
-//				load_default_seeds();
-//		init_seed_hash_mask();
-//		if (0){
-//			fprintf(stderr,"loading gneomfile\n");
-//			load_genome_lscs(genome_file);
-//			fprintf(stderr,"saving compressed index\n");
-//			save_genome_map("testfile.gz");
-//			print_info();
-//		}
-//		if (1){
-//			fprintf(stderr,"loading compressed index\n");
-//			load_genome_map("testfile.gz");
-//		}
-//		fprintf(stderr,"done\n");
-//	}
-//}
-
+testing main
 int main(int argc, char **argv){
+	char *genome_file;
+	if (argc > 1){
+		genome_file = argv[1];
+		set_mode_from_argv(argv);
+		if (n_seeds == 0)
+				load_default_seeds();
+		init_seed_hash_mask();
+		if (1){
+			fprintf(stderr,"loading gneomfile\n");
+			load_genome_lscs(genome_file);
+			//fprintf(stderr,"saving compressed index\n");
+			//save_genome_map("testfile.gz");
+			print_info();
+		}
+		if (0){
+			fprintf(stderr,"loading compressed index\n");
+			load_genome_map("testfile.gz");
+		}
+		fprintf(stderr,"done\n");
+	}
+}
+
+int main2(int argc, char **argv){
 	char *genome_file;
 	char *progname = argv[0];
 	char const * optstr;
@@ -603,7 +607,7 @@ int main(int argc, char **argv){
 	genome_file = argv[0];
 
 	fprintf(stderr,"loading gneomfile\n");
-	load_genome_lscs(&genome_file,1);
+	load_genome(&genome_file,1);
 	fprintf(stderr, "        Genomemap:                %s\n",
 					comma_integer(count_get_count(&mem_genomemap)));
 	fprintf(stderr,"saving compressed index\n");
