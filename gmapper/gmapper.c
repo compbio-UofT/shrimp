@@ -40,6 +40,7 @@ static uint32_t num_contigs;
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t **genome_contigs;			/* genome -- always in letter*/
 static uint32_t **genome_cs_contigs;
+static uint32_t  *genome_initbp;
 static uint32_t	 *genome_len;
 
 static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
@@ -72,8 +73,26 @@ void print_info(){
 	}
 	fprintf(stderr,"n_seeds = %u\n",n_seeds);
 	for (i=0; i < n_seeds;i++){
-		fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
+		fprintf(stderr,"seed %u: %s\n",i,seed_to_string(i));
 	}
+#ifdef DEBUG
+	for(i=0; i < n_seeds;i++){
+		fprintf(stderr,"map for seed %u\n",i);
+		uint j;
+		for(j = 0; j< power(4, seed[i].weight);j++){
+			//fprintf(stderr,"%u\n",genomemap_len[i][j]);
+			if(genomemap_len[i][j] != 0){
+				fprintf(stderr,"entry at %u\n",j);
+				uint k;
+				for(k=0;k<genomemap_len[i][j];k++){
+					fprintf(stderr,"%u, ",genomemap[i][j][k]);
+				}
+				fprintf(stderr,"\n");
+			}
+
+		}
+	}
+#endif
 
 }
 
@@ -102,7 +121,7 @@ static bool save_genome_map(const char *file) {
 
 		//write the genome_map for this seed
 		uint32_t j;
-		uint32_t p = power(4, HASH_TABLE_POWER);
+		uint32_t p = power(4, seed[i].weight);
 		//fprintf(stderr,"saving index\n");
 		gzwrite(fp,&p, sizeof(uint32_t));
 		for (j = 0; j < p; j++) {
@@ -299,6 +318,8 @@ launch_scan_threads(const char *file){
 	read_entry *res;
 	char *seq;
 
+	bool is_rna;
+
 	res = (read_entry *)xmalloc(sizeof(read_entry)*s);
 
 	//open the fasta file and check for errors
@@ -319,15 +340,20 @@ launch_scan_threads(const char *file){
 	while (more){
 		int i;
 		for(i = 0; i < s; i++){
-			if(!fasta_get_next(fasta, &res[i].name, &seq, NULL)){
+			if(!fasta_get_next(fasta, &res[i].name, &seq, &is_rna)){
 				more = false;
 				break;
 			}
-			if (shrimp_mode == MODE_COLOUR_SPACE){
-				res[i].initbp = fasta_get_initial_base(fasta,seq);
-			}
 			res[i].read = fasta_sequence_to_bitfield(fasta, seq);
 			res[i].read_len = strlen(seq);
+			if (shrimp_mode == MODE_COLOUR_SPACE){
+				res[i].initbp = fasta_get_initial_base(fasta,seq);
+				res[i].initbp_rev = res[i].initbp;
+				res[i].read_rev = reverse_complement_read_cs(res[i].read,&res[i].initbp_rev,res[i].read_len,is_rna);
+			} else {
+				res[i].read_rev = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
+			}
+
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 		}
 #pragma omp parallel shared(res,i) num_threads(numThreads)
@@ -354,7 +380,6 @@ load_genome(char **files, int nfiles)
 	size_t seqlen,  bytes;
 	uint32_t *read;
 	char *seq, *name;
-	int16_t initbp;
 	uint32_t *kmerWindow;
 	uint sn;
 	char *file;
@@ -369,7 +394,9 @@ load_genome(char **files, int nfiles)
 
 	for (sn = 0; sn < n_seeds; sn++) {
 
-		bytes = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+		//TODO impliment Hflag
+		//bytes = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+		bytes = sizeof(uint32_t *) * power(4, seed[sn].weight);
 
 		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
@@ -413,11 +440,13 @@ load_genome(char **files, int nfiles)
 						name);
 				exit(1);
 			}
+
+			read = fasta_sequence_to_bitfield(fasta,seq);
+
 			if (read == NULL) {
 				fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
 				exit(1);
 			}
-			read = fasta_sequence_to_bitfield(fasta,seq);
 			genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
 			genome_contigs[num_contigs-1] = read;
 			if (shrimp_mode == MODE_COLOUR_SPACE){
@@ -427,9 +456,10 @@ load_genome(char **files, int nfiles)
 			genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
 			genome_len[num_contigs -1] = seqlen;
 
-
 			if (shrimp_mode == MODE_COLOUR_SPACE){
-				initbp = fasta_get_initial_base(fasta,seq);
+				genome_initbp[num_contigs -1] = EXTRACT(read,0);
+				read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
+				genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t *)*num_contigs);
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 			u_int load;
@@ -452,7 +482,7 @@ load_genome(char **files, int nfiles)
 
 
 					DEBUG("hashing");
-					uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
+					uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
 					//increase the match count and store the location of the match
 					DEBUG("updating len");
 					genomemap_len[sn][mapidx]++;
@@ -509,7 +539,7 @@ void usage(char *progname,bool full_usage){
 
 }
 
-testing main
+//testing main
 int main(int argc, char **argv){
 	char *genome_file;
 	if (argc > 1){
@@ -520,10 +550,15 @@ int main(int argc, char **argv){
 		init_seed_hash_mask();
 		if (1){
 			fprintf(stderr,"loading gneomfile\n");
-			load_genome_lscs(genome_file);
-			//fprintf(stderr,"saving compressed index\n");
-			//save_genome_map("testfile.gz");
-			print_info();
+			load_genome(&genome_file,1);
+		}
+		if (0){
+			fprintf(stderr,"saving compressed index\n");
+			save_genome_map("testfile.gz");
+		}
+		print_info();
+		if (0){
+			launch_scan_threads(NULL);
 		}
 		if (0){
 			fprintf(stderr,"loading compressed index\n");
@@ -533,89 +568,89 @@ int main(int argc, char **argv){
 	}
 }
 
-int main2(int argc, char **argv){
-	char *genome_file;
-	char *progname = argv[0];
-	char const * optstr;
-	char *c;
-	int ch;
-
-	set_mode_from_argv(argv);
-
-	switch(shrimp_mode){
-	case MODE_COLOUR_SPACE:
-		optstr = "?s:";
-		break;
-	case MODE_LETTER_SPACE:
-		optstr = "?s:";
-		break;
-	case MODE_HELICOS_SPACE:
-		fprintf(stderr,"Helicose currently unsuported\n");
-		exit(1);
-		break;
-	default:
-		assert(0);
-	}
-
-	fprintf(stderr, "--------------------------------------------------"
-			"------------------------------\n");
-	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
-			SHRIMP_VERSION_STRING, get_compiler());
-	fprintf(stderr, "--------------------------------------------------"
-			"------------------------------\n");
-
-	while ((ch = getopt(argc,argv,optstr)) != -1){
-		switch (ch) {
-		case 's':
-			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
-				if (!add_spaced_seed(optarg)) {
-					fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
-					exit (1);
-				}
-			} else {
-				c = strtok(optarg, ",");
-				do {
-					if (!add_spaced_seed(c)) {
-						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
-						exit (1);
-					}
-					c = strtok(NULL, ",");
-				} while (c != NULL);
-			}
-			break;
-		case '?':
-			usage(progname, true);
-			break;
-		default:
-			usage(progname, false);
-		}
-	}
-
-	argc -= optind;
-	argv += optind;
-
-	if (n_seeds == 0)
-			load_default_seeds();
-
-	init_seed_hash_mask();
-
-	if (argc < 1){
-		fprintf(stderr, "Genome File not specified\n");
-		exit(1);
-	}
-
-	genome_file = argv[0];
-
-	fprintf(stderr,"loading gneomfile\n");
-	load_genome(&genome_file,1);
-	fprintf(stderr, "        Genomemap:                %s\n",
-					comma_integer(count_get_count(&mem_genomemap)));
-	fprintf(stderr,"saving compressed index\n");
-	save_genome_map("testfile.gz");
-	print_info();
-	fprintf(stderr,"loading compressed index\n");
-	load_genome_map("testfile.gz");
-
-	launch_scan_threads(genome_file);
-
-}
+//int main(int argc, char **argv){
+//	char *genome_file;
+//	char *progname = argv[0];
+//	char const * optstr;
+//	char *c;
+//	int ch;
+//
+//	set_mode_from_argv(argv);
+//
+//	switch(shrimp_mode){
+//	case MODE_COLOUR_SPACE:
+//		optstr = "?s:";
+//		break;
+//	case MODE_LETTER_SPACE:
+//		optstr = "?s:";
+//		break;
+//	case MODE_HELICOS_SPACE:
+//		fprintf(stderr,"Helicose currently unsuported\n");
+//		exit(1);
+//		break;
+//	default:
+//		assert(0);
+//	}
+//
+//	fprintf(stderr, "--------------------------------------------------"
+//			"------------------------------\n");
+//	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
+//			SHRIMP_VERSION_STRING, get_compiler());
+//	fprintf(stderr, "--------------------------------------------------"
+//			"------------------------------\n");
+//
+//	while ((ch = getopt(argc,argv,optstr)) != -1){
+//		switch (ch) {
+//		case 's':
+//			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
+//				if (!add_spaced_seed(optarg)) {
+//					fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
+//					exit (1);
+//				}
+//			} else {
+//				c = strtok(optarg, ",");
+//				do {
+//					if (!add_spaced_seed(c)) {
+//						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
+//						exit (1);
+//					}
+//					c = strtok(NULL, ",");
+//				} while (c != NULL);
+//			}
+//			break;
+//		case '?':
+//			usage(progname, true);
+//			break;
+//		default:
+//			usage(progname, false);
+//		}
+//	}
+//
+//	argc -= optind;
+//	argv += optind;
+//
+//	if (n_seeds == 0)
+//			load_default_seeds();
+//
+//	init_seed_hash_mask();
+//
+//	if (argc < 1){
+//		fprintf(stderr, "Genome File not specified\n");
+//		exit(1);
+//	}
+//
+//	genome_file = argv[0];
+//
+//	fprintf(stderr,"loading gneomfile\n");
+//	load_genome(&genome_file,1);
+//	fprintf(stderr, "        Genomemap:                %s\n",
+//					comma_integer(count_get_count(&mem_genomemap)));
+//	fprintf(stderr,"saving compressed index\n");
+//	save_genome_map("testfile.gz");
+//	print_info();
+//	fprintf(stderr,"loading compressed index\n");
+//	load_genome_map("testfile.gz");
+//
+//	launch_scan_threads(genome_file);
+//
+//}

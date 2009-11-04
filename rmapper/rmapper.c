@@ -307,38 +307,6 @@ save_score(uint32_t read_id, int score, uint index, int contig_num,
 }
 
 /*
- * Compress the given kmer into an index in 'readmap' according to the seed.
- * While not optimal, this is only about 20% of the spaced seed scan time.
- *
- * This is the original version for smaller seeds.
- *
- * XXX- This algorithm only considers bases 0-3, which implies overlap
- *      when we have other bases (mainly uracil, but also wobble codes).
- *      This won't affect sensitivity, but may cause extra S-W calls. 
- */
-static uint32_t
-kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
-{
-	bitmap_type a = seed[sn].mask[0];
-	uint32_t mapidx = 0;
-	int i = seed[sn].span - 1;
-
-	do {
-		if ((a & 0x1) == 0x1) {
-			mapidx <<= 2;
-			mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
-		}
-		a >>= 1;
-		i--;
-
-	} while (a != 0x0);
-
-	assert(mapidx < power(4, seed[sn].weight));
-
-	return mapidx;
-}
-
-/*
  * If 'kmer_stddev_limit' is set to a reasonable value, prune all kmers, whose
  * frequencies are more than 'kmer_stddev_limit' standard deviations greater
  * than the mean.

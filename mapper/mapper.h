@@ -49,10 +49,11 @@ static char const * const default_spaced_seeds_cs[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
   { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
 
-static int const default_spaced_seeds_ls_cnt = 4;
+static int const default_spaced_seeds_ls_cnt = 1;
 static char const * const default_spaced_seeds_ls[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+  //{ "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+  {"101"};
 
 static int const default_spaced_seeds_hs_cnt = 4;
 static char const * const default_spaced_seeds_hs[] =
@@ -79,6 +80,9 @@ power(size_t base, size_t exp);
 
 extern uint32_t
 kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn);
+
+extern uint32_t
+kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn);
 
 extern bool
 add_spaced_seed(const char *seedStr);

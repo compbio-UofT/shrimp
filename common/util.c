@@ -504,6 +504,81 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len, bool is_rna)
 			lastbp = base;
 		}
 	}
+
+}
+/*
+ * compute and return the reverse complement of the read in letterspace
+ */
+uint32_t *
+reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna){
+	uint32_t * rev_cmp;
+	uint32_t i, j, fudge, up, down;
+
+	rev_cmp = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
+	for (i = 0, j = BPTO32BW(len) - 1; i <= j; i++, j--) {
+		rev_cmp[i] = swap_nibbles(read[j]);
+		if (i != j)
+			rev_cmp[j] = swap_nibbles(read[i]);
+
+		rev_cmp[i]=(complement_base((rev_cmp[i] & 0x0000000f) >>  0, is_rna) <<  0) |
+				(complement_base((rev_cmp[i] & 0x000000f0) >>  4, is_rna) <<  4) |
+				(complement_base((rev_cmp[i] & 0x00000f00) >>  8, is_rna) <<  8) |
+				(complement_base((rev_cmp[i] & 0x0000f000) >> 12, is_rna) << 12) |
+				(complement_base((rev_cmp[i] & 0x000f0000) >> 16, is_rna) << 16) |
+				(complement_base((rev_cmp[i] & 0x00f00000) >> 20, is_rna) << 20) |
+				(complement_base((rev_cmp[i] & 0x0f000000) >> 24, is_rna) << 24) |
+				(complement_base((rev_cmp[i] & 0xf0000000) >> 28, is_rna) << 28);
+
+		/* Don't swap twice if we're at the same index */
+		if (i == j) {
+			// if i == j and i == 0, then we're done. Else j would
+			// underflow in the for loop above with unsigned badness
+			if (i == 0)
+				break;
+			else
+				continue;
+		}
+
+		rev_cmp[j]=(complement_base((rev_cmp[j] & 0x0000000f) >>  0, is_rna) <<  0) |
+				(complement_base((rev_cmp[j] & 0x000000f0) >>  4, is_rna) <<  4) |
+				(complement_base((rev_cmp[j] & 0x00000f00) >>  8, is_rna) <<  8) |
+				(complement_base((rev_cmp[j] & 0x0000f000) >> 12, is_rna) << 12) |
+				(complement_base((rev_cmp[j] & 0x000f0000) >> 16, is_rna) << 16) |
+				(complement_base((rev_cmp[j] & 0x00f00000) >> 20, is_rna) << 20) |
+				(complement_base((rev_cmp[j] & 0x0f000000) >> 24, is_rna) << 24) |
+				(complement_base((rev_cmp[j] & 0xf0000000) >> 28, is_rna) << 28);
+	}
+	/*
+	 * If (g_len % 8) != 0, we need to shift all words down since
+	 * the last word had some zeroed fields.
+	 */
+	fudge = 8 - (len % 8);
+	if (fudge != 8) {
+		down = fudge * 4;
+		up = 32 - down;
+
+		for (i = 0; i < BPTO32BW(len); i++) {
+			if (i > 0)
+				rev_cmp[i - 1] |= (rev_cmp[i] << up);
+			rev_cmp[i] >>= down;
+		}
+	}
+	return rev_cmp;
+
+}
+
+uint32_t *
+reverse_complement_read_cs(uint32_t * read,int8_t * initbp, uint32_t len,bool is_rna){
+	uint32_t * rev_cmp;
+
+	rev_cmp = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
+
+	uint i;
+	for (i = 0; i < len;i++){
+		*initbp = cstols(*initbp,EXTRACT(read,i),is_rna);
+		bitfield_insert(rev_cmp,len - 1 - i,EXTRACT(read,i));
+	}
+	return rev_cmp;
 }
 
 /*

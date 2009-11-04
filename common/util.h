@@ -79,6 +79,10 @@ void		bitfield_insert(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
 void		reverse_complement(uint32_t *, uint32_t *, uint32_t, bool);
+uint32_t *
+reverse_complement_read_cs(uint32_t * read,int8_t * initbp, uint32_t len,bool is_rna);
+uint32_t *
+reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna);
 uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,

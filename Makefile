@@ -48,7 +48,7 @@ rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	
-gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h
+gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
