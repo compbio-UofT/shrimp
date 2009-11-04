@@ -12,10 +12,10 @@
 struct read_entry {
   char *	name;
   uint32_t *	read;		/* the read as a bitstring */
-  uint32_t * read_rev;
+  uint32_t * read_rc;
 
   int8_t	initbp;		/* colour space init letter */
-  int8_t	initbp_rev;
+  int8_t	initbp_rc;
   uint32_t	read_len;
   uint16_t  window_len;
   uint32_t	sw_hits;

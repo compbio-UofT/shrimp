@@ -184,17 +184,19 @@ static int comp(const void *a, const void *b){
 	return *(uint32_t *)a - *(uint32_t *)b;
 }
 
-static uint32_t *
-read_locations(read_entry *re, int *len){
+static void
+read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **list_rc){
 	*len = 0;
 	uint sn,i;
 	uint load;
-	uint32_t *list = NULL;
 	uint32_t *kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+	uint32_t *kmerWindow_rc = (uint32_t *)xcalloc(sizeof(kmerWindow_rc[0])*BPTO32BW(max_seed_span));
 	for (load = 0 ; i < re->read_len; i++){
 		uint base;
 		base = EXTRACT(re->read, i);
 		bitfield_prepend(kmerWindow, max_seed_span, base);
+		base = EXTRACT(re->read_rc,i);
+		bitfield_prepend(kmerWindow_rc, max_seed_span, base);
 		//skip past any Ns or Xs
 		if (base == BASE_N || base == BASE_X)
 			load = 0;
@@ -219,14 +221,20 @@ read_locations(read_entry *re, int *len){
 			if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
 				continue;
 
-			uint32_t mapidx = kmer_to_mapidx_hash(kmerWindow, sn);
+			uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
 			*len += genomemap_len[sn][mapidx];
-			list = (uint32_t *)xrealloc(list,sizeof(uint32_t)* *len);
-			memcpy(list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+			*list = (uint32_t *)xrealloc(*list,sizeof(uint32_t)* *len);
+			memcpy(*list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+
+			mapidx = kmer_to_mapidx_orig(kmerWindow_rc, sn);
+			*len_rc += genomemap_len[sn][mapidx];
+			*list_rc = (uint32_t *)xrealloc(*list_rc,sizeof(uint32_t)* *len_rc);
+			memcpy(*list_rc + *len_rc - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+
 		}
 	}
-	qsort(list,*len,sizeof(uint32_t),&comp);
-	return list;
+	qsort(*list,*len,sizeof(uint32_t),&comp);
+	qsort(*list_rc,*len_rc,sizeof(uint32_t),&comp);
 }
 
 ///*
@@ -300,10 +308,11 @@ read_locations(read_entry *re, int *len){
 
 static void
 handle_read(read_entry *re){
-	int len;
-	uint32_t *list = read_locations(re,&len);
-	list = NULL;
+	int len,len_rc;
+	uint32_t *list, *list_rc;
+	read_locations(re,&len,&len_rc,&list,&lest_rc);
 	//scan_read_lscs(re,list,len,false);
+	//scan_read_lscs(re,list_rc,len_rc,true);
 }
 
 /*
@@ -348,10 +357,10 @@ launch_scan_threads(const char *file){
 			res[i].read_len = strlen(seq);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 				res[i].initbp = fasta_get_initial_base(fasta,seq);
-				res[i].initbp_rev = res[i].initbp;
-				res[i].read_rev = reverse_complement_read_cs(res[i].read,&res[i].initbp_rev,res[i].read_len,is_rna);
+				res[i].initbp_rc = res[i].initbp;
+				res[i].read_rc = reverse_complement_read_cs(res[i].read,&res[i].initbp_rev,res[i].read_len,is_rna);
 			} else {
-				res[i].read_rev = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
+				res[i].read_rc = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
 			}
 
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
