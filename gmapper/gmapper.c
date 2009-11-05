@@ -310,7 +310,7 @@ static void
 handle_read(read_entry *re){
 	int len,len_rc;
 	uint32_t *list, *list_rc;
-	read_locations(re,&len,&len_rc,&list,&lest_rc);
+	read_locations(re,&len,&len_rc,&list,&list_rc);
 	//scan_read_lscs(re,list,len,false);
 	//scan_read_lscs(re,list_rc,len_rc,true);
 }
@@ -358,7 +358,7 @@ launch_scan_threads(const char *file){
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 				res[i].initbp = fasta_get_initial_base(fasta,seq);
 				res[i].initbp_rc = res[i].initbp;
-				res[i].read_rc = reverse_complement_read_cs(res[i].read,&res[i].initbp_rev,res[i].read_len,is_rna);
+				res[i].read_rc = reverse_complement_read_cs(res[i].read,&res[i].initbp_rc,res[i].read_len,is_rna);
 			} else {
 				res[i].read_rc = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
 			}
