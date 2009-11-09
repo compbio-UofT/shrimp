@@ -23,10 +23,45 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 #include "../gmapper/gmapper.h"
-#include "../mapper/mapper.h"
+#include "../mapper/mapper.h" // why?
 #include "../common/version.h"
 
-double	window_len		= DEF_WINDOW_LEN;
+#include "../common/sw-full-common.h"
+#include "../common/sw-full-cs.h"
+#include "../common/sw-full-ls.h"
+#include "../common/sw-vector.h"
+#include "../common/output.h"
+
+/* Parameters */
+static double	window_len		= DEF_WINDOW_LEN;
+static double	window_overlap		= DEF_WINDOW_OVERLAP;
+static uint	num_matches		= DEF_NUM_MATCHES;
+static uint	num_outputs		= DEF_NUM_OUTPUTS;
+static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
+static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
+
+/* Scores */
+static int	match_score		= DEF_MATCH_VALUE;
+static int	mismatch_score		= DEF_MISMATCH_VALUE;
+static int	a_gap_open_score	= DEF_A_GAP_OPEN;
+static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
+static int	b_gap_open_score	= DEF_B_GAP_OPEN;
+static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
+static int	crossover_score		= DEF_XOVER_PENALTY;
+
+/* Flags */
+static int Bflag = false;			/* print a progress bar */
+static int Cflag = false;			/* do complement only */
+static int Fflag = false;			/* do positive (forward) only */
+static int Hflag = false;			/* use hash table, not lookup */
+static int Pflag = false;			/* pretty print results */
+static int Rflag = false;			/* add read sequence to output*/
+static int Tflag = false;			/* reverse sw full tie breaks */
+static int Uflag = false;			/* output unmapped reads, too */
+
+/* Statistics */
+static uint	nduphits;			/* number of duplicate hits */
+
 
 /* Kmer to genome index */
 static uint32_t ***genomemap;
@@ -38,7 +73,8 @@ static char **contig_names = NULL;
 static uint32_t num_contigs;
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
-static uint32_t **genome_contigs;			/* genome -- always in letter*/
+static uint32_t **genome_contigs;			/* genome -- always in letter */
+static uint32_t **genome_contigs_rc;			/* reverse complemets */
 static uint32_t **genome_cs_contigs;
 static uint32_t  *genome_initbp;
 static uint32_t	 *genome_len;
@@ -63,6 +99,114 @@ abs_or_pct(double x, double base) {
 		return -x;
 	else
 		return base * (x / 100.0);
+}
+
+/* percolate down in our min-heap */
+static void
+reheap(struct re_score *scores, uint node)
+{
+  struct re_score tmp;
+  uint left, right, max;
+
+  assert(node >= 1 && node <= (int)scores[0].heap_capacity);
+
+  left  = node * 2;
+  right = left + 1;
+  max   = node;
+  
+  if (left <= scores[0].heap_elems &&
+      scores[left].score < scores[node].score)
+    max = left;
+
+  if (right <= scores[0].heap_elems &&
+      scores[right].score < scores[max].score)
+    max = right;
+
+  if (max != node) {
+    tmp = scores[node];
+    scores[node] = scores[max];
+    scores[max] = tmp;
+    reheap(scores, max);
+  }
+}
+
+/* percolate up in our min-heap */
+static void
+percolate_up(struct re_score *scores, uint node)
+{
+  struct re_score tmp;
+  int parent;
+
+  assert(node >= 1 && node <= (int)scores[0].heap_capacity);
+
+  if (node == 1)
+    return;
+
+  parent = node / 2;
+
+  if (scores[parent].score > scores[node].score) {
+    tmp = scores[node];
+    scores[node] = scores[parent];
+    scores[parent] = tmp;
+    percolate_up(scores, parent);
+  }
+}
+
+/* update our score min-heap */
+static void
+save_score(read_entry * re, int score, uint g_idx, int contig_num, bool rev_cmpl)
+{
+  struct re_score * scores = re->scores;
+
+  if (scores[0].heap_elems == num_outputs) {
+    if (score < scores[1].score)
+      return;
+
+    /* replace min score */
+    scores[1].score = score;
+    scores[1].g_idx = g_idx;
+    scores[1].contig_num = contig_num;
+    scores[1].rev_cmpl = rev_cmpl;
+
+    reheap(scores, 1);
+  } else {
+    int idx = 1 + scores[0].heap_elems++;
+
+    assert(idx <= scores[0].heap_capacity);
+
+    scores[idx].score = score;
+    scores[idx].g_idx = g_idx;
+    scores[idx].contig_num = contig_num;
+    scores[idx].rev_cmpl = rev_cmpl;
+    
+    percolate_up(scores, idx);
+  }
+}
+
+static int
+score_cmp(const void *arg1, const void *arg2)
+{
+  const struct re_score *one = (const struct re_score *)arg1;
+  const struct re_score *two = (const struct re_score *)arg2;
+
+  assert(one->revcmpl == two->revcmpl);
+
+  if (one->score > two->score)
+    return (-1);
+  if (one->score < two->score)
+    return (1);
+
+  if (one->sfrp->genome_start > two->sfrp->genome_start)
+    return (1);
+  if (one->sfrp->genome_start < two->sfrp->genome_start)
+    return (-1);
+
+  if (one->sfrp->matches > two->sfrp->matches)
+    return (-1);
+  if (one->sfrp->matches < two->sfrp->matches)
+    return (1);
+
+  return (0);
 }
 
 void print_info(){
@@ -237,82 +381,200 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 	qsort(*list_rc,*len_rc,sizeof(uint32_t),&comp);
 }
 
-///*
-// * Find matches for the given read.
-// *
-// * list[0..len-1] is a sorted list containing start locations
-// * of matching spaced kmers between this read and the genome.
-// *
-// * Does not assume list of locations is tagged with actual kmer and originating seed.
-// * Instead, use avg_seed_span and center genome window around matching locations.
-// *
-// * Assumes that all contigs (num_contigs) that were indexed
-// * are loaded as letter space bitmaps in genome[].
-// * If the reads are colourspace, we also expect contigs in colour space in genome_cs[].
-// */
-//static void
-//scan_read_lscs(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
-//  uint cn;
-//  uint32_t goff, glen, last_sw_hit;
-//  uint i, j;
-//  int score, thresh;
-//
-//  // initialize heap of best hits for this read
-//  assert(0);
-//
-//  cn = 0;
-//  for (i = num_matches - 1, j = 0; i < len; i++, j++) {
-//
-//    /* adjust current contig number */
-//    while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
-//      cn++;
-//    assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
-//
-//    /* test if last num_matches are in same contig and fit in a window of size window_len */
-//    if (contig_offsets[cn] <= list[j]
-//	&& list[j] + re->window_len >= list[i] + (avg_seed_span - 1)) {
-//
-//      /* set goff, glen */
-//      if ((re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2 <= list[j])
-//	goff = list[j] - (re->window_len - (list[i] + (avg_seed_span - 1) - list[j]))/2;
-//      else
-//	goff = 0;
-//      glen = re->window_len;
-//
-//      // optionally use cache for this genomic window
-//
-//      if (shrimp_mode == MODE_COLOUR_SPACE) {
-//	score = sw_vector(genome_cs_contigs[cn], goff, glen, re->read, re->read_len,
-//			  genome[cn], re->initbp, genome_is_rna[cn]);
-//      } else if (shrimp_mode == MODE_LETTER_SPACE) {
-//	score = sw_vector(genome_contigs[cn], goff, glen, re->read, re->read_len,
-//			  NULL, -1, genome_is_rna[cn]);
-//      }
-//
-//      thresh = get_sw_threshold(re, sw_vect_threshold, 1);
-//      if (score >= thresh) {
-//	/* save hit */
-//	//ES_count_increment(&es_total_filter_passes);
-//	//ES_count32_increment(&re->es_filter_passes);
-//
-//	save_score(re, score, goff, cn, revcmpl);
-//	last_sw_hit = goff;
-//	re->sw_hits++;
-//      }
-//    }
-//  }
-//
-//  // do final pass for this read; run full sw on hit locations from heap
-//  assert (0);
-//}
+/*
+ * Find matches for the given read.
+ *
+ * list[0..len-1] is a sorted list containing start locations
+ * of matching spaced kmers between this read and the genome.
+ *
+ * Does not assume list of locations is tagged with actual kmer and originating seed.
+ * Instead, use avg_seed_span and center genome window around matching locations.
+ *
+ * Assumes that all contigs (num_contigs) that were indexed
+ * are loaded as letter space bitmaps in genome[].
+ * If the reads are colourspace, we also expect contigs in colour space in genome_cs[].
+ */
+static void
+scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
+  uint cn;
+  uint32_t goff, glen;
+  uint i, j;
+  int score, thresh;
+
+  // initialize heap of best hits for this read
+  re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
+  re->scores[0].heap_elems = 0;
+  re->scores[0].heap_capacity = num_outputs;
+
+  cn = 0;
+  for (i = num_matches - 1, j = 0; i < len; i++, j++) {
+    assert(i == j + num_matches - 1);
+
+    /* adjust current contig number */
+    while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
+      cn++;
+    assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
+
+    /* test if last num_matches are in same contig and fit in a window of size window_len */
+    if (contig_offsets[cn] <= list[j]
+	&& list[j] + re->window_len >= list[i] + avg_seed_span) {
+
+      /* set goff, glen */
+      if ((re->window_len - (list[i] + avg_seed_span - list[j]))/2 <= list[j])
+	goff = list[j] - (re->window_len - (list[i] + avg_seed_span - list[j]))/2;
+      else
+	goff = 0;
+      glen = re->window_len;
+
+      if (goff + glen > genome_len[cn])
+	continue;
+
+      // optionally use cache for this genomic window
+
+      if (shrimp_mode == MODE_COLOUR_SPACE) {
+	score = sw_vector(genome_cs_contigs[cn], goff, glen,
+			  rev_cmpl? re->read_rc : re->read, re->read_len,
+			  genome_contigs[cn], rev_cmpl? re->initbp_rc : re->initbp, genome_is_rna);
+      } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	score = sw_vector(genome_contigs[cn], goff, glen,
+			  rev_cmpl? re->read_rc : re->read, re->read_len,
+			  NULL, -1, genome_is_rna);
+      }
+
+      thresh = (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len);
+      if (score >= thresh) {
+	/* save hit */
+	//ES_count_increment(&es_total_filter_passes);
+	//ES_count32_increment(&re->es_filter_passes);
+
+	save_score(re, score, goff, cn, rev_cmpl);
+	re->sw_hits++;
+
+	/* advance i&j appropriately */
+	j++;
+	while (j < len
+	       && !(cn < num_contigs - 1 && list[j] >= contig_offsets[cn + 1])
+	       && !(list[j] >= contig_offsets[cn] + goff + re->window_len - (int)abs_or_pct(window_overlap, re->read_len))
+	       )
+	  j++;
+	j--;
+	i = j + num_matches - 1;
+      }
+    }
+  }
+}
+
+/*
+ * Do a final pass for given read.
+ * Highest scoring matches are in scores heap.
+ */
+static void
+scan_read_lscs_pass2(read_entry * re) {
+  uint i;
+  int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
+  struct sw_full_results last_sfr;
+
+  assert(re != NULL && re->scores != NULL);
+
+  /* compute full alignment scores */
+  for (i = 1; i <= re->scores[0].heap_elems; i++) {
+    struct re_score * rs = &re->scores[i];
+    uint32_t * gen;
+    uint goff;
+
+    rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
+
+    if (rs->rev_cmpl) {
+      gen = genome_contigs_rc[rs->contig_num];
+      goff = rs->g_idx + re->window_len - 1;
+    } else {
+      gen = genome_contigs[rs->contig_num];
+      goff = rs->g_idx;
+    }
+
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+	sw_full_cs(gen, goff, re->window_len,
+		   re->read, re->read_len, re->initbp,
+		   thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna, NULL, 0);
+    } else {
+      /*
+       * The full SW in letter space assumes it's given the correct max score.
+       * This might not be true just yet if we're using hashing&caching because
+       * of possible hash collosions.
+       */
+      rs->score = sw_vector(gen, goff, re->window_len,
+			    re->read, re->read_len,
+			    NULL, -1, genome_is_rna);
+      if (rs->score >= thresh) {
+	sw_full_ls(gen, goff, re->window_len,
+		   re->read, re->read_len,
+		   thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,  NULL, 0);
+	assert(rs->sfrp->score == rs->score);
+      } else { // this wouldn't have passed the filter; eliminated in loop below
+	rs->sfrp->score = rs->score;
+	rs->sfrp->dbalign = NULL;
+	rs->sfrp->qralign = NULL;
+      }
+    }
+  }
+
+  /* sort scores */
+  qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+
+  /* Output sorted list, removing any duplicates. */
+  memset(&last_sfr, 0, sizeof(last_sfr));
+  for (i = 1; i <= re->scores[0].heap_elems; i++) {
+    struct re_score * rs = &re->scores[i];
+    bool dup;
+
+    dup = sw_full_results_equal(&last_sfr, rs->sfrp);
+    if (dup)
+      nduphits++;
+
+    if (rs->score >= thresh && dup == false) {
+      char *output;
+
+      re->final_matches++;
+
+      output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+			     genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+			     re->read_len, re->initbp, rs->rev_cmpl, Rflag);
+      puts(output);
+      free(output);
+
+      if (Pflag) {
+	output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+			       genome_contigs[rs->contig_num], genome_len[rs->contig_num],
+			       (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+			       re->read_len, re->initbp, rs->rev_cmpl);
+	puts("");
+	puts(output);
+	free(output);
+      }
+    }
+
+    last_sfr = *rs->sfrp;
+    if (rs->sfrp->dbalign != NULL)
+      free(rs->sfrp->dbalign);
+    if (rs->sfrp->qralign != NULL)
+      free(rs->sfrp->qralign);
+    free(rs->sfrp);
+  }
+
+  // done with this read; deallocate memory.
+  // deallocate name/bitmap ???
+  free(re->scores);
+}
+
 
 static void
 handle_read(read_entry *re){
 	int len,len_rc;
 	uint32_t *list, *list_rc;
 	read_locations(re,&len,&len_rc,&list,&list_rc);
-	//scan_read_lscs(re,list,len,false);
-	//scan_read_lscs(re,list_rc,len_rc,true);
+	scan_read_lscs_pass1(re,list,len,false);
+	scan_read_lscs_pass1(re,list_rc,len_rc,true);
+	scan_read_lscs_pass2(re);
 }
 
 /*
@@ -567,7 +829,13 @@ int main(int argc, char **argv){
 		}
 		print_info();
 		if (0){
-			launch_scan_threads(NULL);
+		  char * output;
+
+		  output = output_format_line(Rflag);
+		  puts(output);
+		  free(output);
+
+		  launch_scan_threads(NULL);
 		}
 		if (0){
 			fprintf(stderr,"loading compressed index\n");
