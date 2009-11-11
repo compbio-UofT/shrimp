@@ -2,13 +2,7 @@
 #define _GMAPPER_H
 
 #include "../common/sw-full-common.h"
-
-//uncomment to debug
-#define DEBUG(x) fprintf(stderr,"DEBUG: " x "\n")
-#ifndef DEBUG
-#define DEBUG(X)
-#endif
-
+#include "../common/debug.h"
 
 struct re_score {
   struct sw_full_results * sfrp;	/* alignment results (final pass) */
@@ -39,5 +33,5 @@ struct read_entry {
   uint32_t	final_matches;
 };
 
-
 #endif
+

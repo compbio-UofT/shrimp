@@ -10,6 +10,7 @@
 
 #include "../common/bitmap.h"
 #include <stdlib.h>
+#include "../common/debug.h"
 
 
 /* Default parameters */
@@ -63,16 +64,27 @@
 #define MAX_HASH_SEED_SPAN	128
 #define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
 
+#ifndef DEBUG
 static int const default_spaced_seeds_cs_cnt = 4;
 static char const * const default_spaced_seeds_cs[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
   { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+#else
+static int const default_spaced_seeds_cs_cnt = 1;
+static char const * const default_spaced_seeds_cs[] =
+  { "101"};
+#endif
 
-static int const default_spaced_seeds_ls_cnt = 1;
+#ifndef DEBUG
+static int const default_spaced_seeds_ls_cnt = 4;
 static char const * const default_spaced_seeds_ls[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  //{ "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
+#else
+static int const default_spaced_seeds_ls_cnt = 1;
+static char const * const default_spaced_seeds_ls[] =
   {"101"};
+#endif
 
 static int const default_spaced_seeds_hs_cnt = 4;
 static char const * const default_spaced_seeds_hs[] =
