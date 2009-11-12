@@ -23,7 +23,7 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 #include "../gmapper/gmapper.h"
-#include "../mapper/mapper.h" // why?
+#include "../mapper/mapper.h" // why? to reduce code duplication contains common functions from gmapper and rmapper
 #include "../common/version.h"
 
 #include "../common/sw-full-common.h"
@@ -42,22 +42,22 @@ static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Scores */
 static int	match_score		= DEF_MATCH_VALUE;
-static int	mismatch_score		= DEF_MISMATCH_VALUE;
-static int	a_gap_open_score	= DEF_A_GAP_OPEN;
-static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
-static int	b_gap_open_score	= DEF_B_GAP_OPEN;
-static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
-static int	crossover_score		= DEF_XOVER_PENALTY;
+//static int	mismatch_score		= DEF_MISMATCH_VALUE;
+//static int	a_gap_open_score	= DEF_A_GAP_OPEN;
+//static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
+//static int	b_gap_open_score	= DEF_B_GAP_OPEN;
+//static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
+//static int	crossover_score		= DEF_XOVER_PENALTY;
 
 /* Flags */
-static int Bflag = false;			/* print a progress bar */
-static int Cflag = false;			/* do complement only */
-static int Fflag = false;			/* do positive (forward) only */
-static int Hflag = false;			/* use hash table, not lookup */
+//static int Bflag = false;			/* print a progress bar */
+//static int Cflag = false;			/* do complement only */
+//static int Fflag = false;			/* do positive (forward) only */
+//static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
-static int Uflag = false;			/* output unmapped reads, too */
+//static int Uflag = false;			/* output unmapped reads, too */
 
 /* Statistics */
 static uint	nduphits;			/* number of duplicate hits */
@@ -108,7 +108,7 @@ reheap(struct re_score *scores, uint node)
   struct re_score tmp;
   uint left, right, max;
 
-  assert(node >= 1 && node <= (int)scores[0].heap_capacity);
+  assert(node >= 1 && (int)node <= (int)scores[0].heap_capacity);
 
   left  = node * 2;
   right = left + 1;
@@ -137,7 +137,7 @@ percolate_up(struct re_score *scores, uint node)
   struct re_score tmp;
   int parent;
 
-  assert(node >= 1 && node <= (int)scores[0].heap_capacity);
+  assert(node >= 1 && (int)node <= (int)scores[0].heap_capacity);
 
   if (node == 1)
     return;
@@ -172,7 +172,7 @@ save_score(read_entry * re, int score, uint g_idx, int contig_num, bool rev_cmpl
   } else {
     int idx = 1 + scores[0].heap_elems++;
 
-    assert(idx <= scores[0].heap_capacity);
+    assert(idx <= (int)scores[0].heap_capacity);
 
     scores[idx].score = score;
     scores[idx].g_idx = g_idx;
@@ -189,7 +189,7 @@ score_cmp(const void *arg1, const void *arg2)
   const struct re_score *one = (const struct re_score *)arg1;
   const struct re_score *two = (const struct re_score *)arg2;
 
-  assert(one->revcmpl == two->revcmpl);
+  //assert(one->revcmpl == two->revcmpl);
 
   if (one->score > two->score)
     return (-1);
@@ -331,6 +331,7 @@ static int comp(const void *a, const void *b){
 static void
 read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **list_rc){
 	*len = 0;
+	*len_rc =0;
 	uint sn,i;
 	uint load;
 	uint32_t *kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
@@ -367,13 +368,17 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 
 			uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
 			*len += genomemap_len[sn][mapidx];
-			*list = (uint32_t *)xrealloc(*list,sizeof(uint32_t)* *len);
-			memcpy(*list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+			if(*len){
+				*list = (uint32_t *)xrealloc(*list,sizeof(uint32_t)* *len);
+				memcpy(*list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]*sizeof(uint32_t));
+			}
 
 			mapidx = kmer_to_mapidx_orig(kmerWindow_rc, sn);
 			*len_rc += genomemap_len[sn][mapidx];
-			*list_rc = (uint32_t *)xrealloc(*list_rc,sizeof(uint32_t)* *len_rc);
-			memcpy(*list_rc + *len_rc - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]);
+			if(*len_rc){
+				*list_rc = (uint32_t *)xrealloc(*list_rc,sizeof(uint32_t)* *len_rc);
+				memcpy(*list_rc + *len_rc - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]*sizeof(uint32_t));
+			}
 
 		}
 	}
@@ -400,6 +405,7 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
   uint32_t goff, glen;
   uint i, j;
   int score, thresh;
+  score = 0; //Shut up compliler TODO don't do this
 
   // initialize heap of best hits for this read
   re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
@@ -532,25 +538,25 @@ scan_read_lscs_pass2(read_entry * re) {
       nduphits++;
 
     if (rs->score >= thresh && dup == false) {
-      char *output;
+    	char *output;
 
-      re->final_matches++;
+    	re->final_matches++;
 
-      output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
-			     genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
-			     re->read_len, re->initbp, rs->rev_cmpl, Rflag);
-      puts(output);
-      free(output);
+    	output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+    			genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+    			re->read_len, re->initbp, rs->rev_cmpl, Rflag);
+    	puts(output);
+    	free(output);
 
-      if (Pflag) {
-	output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
-			       genome_contigs[rs->contig_num], genome_len[rs->contig_num],
-			       (shrimp_mode == MODE_COLOUR_SPACE), re->read,
-			       re->read_len, re->initbp, rs->rev_cmpl);
-	puts("");
-	puts(output);
-	free(output);
-      }
+    	if (Pflag) {
+    		output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+    				genome_contigs[rs->contig_num], genome_len[rs->contig_num],
+    				(shrimp_mode == MODE_COLOUR_SPACE), re->read,
+    				re->read_len, re->initbp, rs->rev_cmpl);
+    		puts("");
+    		puts(output);
+    		free(output);
+    	}
     }
 
     last_sfr = *rs->sfrp;
@@ -561,6 +567,7 @@ scan_read_lscs_pass2(read_entry * re) {
     free(rs->sfrp);
   }
 
+  // TODO This v
   // done with this read; deallocate memory.
   // deallocate name/bitmap ???
   free(re->scores);
@@ -569,11 +576,22 @@ scan_read_lscs_pass2(read_entry * re) {
 
 static void
 handle_read(read_entry *re){
-	int len,len_rc;
-	uint32_t *list, *list_rc;
+	int len,len_rc = 0;
+	uint32_t *list = NULL, *list_rc = NULL;
+	DEBUG("computing read locations for read %s",re->name);
 	read_locations(re,&len,&len_rc,&list,&list_rc);
+#ifdef DEBUG
+	int i;
+	for(i = 0; i < len; i++){
+		fprintf(stderr,"%u,",list[i]);
+	}
+	fprintf(stderr,"\n");
+#endif
+	DEBUG("fisrt pass on list");
 	scan_read_lscs_pass1(re,list,len,false);
+	DEBUG("fisrt pass on list_rc");
 	scan_read_lscs_pass1(re,list_rc,len_rc,true);
+	DEBUG("second pass");
 	scan_read_lscs_pass2(re);
 }
 
@@ -632,7 +650,7 @@ launch_scan_threads(const char *file){
 			int j;
 #pragma omp for
 			for (j = 0; j < i; j++){
-				handle_read(&res[i]);
+				handle_read(&res[j]);
 			}
 		}
 
@@ -810,32 +828,29 @@ void usage(char *progname,bool full_usage){
 
 }
 
-//testing main
+#ifdef DEBUG
 int main(int argc, char **argv){
-	char *genome_file;
 	if (argc > 1){
-		genome_file = argv[1];
 		set_mode_from_argv(argv);
 		if (n_seeds == 0)
 				load_default_seeds();
 		init_seed_hash_mask();
 		if (1){
 			fprintf(stderr,"loading gneomfile\n");
-			load_genome(&genome_file,1);
+			load_genome(argv+1,2);
 		}
 		if (0){
 			fprintf(stderr,"saving compressed index\n");
 			save_genome_map("testfile.gz");
 		}
 		print_info();
-		if (0){
-		  char * output;
+		if(1){
+			char * output;
 
-		  output = output_format_line(Rflag);
-		  puts(output);
-		  free(output);
-
-		  launch_scan_threads(NULL);
+			output = output_format_line(Rflag);
+			puts(output);
+			free(output);
+		  launch_scan_threads(argv[3]);
 		}
 		if (0){
 			fprintf(stderr,"loading compressed index\n");
@@ -845,89 +860,91 @@ int main(int argc, char **argv){
 	}
 }
 
-//int main(int argc, char **argv){
-//	char *genome_file;
-//	char *progname = argv[0];
-//	char const * optstr;
-//	char *c;
-//	int ch;
-//
-//	set_mode_from_argv(argv);
-//
-//	switch(shrimp_mode){
-//	case MODE_COLOUR_SPACE:
-//		optstr = "?s:";
-//		break;
-//	case MODE_LETTER_SPACE:
-//		optstr = "?s:";
-//		break;
-//	case MODE_HELICOS_SPACE:
-//		fprintf(stderr,"Helicose currently unsuported\n");
-//		exit(1);
-//		break;
-//	default:
-//		assert(0);
-//	}
-//
-//	fprintf(stderr, "--------------------------------------------------"
-//			"------------------------------\n");
-//	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
-//			SHRIMP_VERSION_STRING, get_compiler());
-//	fprintf(stderr, "--------------------------------------------------"
-//			"------------------------------\n");
-//
-//	while ((ch = getopt(argc,argv,optstr)) != -1){
-//		switch (ch) {
-//		case 's':
-//			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
-//				if (!add_spaced_seed(optarg)) {
-//					fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
-//					exit (1);
-//				}
-//			} else {
-//				c = strtok(optarg, ",");
-//				do {
-//					if (!add_spaced_seed(c)) {
-//						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
-//						exit (1);
-//					}
-//					c = strtok(NULL, ",");
-//				} while (c != NULL);
-//			}
-//			break;
-//		case '?':
-//			usage(progname, true);
-//			break;
-//		default:
-//			usage(progname, false);
-//		}
-//	}
-//
-//	argc -= optind;
-//	argv += optind;
-//
-//	if (n_seeds == 0)
-//			load_default_seeds();
-//
-//	init_seed_hash_mask();
-//
-//	if (argc < 1){
-//		fprintf(stderr, "Genome File not specified\n");
-//		exit(1);
-//	}
-//
-//	genome_file = argv[0];
-//
-//	fprintf(stderr,"loading gneomfile\n");
-//	load_genome(&genome_file,1);
-//	fprintf(stderr, "        Genomemap:                %s\n",
-//					comma_integer(count_get_count(&mem_genomemap)));
-//	fprintf(stderr,"saving compressed index\n");
-//	save_genome_map("testfile.gz");
-//	print_info();
-//	fprintf(stderr,"loading compressed index\n");
-//	load_genome_map("testfile.gz");
-//
-//	launch_scan_threads(genome_file);
-//
-//}
+#else
+int main(int argc, char **argv){
+	char *genome_file;
+	char *progname = argv[0];
+	char const * optstr;
+	char *c;
+	int ch;
+
+	set_mode_from_argv(argv);
+
+	switch(shrimp_mode){
+	case MODE_COLOUR_SPACE:
+		optstr = "?s:";
+		break;
+	case MODE_LETTER_SPACE:
+		optstr = "?s:";
+		break;
+	case MODE_HELICOS_SPACE:
+		fprintf(stderr,"Helicose currently unsuported\n");
+		exit(1);
+		break;
+	default:
+		assert(0);
+	}
+
+	fprintf(stderr, "--------------------------------------------------"
+			"------------------------------\n");
+	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
+			SHRIMP_VERSION_STRING, get_compiler());
+	fprintf(stderr, "--------------------------------------------------"
+			"------------------------------\n");
+
+	while ((ch = getopt(argc,argv,optstr)) != -1){
+		switch (ch) {
+		case 's':
+			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
+				if (!add_spaced_seed(optarg)) {
+					fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
+					exit (1);
+				}
+			} else {
+				c = strtok(optarg, ",");
+				do {
+					if (!add_spaced_seed(c)) {
+						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
+						exit (1);
+					}
+					c = strtok(NULL, ",");
+				} while (c != NULL);
+			}
+			break;
+		case '?':
+			usage(progname, true);
+			break;
+		default:
+			usage(progname, false);
+		}
+	}
+
+	argc -= optind;
+	argv += optind;
+
+	if (n_seeds == 0)
+			load_default_seeds();
+
+	init_seed_hash_mask();
+
+	if (argc < 1){
+		fprintf(stderr, "Genome File not specified\n");
+		exit(1);
+	}
+
+	genome_file = argv[0];
+
+	fprintf(stderr,"loading gneomfile\n");
+	load_genome(&genome_file,1);
+	fprintf(stderr, "        Genomemap:                %s\n",
+					comma_integer(count_get_count(&mem_genomemap)));
+	fprintf(stderr,"saving compressed index\n");
+	save_genome_map("testfile.gz");
+	print_info();
+	fprintf(stderr,"loading compressed index\n");
+	load_genome_map("testfile.gz");
+
+	launch_scan_threads(genome_file);
+
+}
+#endif

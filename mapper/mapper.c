@@ -20,6 +20,7 @@ uint32_t **seed_hash_mask = NULL;
 uint max_seed_span = 0;
 uint32_t n_seeds = 0;
 u_int	nkmers = 0;				/* total kmers of reads loaded*/
+uint avg_seed_span = 0;
 
 size_t
 power(size_t base, size_t exp)
@@ -122,6 +123,13 @@ add_spaced_seed(const char *seedStr)
 		max_seed_span = seed[n_seeds].span;
 
 	n_seeds++;
+
+	avg_seed_span = 0;
+	for(i =0; i < n_seeds;i++){
+		avg_seed_span += seed[i].span;
+	}
+	avg_seed_span = avg_seed_span/n_seeds;
+
 	return true;
 }
 

@@ -1,6 +1,7 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 ifndef CXXFLAGS
-CXXFLAGS=-O3 -DNDEBUG -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
+#CXXFLAGS=-O3 -DNDEBUG -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
+CXXFLAGS= -g -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
 LD=$(CXX)
@@ -45,7 +46,9 @@ rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 # gmapper /
 #
 
-bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o
+bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o \
+	common/sw-vector.o common/sw-full-cs.o common/sw-full-ls.o common/output.o common/anchors.o \
+	common/input.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
