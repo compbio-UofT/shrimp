@@ -64,7 +64,7 @@
 #define MAX_HASH_SEED_SPAN	128
 #define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
 
-#ifndef DEBUG
+#ifndef DEBUGGING
 static int const default_spaced_seeds_cs_cnt = 4;
 static char const * const default_spaced_seeds_cs[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
@@ -75,7 +75,7 @@ static char const * const default_spaced_seeds_cs[] =
   { "101"};
 #endif
 
-#ifndef DEBUG
+#ifndef DEBUGGING
 static int const default_spaced_seeds_ls_cnt = 4;
 static char const * const default_spaced_seeds_ls[] =
   //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };

@@ -219,7 +219,7 @@ void print_info(){
 	for (i=0; i < n_seeds;i++){
 		fprintf(stderr,"seed %u: %s\n",i,seed_to_string(i));
 	}
-#ifdef DEBUG
+#ifdef DEBUGGING
 	for(i=0; i < n_seeds;i++){
 		fprintf(stderr,"map for seed %u\n",i);
 		uint j;
@@ -571,7 +571,7 @@ handle_read(read_entry *re){
 	uint32_t *list = NULL, *list_rc = NULL;
 	DEBUG("computing read locations for read %s",re->name);
 	read_locations(re,&len,&len_rc,&list,&list_rc);
-#ifdef DEBUG
+#ifdef DEBUGGING
 	int i;
 	fprintf(stderr,"read locations:");
 	for(i = 0; i < len; i++){
@@ -741,6 +741,8 @@ load_genome(char **files, int nfiles)
 			}
 			genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
 			genome_contigs[num_contigs-1] = read;
+			genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs_rc,sizeof(uint32_t *)*num_contigs);
+			genome_contigs_rc[num_contigs-1] = reverse_complement_read_ls(read,seqlen,is_rna);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 				genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
 				genome_cs_contigs[num_contigs-1] = fasta_bitfield_to_colourspace(fasta,genome_contigs[num_contigs -1],seqlen,is_rna);
@@ -831,7 +833,7 @@ void usage(char *progname,bool full_usage){
 
 }
 
-#ifdef DEBUG
+#ifdef DEBUGMAIN
 int main(int argc, char **argv){
 	if (argc > 1){
 		set_mode_from_argv(argv);
@@ -876,7 +878,9 @@ int main(int argc, char **argv){
 			fprintf(stderr,"saving compressed index\n");
 			save_genome_map("testfile.gz");
 		}
-		print_info();
+		if (0){
+			print_info();
+		}
 		if(1){
 			char * output;
 

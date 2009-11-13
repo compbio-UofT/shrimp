@@ -7,9 +7,13 @@
 
 #ifndef DEBUG_H_
 #define DEBUG_H_
-//uncomment to debug
+
+#define DEBUGGING
+#define DEBUGMAIN
+
+#ifdef DEBUGGING
 #define DEBUG(x,...) fprintf(stderr,"DEBUG: " x "\n",##__VA_ARGS__)
-#ifndef DEBUG
+#else
 #define DEBUG(X,...)
 #endif
 
