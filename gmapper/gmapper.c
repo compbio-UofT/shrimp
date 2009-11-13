@@ -54,7 +54,7 @@ static int	crossover_score		= DEF_XOVER_PENALTY;
 //static int Cflag = false;			/* do complement only */
 //static int Fflag = false;			/* do positive (forward) only */
 //static int Hflag = false;			/* use hash table, not lookup */
-static int Pflag = false;			/* pretty print results */
+static int Pflag = true;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 //static int Uflag = false;			/* output unmapped reads, too */
@@ -833,6 +833,67 @@ void usage(char *progname,bool full_usage){
 
 }
 
+void print_settings() {
+  static char const my_tab[] = "    ";
+  uint i;
+
+  fprintf(stderr, "--------------------------------------------------------------------------------\n");
+  fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(), SHRIMP_VERSION_STRING, get_compiler());
+  fprintf(stderr, "--------------------------------------------------------------------------------\n");
+
+  fprintf(stderr, "Settings:\n");
+  fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
+	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
+	  seed_to_string(0), seed[0].weight, seed[0].span);
+  for (i = 1; i < n_seeds; i++) {
+    fprintf(stderr, "                                          %s (%u/%u)\n",
+	    seed_to_string(i), seed[i].weight, seed[i].span);
+  }
+
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
+
+  if (IS_ABSOLUTE(window_len)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
+  }
+
+  if (IS_ABSOLUTE(window_overlap)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
+  }
+
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
+  }
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    if (IS_ABSOLUTE(sw_vect_threshold)) {
+      fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
+    } else {
+      fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
+    }
+  }
+  if (IS_ABSOLUTE(sw_full_threshold)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab,
+	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    (uint)-sw_full_threshold);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
+	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    sw_full_threshold);
+  }
+
+}
+
+
 #ifdef DEBUGMAIN
 int main(int argc, char **argv){
 	if (argc > 1){
@@ -840,6 +901,8 @@ int main(int argc, char **argv){
 		if (n_seeds == 0)
 				load_default_seeds();
 		init_seed_hash_mask();
+
+  print_settings();
 
   int max_window_len = 200;
   int longest_read_len = 100;
