@@ -42,12 +42,12 @@ static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Scores */
 static int	match_score		= DEF_MATCH_VALUE;
-//static int	mismatch_score		= DEF_MISMATCH_VALUE;
-//static int	a_gap_open_score	= DEF_A_GAP_OPEN;
-//static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
-//static int	b_gap_open_score	= DEF_B_GAP_OPEN;
-//static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
-//static int	crossover_score		= DEF_XOVER_PENALTY;
+static int	mismatch_score		= DEF_MISMATCH_VALUE;
+static int	a_gap_open_score	= DEF_A_GAP_OPEN;
+static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
+static int	b_gap_open_score	= DEF_B_GAP_OPEN;
+static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
+static int	crossover_score		= DEF_XOVER_PENALTY;
 
 /* Flags */
 //static int Bflag = false;			/* print a progress bar */
@@ -108,7 +108,7 @@ reheap(struct re_score *scores, uint node)
   struct re_score tmp;
   uint left, right, max;
 
-  assert(node >= 1 && (int)node <= (int)scores[0].heap_capacity);
+  assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
 
   left  = node * 2;
   right = left + 1;
@@ -137,7 +137,7 @@ percolate_up(struct re_score *scores, uint node)
   struct re_score tmp;
   int parent;
 
-  assert(node >= 1 && (int)node <= (int)scores[0].heap_capacity);
+  assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
 
   if (node == 1)
     return;
@@ -170,9 +170,9 @@ save_score(read_entry * re, int score, uint g_idx, int contig_num, bool rev_cmpl
 
     reheap(scores, 1);
   } else {
-    int idx = 1 + scores[0].heap_elems++;
+    uint idx = 1 + scores[0].heap_elems++;
 
-    assert(idx <= (int)scores[0].heap_capacity);
+    assert(idx <= scores[0].heap_capacity);
 
     scores[idx].score = score;
     scores[idx].g_idx = g_idx;
@@ -336,7 +336,7 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 	uint load;
 	uint32_t *kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 	uint32_t *kmerWindow_rc = (uint32_t *)xcalloc(sizeof(kmerWindow_rc[0])*BPTO32BW(max_seed_span));
-	for (load = 0 ; i < re->read_len; i++){
+	for (load = 0, i = 0 ; i < re->read_len; i++){
 		uint base;
 		base = EXTRACT(re->read, i);
 		bitfield_prepend(kmerWindow, max_seed_span, base);
@@ -406,11 +406,6 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
   uint i, j;
   int score, thresh;
   score = 0; //Shut up compliler TODO don't do this
-
-  // initialize heap of best hits for this read
-  re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
-  re->scores[0].heap_elems = 0;
-  re->scores[0].heap_capacity = num_outputs;
 
   cn = 0;
   for (i = num_matches - 1, j = 0; i < len; i++, j++) {
@@ -567,10 +562,6 @@ scan_read_lscs_pass2(read_entry * re) {
     free(rs->sfrp);
   }
 
-  // TODO This v
-  // done with this read; deallocate memory.
-  // deallocate name/bitmap ???
-  free(re->scores);
 }
 
 
@@ -582,17 +573,29 @@ handle_read(read_entry *re){
 	read_locations(re,&len,&len_rc,&list,&list_rc);
 #ifdef DEBUG
 	int i;
+	fprintf(stderr,"read locations:");
 	for(i = 0; i < len; i++){
 		fprintf(stderr,"%u,",list[i]);
 	}
 	fprintf(stderr,"\n");
 #endif
+
+  // initialize heap of best hits for this read
+  re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
+  re->scores[0].heap_elems = 0;
+  re->scores[0].heap_capacity = num_outputs;
+
 	DEBUG("fisrt pass on list");
 	scan_read_lscs_pass1(re,list,len,false);
 	DEBUG("fisrt pass on list_rc");
 	scan_read_lscs_pass1(re,list_rc,len_rc,true);
 	DEBUG("second pass");
 	scan_read_lscs_pass2(re);
+
+  // TODO This v
+  // done with this read; deallocate memory.
+  // deallocate name/bitmap ???
+  free(re->scores);
 }
 
 /*
@@ -784,7 +787,7 @@ load_genome(char **files, int nfiles)
 						DEBUG("realloc returned null");
 					}
 					DEBUG("updateing map");
-					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i;
+					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i - seed[sn].span + 1;
 					nkmers++;
 
 				}
@@ -835,6 +838,36 @@ int main(int argc, char **argv){
 		if (n_seeds == 0)
 				load_default_seeds();
 		init_seed_hash_mask();
+
+  int max_window_len = 200;
+  int longest_read_len = 100;
+  if (sw_vector_setup(max_window_len, longest_read_len,
+		      a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+		      match_score, mismatch_score,
+		      shrimp_mode == MODE_COLOUR_SPACE, false)) {
+    fprintf(stderr, "failed to initialise vector "
+	    "Smith-Waterman (%s)\n", strerror(errno));
+    exit(1);
+  }
+
+  int ret;
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    /* XXX - a vs. b gap */
+    ret = sw_full_cs_setup(max_window_len, longest_read_len,
+			   a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+			   crossover_score, false, 0);
+  } else {
+    ret = sw_full_ls_setup(max_window_len, longest_read_len,
+			   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+			   match_score, mismatch_score, false, 0);
+  }
+  if (ret) {
+    fprintf(stderr, "failed to initialise scalar "
+	    "Smith-Waterman (%s)\n", strerror(errno));
+    exit(1);
+  }
+
+
 		if (1){
 			fprintf(stderr,"loading gneomfile\n");
 			load_genome(argv+1,2);
