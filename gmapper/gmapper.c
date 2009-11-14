@@ -60,7 +60,9 @@ static int Tflag = false;			/* reverse sw full tie breaks */
 //static int Uflag = false;			/* output unmapped reads, too */
 
 /* Statistics */
-static uint	nduphits;			/* number of duplicate hits */
+static count_t	dup_hits_c;			/* number of duplicate hits */
+static count_t	reads_c;
+static stat_t	matches_s;
 
 
 /* Kmer to genome index */
@@ -403,24 +405,25 @@ static void
 scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
   uint cn;
   uint32_t goff, glen;
-  uint i, j;
-  int score, thresh;
-  score = 0; //Shut up compliler TODO don't do this
+  uint first, last;
+  int score = 0; //Shut up compliler TODO don't do this
 
+  /*
+  uint i, j;
   cn = 0;
   for (i = num_matches - 1, j = 0; i < len; i++, j++) {
     assert(i == j + num_matches - 1);
 
-    /* adjust current contig number */
+    // adjust current contig number
     while (cn < num_contigs - 1 && list[i] >= contig_offsets[cn + 1])
       cn++;
     assert (contig_offsets[cn] <= list[i] && list[i] < contig_offsets[cn] + genome_len[cn]);
 
-    /* test if last num_matches are in same contig and fit in a window of size window_len */
+    // test if last num_matches are in same contig and fit in a window of size window_len
     if (contig_offsets[cn] <= list[j]
 	&& list[j] + re->window_len >= list[i] + avg_seed_span) {
 
-      /* set goff, glen */
+      // set goff, glen
       if ((re->window_len - (list[i] + avg_seed_span - list[j]))/2 <= list[j])
 	goff = list[j] - (re->window_len - (list[i] + avg_seed_span - list[j]))/2;
       else
@@ -442,16 +445,15 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
 			  NULL, -1, genome_is_rna);
       }
 
-      thresh = (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len);
-      if (score >= thresh) {
-	/* save hit */
+      if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+	// save hit
 	//ES_count_increment(&es_total_filter_passes);
 	//ES_count32_increment(&re->es_filter_passes);
 
 	save_score(re, score, goff, cn, rev_cmpl);
 	re->sw_hits++;
 
-	/* advance i&j appropriately */
+	// advance i&j appropriately
 	j++;
 	while (j < len
 	       && !(cn < num_contigs - 1 && list[j] >= contig_offsets[cn + 1])
@@ -463,6 +465,85 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
       }
     }
   }
+  */
+
+  cn = 0;
+  first = 0;
+  last = 0;
+  do {
+    assert(0 <= first && first < len);
+    assert(first <= last && last < len);
+
+    // fix contig num
+    while (cn < num_contigs - 1 && list[first] >= contig_offsets[cn + 1])
+      cn++;
+    assert(contig_offsets[cn] <= list[first] && list[last] < contig_offsets[cn] + genome_len[cn]);
+
+    // advance last as far as possible
+    while (last < len - 1
+	   && list[last + 1] < contig_offsets[cn] + genome_len[cn]
+	   && list[last + 1] + avg_seed_span <= list[first] + re->window_len)
+      last++;
+
+    if (last - first >= num_matches) {
+      // fit window around first...last
+      if ((re->window_len - (list[last] + avg_seed_span - list[first]))/2 <= list[first] - contig_offsets[cn])
+	goff = list[first] - contig_offsets[cn] - (re->window_len - (list[last] + avg_seed_span - list[first]))/2;
+      else
+	goff = 0;
+      glen = re->window_len;
+
+      if (goff + glen > genome_len[cn])
+	glen = genome_len[cn] - goff;
+
+      //DEBUG( "trying read:[%s] cn:%u goff:%u glen:%u", re->name, cn, goff, glen);
+
+      // run sw filter on window goff, glen
+      // optionally use cache for this genomic window
+
+      if (shrimp_mode == MODE_COLOUR_SPACE) {
+	score = sw_vector(genome_cs_contigs[cn], goff, glen,
+			  rev_cmpl? re->read_rc : re->read, re->read_len,
+			  genome_contigs[cn], rev_cmpl? re->initbp_rc : re->initbp, genome_is_rna);
+      } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	score = sw_vector(genome_contigs[cn], goff, glen,
+			  rev_cmpl? re->read_rc : re->read, re->read_len,
+			  NULL, -1, genome_is_rna);
+      }
+
+      if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+	// save hit and continue
+	//ES_count_increment(&es_total_filter_passes);
+	//ES_count32_increment(&re->es_filter_passes);
+
+	save_score(re, score, goff, cn, rev_cmpl);
+	re->sw_hits++;
+
+	while (first <= last
+	       && list[first] - contig_offsets[cn] < goff + glen - (int)abs_or_pct(window_overlap, re->read_len))
+	  first++;
+      } else {
+	// filter call didn't pass threshold
+	if (last == len - 1
+	    || (cn < num_contigs - 1 && list[last + 1] >= contig_offsets[cn + 1])) {
+	  first = last + 1;
+	} else {
+	  last++;
+	  first++;
+	  assert(re->window_len > avg_seed_span);
+	  while (list[first] + re->window_len < list[last] + avg_seed_span)
+	    first++;
+	}
+      }
+    } else {
+      // not enough matches to run filter
+      first++;
+    }
+
+    if (last < first)
+      last = first;
+  } while (first < len);
+
 }
 
 /*
@@ -530,28 +611,28 @@ scan_read_lscs_pass2(read_entry * re) {
 
     dup = sw_full_results_equal(&last_sfr, rs->sfrp);
     if (dup)
-      nduphits++;
+      count_increment(&dup_hits_c);
 
     if (rs->score >= thresh && dup == false) {
-    	char *output;
+      char *output;
 
-    	re->final_matches++;
+      re->final_matches++;
 
-    	output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
-    			genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
-    			re->read_len, re->initbp, rs->rev_cmpl, Rflag);
-    	puts(output);
-    	free(output);
+      output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+			     genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+			     re->read_len, re->initbp, rs->rev_cmpl, Rflag);
+      puts(output);
+      free(output);
 
-    	if (Pflag) {
-    		output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
-    				genome_contigs[rs->contig_num], genome_len[rs->contig_num],
-    				(shrimp_mode == MODE_COLOUR_SPACE), re->read,
-    				re->read_len, re->initbp, rs->rev_cmpl);
-    		puts("");
-    		puts(output);
-    		free(output);
-    	}
+      if (Pflag) {
+	output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+			       genome_contigs[rs->contig_num], genome_len[rs->contig_num],
+			       (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+			       re->read_len, re->initbp, rs->rev_cmpl);
+	puts("");
+	puts(output);
+	free(output);
+      }
     }
 
     last_sfr = *rs->sfrp;
@@ -562,6 +643,7 @@ scan_read_lscs_pass2(read_entry * re) {
     free(rs->sfrp);
   }
 
+  stat_add(&matches_s, re->final_matches);
 }
 
 
@@ -585,12 +667,18 @@ handle_read(read_entry *re){
   re->scores[0].heap_elems = 0;
   re->scores[0].heap_capacity = num_outputs;
 
-	DEBUG("fisrt pass on list");
-	scan_read_lscs_pass1(re,list,len,false);
-	DEBUG("fisrt pass on list_rc");
-	scan_read_lscs_pass1(re,list_rc,len_rc,true);
-	DEBUG("second pass");
-	scan_read_lscs_pass2(re);
+  if (len > 0) {
+    DEBUG("first pass on list");
+    scan_read_lscs_pass1(re,list,len,false);
+  }
+  if (len_rc > 0) {
+    DEBUG("first pass on list_rc");
+    scan_read_lscs_pass1(re,list_rc,len_rc,true);
+  }
+  if (re->scores[0].heap_elems > 0) {
+    DEBUG("second pass");
+    scan_read_lscs_pass2(re);
+  }
 
   // TODO This v
   // done with this read; deallocate memory.
@@ -638,6 +726,7 @@ launch_scan_threads(const char *file){
 			}
 			res[i].read = fasta_sequence_to_bitfield(fasta, seq);
 			res[i].read_len = strlen(seq);
+			count_increment(&reads_c);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 				res[i].initbp = fasta_get_initial_base(fasta,seq);
 				res[i].initbp_rc = res[i].initbp;
@@ -648,10 +737,10 @@ launch_scan_threads(const char *file){
 
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 		}
-#pragma omp parallel shared(res,i) num_threads(numThreads)
+		//#pragma omp parallel shared(res,i) num_threads(numThreads)
 		{
 			int j;
-#pragma omp for
+			//#pragma omp for
 			for (j = 0; j < i; j++){
 				handle_read(&res[j]);
 			}
@@ -661,6 +750,50 @@ launch_scan_threads(const char *file){
 	return true;
 }
 
+
+void print_genomemap_stats() {
+  stat_t list_size, list_size_non0;
+  uint sn;
+  uint64_t capacity, mapidx;
+
+  fprintf(stderr, "Genome Map stats:\n");
+
+  for (sn = 0; sn < n_seeds; sn++) {
+    capacity = power(4, seed[sn].weight);
+    
+    stat_init(&list_size);
+    stat_init(&list_size_non0);
+    for (mapidx = 0; mapidx < capacity; mapidx++) {
+      stat_add(&list_size, genomemap_len[sn][mapidx]);
+      if (genomemap_len[sn][mapidx] > 0)
+	stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
+    }
+
+    fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f)\n",
+	    sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
+	    (long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
+	    stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
+	    stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0));
+  }
+}
+
+
+void print_run_stats() {
+  static char const my_tab[] = "    ";
+
+  fprintf(stderr, "%sGeneral:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab, "Reads Matched:",
+	  comma_integer(stat_get_count(&matches_s)),
+	  count_get_count(&reads_c) == 0? 0 : ((double)stat_get_count(&matches_s) / (double)count_get_count(&reads_c)) * 100);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Total Matches:",
+	  comma_integer(stat_get_sum(&matches_s)));
+  fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab, "Avg Hits/Matched Read:",
+	  stat_get_sum(&matches_s) == 0 ? 0 : ((double)stat_get_sum(&matches_s) / (double)stat_get_count(&matches_s)));
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Duplicate Hits Pruned:",
+	  comma_integer(count_get_count(&dup_hits_c)));
+}  
+
+
 /*
  * index the kmers in the genome contained in the file.
  * This can then be used to align reads against.
@@ -669,7 +802,7 @@ static bool
 load_genome(char **files, int nfiles)
 {
 	fasta_t fasta;
-	size_t seqlen,  bytes;
+	size_t seqlen,  capacity;
 	uint32_t *read;
 	char *seq, *name;
 	uint32_t *kmerWindow;
@@ -688,10 +821,10 @@ load_genome(char **files, int nfiles)
 
 		//TODO impliment Hflag
 		//bytes = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
-		bytes = sizeof(uint32_t *) * power(4, seed[sn].weight);
+		capacity = power(4, seed[sn].weight);
 
-		genomemap[sn] = (uint32_t **)xcalloc_c(bytes, &mem_genomemap);
-		genomemap_len[sn] = (uint32_t *)xcalloc_c(bytes,&mem_genomemap);
+		genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
+		genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity,&mem_genomemap);
 
 	}
 	num_contigs = 0;
@@ -751,13 +884,13 @@ load_genome(char **files, int nfiles)
 			genome_len[num_contigs -1] = seqlen;
 
 			if (shrimp_mode == MODE_COLOUR_SPACE){
+				genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t *)*num_contigs);
 				genome_initbp[num_contigs -1] = EXTRACT(read,0);
 				read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
-				genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t *)*num_contigs);
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 			u_int load;
-			DEBUG("looping seq");
+			//DEBUG("indexing sequence");
 			for (load = 0; i < seqlen + contig_offsets[num_contigs-1]; i++) {
 				uint base, sn;
 
@@ -769,32 +902,29 @@ load_genome(char **files, int nfiles)
 					load = 0;
 				else if (load < max_seed_span)
 					load++;
-				DEBUG("looping seeds");
+				//DEBUG("looping seeds");
 				for (sn = 0; sn < n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
 
 
-					DEBUG("hashing");
+					//DEBUG("hashing");
 					uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
 					//increase the match count and store the location of the match
-					DEBUG("updating len");
+					//DEBUG("updating len");
 					genomemap_len[sn][mapidx]++;
-					DEBUG("reallocing map");
+					//DEBUG("reallocing map");
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx]),
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
 							&mem_genomemap);
-					if (genomemap[sn][mapidx] == NULL){
-						DEBUG("realloc returned null");
-					}
-					DEBUG("updateing map");
+					//DEBUG("updateing map");
 					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i - seed[sn].span + 1;
 					nkmers++;
 
 				}
 			}
-			DEBUG("done indexing sequence");
+			//DEBUG("done indexing sequence");
 			free(seq);
 			seq = name = NULL;
 
@@ -846,7 +976,7 @@ void print_settings() {
 	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
 	  seed_to_string(0), seed[0].weight, seed[0].span);
   for (i = 1; i < n_seeds; i++) {
-    fprintf(stderr, "                                          %s (%u/%u)\n",
+    fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
 	    seed_to_string(i), seed[i].weight, seed[i].span);
   }
 
@@ -935,7 +1065,8 @@ int main(int argc, char **argv){
 
 		if (1){
 			fprintf(stderr,"loading gneomfile\n");
-			load_genome(argv+1,2);
+			load_genome(argv+1,1);
+			print_genomemap_stats();
 		}
 		if (0){
 			fprintf(stderr,"saving compressed index\n");
@@ -950,7 +1081,7 @@ int main(int argc, char **argv){
 			output = output_format_line(Rflag);
 			puts(output);
 			free(output);
-		  launch_scan_threads(argv[3]);
+		  launch_scan_threads(argv[2]);
 		}
 		if (0){
 			fprintf(stderr,"loading compressed index\n");
@@ -958,6 +1089,7 @@ int main(int argc, char **argv){
 		}
 		fprintf(stderr,"done\n");
 	}
+  print_run_stats();
 }
 
 #else
