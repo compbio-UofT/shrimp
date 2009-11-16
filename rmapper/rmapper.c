@@ -1635,6 +1635,7 @@ valid_spaced_seeds()
 	return true;
 }
 
+
 static void
 scan_genomes_contig()
 {

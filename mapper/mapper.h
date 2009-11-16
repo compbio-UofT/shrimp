@@ -31,6 +31,8 @@
 #define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
+#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
+
 
 #define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
 

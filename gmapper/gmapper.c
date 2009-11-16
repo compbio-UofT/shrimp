@@ -48,16 +48,18 @@ static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
 static int	b_gap_open_score	= DEF_B_GAP_OPEN;
 static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
 static int	crossover_score		= DEF_XOVER_PENALTY;
+static int	anchor_width		= DEF_ANCHOR_WIDTH;
 
 /* Flags */
-//static int Bflag = false;			/* print a progress bar */
-//static int Cflag = false;			/* do complement only */
-//static int Fflag = false;			/* do positive (forward) only */
-//static int Hflag = false;			/* use hash table, not lookup */
+static int Bflag = false;			/* print a progress bar */
+static int Cflag = false;			/* do complement only */
+static int Fflag = false;			/* do positive (forward) only */
+static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = true;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
-//static int Uflag = false;			/* output unmapped reads, too */
+static int Uflag = false;			/* output unmapped reads, too */
+static int Mflag = true;			/* print memory usage stats */
 
 /* Statistics */
 static count_t	dup_hits_c;			/* number of duplicate hits */
@@ -85,14 +87,11 @@ static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
 static count_t mem_genomemap;
 
-static uint numThreads = omp_get_num_procs();
+static uint numThreads = 1;
 static uint chunkSize = 1000;
 
-extern size_t
-power(size_t base, size_t exp);
-
-extern uint32_t
-kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn);
+/* kmer_to_mapidx function */
+static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
 
 /* If x is negative, return its absolute value; else return base*x% */
 static inline double
@@ -107,108 +106,126 @@ abs_or_pct(double x, double base) {
 static void
 reheap(struct re_score *scores, uint node)
 {
-  struct re_score tmp;
-  uint left, right, max;
+	struct re_score tmp;
+	uint left, right, max;
 
-  assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
+	assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
 
-  left  = node * 2;
-  right = left + 1;
-  max   = node;
-  
-  if (left <= scores[0].heap_elems &&
-      scores[left].score < scores[node].score)
-    max = left;
+	left  = node * 2;
+	right = left + 1;
+	max   = node;
 
-  if (right <= scores[0].heap_elems &&
-      scores[right].score < scores[max].score)
-    max = right;
+	if (left <= scores[0].heap_elems &&
+			scores[left].score < scores[node].score)
+		max = left;
 
-  if (max != node) {
-    tmp = scores[node];
-    scores[node] = scores[max];
-    scores[max] = tmp;
-    reheap(scores, max);
-  }
+	if (right <= scores[0].heap_elems &&
+			scores[right].score < scores[max].score)
+		max = right;
+
+	if (max != node) {
+		tmp = scores[node];
+		scores[node] = scores[max];
+		scores[max] = tmp;
+		reheap(scores, max);
+	}
 }
+
+static bool
+valid_spaced_seeds()
+{
+	uint sn;
+
+	for (sn = 0; sn < n_seeds; sn++) {
+		if (seed[sn].weight > MAX_SEED_WEIGHT && !Hflag)
+			return false;
+
+		if (Hflag && (seed[sn].span > MAX_HASH_SEED_SPAN ||
+				seed[sn].weight > MAX_HASH_SEED_WEIGHT))
+			return false;
+	}
+
+	return true;
+}
+
 
 /* percolate up in our min-heap */
 static void
 percolate_up(struct re_score *scores, uint node)
 {
-  struct re_score tmp;
-  int parent;
+	struct re_score tmp;
+	int parent;
 
-  assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
+	assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
 
-  if (node == 1)
-    return;
+	if (node == 1)
+		return;
 
-  parent = node / 2;
+	parent = node / 2;
 
-  if (scores[parent].score > scores[node].score) {
-    tmp = scores[node];
-    scores[node] = scores[parent];
-    scores[parent] = tmp;
-    percolate_up(scores, parent);
-  }
+	if (scores[parent].score > scores[node].score) {
+		tmp = scores[node];
+		scores[node] = scores[parent];
+		scores[parent] = tmp;
+		percolate_up(scores, parent);
+	}
 }
 
 /* update our score min-heap */
 static void
 save_score(read_entry * re, int score, uint g_idx, int contig_num, bool rev_cmpl)
 {
-  struct re_score * scores = re->scores;
+	struct re_score * scores = re->scores;
 
-  if (scores[0].heap_elems == num_outputs) {
-    if (score < scores[1].score)
-      return;
+	if (scores[0].heap_elems == num_outputs) {
+		if (score < scores[1].score)
+			return;
 
-    /* replace min score */
-    scores[1].score = score;
-    scores[1].g_idx = g_idx;
-    scores[1].contig_num = contig_num;
-    scores[1].rev_cmpl = rev_cmpl;
+		/* replace min score */
+		scores[1].score = score;
+		scores[1].g_idx = g_idx;
+		scores[1].contig_num = contig_num;
+		scores[1].rev_cmpl = rev_cmpl;
 
-    reheap(scores, 1);
-  } else {
-    uint idx = 1 + scores[0].heap_elems++;
+		reheap(scores, 1);
+	} else {
+		uint idx = 1 + scores[0].heap_elems++;
 
-    assert(idx <= scores[0].heap_capacity);
+		assert(idx <= scores[0].heap_capacity);
 
-    scores[idx].score = score;
-    scores[idx].g_idx = g_idx;
-    scores[idx].contig_num = contig_num;
-    scores[idx].rev_cmpl = rev_cmpl;
-    
-    percolate_up(scores, idx);
-  }
+		scores[idx].score = score;
+		scores[idx].g_idx = g_idx;
+		scores[idx].contig_num = contig_num;
+		scores[idx].rev_cmpl = rev_cmpl;
+
+		percolate_up(scores, idx);
+	}
 }
 
 static int
 score_cmp(const void *arg1, const void *arg2)
 {
-  const struct re_score *one = (const struct re_score *)arg1;
-  const struct re_score *two = (const struct re_score *)arg2;
+	const struct re_score *one = (const struct re_score *)arg1;
+	const struct re_score *two = (const struct re_score *)arg2;
 
-  //assert(one->revcmpl == two->revcmpl);
+	//assert(one->revcmpl == two->revcmpl);
 
-  if (one->score > two->score)
-    return (-1);
-  if (one->score < two->score)
-    return (1);
+	if (one->score > two->score)
+		return (-1);
+	if (one->score < two->score)
+		return (1);
 
-  if (one->sfrp->genome_start > two->sfrp->genome_start)
-    return (1);
-  if (one->sfrp->genome_start < two->sfrp->genome_start)
-    return (-1);
+	if (one->sfrp->genome_start > two->sfrp->genome_start)
+		return (1);
+	if (one->sfrp->genome_start < two->sfrp->genome_start)
+		return (-1);
 
-  if (one->sfrp->matches > two->sfrp->matches)
-    return (-1);
-  if (one->sfrp->matches < two->sfrp->matches)
-    return (1);
+	if (one->sfrp->matches > two->sfrp->matches)
+		return (-1);
+	if (one->sfrp->matches < two->sfrp->matches)
+		return (1);
 
-  return (0);
+	return (0);
 }
 
 void print_info(){
@@ -241,7 +258,7 @@ void print_info(){
 #endif
 
 }
-
+/*
 static bool save_genome_map(const char *file) {
 	gzFile fp = gzopen(file, "wb");
 	if (fp == NULL){
@@ -279,6 +296,7 @@ static bool save_genome_map(const char *file) {
 	gzclose(fp);
 	return true;
 }
+
 
 static bool load_genome_map(const char *file){
 	gzFile fp = gzopen(file,"rb");
@@ -325,7 +343,7 @@ static bool load_genome_map(const char *file){
 	gzclose(fp);
 	return true;
 }
-
+ */
 static int comp(const void *a, const void *b){
 	return *(uint32_t *)a - *(uint32_t *)b;
 }
@@ -368,14 +386,14 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 			if (shrimp_mode == MODE_COLOUR_SPACE && i == seed[sn].span - 1)
 				continue;
 
-			uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
+			uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
 			*len += genomemap_len[sn][mapidx];
 			if(*len){
 				*list = (uint32_t *)xrealloc(*list,sizeof(uint32_t)* *len);
 				memcpy(*list + *len - genomemap_len[sn][mapidx],genomemap[sn][mapidx],genomemap_len[sn][mapidx]*sizeof(uint32_t));
 			}
 
-			mapidx = kmer_to_mapidx_orig(kmerWindow_rc, sn);
+			mapidx = kmer_to_mapidx(kmerWindow_rc, sn);
 			*len_rc += genomemap_len[sn][mapidx];
 			if(*len_rc){
 				*list_rc = (uint32_t *)xrealloc(*list_rc,sizeof(uint32_t)* *len_rc);
@@ -403,12 +421,12 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
  */
 static void
 scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
-  uint cn;
-  uint32_t goff, glen;
-  uint first, last;
-  int score = 0; //Shut up compliler TODO don't do this
+	uint cn;
+	uint32_t goff, glen;
+	uint first, last;
+	int score = 0; //Shut up compliler TODO don't do this
 
-  /*
+	/*
   uint i, j;
   cn = 0;
   for (i = num_matches - 1, j = 0; i < len; i++, j++) {
@@ -465,84 +483,84 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
       }
     }
   }
-  */
+	 */
 
-  cn = 0;
-  first = 0;
-  last = 0;
-  do {
-    assert(0 <= first && first < len);
-    assert(first <= last && last < len);
+	cn = 0;
+	first = 0;
+	last = 0;
+	do {
+		assert(0 <= first && first < len);
+		assert(first <= last && last < len);
 
-    // fix contig num
-    while (cn < num_contigs - 1 && list[first] >= contig_offsets[cn + 1])
-      cn++;
-    assert(contig_offsets[cn] <= list[first] && list[last] < contig_offsets[cn] + genome_len[cn]);
+		// fix contig num
+		while (cn < num_contigs - 1 && list[first] >= contig_offsets[cn + 1])
+			cn++;
+		assert(contig_offsets[cn] <= list[first] && list[last] < contig_offsets[cn] + genome_len[cn]);
 
-    // advance last as far as possible
-    while (last < len - 1
-	   && list[last + 1] < contig_offsets[cn] + genome_len[cn]
-	   && list[last + 1] + avg_seed_span <= list[first] + re->window_len)
-      last++;
+		// advance last as far as possible
+		while (last < len - 1
+				&& list[last + 1] < contig_offsets[cn] + genome_len[cn]
+				                                                    && list[last + 1] + avg_seed_span <= list[first] + re->window_len)
+			last++;
 
-    if (last - first >= num_matches) {
-      // fit window around first...last
-      if ((re->window_len - (list[last] + avg_seed_span - list[first]))/2 <= list[first] - contig_offsets[cn])
-	goff = list[first] - contig_offsets[cn] - (re->window_len - (list[last] + avg_seed_span - list[first]))/2;
-      else
-	goff = 0;
-      glen = re->window_len;
+		if (last - first >= num_matches) {
+			// fit window around first...last
+			if ((re->window_len - (list[last] + avg_seed_span - list[first]))/2 <= list[first] - contig_offsets[cn])
+				goff = list[first] - contig_offsets[cn] - (re->window_len - (list[last] + avg_seed_span - list[first]))/2;
+			else
+				goff = 0;
+			glen = re->window_len;
 
-      if (goff + glen > genome_len[cn])
-	glen = genome_len[cn] - goff;
+			if (goff + glen > genome_len[cn])
+				glen = genome_len[cn] - goff;
 
-      //DEBUG( "trying read:[%s] cn:%u goff:%u glen:%u", re->name, cn, goff, glen);
+			//DEBUG( "trying read:[%s] cn:%u goff:%u glen:%u", re->name, cn, goff, glen);
 
-      // run sw filter on window goff, glen
-      // optionally use cache for this genomic window
+			// run sw filter on window goff, glen
+			// optionally use cache for this genomic window
 
-      if (shrimp_mode == MODE_COLOUR_SPACE) {
-	score = sw_vector(genome_cs_contigs[cn], goff, glen,
-			  rev_cmpl? re->read_rc : re->read, re->read_len,
-			  genome_contigs[cn], rev_cmpl? re->initbp_rc : re->initbp, genome_is_rna);
-      } else if (shrimp_mode == MODE_LETTER_SPACE) {
-	score = sw_vector(genome_contigs[cn], goff, glen,
-			  rev_cmpl? re->read_rc : re->read, re->read_len,
-			  NULL, -1, genome_is_rna);
-      }
+			if (shrimp_mode == MODE_COLOUR_SPACE) {
+				score = sw_vector(genome_cs_contigs[cn], goff, glen,
+						rev_cmpl? re->read_rc : re->read, re->read_len,
+								genome_contigs[cn], rev_cmpl? re->initbp_rc : re->initbp, genome_is_rna);
+			} else if (shrimp_mode == MODE_LETTER_SPACE) {
+				score = sw_vector(genome_contigs[cn], goff, glen,
+						rev_cmpl? re->read_rc : re->read, re->read_len,
+								NULL, -1, genome_is_rna);
+			}
 
-      if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
-	// save hit and continue
-	//ES_count_increment(&es_total_filter_passes);
-	//ES_count32_increment(&re->es_filter_passes);
+			if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+				// save hit and continue
+				//ES_count_increment(&es_total_filter_passes);
+				//ES_count32_increment(&re->es_filter_passes);
 
-	save_score(re, score, goff, cn, rev_cmpl);
-	re->sw_hits++;
+				save_score(re, score, goff, cn, rev_cmpl);
+				re->sw_hits++;
 
-	while (first <= last
-	       && list[first] - contig_offsets[cn] < goff + glen - (int)abs_or_pct(window_overlap, re->read_len))
-	  first++;
-      } else {
-	// filter call didn't pass threshold
-	if (last == len - 1
-	    || (cn < num_contigs - 1 && list[last + 1] >= contig_offsets[cn + 1])) {
-	  first = last + 1;
-	} else {
-	  last++;
-	  first++;
-	  assert(re->window_len > avg_seed_span);
-	  while (list[first] + re->window_len < list[last] + avg_seed_span)
-	    first++;
-	}
-      }
-    } else {
-      // not enough matches to run filter
-      first++;
-    }
+				while (first <= last
+						&& list[first] - contig_offsets[cn] < goff + glen - (int)abs_or_pct(window_overlap, re->read_len))
+					first++;
+			} else {
+				// filter call didn't pass threshold
+				if (last == len - 1
+						|| (cn < num_contigs - 1 && list[last + 1] >= contig_offsets[cn + 1])) {
+					first = last + 1;
+				} else {
+					last++;
+					first++;
+					assert(re->window_len > avg_seed_span);
+					while (list[first] + re->window_len < list[last] + avg_seed_span)
+						first++;
+				}
+			}
+		} else {
+			// not enough matches to run filter
+			first++;
+		}
 
-    if (last < first)
-      last = first;
-  } while (first < len);
+		if (last < first)
+			last = first;
+	} while (first < len);
 
 }
 
@@ -552,98 +570,98 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
  */
 static void
 scan_read_lscs_pass2(read_entry * re) {
-  uint i;
-  int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
-  struct sw_full_results last_sfr;
+	uint i;
+	int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
+	struct sw_full_results last_sfr;
 
-  assert(re != NULL && re->scores != NULL);
+	assert(re != NULL && re->scores != NULL);
 
-  /* compute full alignment scores */
-  for (i = 1; i <= re->scores[0].heap_elems; i++) {
-    struct re_score * rs = &re->scores[i];
-    uint32_t * gen;
-    uint goff;
+	/* compute full alignment scores */
+	for (i = 1; i <= re->scores[0].heap_elems; i++) {
+		struct re_score * rs = &re->scores[i];
+		uint32_t * gen;
+		uint goff;
 
-    rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
+		rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
 
-    if (rs->rev_cmpl) {
-      gen = genome_contigs_rc[rs->contig_num];
-      goff = rs->g_idx + re->window_len - 1;
-    } else {
-      gen = genome_contigs[rs->contig_num];
-      goff = rs->g_idx;
-    }
+		if (rs->rev_cmpl) {
+			gen = genome_contigs_rc[rs->contig_num];
+			goff = rs->g_idx + re->window_len - 1;
+		} else {
+			gen = genome_contigs[rs->contig_num];
+			goff = rs->g_idx;
+		}
 
-    if (shrimp_mode == MODE_COLOUR_SPACE) {
-	sw_full_cs(gen, goff, re->window_len,
-		   re->read, re->read_len, re->initbp,
-		   thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna, NULL, 0);
-    } else {
-      /*
-       * The full SW in letter space assumes it's given the correct max score.
-       * This might not be true just yet if we're using hashing&caching because
-       * of possible hash collosions.
-       */
-      rs->score = sw_vector(gen, goff, re->window_len,
-			    re->read, re->read_len,
-			    NULL, -1, genome_is_rna);
-      if (rs->score >= thresh) {
-	sw_full_ls(gen, goff, re->window_len,
-		   re->read, re->read_len,
-		   thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,  NULL, 0);
-	assert(rs->sfrp->score == rs->score);
-      } else { // this wouldn't have passed the filter; eliminated in loop below
-	rs->sfrp->score = rs->score;
-	rs->sfrp->dbalign = NULL;
-	rs->sfrp->qralign = NULL;
-      }
-    }
-  }
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			sw_full_cs(gen, goff, re->window_len,
+					re->read, re->read_len, re->initbp,
+					thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna, NULL, 0);
+		} else {
+			/*
+			 * The full SW in letter space assumes it's given the correct max score.
+			 * This might not be true just yet if we're using hashing&caching because
+			 * of possible hash collosions.
+			 */
+			rs->score = sw_vector(gen, goff, re->window_len,
+					re->read, re->read_len,
+					NULL, -1, genome_is_rna);
+			if (rs->score >= thresh) {
+				sw_full_ls(gen, goff, re->window_len,
+						re->read, re->read_len,
+						thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,  NULL, 0);
+				assert(rs->sfrp->score == rs->score);
+			} else { // this wouldn't have passed the filter; eliminated in loop below
+				rs->sfrp->score = rs->score;
+				rs->sfrp->dbalign = NULL;
+				rs->sfrp->qralign = NULL;
+			}
+		}
+	}
 
-  /* sort scores */
-  qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+	/* sort scores */
+	qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
 
-  /* Output sorted list, removing any duplicates. */
-  memset(&last_sfr, 0, sizeof(last_sfr));
-  for (i = 1; i <= re->scores[0].heap_elems; i++) {
-    struct re_score * rs = &re->scores[i];
-    bool dup;
+	/* Output sorted list, removing any duplicates. */
+	memset(&last_sfr, 0, sizeof(last_sfr));
+	for (i = 1; i <= re->scores[0].heap_elems; i++) {
+		struct re_score * rs = &re->scores[i];
+		bool dup;
 
-    dup = sw_full_results_equal(&last_sfr, rs->sfrp);
-    if (dup)
-      count_increment(&dup_hits_c);
+		dup = sw_full_results_equal(&last_sfr, rs->sfrp);
+		if (dup)
+			count_increment(&dup_hits_c);
 
-    if (rs->score >= thresh && dup == false) {
-      char *output;
+		if (rs->score >= thresh && dup == false) {
+			char *output;
 
-      re->final_matches++;
+			re->final_matches++;
 
-      output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
-			     genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
-			     re->read_len, re->initbp, rs->rev_cmpl, Rflag);
-      puts(output);
-      free(output);
+			output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+					genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
+					re->read_len, re->initbp, rs->rev_cmpl, Rflag);
+			puts(output);
+			free(output);
 
-      if (Pflag) {
-	output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
-			       genome_contigs[rs->contig_num], genome_len[rs->contig_num],
-			       (shrimp_mode == MODE_COLOUR_SPACE), re->read,
-			       re->read_len, re->initbp, rs->rev_cmpl);
-	puts("");
-	puts(output);
-	free(output);
-      }
-    }
+			if (Pflag) {
+				output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+						genome_contigs[rs->contig_num], genome_len[rs->contig_num],
+						(shrimp_mode == MODE_COLOUR_SPACE), re->read,
+						re->read_len, re->initbp, rs->rev_cmpl);
+				puts("");
+				puts(output);
+				free(output);
+			}
+		}
 
-    last_sfr = *rs->sfrp;
-    if (rs->sfrp->dbalign != NULL)
-      free(rs->sfrp->dbalign);
-    if (rs->sfrp->qralign != NULL)
-      free(rs->sfrp->qralign);
-    free(rs->sfrp);
-  }
+		last_sfr = *rs->sfrp;
+		if (rs->sfrp->dbalign != NULL)
+			free(rs->sfrp->dbalign);
+		if (rs->sfrp->qralign != NULL)
+			free(rs->sfrp->qralign);
+		free(rs->sfrp);
+	}
 
-  stat_add(&matches_s, re->final_matches);
+	stat_add(&matches_s, re->final_matches);
 }
 
 
@@ -662,28 +680,28 @@ handle_read(read_entry *re){
 	fprintf(stderr,"\n");
 #endif
 
-  // initialize heap of best hits for this read
-  re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
-  re->scores[0].heap_elems = 0;
-  re->scores[0].heap_capacity = num_outputs;
+	// initialize heap of best hits for this read
+	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
+	re->scores[0].heap_elems = 0;
+	re->scores[0].heap_capacity = num_outputs;
 
-  if (len > 0) {
-    DEBUG("first pass on list");
-    scan_read_lscs_pass1(re,list,len,false);
-  }
-  if (len_rc > 0) {
-    DEBUG("first pass on list_rc");
-    scan_read_lscs_pass1(re,list_rc,len_rc,true);
-  }
-  if (re->scores[0].heap_elems > 0) {
-    DEBUG("second pass");
-    scan_read_lscs_pass2(re);
-  }
+	if (len > 0 && Fflag) {
+		DEBUG("first pass on list");
+		scan_read_lscs_pass1(re,list,len,false);
+	}
+	if (len_rc > 0 && Cflag) {
+		DEBUG("first pass on list_rc");
+		scan_read_lscs_pass1(re,list_rc,len_rc,true);
+	}
+	if (re->scores[0].heap_elems > 0) {
+		DEBUG("second pass");
+		scan_read_lscs_pass2(re);
+	}
 
-  // TODO This v
-  // done with this read; deallocate memory.
-  // deallocate name/bitmap ???
-  free(re->scores);
+	// TODO This v
+	// done with this read; deallocate memory.
+	// deallocate name/bitmap ???
+	free(re->scores);
 }
 
 /*
@@ -704,9 +722,9 @@ launch_scan_threads(const char *file){
 
 	//open the fasta file and check for errors
 	if (shrimp_mode == MODE_LETTER_SPACE)
-			space = LETTER_SPACE;
-		else
-			space = COLOUR_SPACE;
+		space = LETTER_SPACE;
+	else
+		space = COLOUR_SPACE;
 	fasta = fasta_open(file,space);
 	if (fasta == NULL) {
 		fprintf(stderr,"error: failded to open read file [%s]\n",file);
@@ -752,45 +770,45 @@ launch_scan_threads(const char *file){
 
 
 void print_genomemap_stats() {
-  stat_t list_size, list_size_non0;
-  uint sn;
-  uint64_t capacity, mapidx;
+	stat_t list_size, list_size_non0;
+	uint sn;
+	uint64_t capacity, mapidx;
 
-  fprintf(stderr, "Genome Map stats:\n");
+	fprintf(stderr, "Genome Map stats:\n");
 
-  for (sn = 0; sn < n_seeds; sn++) {
-    capacity = power(4, seed[sn].weight);
-    
-    stat_init(&list_size);
-    stat_init(&list_size_non0);
-    for (mapidx = 0; mapidx < capacity; mapidx++) {
-      stat_add(&list_size, genomemap_len[sn][mapidx]);
-      if (genomemap_len[sn][mapidx] > 0)
-	stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
-    }
+	for (sn = 0; sn < n_seeds; sn++) {
+		capacity = power(4, seed[sn].weight);
 
-    fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f)\n",
-	    sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
-	    (long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
-	    stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
-	    stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0));
-  }
+		stat_init(&list_size);
+		stat_init(&list_size_non0);
+		for (mapidx = 0; mapidx < capacity; mapidx++) {
+			stat_add(&list_size, genomemap_len[sn][mapidx]);
+			if (genomemap_len[sn][mapidx] > 0)
+				stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
+		}
+
+		fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f)\n",
+				sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
+				(long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
+				stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
+				stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0));
+	}
 }
 
 
 void print_run_stats() {
-  static char const my_tab[] = "    ";
+	static char const my_tab[] = "    ";
 
-  fprintf(stderr, "%sGeneral:\n", my_tab);
-  fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab, "Reads Matched:",
-	  comma_integer(stat_get_count(&matches_s)),
-	  count_get_count(&reads_c) == 0? 0 : ((double)stat_get_count(&matches_s) / (double)count_get_count(&reads_c)) * 100);
-  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Total Matches:",
-	  comma_integer(stat_get_sum(&matches_s)));
-  fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab, "Avg Hits/Matched Read:",
-	  stat_get_sum(&matches_s) == 0 ? 0 : ((double)stat_get_sum(&matches_s) / (double)stat_get_count(&matches_s)));
-  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Duplicate Hits Pruned:",
-	  comma_integer(count_get_count(&dup_hits_c)));
+	fprintf(stderr, "%sGeneral:\n", my_tab);
+	fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab, "Reads Matched:",
+			comma_integer(stat_get_count(&matches_s)),
+			count_get_count(&reads_c) == 0? 0 : ((double)stat_get_count(&matches_s) / (double)count_get_count(&reads_c)) * 100);
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Total Matches:",
+			comma_integer(stat_get_sum(&matches_s)));
+	fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab, "Avg Hits/Matched Read:",
+			stat_get_sum(&matches_s) == 0 ? 0 : ((double)stat_get_sum(&matches_s) / (double)stat_get_count(&matches_s)));
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Duplicate Hits Pruned:",
+			comma_integer(count_get_count(&dup_hits_c)));
 }  
 
 
@@ -819,9 +837,11 @@ load_genome(char **files, int nfiles)
 
 	for (sn = 0; sn < n_seeds; sn++) {
 
-		//TODO impliment Hflag
-		//bytes = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
-		capacity = power(4, seed[sn].weight);
+		if(Hflag){
+			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+		} else {
+			capacity = power(4, seed[sn].weight);
+		}
 
 		genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
 		genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity,&mem_genomemap);
@@ -856,21 +876,21 @@ load_genome(char **files, int nfiles)
 			if (strchr(name, '\t') != NULL || strchr(seq, '\t') != NULL) {
 				fprintf(stderr, "error: tabs are not permitted in fasta names "
 						"or sequences. Tag: [%s].\n", name);
-				exit(1);
+				return false;
 			}
 
 			seqlen = strlen(seq);
 			if (seqlen == 0) {
 				fprintf(stderr, "error: genome [%s] had no sequence!\n",
 						name);
-				exit(1);
+				return false;
 			}
 
 			read = fasta_sequence_to_bitfield(fasta,seq);
 
 			if (read == NULL) {
 				fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
-				exit(1);
+				return false;
 			}
 			genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
 			genome_contigs[num_contigs-1] = read;
@@ -909,7 +929,7 @@ load_genome(char **files, int nfiles)
 
 
 					//DEBUG("hashing");
-					uint32_t mapidx = kmer_to_mapidx_orig(kmerWindow, sn);
+					uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
 					//increase the match count and store the location of the match
 					//DEBUG("updating len");
 					genomemap_len[sn][mapidx]++;
@@ -939,6 +959,7 @@ load_genome(char **files, int nfiles)
 }
 
 void usage(char *progname,bool full_usage){
+	//TODO update usage
 	char *slash;
 	uint sn;
 
@@ -964,103 +985,99 @@ void usage(char *progname,bool full_usage){
 }
 
 void print_settings() {
-  static char const my_tab[] = "    ";
-  uint i;
+	static char const my_tab[] = "    ";
+	uint i;
 
-  fprintf(stderr, "--------------------------------------------------------------------------------\n");
-  fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(), SHRIMP_VERSION_STRING, get_compiler());
-  fprintf(stderr, "--------------------------------------------------------------------------------\n");
+	fprintf(stderr, "Settings:\n");
+	fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
+			(n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
+					seed_to_string(0), seed[0].weight, seed[0].span);
+	for (i = 1; i < n_seeds; i++) {
+		fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
+				seed_to_string(i), seed[i].weight, seed[i].span);
+	}
 
-  fprintf(stderr, "Settings:\n");
-  fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
-	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
-	  seed_to_string(0), seed[0].weight, seed[0].span);
-  for (i = 1; i < n_seeds; i++) {
-    fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
-	    seed_to_string(i), seed[i].weight, seed[i].span);
-  }
+	fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
 
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
+	if (IS_ABSOLUTE(window_len)) {
+		fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
+	} else {
+		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
+	}
 
-  if (IS_ABSOLUTE(window_len)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
-  } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
-  }
+	if (IS_ABSOLUTE(window_overlap)) {
+		fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
+	} else {
+		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
+	}
 
-  if (IS_ABSOLUTE(window_overlap)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
-  } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
-  }
-
-  fprintf(stderr, "\n");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
-  }
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    if (IS_ABSOLUTE(sw_vect_threshold)) {
-      fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
-    } else {
-      fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
-    }
-  }
-  if (IS_ABSOLUTE(sw_full_threshold)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab,
-	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
-	    (uint)-sw_full_threshold);
-  } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
-	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
-	    sw_full_threshold);
-  }
+	fprintf(stderr, "\n");
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
+	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		if (IS_ABSOLUTE(sw_vect_threshold)) {
+			fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
+		} else {
+			fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
+		}
+	}
+	if (IS_ABSOLUTE(sw_full_threshold)) {
+		fprintf(stderr, "%s%-40s%u\n", my_tab,
+				shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+						(uint)-sw_full_threshold);
+	} else {
+		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
+				shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+						sw_full_threshold);
+	}
 
 }
 
 
-#ifdef DEBUGMAIN
+#ifdef DEBUG_MAIN
 int main(int argc, char **argv){
 	if (argc > 1){
 		set_mode_from_argv(argv);
 		if (n_seeds == 0)
-				load_default_seeds();
+			load_default_seeds();
 		init_seed_hash_mask();
 
-  print_settings();
+		print_settings();
 
-  int max_window_len = 200;
-  int longest_read_len = 100;
-  if (sw_vector_setup(max_window_len, longest_read_len,
-		      a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-		      match_score, mismatch_score,
-		      shrimp_mode == MODE_COLOUR_SPACE, false)) {
-    fprintf(stderr, "failed to initialise vector "
-	    "Smith-Waterman (%s)\n", strerror(errno));
-    exit(1);
-  }
+		int max_window_len = 200;
+		int longest_read_len = 100;
+		if (sw_vector_setup(max_window_len, longest_read_len,
+				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				match_score, mismatch_score,
+				shrimp_mode == MODE_COLOUR_SPACE, false)) {
+			fprintf(stderr, "failed to initialise vector "
+					"Smith-Waterman (%s)\n", strerror(errno));
+			exit(1);
+		}
 
-  int ret;
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    /* XXX - a vs. b gap */
-    ret = sw_full_cs_setup(max_window_len, longest_read_len,
-			   a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
-			   crossover_score, false, 0);
-  } else {
-    ret = sw_full_ls_setup(max_window_len, longest_read_len,
-			   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-			   match_score, mismatch_score, false, 0);
-  }
-  if (ret) {
-    fprintf(stderr, "failed to initialise scalar "
-	    "Smith-Waterman (%s)\n", strerror(errno));
-    exit(1);
-  }
+		int ret;
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			/* XXX - a vs. b gap */
+			ret = sw_full_cs_setup(max_window_len, longest_read_len,
+					a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+					crossover_score, false, 0);
+		} else {
+			ret = sw_full_ls_setup(max_window_len, longest_read_len,
+					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+					match_score, mismatch_score, false, 0);
+		}
+		if (ret) {
+			fprintf(stderr, "failed to initialise scalar "
+					"Smith-Waterman (%s)\n", strerror(errno));
+			exit(1);
+		}
 
 
 		if (1){
@@ -1081,7 +1098,7 @@ int main(int argc, char **argv){
 			output = output_format_line(Rflag);
 			puts(output);
 			free(output);
-		  launch_scan_threads(argv[2]);
+			launch_scan_threads(argv[2]);
 		}
 		if (0){
 			fprintf(stderr,"loading compressed index\n");
@@ -1089,25 +1106,43 @@ int main(int argc, char **argv){
 		}
 		fprintf(stderr,"done\n");
 	}
-  print_run_stats();
+	print_run_stats();
 }
 
 #else
 int main(int argc, char **argv){
-	char *genome_file;
+	char **genome_files;
+	int ngenome_files;
+	char *reads_file;
+
 	char *progname = argv[0];
 	char const * optstr;
 	char *c;
 	int ch;
 
+	bool a_gap_open_set, b_gap_open_set;
+	bool a_gap_extend_set, b_gap_extend_set;
+
 	set_mode_from_argv(argv);
 
+	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
+
+	fprintf(stderr, "--------------------------------------------------"
+			"------------------------------\n");
+	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
+			SHRIMP_VERSION_STRING, get_compiler());
+	fprintf(stderr, "--------------------------------------------------"
+			"------------------------------\n");
+
+	set_mode_from_argv(argv);
+
+	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:BCFHPRTUA:MW:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:BCFHPRTUA:MW:";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -1117,12 +1152,6 @@ int main(int argc, char **argv){
 		assert(0);
 	}
 
-	fprintf(stderr, "--------------------------------------------------"
-			"------------------------------\n");
-	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
-			SHRIMP_VERSION_STRING, get_compiler());
-	fprintf(stderr, "--------------------------------------------------"
-			"------------------------------\n");
 
 	while ((ch = getopt(argc,argv,optstr)) != -1){
 		switch (ch) {
@@ -1143,6 +1172,131 @@ int main(int argc, char **argv){
 				} while (c != NULL);
 			}
 			break;
+		case 'n':
+			num_matches = atoi(optarg);
+			break;
+		case 'w':
+			window_len = atof(optarg);
+			if (window_len <= 0.0) {
+				fprintf(stderr, "error: invalid window "
+						"length\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				window_len = -window_len;		//absol.
+			break;
+		case 'o':
+			num_outputs = atoi(optarg);
+			break;
+		case 'r':
+			/* max_read_len is gone - silently ignore */
+			break;
+		case 'm':
+			match_score = atoi(optarg);
+			break;
+		case 'i':
+			mismatch_score = atoi(optarg);
+			break;
+		case 'g':
+			a_gap_open_score = atoi(optarg);
+			a_gap_open_set = true;
+			break;
+		case 'q':
+			b_gap_open_score = atoi(optarg);
+			b_gap_open_set = true;
+			break;
+		case 'e':
+			a_gap_extend_score = atoi(optarg);
+			a_gap_extend_set = true;
+			break;
+		case 'f':
+			b_gap_extend_score = atoi(optarg);
+			b_gap_extend_set = true;
+			break;
+		case 'x':
+			assert(shrimp_mode == MODE_COLOUR_SPACE);
+			crossover_score = atoi(optarg);
+			break;
+		case 'h':
+			assert(shrimp_mode != MODE_HELICOS_SPACE);
+			sw_full_threshold = atof(optarg);
+			if (sw_full_threshold < 0.0) {
+				fprintf(stderr, "error: invalid s-w full "
+						"hit threshold\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				sw_full_threshold = -sw_full_threshold;	//absol.
+			break;
+		case 'v':
+			assert(shrimp_mode == MODE_COLOUR_SPACE ||
+					shrimp_mode == MODE_HELICOS_SPACE);
+			sw_vect_threshold = atof(optarg);
+			if (sw_vect_threshold < 0.0) {
+				fprintf(stderr, "error: invalid s-w vector "
+						"hit threshold\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				sw_vect_threshold = -sw_vect_threshold;	//absol.
+			break;
+		case 'B':
+			Bflag = true;
+			break;
+		case 'C':
+			if (Fflag) {
+				fprintf(stderr, "error: -C and -F are mutually "
+						"exclusive\n");
+				exit(1);
+			}
+			Cflag = true;
+			break;
+		case 'F':
+			if (Cflag) {
+				fprintf(stderr, "error: -C and -F are mutually "
+						"exclusive\n");
+				exit(1);
+			}
+			Fflag = true;
+			break;
+		case 'H':
+			Hflag = true;
+			break;
+		case 'P':
+			Pflag = true;
+			break;
+		case 'R':
+			Rflag = true;
+			break;
+		case 'T':
+			Tflag = true;
+			break;
+		case 'U':
+			Uflag = true;
+			break;
+			/*
+			 * New options/parameters since SHRiMP 1.2.1
+			 */
+		case 'A':
+			anchor_width = atoi(optarg);
+			if (anchor_width < -1 || anchor_width >= 100) {
+				fprintf(stderr, "error: anchor_width requested is invalid (%s)\n",
+						optarg);
+				exit(1);
+			}
+			break;
+		case 'M':
+			Mflag = !Mflag;
+			break;
+		case 'W':
+			window_overlap = atof(optarg);
+			if (window_overlap <= 0.0) {
+				fprintf(stderr, "error: invalid window overlap\n");
+				exit(1);
+			}
+			if (strcspn(optarg, "%.") == strlen(optarg))
+				window_overlap = -window_overlap;		//absol.
+			break;
 		case '?':
 			usage(progname, true);
 			break;
@@ -1155,28 +1309,134 @@ int main(int argc, char **argv){
 	argv += optind;
 
 	if (n_seeds == 0)
-			load_default_seeds();
+		load_default_seeds();
 
-	init_seed_hash_mask();
+	kmer_to_mapidx = kmer_to_mapidx_orig;
+	if (Hflag){
+		kmer_to_mapidx = kmer_to_mapidx_hash;
+		init_seed_hash_mask();
+	}
 
 	if (argc < 1){
 		fprintf(stderr, "Genome File not specified\n");
 		exit(1);
 	}
 
-	genome_file = argv[0];
+	if (argc < 2) {
+		fprintf(stderr, "error: %sgenome_file(s) not specified\n",
+				(argc == 0) ? "reads_file, " : "");
+		usage(progname, false);
+	}
 
-	fprintf(stderr,"loading gneomfile\n");
-	load_genome(&genome_file,1);
-	fprintf(stderr, "        Genomemap:                %s\n",
-					comma_integer(count_get_count(&mem_genomemap)));
-	fprintf(stderr,"saving compressed index\n");
-	save_genome_map("testfile.gz");
-	print_info();
-	fprintf(stderr,"loading compressed index\n");
-	load_genome_map("testfile.gz");
+	reads_file    = argv[0];
+	genome_files  = &argv[1];
+	ngenome_files = argc - 1;
 
-	launch_scan_threads(genome_file);
+	if (!Cflag && !Fflag)
+		Cflag = Fflag = true;
+
+	if (shrimp_mode == MODE_LETTER_SPACE)
+		sw_vect_threshold = sw_full_threshold;
+
+	if (!valid_spaced_seeds()) {
+		fprintf(stderr, "error: invalid spaced seed\n");
+		if (!Hflag)
+			fprintf(stderr, "       for longer seeds, try using the -H flag\n");
+		exit(1);
+	}
+
+	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
+		fprintf(stderr, "error: window length < 100%% "
+				"of read length\n");
+		exit(1);
+	}
+
+	if (num_matches < 1) {
+		fprintf(stderr, "error: invalid number of matches\n");
+		exit(1);
+	}
+
+	if (num_outputs < 1) {
+		fprintf(stderr, "error: invalid maximum hits per read\n");
+		exit(1);
+	}
+
+	if (a_gap_open_score > 0 || b_gap_open_score > 0) {
+		fprintf(stderr, "error: invalid gap open penalty\n");
+		exit(1);
+	}
+
+	if (a_gap_extend_score > 0 || b_gap_extend_score > 0) {
+		fprintf(stderr, "error: invalid gap extend penalty\n");
+		exit(1);
+	}
+
+	if (!IS_ABSOLUTE(sw_full_threshold) && sw_full_threshold > 100.0) {
+		fprintf(stderr, "error: invalid s-w full hit threshold\n");
+		exit(1);
+	}
+
+	if (shrimp_mode == MODE_COLOUR_SPACE && !IS_ABSOLUTE(sw_vect_threshold) &&
+			sw_vect_threshold > 100.0) {
+		fprintf(stderr, "error: invalid s-w full hit threshold\n");
+		exit(1);
+	}
+
+	if ((a_gap_open_set && !b_gap_open_set)
+			|| (a_gap_extend_set && !b_gap_extend_set))
+		fputc('\n', stderr);
+	if (a_gap_open_set && !b_gap_open_set) {
+		fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
+		b_gap_open_score = a_gap_open_score;
+	}
+	if (a_gap_extend_set && !b_gap_extend_set) {
+		fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
+		b_gap_extend_score = a_gap_extend_score;
+	}
+	if ((a_gap_open_set && !b_gap_open_set)
+			|| (a_gap_extend_set && !b_gap_extend_set))
+		fputc('\n', stderr);
+
+	print_settings();
+
+
+	if (!load_genome(genome_files,ngenome_files)){
+		exit(1);
+	}
+
+	//TODO setup sw, need max window and max read len
+	int max_window_len = 200;
+	int longest_read_len = 100;
+	if (sw_vector_setup(max_window_len, longest_read_len,
+			a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+			match_score, mismatch_score,
+			shrimp_mode == MODE_COLOUR_SPACE, false)) {
+		fprintf(stderr, "failed to initialise vector "
+				"Smith-Waterman (%s)\n", strerror(errno));
+		exit(1);
+	}
+
+	int ret;
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		/* XXX - a vs. b gap */
+		ret = sw_full_cs_setup(max_window_len, longest_read_len,
+				a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+				crossover_score, false, anchor_width);
+	} else {
+		ret = sw_full_ls_setup(max_window_len, longest_read_len,
+				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				match_score, mismatch_score, false, anchor_width);
+	}
+	if (ret) {
+		fprintf(stderr, "failed to initialise scalar "
+				"Smith-Waterman (%s)\n", strerror(errno));
+		exit(1);
+	}
+
+
+
+	launch_scan_threads(reads_file);
 
 }
 #endif
+//TODO ask matei about Fflag Cflag, setting up sw,
