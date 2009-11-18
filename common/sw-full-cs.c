@@ -106,6 +106,9 @@ static int		anchor_width;
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
+#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,gap_open,gap_ext,match,mismatch,xover_penalty,\
+		swmatrix,backtrace,dbalign,qralign,anchor_width,swticks,swcells,swinvocs)
+
 #define BT_CROSSOVER		0x80
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)

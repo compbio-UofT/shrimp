@@ -55,17 +55,18 @@ static int Bflag = false;			/* print a progress bar */
 static int Cflag = false;			/* do complement only */
 static int Fflag = false;			/* do positive (forward) only */
 static int Hflag = false;			/* use hash table, not lookup */
-static int Pflag = true;			/* pretty print results */
+static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int Mflag = true;			/* print memory usage stats */
+static int  Mflag = true;			/* print memory usage stats */
 
 /* Statistics */
 static count_t	dup_hits_c;			/* number of duplicate hits */
 static count_t	reads_c;
 static stat_t	matches_s;
 
+size_t capacity;
 
 /* Kmer to genome index */
 static uint32_t ***genomemap;
@@ -87,8 +88,8 @@ static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
 static count_t mem_genomemap;
 
-static uint numThreads = 1;
-static uint chunkSize = 1000;
+static uint num_threads = DEF_NUM_THREADS;
+static uint chunk_size = DEF_CHUNK_SIZE;
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -258,46 +259,56 @@ void print_info(){
 #endif
 
 }
+
+//static bool save_genome_map(const char *file) {
+//	gzFile fp = gzopen(file, "wb");
+//	if (fp == NULL){
+//		return false;
+//	}
+//
+//	//write the header
+//	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
+//	gzwrite(fp,&shrimp_mode,sizeof(shrimp_mode_t));
+//	gzwrite(fp,&(int32_t)Hflag,sizeof(int32_t));
+//	uint32_t i;
+//	gzwrite(fp,&num_contigs,sizeof(uint32_t));
+//	//fprintf(stderr,"saved num_contigs\n");
+//	for (i = 0; i < num_contigs; i++) {
+//		gzwrite(fp,&contig_offsets[i],sizeof(uint32_t));
+//		uint32_t len = strlen(contig_names[i]);
+//		gzwrite(fp,&len,sizeof(uint32_t));
+//		gzwrite(fp,contig_names[i],len +1);
+//
+//		gzwrite(fp,genome_len + i,sizeof(uint32_t));
+//		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*genome_len[i]);
+//		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*genome_len[i]);
+//		if(shrimp_mode == MODE_COLOUR_SPACE){
+//			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*genome_len[i]);
+//			gzwrite(fp,genome_initbp+i,sizeof(uint32_t));
+//		}
+//	}
+//	//fprintf(stderr,"saving seeds\n");
+//	//write the seeds and genome_maps
+//	gzwrite(fp,&n_seeds,sizeof(uint32_t));
+//	for (i = 0; i < n_seeds; i++) {
+//		gzwrite(fp,&seed[i], sizeof(seed_type));
+//
+//		//write the genome_map for this seed
+//		uint32_t j;
+//		uint32_t p = power(4, seed[i].weight);
+//		//fprintf(stderr,"saving index\n");
+//		gzwrite(fp,&p, sizeof(uint32_t));
+//		for (j = 0; j < p; j++) {
+//			uint32_t len = genomemap_len[i][j];
+//			gzwrite(fp, &len, sizeof(uint32_t));
+//			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
+//		}
+//	}
+//	gzclose(fp);
+//	return true;
+//}
+
 /*
-static bool save_genome_map(const char *file) {
-	gzFile fp = gzopen(file, "wb");
-	if (fp == NULL){
-		return false;
-	}
-
-	//write the header
-	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
-	uint32_t i;
-	gzwrite(fp,&num_contigs,sizeof(uint32_t));
-	//fprintf(stderr,"saved num_contigs\n");
-	for (i = 0; i < num_contigs; i++) {
-		gzwrite(fp,&contig_offsets[i],sizeof(uint32_t));
-		uint32_t len = strlen(contig_names[i]);
-		gzwrite(fp,&len,sizeof(uint32_t));
-		gzwrite(fp,contig_names[i],len +1);
-	}
-	//fprintf(stderr,"saving seeds\n");
-	//write the seeds and genome_maps
-	gzwrite(fp,&n_seeds,sizeof(uint32_t));
-	for (i = 0; i < n_seeds; i++) {
-		gzwrite(fp,&seed[i], sizeof(seed_type));
-
-		//write the genome_map for this seed
-		uint32_t j;
-		uint32_t p = power(4, seed[i].weight);
-		//fprintf(stderr,"saving index\n");
-		gzwrite(fp,&p, sizeof(uint32_t));
-		for (j = 0; j < p; j++) {
-			uint32_t len = genomemap_len[i][j];
-			gzwrite(fp, &len, sizeof(uint32_t));
-			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
-		}
-	}
-	gzclose(fp);
-	return true;
-}
-
-
 static bool load_genome_map(const char *file){
 	gzFile fp = gzopen(file,"rb");
 	if (fp == NULL){
@@ -632,25 +643,31 @@ scan_read_lscs_pass2(read_entry * re) {
 			count_increment(&dup_hits_c);
 
 		if (rs->score >= thresh && dup == false) {
-			char *output;
+			char *output1 = NULL,*output2 = NULL,*format;
 
 			re->final_matches++;
 
-			output = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+			output1 = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
 					genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read,
 					re->read_len, re->initbp, rs->rev_cmpl, Rflag);
-			puts(output);
-			free(output);
 
 			if (Pflag) {
-				output = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+				output2 = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
 						genome_contigs[rs->contig_num], genome_len[rs->contig_num],
 						(shrimp_mode == MODE_COLOUR_SPACE), re->read,
 						re->read_len, re->initbp, rs->rev_cmpl);
-				puts("");
-				puts(output);
-				free(output);
 			}
+			if(output2 != NULL){
+				format = (char *)"%s\n\n%s\n";
+			} else{
+				format = (char *)"%s\n";
+			}
+#pragma omp critical (stdout)
+			{
+				fprintf(stdout,format,output1,output2);
+			}
+			free(output1);
+			free(output2);
 		}
 
 		last_sfr = *rs->sfrp;
@@ -712,7 +729,7 @@ static bool
 launch_scan_threads(const char *file){
 	fasta_t fasta;
 	int space;
-	int s = chunkSize*numThreads;
+	int s = chunk_size*num_threads;
 	read_entry *res;
 	char *seq;
 
@@ -755,10 +772,10 @@ launch_scan_threads(const char *file){
 
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 		}
-		//#pragma omp parallel shared(res,i) num_threads(numThreads)
+		#pragma omp parallel shared(res,i) num_threads(num_threads)
 		{
 			int j;
-			//#pragma omp for
+			#pragma omp for
 			for (j = 0; j < i; j++){
 				handle_read(&res[j]);
 			}
@@ -820,7 +837,7 @@ static bool
 load_genome(char **files, int nfiles)
 {
 	fasta_t fasta;
-	size_t seqlen,  capacity;
+	size_t seqlen;
 	uint32_t *read;
 	char *seq, *name;
 	uint32_t *kmerWindow;
@@ -959,16 +976,33 @@ load_genome(char **files, int nfiles)
 }
 
 void usage(char *progname,bool full_usage){
-	//TODO update usage
 	char *slash;
+	double vect_sw_threshold = -1;
 	uint sn;
 
+	switch (shrimp_mode) {
+	case MODE_LETTER_SPACE:
+		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
+		break;
+	case MODE_COLOUR_SPACE:
+		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
+		break;
+	case MODE_HELICOS_SPACE:
+		fprintf(stderr,"Helicos mode not supported");
+		exit(1);
+		break;
+	default:
+		assert(0);
+	}
+
 	load_default_seeds();
+
 	slash = strrchr(progname, '/');
 	if (slash != NULL)
 		progname = slash + 1;
+
 	fprintf(stderr, "usage: %s [parameters] [options] "
-			"genome_file1\n", progname);
+			"reads_file genome_file1 genome_file2...\n", progname);
 
 	fprintf(stderr, "Parameters:\n");
 
@@ -979,9 +1013,124 @@ void usage(char *progname,bool full_usage){
 			fprintf(stderr, "                                                            ");
 		fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
 	}
+
+	fprintf(stderr,
+			"    -n    Seed Matches per Window                 (default: %d)\n",
+			DEF_NUM_MATCHES);
+
+	fprintf(stderr,
+			"    -w    Seed Window Length                      (default: %.02f%%)\n",
+			DEF_WINDOW_LEN);
+
+	fprintf(stderr,
+			"    -W    Seed Window Overlap Length              (default: %.02f%%)\n",
+			DEF_WINDOW_OVERLAP);
+
+	fprintf(stderr,
+			"    -o    Maximum Hits per Read                   (default: %d)\n",
+			DEF_NUM_OUTPUTS);
+
+	fprintf(stderr, "\n");
+	fprintf(stderr,
+			"    -m    S-W Match Value                         (default: %d)\n",
+			DEF_MATCH_VALUE);
+
+	fprintf(stderr,
+			"    -i    S-W Mismatch Value                      (default: %d)\n",
+			DEF_MISMATCH_VALUE);
+
+	fprintf(stderr,
+			"    -g    S-W Gap Open Penalty (Reference)        (default: %d)\n",
+			DEF_A_GAP_OPEN);
+
+	fprintf(stderr,
+			"    -q    S-W Gap Open Penalty (Query)            (default: %d)\n",
+			DEF_B_GAP_OPEN);
+
+	fprintf(stderr,
+			"    -e    S-W Gap Extend Penalty (Reference)      (default: %d)\n",
+			DEF_A_GAP_EXTEND);
+
+	fprintf(stderr,
+			"    -f    S-W Gap Extend Penalty (Query)          (default: %d)\n",
+			DEF_B_GAP_EXTEND);
+
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		fprintf(stderr,
+				"    -x    S-W Crossover Penalty                   ("
+				"default: %d)\n", DEF_XOVER_PENALTY);
+	}
+
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		fprintf(stderr,
+				"    -h    S-W Full Hit Threshold                  "
+				"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_HELICOS_SPACE) {
+		fprintf(stderr,
+				"    -v    S-W Vector Hit Threshold                "
+				"(default: %.02f%%)\n", vect_sw_threshold);
+	} else {
+		fprintf(stderr,
+				"    -h    S-W Hit Threshold                       "
+				"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
+	}
+
+	if (full_usage) {
+		fprintf(stderr, "\n");
+		if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
+			fprintf(stderr,
+					"    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
+					DEF_ANCHOR_WIDTH);
+		}
+
+	}
+	fprintf(stderr,"\n");
+	fprintf(stderr,"    -N    Set the number of threads               (default: %u)\n",DEF_NUM_THREADS);
+	fprintf(stderr,"    -S    Set the thread chunk size               (default: %u)\n",DEF_CHUNK_SIZE);
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Options:\n");
+
+	fprintf(stderr,
+			"    -B    Print Scan Progress Bar                       (default: "
+			"disabled)\n");
+
+	fprintf(stderr,
+			"    -C    Only Process Negative Strand (Rev. Compl.)    (default: "
+			"disabled)\n");
+
+	fprintf(stderr,
+			"    -F    Only Process Positive Strand                  (default: "
+			"disabled)\n");
+
+	fprintf(stderr,
+			"    -P    Pretty Print Alignments                       (default: "
+			"disabled)\n");
+
+	fprintf(stderr,
+			"    -R    Print Reads in Output                         (default: "
+			"disabled)\n");
+
+	if (shrimp_mode != MODE_HELICOS_SPACE) {
+		fprintf(stderr,
+				"    -T    Reverse tie-break choice on negative strand   (default: "
+				"disabled)\n");
+	}
+
+	fprintf(stderr,
+			"    -U    Print Unmapped Read Names in Output           (default: "
+			"disabled)\n");
+	fprintf(stderr,
+			"    -M    Toggle brief memory usage statistics          (default: %s)\n",
+			Mflag? "enabled" : "disabled");
+
+
 	fprintf(stderr,
 			"    -?    Full list of parameters and options\n");
 
+
+	exit(1);
 }
 
 void print_settings() {
@@ -1037,6 +1186,9 @@ void print_settings() {
 				shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
 						sw_full_threshold);
 	}
+	fprintf(stderr, "\n");
+	fprintf(stderr,"%s%-40s%u\n",my_tab,"Number of threads:",num_threads);
+	fprintf(stderr,"%s%-40s%u\n",my_tab,"Thread chuck size:",chunk_size);
 
 }
 
@@ -1127,6 +1279,8 @@ int main(int argc, char **argv){
 
 	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
 
+	set_mode_from_argv(argv);
+
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
 	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
@@ -1134,15 +1288,13 @@ int main(int argc, char **argv){
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
 
-	set_mode_from_argv(argv);
-
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:BCFHPRTUA:MW:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:S:BCFHPRTUA:MW:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:BCFHPRTUA:MW:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:S:BCFHPRTUA:MW:";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -1297,6 +1449,12 @@ int main(int argc, char **argv){
 			if (strcspn(optarg, "%.") == strlen(optarg))
 				window_overlap = -window_overlap;		//absol.
 			break;
+		case 'N':
+			num_threads = atoi(optarg);
+			break;
+		case 'S':
+			chunk_size = atoi(optarg);
+			break;
 		case '?':
 			usage(progname, true);
 			break;
@@ -1317,10 +1475,10 @@ int main(int argc, char **argv){
 		init_seed_hash_mask();
 	}
 
-	if (argc < 1){
-		fprintf(stderr, "Genome File not specified\n");
-		exit(1);
-	}
+	//	if (argc < 1){
+	//		fprintf(stderr, "Reads File not specified\n");
+	//		usage(progname, false);
+	//	}
 
 	if (argc < 2) {
 		fprintf(stderr, "error: %sgenome_file(s) not specified\n",
@@ -1405,8 +1563,11 @@ int main(int argc, char **argv){
 	}
 
 	//TODO setup sw, need max window and max read len
-	int max_window_len = 200;
 	int longest_read_len = 100;
+	int max_window_len = abs_or_pct(window_len,longest_read_len);
+#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
+	match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
+	{
 	if (sw_vector_setup(max_window_len, longest_read_len,
 			a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 			match_score, mismatch_score,
@@ -1431,6 +1592,7 @@ int main(int argc, char **argv){
 		fprintf(stderr, "failed to initialise scalar "
 				"Smith-Waterman (%s)\n", strerror(errno));
 		exit(1);
+	}
 	}
 
 

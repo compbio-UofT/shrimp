@@ -57,6 +57,9 @@ static int		anchor_width;
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
+#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,\
+		match,mismatch,swmatrix,backtrace,dbalign,qralign,anchor_width,swticks,swcells,swinvocs)
+
 
 inline static void
 init_cell(int idx) {

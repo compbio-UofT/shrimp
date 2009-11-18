@@ -36,6 +36,9 @@ static int	use_colours;
 /* statistics */
 static uint64_t swticks, swcells, swinvocs;
 
+#pragma omp threadprivate(initialised,db,db_ls,qr,dblen,qrlen,nogap,b_gap,a_gap_open,a_gap_ext,\
+		b_gap_open,b_gap_ext,match,mismatch,use_colours,swticks,swcells,swinvocs)
+
 /*
  * Calculate the Smith-Waterman score.
  *
