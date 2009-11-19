@@ -1589,7 +1589,7 @@ int main(int argc, char **argv){
 
 	//TODO setup sw, need max window and max read len
 	int longest_read_len = 100;
-	int max_window_len = abs_or_pct(window_len,longest_read_len);
+	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 	match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
