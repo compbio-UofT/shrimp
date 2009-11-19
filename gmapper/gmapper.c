@@ -269,7 +269,8 @@ void print_info(){
 //	//write the header
 //	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
 //	gzwrite(fp,&shrimp_mode,sizeof(shrimp_mode_t));
-//	gzwrite(fp,&(int32_t)Hflag,sizeof(int32_t));
+//	uint32_t h = (uint32_t)Hflag;
+//	gzwrite(fp,&h,sizeof(int32_t));
 //	uint32_t i;
 //	gzwrite(fp,&num_contigs,sizeof(uint32_t));
 //	//fprintf(stderr,"saved num_contigs\n");
@@ -280,10 +281,10 @@ void print_info(){
 //		gzwrite(fp,contig_names[i],len +1);
 //
 //		gzwrite(fp,genome_len + i,sizeof(uint32_t));
-//		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*genome_len[i]);
-//		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*genome_len[i]);
+//		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
 //		if(shrimp_mode == MODE_COLOUR_SPACE){
-//			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*genome_len[i]);
+//			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
 //			gzwrite(fp,genome_initbp+i,sizeof(uint32_t));
 //		}
 //	}
@@ -295,10 +296,10 @@ void print_info(){
 //
 //		//write the genome_map for this seed
 //		uint32_t j;
-//		uint32_t p = power(4, seed[i].weight);
+//		//uint32_t p = power(4, seed[i].weight);
 //		//fprintf(stderr,"saving index\n");
-//		gzwrite(fp,&p, sizeof(uint32_t));
-//		for (j = 0; j < p; j++) {
+//		gzwrite(fp,&capacity, sizeof(size_t));
+//		for (j = 0; j < capacity; j++) {
 //			uint32_t len = genomemap_len[i][j];
 //			gzwrite(fp, &len, sizeof(uint32_t));
 //			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
@@ -307,54 +308,78 @@ void print_info(){
 //	gzclose(fp);
 //	return true;
 //}
+//
+//
+//static bool load_genome_map(const char *file){
+//	gzFile fp = gzopen(file,"rb");
+//	if (fp == NULL){
+//		return false;
+//	}
+//
+//	uint32_t i;
+//	gzread(fp,&shrimp_mode,sizeof(shrimp_mode_t));
+//	int32_t f;
+//	gzread(fp,&f,sizeof(int32_t));
+//	Hflag = f;
+//	gzread(fp,&num_contigs,sizeof(uint32_t));
+//	//fprintf(stderr,"num_contigs = %u\n",num_contigs);
+//
+//	contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
+//	contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+//
+//	genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
+//	genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+//	genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+//	if(shrimp_mode == MODE_COLOUR_SPACE){
+//		genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
+//		genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t)*num_contigs);
+//	}
+//
+//	for (i = 0; i < num_contigs; i++){
+//		gzread(fp,&contig_offsets[i],sizeof(uint32_t));
+//
+//		uint32_t len;
+//		gzread(fp,&len,sizeof(uint32_t));
+//		contig_names[i] = (char *)xrealloc(contig_names[i],sizeof(char)*len);
+//		gzread(fp,contig_names[i],len+1);
+//
+//		gzread(fp,genome_len + i,sizeof(uint32_t));
+//
+//		genome_contigs[i] = (uint32_t *)xrealloc(genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//		gzread(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//
+//		genome_contigs_rc[i] = (uint32_t *)xrealloc(genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//		gzread(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//
+//		if(shrimp_mode == MODE_COLOUR_SPACE){
+//			genome_cs_contigs[i] = (uint32_t *)xrealloc(genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//			gzread(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+//			gzread(fp,genome_initbp+i,sizeof(uint32_t));
+//		}
+//	}
+//	gzread(fp,&n_seeds,sizeof(uint32_t));
+//	//fprintf(stderr,"n_seeds = %u\n",n_seeds);
+//	seed =(seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
+//	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
+//	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **) * n_seeds);
+//	for (i = 0; i < n_seeds; i++){
+//		gzread(fp,&seed[i], sizeof(seed_type));
+//		//fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
+//		uint32_t j;
+//		gzread(fp,&capacity,sizeof(size_t));
+//		genomemap_len[i] = (uint32_t *)xrealloc(genomemap_len[i],sizeof(uint32_t)*capacity);
+//		genomemap[i] = (uint32_t **)xrealloc(genomemap[i],sizeof(uint32_t *)*capacity);
+//		for (j = 0; j < capacity; j++){
+//			gzread(fp,&genomemap_len[i][j],sizeof(uint32_t));
+//			genomemap[i][j] = (uint32_t *)xrealloc(genomemap[i][j],
+//					sizeof(uint32_t)*genomemap_len[i][j]);
+//			gzread(fp,genomemap[i][j],sizeof(uint32_t) * genomemap_len[i][j]);
+//		}
+//	}
+//	gzclose(fp);
+//	return true;
+//}
 
-/*
-static bool load_genome_map(const char *file){
-	gzFile fp = gzopen(file,"rb");
-	if (fp == NULL){
-		return false;
-	}
-
-	uint32_t i;
-	gzread(fp,&num_contigs,sizeof(uint32_t));
-	//fprintf(stderr,"num_contigs = %u\n",num_contigs);
-
-	contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
-	contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
-
-	for (i = 0; i < num_contigs; i++){
-		gzread(fp,&contig_offsets[i],sizeof(uint32_t));
-
-		uint32_t len;
-		gzread(fp,&len,sizeof(uint32_t));
-		contig_names[i] = (char *)xrealloc(contig_names[i],sizeof(char)*len);
-		gzread(fp,contig_names[i],len+1);
-		//fprintf(stderr,"contig %u: name=%s offset = %u\n",i,contig_names[i],contig_offsets[i]);
-	}
-	gzread(fp,&n_seeds,sizeof(uint32_t));
-	//fprintf(stderr,"n_seeds = %u\n",n_seeds);
-	seed =(seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
-	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
-	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **) * n_seeds);
-	for (i = 0; i < n_seeds; i++){
-		gzread(fp,&seed[i], sizeof(seed_type));
-		//fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
-		uint32_t j;
-		uint32_t p;
-		gzread(fp,&p,sizeof(uint32_t));
-		genomemap_len[i] = (uint32_t *)xrealloc(genomemap_len[i],sizeof(uint32_t)*p);
-		genomemap[i] = (uint32_t **)xrealloc(genomemap[i],sizeof(uint32_t *)*p);
-		for (j = 0; j < p; j++){
-			gzread(fp,&genomemap_len[i][j],sizeof(uint32_t));
-			genomemap[i][j] = (uint32_t *)xrealloc(genomemap[i][j],
-					sizeof(uint32_t)*genomemap_len[i][j]);
-			gzread(fp,genomemap[i][j],sizeof(uint32_t) * genomemap_len[i][j]);
-		}
-	}
-	gzclose(fp);
-	return true;
-}
- */
 static int comp(const void *a, const void *b){
 	return *(uint32_t *)a - *(uint32_t *)b;
 }
@@ -1596,7 +1621,11 @@ int main(int argc, char **argv){
 	}
 
 
+	char * output;
 
+	output = output_format_line(Rflag);
+	puts(output);
+	free(output);
 	launch_scan_threads(reads_file);
 
 }
