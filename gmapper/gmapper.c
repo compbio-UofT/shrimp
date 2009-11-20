@@ -440,6 +440,9 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 	}
 	qsort(*list,*len,sizeof(uint32_t),&comp);
 	qsort(*list_rc,*len_rc,sizeof(uint32_t),&comp);
+
+	free(kmerWindow);
+	free(kmerWindow_rc);
 }
 
 /*
@@ -798,6 +801,7 @@ launch_scan_threads(const char *file){
 			}
 
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
+			free(seq);
 		}
 		#pragma omp parallel shared(res,i) num_threads(num_threads)
 		{
@@ -809,6 +813,7 @@ launch_scan_threads(const char *file){
 		}
 
 	}
+	free(res);
 	return true;
 }
 
