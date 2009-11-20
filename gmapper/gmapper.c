@@ -748,6 +748,8 @@ handle_read(read_entry *re){
 	free(re->name);
 	free(re->read);
 	free(re->read_rc);
+	free(list);
+	free(list_rc);
 
 }
 
