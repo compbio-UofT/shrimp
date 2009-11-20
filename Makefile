@@ -165,7 +165,7 @@ common/bitmap.o: common/bitmap.c common/bitmap.h
 #
 
 clean:
-	rm -f bin/rmapper* bin/colourise bin/probcalc \
+	rm -f bin/rmapper* bin/colourise bin/probcalc bin/gmapper* \
 	    bin/prettyprint* bin/mergehits* bin/probcalc_mp bin/shrimp_var
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f

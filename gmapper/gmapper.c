@@ -740,10 +740,12 @@ handle_read(read_entry *re){
 		scan_read_lscs_pass2(re);
 	}
 
-	// TODO This v
 	// done with this read; deallocate memory.
-	// deallocate name/bitmap ???
 	free(re->scores);
+	free(re->name);
+	free(re->read);
+	free(re->read_rc);
+
 }
 
 /*
