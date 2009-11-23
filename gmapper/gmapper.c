@@ -633,20 +633,24 @@ scan_read_lscs_pass2(read_entry * re) {
 	for (i = 1; i <= re->scores[0].heap_elems; i++) {
 		struct re_score * rs = &re->scores[i];
 		uint32_t * gen;
-		uint goff;
+		uint goff, glen;
 
 		rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
 
 		if (rs->rev_cmpl) {
 			gen = genome_contigs_rc[rs->contig_num];
-			goff = rs->g_idx + re->window_len - 1;
+			goff = rs->g_idx; // + re->window_len - 1;
 		} else {
 			gen = genome_contigs[rs->contig_num];
 			goff = rs->g_idx;
 		}
 
+		glen = re->window_len;
+		if (goff + glen > genome_len[rs->contig_num])
+		  glen = genome_len[rs->contig_num] - goff;
+
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			sw_full_cs(gen, goff, re->window_len,
+			sw_full_cs(gen, goff, glen,
 					re->read, re->read_len, re->initbp,
 					thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna, NULL, 0);
 		} else {
@@ -655,11 +659,11 @@ scan_read_lscs_pass2(read_entry * re) {
 			 * This might not be true just yet if we're using hashing&caching because
 			 * of possible hash collosions.
 			 */
-			rs->score = sw_vector(gen, goff, re->window_len,
+			rs->score = sw_vector(gen, goff, glen,
 					re->read, re->read_len,
 					NULL, -1, genome_is_rna);
 			if (rs->score >= thresh) {
-				sw_full_ls(gen, goff, re->window_len,
+				sw_full_ls(gen, goff, glen,
 						re->read, re->read_len,
 						thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,  NULL, 0);
 				assert(rs->sfrp->score == rs->score);

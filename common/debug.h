@@ -10,7 +10,7 @@
 
 //#define DEBUGGING
 //#define DEBUG_MAIN
-#define DEBUG_SEEDS
+//#define DEBUG_SEEDS
 
 #ifdef DEBUGGING
 #define DEBUG(x,...) fprintf(stderr,"DEBUG: " x "\n",##__VA_ARGS__)
