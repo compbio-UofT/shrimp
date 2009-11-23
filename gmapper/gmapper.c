@@ -995,7 +995,7 @@ load_genome(char **files, int nfiles)
 				else if (load < max_seed_span)
 					load++;
 				//DEBUG("looping seeds");
-#pragma omp parallel for shared(kmerWindow,genomemap_len,genomemap,nkmers,mem_genomemap,load,seed),num_threads(num_threads)
+#pragma omp parallel for shared(kmerWindow,genomemap_len,genomemap,nkmers,mem_genomemap,load,seed) num_threads(num_threads)
 				for (sn = 0; sn < (int)n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
