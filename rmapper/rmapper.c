@@ -631,6 +631,7 @@ scan(int contig_num, bool revcmpl)
     if (skip > 0)
       skip--;
   }
+  i--;
 
   // 1 ahead for i=seed_span
   sn = 0;
