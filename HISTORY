@@ -1,5 +1,13 @@
 $Id$
 
+1.3.1: November 23, 2009
+	- Fixed bug which caused allocation of 8 bytes per int even on systems
+	  where sizeof(int)=4. This should reduce the virtual memory usage, but
+	  not the resident size (on a regular kernel).
+	- Fixed generation of kmers at the beginning of a contig. This should
+	  increase sensitivity when using small database sequences (e.g.,
+	  miRNA).
+
 1.3: September 28, 2009
 	- Proper support for multiple seeds. We now have one readmap per seed,
 	  and we keep track of which seed every kmer originates from.
