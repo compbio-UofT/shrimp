@@ -67,6 +67,16 @@ static count_t	dup_hits_c;			/* number of duplicate hits */
 static count_t	reads_c;
 static stat_t	matches_s;
 
+static uint64_t reads_matched = 0;
+static uint64_t total_matches = 0;
+
+static uint64_t nreads = 0;
+
+static uint64_t scan_usecs;
+static uint64_t map_usecs;
+
+static count_t mem_genomemap;
+
 size_t capacity;
 
 /* files to use when saving and loading genome maps */
@@ -91,7 +101,6 @@ static uint32_t	 *genome_len;
 
 static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
-static count_t mem_genomemap;
 
 static uint num_threads = DEF_NUM_THREADS;
 static uint chunk_size = DEF_CHUNK_SIZE;
@@ -666,6 +675,9 @@ scan_read_lscs_pass2(read_entry * re) {
 	qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
 
 	/* Output sorted list, removing any duplicates. */
+	if (re->scores[0].heap_elems > 0){
+		reads_matched++;
+	}
 	memset(&last_sfr, 0, sizeof(last_sfr));
 	for (i = 1; i <= re->scores[0].heap_elems; i++) {
 		struct re_score * rs = &re->scores[i];
@@ -701,6 +713,8 @@ scan_read_lscs_pass2(read_entry * re) {
 			}
 			free(output1);
 			free(output2);
+
+			total_matches++;
 		}
 
 		last_sfr = *rs->sfrp;
@@ -810,6 +824,7 @@ launch_scan_threads(const char *file){
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 			free(seq);
 		}
+		nreads += i;
 		#pragma omp parallel shared(res,i) num_threads(num_threads)
 		{
 			int j;
@@ -1014,6 +1029,148 @@ load_genome(char **files, int nfiles)
 
 	return (true);
 
+}
+
+static void
+print_statistics()
+{
+	double totalseedscantime = 0;
+	double totalruntime = 0;
+	uint64_t totalinvocs = 0;
+	uint64_t totalcells = 0;
+	double cellspersec[num_threads], hz, seedscantime[num_threads];
+	uint64_t invocs[num_threads], cells[num_threads], fasta_load_ticks, vticks[num_threads];
+	fasta_stats_t fs;
+
+	fs = fasta_stats();
+	fasta_load_ticks = fs->total_ticks;
+	free(fs);
+	hz = cpuhz();
+
+#pragma omp parallel num_threads(num_threads) shared(hz)
+	{
+		int tid = omp_get_thread_num();
+		sw_vector_stats(&invocs[tid], &cells[tid], &vticks[tid], &cellspersec[tid]);
+
+		seedscantime[tid] = ((double)scan_usecs / 1000000.0) - (vticks[tid] / hz);
+		seedscantime[tid] = MAX(0, seedscantime[tid]);
+	}
+
+	fprintf(stderr, "\nStatistics:\n");
+
+	int i;
+	for(i = 0; i < (int)num_threads; i++){
+		fprintf(stderr,"    Spaced Seed Scan[Thread %i]:\n",i);
+		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+					seedscantime[i]);
+		fprintf(stderr,"\n");
+		totalseedscantime += seedscantime[i];
+	}
+
+
+
+	fprintf(stderr, "    Spaced Seed Scan[Total]:\n");
+	fprintf(stderr, "        Run-time:               %.2f seconds\n",
+			totalseedscantime);
+	fprintf(stderr, "        Total Kmers:            %s\n",
+			comma_integer(nkmers));
+
+
+
+	fprintf(stderr, "\n");
+
+	for(i = 0; i < (int)num_threads; i++){
+		fprintf(stderr, "    Vector Smith-Waterman[Thread %i]:\n",i);
+		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+					(cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i]);
+		totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
+		fprintf(stderr, "        Invocations:            %s\n",
+					comma_integer(invocs[i]));
+		totalinvocs += invocs[i];
+		fprintf(stderr, "        Cells Computed:         %.2f million\n",
+				(double)cells[i] / 1.0e6);
+		totalcells += cells[i];
+		fprintf(stderr, "        Cells per Second:       %.2f million\n",
+				cellspersec[i] / 1.0e6);
+		fprintf(stderr, "\n");
+
+	}
+	fprintf(stderr, "    Vector Smith-Waterman[Total]:\n");
+	fprintf(stderr, "        Run-time:               %.2f seconds\n",
+			totalruntime);
+	fprintf(stderr, "        Invocations:            %s\n",
+			comma_integer(totalinvocs));
+	fprintf(stderr, "        Cells Computed:         %.2f million\n",
+			(double)totalcells / 1.0e6);
+	fprintf(stderr, "\n");
+
+#pragma omp parallel num_threads(num_threads)
+	{
+		int tid = omp_get_thread_num();
+		if (shrimp_mode == MODE_COLOUR_SPACE)
+			sw_full_cs_stats(&invocs[tid], &cells[tid], NULL, &cellspersec[tid]);
+		else
+			sw_full_ls_stats(&invocs[tid], &cells[tid], NULL, &cellspersec[tid]);
+	}
+
+
+	totalruntime = 0;
+	totalinvocs = 0;
+	totalcells = 0;
+	for(i = 0; i < (int)num_threads; i++){
+		fprintf(stderr, "    Scalar Smith-Waterman[Thread %i]:\n",i);
+			fprintf(stderr, "        Run-time:               %.2f seconds\n",
+					(cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i]);
+			fprintf(stderr, "        Invocations:            %s\n",
+					comma_integer(invocs[i]));
+			fprintf(stderr, "        Cells Computed:         %.2f million\n",
+					(double)cells[i] / 1.0e6);
+			fprintf(stderr, "        Cells per Second:       %.2f million\n",
+					cellspersec[i] / 1.0e6);
+
+			fprintf(stderr, "\n");
+
+			totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
+			totalinvocs += invocs[i];
+			totalcells += cells[i];
+
+	}
+	fprintf(stderr, "    Scalar Smith-Waterman[Total]:\n");
+	fprintf(stderr, "        Run-time:               %.2f seconds\n",
+			totalruntime);
+	fprintf(stderr, "        Invocations:            %s\n",
+			comma_integer(totalinvocs));
+	fprintf(stderr, "        Cells Computed:         %.2f million\n",
+			(double)totalcells / 1.0e6);
+
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    Miscellaneous:\n");
+	fprintf(stderr, "        Load Time:              %.2f seconds\n",
+			(double)fasta_load_ticks / hz);
+	fprintf(stderr, "        Map time:               %.2f seconds\n",
+			(double)map_usecs / 1000000.0);
+	fprintf(stderr, "        Scan time:              %.2f seconds\n",
+			(double)scan_usecs / 1000000.0);
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "    General:\n");
+	fprintf(stderr, "        Reads Matched:          %s    "
+			"(%.4f%%)\n", comma_integer(reads_matched),
+			(nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
+	fprintf(stderr, "        Total Matches:          %s\n",
+			comma_integer(total_matches));
+	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
+			(total_matches == 0) ? 0 : ((double)total_matches /
+					(double)reads_matched));
+	fprintf(stderr, "        Duplicate Hits Pruned:  %s\n",
+			comma_integer(dup_hits_c));
+
+	if (Mflag) {
+		fprintf(stderr, "\n    Memory usage:\n");
+		fprintf(stderr, "        Genomemap:                %s\n",
+				comma_integer(count_get_count(&mem_genomemap)));
+	}
 }
 
 void usage(char *progname,bool full_usage){
@@ -1628,6 +1785,8 @@ int main(int argc, char **argv){
 
 	print_settings();
 
+	uint64_t before;
+	before = gettimeinusecs();
 	if (load_file != NULL){
 		if (!load_genome_map(load_file)){
 			exit(1);
@@ -1637,6 +1796,8 @@ int main(int argc, char **argv){
 			exit(1);
 		}
 	}
+	scan_usecs += (gettimeinusecs() - before);
+
 	if (save_file != NULL){
 		if(save_genome_map(save_file)){
 			exit(0);
@@ -1683,7 +1844,12 @@ int main(int argc, char **argv){
 		output = output_format_line(Rflag);
 		puts(output);
 		free(output);
+
+		before = gettimeinusecs();
 		launch_scan_threads(reads_file);
+		scan_usecs += (gettimeinusecs() - before);
+
+		print_statistics();
 }
 #endif
 //TODO ask matei about Fflag Cflag, setting up sw,
