@@ -556,7 +556,7 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, bool rev_cmpl){
 				                                                    && list[last + 1] + avg_seed_span <= list[first] + re->window_len)
 			last++;
 
-		if (last - first >= num_matches) {
+		if (last - first + 1 >= num_matches) {
 			// fit window around first...last
 			if ((re->window_len - (list[last] + avg_seed_span - list[first]))/2 <= list[first] - contig_offsets[cn])
 				goff = list[first] - contig_offsets[cn] - (re->window_len - (list[last] + avg_seed_span - list[first]))/2;
@@ -639,7 +639,12 @@ scan_read_lscs_pass2(read_entry * re) {
 
 		if (rs->rev_cmpl) {
 			gen = genome_contigs_rc[rs->contig_num];
-			goff = rs->g_idx; // + re->window_len - 1;
+			goff = rs->g_idx + re->window_len - 1;
+			if (goff > genome_len[rs->contig_num] - 1) {
+			  goff = 0;
+			} else {
+			  goff = genome_len[rs->contig_num] - 1 - goff;
+			}
 		} else {
 			gen = genome_contigs[rs->contig_num];
 			goff = rs->g_idx;
@@ -744,6 +749,11 @@ handle_read(read_entry *re){
 	fprintf(stderr,"read locations:");
 	for(i = 0; i < len; i++){
 		fprintf(stderr,"%u,",list[i]);
+	}
+	fprintf(stderr,"\n");
+	fprintf(stderr,"read locations revcmpl:");
+	for(i = 0; i < len_rc; i++){
+		fprintf(stderr,"%u,",list_rc[i]);
 	}
 	fprintf(stderr,"\n");
 #endif
