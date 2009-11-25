@@ -568,17 +568,22 @@ reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna){
 }
 
 uint32_t *
-reverse_complement_read_cs(uint32_t * read,int8_t * initbp, uint32_t len,bool is_rna){
-	uint32_t * rev_cmp;
-
-	rev_cmp = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
-
+reverse_complement_read_cs(uint32_t * read, int8_t initbp, int8_t initbp_rc, uint32_t len, bool is_rna){
+	uint32_t * read_rc;
 	uint i;
-	for (i = 0; i < len;i++){
-		*initbp = cstols(*initbp,EXTRACT(read,i),is_rna);
-		bitfield_insert(rev_cmp,len - 1 - i,EXTRACT(read,i));
+	int8_t base;
+
+	assert(len > 0);
+	read_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
+
+	base = cstols(initbp, EXTRACT(read, 0), is_rna);
+	for (i = 1; i < len; i++){
+		base = cstols(base, EXTRACT(read,i), is_rna);
+		bitfield_insert(read_rc, len - i, EXTRACT(read,i));
 	}
-	return rev_cmp;
+	bitfield_insert(read_rc, 0, lstocs(base, complement_base(initbp_rc, is_rna), is_rna));
+
+	return read_rc;
 }
 
 /*

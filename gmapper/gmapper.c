@@ -679,6 +679,7 @@ scan_read_lscs_pass2(read_entry * re) {
 				rs->sfrp->qralign = NULL;
 			}
 		}
+		rs->score = rs->sfrp->score;
 	}
 
 	/* sort scores */
@@ -829,9 +830,11 @@ launch_scan_threads(const char *file){
 			res[i].read_len = strlen(seq);
 			count_increment(&reads_c);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
+			  res[i].read_len--;
 				res[i].initbp = fasta_get_initial_base(fasta,seq);
 				res[i].initbp_rc = res[i].initbp;
-				res[i].read_rc = reverse_complement_read_cs(res[i].read,&res[i].initbp_rc,res[i].read_len,is_rna);
+				res[i].read_rc = reverse_complement_read_cs(res[i].read, res[i].initbp, res[i].initbp_rc,
+									    res[i].read_len, is_rna);
 			} else {
 				res[i].read_rc = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
 			}
