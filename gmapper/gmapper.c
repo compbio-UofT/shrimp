@@ -59,7 +59,8 @@ static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int  Mflag = true;			/* print memory usage stats */
+static int Mflag = true;			/* print memory usage stats */
+static int Dflag = false;			/* print statistics for each thread */
 
 
 /* Statistics */
@@ -1094,19 +1095,21 @@ print_statistics()
 	fprintf(stderr, "\n");
 
 	for(i = 0; i < (int)num_threads; i++){
-		fprintf(stderr, "    Vector Smith-Waterman[Thread %i]:\n",i);
-		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+		if (Dflag){
+			fprintf(stderr, "    Vector Smith-Waterman[Thread %i]:\n",i);
+			fprintf(stderr, "        Run-time:               %.2f seconds\n",
 					(cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i]);
-		totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
-		fprintf(stderr, "        Invocations:            %s\n",
+			fprintf(stderr, "        Invocations:            %s\n",
 					comma_integer(invocs[i]));
+			fprintf(stderr, "        Cells Computed:         %.2f million\n",
+					(double)cells[i] / 1.0e6);
+			fprintf(stderr, "        Cells per Second:       %.2f million\n",
+					cellspersec[i] / 1.0e6);
+			fprintf(stderr, "\n");
+		}
+		totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
 		totalinvocs += invocs[i];
-		fprintf(stderr, "        Cells Computed:         %.2f million\n",
-				(double)cells[i] / 1.0e6);
 		totalcells += cells[i];
-		fprintf(stderr, "        Cells per Second:       %.2f million\n",
-				cellspersec[i] / 1.0e6);
-		fprintf(stderr, "\n");
 
 	}
 	fprintf(stderr, "    Vector Smith-Waterman[Total]:\n");
@@ -1132,7 +1135,8 @@ print_statistics()
 	totalinvocs = 0;
 	totalcells = 0;
 	for(i = 0; i < (int)num_threads; i++){
-		fprintf(stderr, "    Scalar Smith-Waterman[Thread %i]:\n",i);
+		if (Dflag){
+			fprintf(stderr, "    Scalar Smith-Waterman[Thread %i]:\n",i);
 			fprintf(stderr, "        Run-time:               %.2f seconds\n",
 					(cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i]);
 			fprintf(stderr, "        Invocations:            %s\n",
@@ -1143,10 +1147,10 @@ print_statistics()
 					cellspersec[i] / 1.0e6);
 
 			fprintf(stderr, "\n");
-
-			totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
-			totalinvocs += invocs[i];
-			totalcells += cells[i];
+		}
+		totalruntime += (cellspersec[i] == 0) ? 0 : cells[i] / cellspersec[i];
+		totalinvocs += invocs[i];
+		totalcells += cells[i];
 
 	}
 	fprintf(stderr, "    Scalar Smith-Waterman[Total]:\n");
@@ -1337,7 +1341,9 @@ void usage(char *progname,bool full_usage){
 			"    -M    Toggle brief memory usage statistics          (default: %s)\n",
 			Mflag? "enabled" : "disabled");
 
-
+	fprintf(stderr,
+				"    -M    Toggle thread statistics                  (default: %s)\n",
+				Dflag? "enabled" : "disabled");
 	fprintf(stderr,
 			"    -?    Full list of parameters and options\n");
 
@@ -1503,10 +1509,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:K:BCFHPRTUA:MW:S:L:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:K:BCFHPRTUA:MW:S:L:D";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:K:BCFHPRTUA:MW:S:L:";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:K:BCFHPRTUA:MW:S:L:D";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -1673,6 +1679,9 @@ int main(int argc, char **argv){
 		case 'L':
 			load_file = optarg;
 			break;
+		case 'D':
+			Dflag = true;
+			break;
 		case '?':
 			usage(progname, true);
 			break;
@@ -1810,7 +1819,7 @@ int main(int argc, char **argv){
 			exit(1);
 		}
 	}
-	scan_usecs += (gettimeinusecs() - before);
+	map_usecs += (gettimeinusecs() - before);
 
 	if (save_file != NULL){
 		if(save_genome_map(save_file)){
