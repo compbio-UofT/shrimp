@@ -1078,10 +1078,12 @@ print_statistics()
 
 	int i;
 	for(i = 0; i < (int)num_threads; i++){
-		fprintf(stderr,"    Spaced Seed Scan[Thread %i]:\n",i);
-		fprintf(stderr, "        Run-time:               %.2f seconds\n",
+		if (Dflag){
+			fprintf(stderr,"    Spaced Seed Scan[Thread %i]:\n",i);
+			fprintf(stderr, "        Run-time:               %.2f seconds\n",
 					seedscantime[i]);
-		fprintf(stderr,"\n");
+			fprintf(stderr,"\n");
+		}
 		totalseedscantime += seedscantime[i];
 	}
 
@@ -1484,12 +1486,12 @@ int main(int argc, char **argv){
 
 #else
 int main(int argc, char **argv){
-	char **genome_files;
-	int ngenome_files;
-	char *reads_file;
+	char **genome_files = NULL;
+	int ngenome_files = 0;
+	char *reads_file = NULL;
 
 	char *progname = argv[0];
-	char const * optstr;
+	char const * optstr = NULL;
 	char *c;
 	int ch;
 
