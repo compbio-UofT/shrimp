@@ -460,6 +460,54 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 	free(kmerWindow_rc);
 }
 
+
+static void
+get_read_mapidxs_per_strand(struct read_entry * re, uint32_t * r, uint32_t ** mapidxP, bool ** mapidx_posP) {
+  uint sn, i, load, base, r_idx;
+  uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+
+  *mapidxP = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof((*mapidxP)[0]));
+  if (re->has_Ns) {
+    *mapidx_posP = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof((*mapidx_posP)[0]));
+  }
+
+  for (load = 0, i = 0; i < re->read_len; i++) {
+    base = EXTRACT(r, i);
+    bitfield_prepend(kmerWindow, max_seed_span, base);
+
+    //skip past any Ns or Xs
+    if (re->has_Ns && (base == BASE_N || base == BASE_X))
+      load = 0;
+    else if (load < max_seed_span)
+      load++;
+
+    for (sn = 0; sn < n_seeds; sn++) {
+      if (i < re->min_kmer_pos + seed[sn].span - 1)
+	continue;
+
+      r_idx = i - seed[sn].span + 1;
+      if (re->has_Ns && load < seed[sn].span) {
+	(*mapidx_posP)[sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
+	continue;
+      }
+
+      (*mapidxP)[sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
+      if (re->has_Ns) {
+	(*mapidx_posP)[sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
+      }
+    }
+  }
+
+  free(kmerWindow);
+}
+
+static void
+get_read_mapidxs(struct read_entry * re) {
+  get_read_mapidxs_per_strand(re, re->read, &re->mapidx, &re->mapidx_pos);
+  get_read_mapidxs_per_strand(re, re->read_rc, &re->mapidx_rc, &re->mapidx_rc_pos);
+}
+
+
 /*
  * Find matches for the given read.
  *
@@ -760,6 +808,52 @@ handle_read(read_entry *re){
 	fprintf(stderr,"\n");
 #endif
 
+	get_read_mapidxs(re);
+#ifdef DEBUGGING
+	fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
+		re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
+	fprintf(stderr, "collapsed kmers from read:\n");
+	uint sn;
+	for (sn = 0; sn < n_seeds; sn++) {
+	  fprintf(stderr, "sn:%u\n", sn);
+	  for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+	    fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+	    if (re->has_Ns && !re->mapidx_pos[sn*re->max_n_kmers + i]) {
+	      fprintf(stderr, "X\n");
+	    } else {
+	      uint j;
+	      for (j = 0; j < seed[sn].weight; j++) {
+		fprintf(stderr, "%c%s",
+			base_translate((re->mapidx[sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				       shrimp_mode == MODE_COLOUR_SPACE),
+			j < seed[sn].weight - 1? "," : "\n");
+	      }
+	    }
+	  }
+	}
+	fprintf(stderr, "collapsed kmers from read_rc:\n");
+	for (sn = 0; sn < n_seeds; sn++) {
+	  fprintf(stderr, "sn:%u\n", sn);
+	  for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+	    fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+	    if (re->has_Ns && !re->mapidx_rc_pos[sn*re->max_n_kmers + i]) {
+	      fprintf(stderr, "X\n");
+	    } else {
+	      uint j;
+	      for (j = 0; j < seed[sn].weight; j++) {
+		fprintf(stderr, "%c%s",
+			base_translate((re->mapidx_rc[sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				       shrimp_mode == MODE_COLOUR_SPACE),
+			j < seed[sn].weight - 1? "," : "\n");
+	      }
+	    }
+	  }
+	}
+	    
+	
+#endif
+
+
 	// initialize heap of best hits for this read
 	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
 	re->scores[0].heap_elems = 0;
@@ -828,9 +922,13 @@ launch_scan_threads(const char *file){
 			}
 			res[i].read = fasta_sequence_to_bitfield(fasta, seq);
 			res[i].read_len = strlen(seq);
+			res[i].max_n_kmers = res[i].read_len - min_seed_span + 1;
+			res[i].min_kmer_pos = 0;
 			count_increment(&reads_c);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
 			  res[i].read_len--;
+			  res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
+			  res[i].min_kmer_pos = 1;
 				res[i].initbp = fasta_get_initial_base(fasta,seq);
 				res[i].initbp_rc = res[i].initbp;
 				res[i].read_rc = reverse_complement_read_cs(res[i].read, res[i].initbp, res[i].initbp_rc,
@@ -838,8 +936,8 @@ launch_scan_threads(const char *file){
 			} else {
 				res[i].read_rc = reverse_complement_read_ls(res[i].read,res[i].read_len,is_rna);
 			}
-
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
+			res[i].has_Ns = !(strcspn(seq, "nNxX.") == strlen(seq)); // from fasta.c
 			free(seq);
 		}
 		nreads += i;
@@ -1824,6 +1922,7 @@ int main(int argc, char **argv){
 			exit(1);
 		}
 	}
+	print_genomemap_stats();
 	map_usecs += (gettimeinusecs() - before);
 
 	if (save_file != NULL){

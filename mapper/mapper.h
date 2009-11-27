@@ -99,6 +99,7 @@ static char const * const default_spaced_seeds_hs[] =
 extern struct seed_type *seed;
 extern uint32_t **seed_hash_mask;
 extern uint max_seed_span;
+extern uint min_seed_span;
 extern uint avg_seed_span;
 extern uint n_seeds;
 extern u_int	nkmers;				/* total kmers of reads loaded*/

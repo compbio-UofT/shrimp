@@ -18,6 +18,7 @@
 struct seed_type *seed = NULL;
 uint32_t **seed_hash_mask = NULL;
 uint max_seed_span = 0;
+uint min_seed_span = MAX_SEED_SPAN;
 uint32_t n_seeds = 0;
 u_int	nkmers = 0;				/* total kmers of reads loaded*/
 uint avg_seed_span = 0;
@@ -121,6 +122,9 @@ add_spaced_seed(const char *seedStr)
 
 	if (seed[n_seeds].span > max_seed_span)
 		max_seed_span = seed[n_seeds].span;
+
+	if (seed[n_seeds].span < min_seed_span)
+		min_seed_span = seed[n_seeds].span;
 
 	n_seeds++;
 

@@ -104,3 +104,24 @@ void get_x_range(struct anchor * anchor, uint x_len, uint y_len, int y,
   if (*x_max < 0) *x_max = 0;
   if ((uint)*x_max >= x_len) *x_max = x_len - 1;
 }
+
+
+void uw_anchors_join(struct uw_anchor * dest, struct uw_anchor const * src) {
+  assert(uw_anchors_colinear(dest, src));
+
+  if (src->x < dest->x) {
+    uint32_t tmp = dest->x;
+    dest->x = src->x;
+    dest->y = src->y;
+    if (src->x + src->length > tmp + dest->length) {
+      dest->length = src->length;
+    } else {
+      dest->length += tmp - dest->x;
+    }
+  } else {
+    if (src->x + src->length > dest->x + dest->length) {
+      dest->length = src->x + src->length - dest->x;
+    }
+  }
+  dest->n_kmers += src->n_kmers;
+}
