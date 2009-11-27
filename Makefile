@@ -1,9 +1,16 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
+#ifndef CXXFLAGS
+##CXXFLAGS=-O3 -DNDEBUG -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
+#CXXFLAGS= -g -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
+#endif
+#override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
+
 ifndef CXXFLAGS
-#CXXFLAGS=-O3 -DNDEBUG -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
-CXXFLAGS= -g -DEXTRA_STATS -mmmx -msse -msse2 -Wall -Werror -Wno-deprecated -fopenmp
+CXXFLAGS=-O3 -mmmx -msse -msse2 -Wall
 endif
-override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
+override CXXFLAGS+=-DNDEBUG -DEXTRA_STATS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
+
+
 LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++
 LN=ln
