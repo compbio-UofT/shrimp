@@ -17,7 +17,7 @@ struct uw_anchor {
   uint32_t	x;
   uint8_t	y;
   uint8_t	length;
-  uint16_t	n_kmers;
+  uint16_t	weight;
 };
 
 

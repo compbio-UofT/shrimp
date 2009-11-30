@@ -33,6 +33,12 @@ struct read_entry {
   bool *	mapidx_pos;	/* per-seed list of validity of mapidx positions in read; only if read has Ns */
   bool *	mapidx_rc_pos;	/* per-seed list of validity of mapidx positions in read_rc; only if read has Ns */
 
+  struct uw_anchor *	anchors;	/* list of anchors */
+  struct uw_anchor *	anchors_rc;	/* list of anchors */
+
+  uint		n_anchors;
+  uint		n_anchors_rc;
+
   int8_t	initbp;		/* colour space init letter */
   int8_t	initbp_rc;
   uint8_t	read_len;

@@ -123,5 +123,5 @@ void uw_anchors_join(struct uw_anchor * dest, struct uw_anchor const * src) {
       dest->length = src->x + src->length - dest->x;
     }
   }
-  dest->n_kmers += src->n_kmers;
+  dest->weight += src->weight;
 }

@@ -31,6 +31,7 @@
 #include "../common/sw-full-ls.h"
 #include "../common/sw-vector.h"
 #include "../common/output.h"
+#include "../common/heap.h"
 
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
@@ -462,7 +463,7 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 
 
 static void
-get_read_mapidxs_per_strand(struct read_entry * re, uint32_t * r, uint32_t ** mapidxP, bool ** mapidx_posP) {
+read_get_mapidxs_per_strand(struct read_entry * re, uint32_t * r, uint32_t ** mapidxP, bool ** mapidx_posP) {
   uint sn, i, load, base, r_idx;
   uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 
@@ -501,12 +502,113 @@ get_read_mapidxs_per_strand(struct read_entry * re, uint32_t * r, uint32_t ** ma
   free(kmerWindow);
 }
 
+
 static void
-get_read_mapidxs(struct read_entry * re) {
-  get_read_mapidxs_per_strand(re, re->read, &re->mapidx, &re->mapidx_pos);
-  get_read_mapidxs_per_strand(re, re->read_rc, &re->mapidx_rc, &re->mapidx_rc_pos);
+read_get_mapidxs(struct read_entry * re) {
+  read_get_mapidxs_per_strand(re, re->read, &re->mapidx, &re->mapidx_pos);
+  read_get_mapidxs_per_strand(re, re->read_rc, &re->mapidx_rc, &re->mapidx_rc_pos);
 }
 
+
+static void
+read_get_anchor_list_per_strand(struct read_entry * re, uint32_t * mapidx, bool * mapidx_pos,
+				struct uw_anchor ** anchorsP, uint * n_anchorsP, bool collapse) {
+  uint list_sz;
+  uint i, sn, offset;
+  struct heap_uu h;
+  uint * idx;
+  struct heap_uu_elem tmp;
+
+  // compute size of anchor list
+  list_sz = 0;
+  for (sn = 0; sn < n_seeds; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+      if (!re->has_Ns || mapidx_pos[offset]) {
+	list_sz += genomemap_len[sn][mapidx[offset]];
+      }
+    }
+  }
+
+  // init anchor list
+  *anchorsP = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0]));
+  *n_anchorsP = 0;
+
+  // init min heap and indices in genomemap lists
+  heap_uu_init(&h, n_seeds * re->max_n_kmers);
+  idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+
+  // load inital anchors in min heap
+  for (sn = 0; sn < n_seeds; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+      if ((!re->has_Ns || mapidx_pos[offset])
+	  && idx[offset] < genomemap_len[sn][mapidx[offset]]
+	  ) {
+	tmp.key = genomemap[sn][mapidx[offset]][idx[offset]];
+	tmp.rest = offset;
+	heap_uu_insert(&h, &tmp);
+	idx[offset]++;
+      }
+    }
+  }
+
+  while (h.load > 0) {
+    // extract min
+    heap_uu_extract_min(&h, &tmp);
+
+    // add to anchor list
+    offset = tmp.rest;
+    sn = offset / re->max_n_kmers;
+    i = offset % re->max_n_kmers;
+    (*anchorsP)[*n_anchorsP].x = tmp.key;
+    (*anchorsP)[*n_anchorsP].y = re->min_kmer_pos + i;
+    (*anchorsP)[*n_anchorsP].length = seed[sn].span;
+    (*anchorsP)[*n_anchorsP].weight = 1;
+    (*n_anchorsP)++;
+
+    if (collapse) {
+      // merge last anchor with a previous one, if overlapping
+      int j = (int)*n_anchorsP - 2;
+      uint cn = 0;
+
+      // get contig number of current anchor
+      while (cn < num_contigs - 1 && (*anchorsP)[*n_anchorsP-1].x >= contig_offsets[cn+1])
+	cn++;
+      assert(contig_offsets[cn] <= (*anchorsP)[*n_anchorsP-1].x
+	     && (*anchorsP)[*n_anchorsP-1].x < contig_offsets[cn] + genome_len[cn]);
+
+      while (j >= 0						// valid index in anchor array
+	     && (*anchorsP)[j].x + (*anchorsP)[*n_anchorsP-1].y >= (*anchorsP)[*n_anchorsP-1].x // left of base of crt anchor
+	     && (*anchorsP)[j].x >= contig_offsets[cn]		// same contig
+	     ) {
+	if (uw_anchors_intersect(&(*anchorsP)[j], &(*anchorsP)[*n_anchorsP-1])) {
+	  uw_anchors_join(&(*anchorsP)[j], &(*anchorsP)[*n_anchorsP-1]);
+	  (*n_anchorsP)--;
+	}
+	j--;
+      }
+    }
+
+    // load next anchor for that seed/mapidx
+    if (idx[offset] < genomemap_len[sn][mapidx[offset]]) {
+      tmp.key = genomemap[sn][mapidx[offset]][idx[offset]];
+      tmp.rest = offset;
+      heap_uu_insert(&h, &tmp);
+      idx[offset]++;
+    }
+  }
+
+  heap_uu_destroy(&h);
+  free(idx);
+}
+
+
+static void
+read_get_anchor_list(struct read_entry * re, bool collapse) {
+  read_get_anchor_list_per_strand(re, re->mapidx, re->mapidx_pos, &re->anchors, &re->n_anchors, collapse);
+  read_get_anchor_list_per_strand(re, re->mapidx_rc, re->mapidx_rc_pos, &re->anchors_rc, &re->n_anchors_rc, collapse);
+}
 
 /*
  * Find matches for the given read.
@@ -808,8 +910,9 @@ handle_read(read_entry *re){
 	fprintf(stderr,"\n");
 #endif
 
-	get_read_mapidxs(re);
-#ifdef DEBUGGING
+	read_get_mapidxs(re);
+
+#ifdef DEBUG_KMERS
 	fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
 		re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
 	fprintf(stderr, "collapsed kmers from read:\n");
@@ -849,10 +952,39 @@ handle_read(read_entry *re){
 	    }
 	  }
 	}
-	    
-	
 #endif
 
+	read_get_anchor_list(re, true);
+
+#ifdef DEBUG_ANCHOR_LIST
+	{
+#warning Dumping anchor list.
+	  uint i;
+	  fprintf(stderr,"read anchors:\n");
+	  for(i = 0; i < re->n_anchors; i++){
+	    fprintf(stderr,"(%u,%u)%s",re->anchors[i].x, re->anchors[i].weight, i < re->n_anchors-1? "," : "\n");
+	  }
+	  fprintf(stderr,"read_rc anchors:\n");
+	  for(i = 0; i < re->n_anchors_rc; i++){
+	    fprintf(stderr,"(%u,%u)%s",re->anchors_rc[i].x, re->anchors_rc[i].weight, i < re->n_anchors_rc-1? "," : "\n");
+	  }
+	}
+#endif
+
+#ifdef DEBUG_KWAY_MERGE
+	{
+#warning Checking k-way merge; make anchors are not being collapsed.
+	  uint i;
+	  assert(re->n_anchors == (uint)len);
+	  assert(re->n_anchors_rc == (uint)len_rc);
+	  for(i = 0; i < re->n_anchors; i++){
+	    assert(re->anchors[i].x == list[i]);
+	  }
+	  for(i = 0; i < re->n_anchors_rc; i++){
+	    assert(re->anchors_rc[i].x == list_rc[i]);
+	  }
+	}
+#endif
 
 	// initialize heap of best hits for this read
 	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
@@ -877,9 +1009,19 @@ handle_read(read_entry *re){
 	free(re->name);
 	free(re->read);
 	free(re->read_rc);
+
+	free(re->mapidx);
+	free(re->mapidx_rc);
+	if (re->has_Ns) {
+	  free(re->mapidx_pos);
+	  free(re->mapidx_rc_pos);
+	}
+	free(re->anchors);
+	free(re->anchors_rc);
+
 	free(list);
 	free(list_rc);
-
+	
 }
 
 /*
