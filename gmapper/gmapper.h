@@ -25,22 +25,16 @@ struct re_score {
 struct read_entry {
   char *	name;
   re_score *	scores;
-  uint32_t *	read;		/* the read as a bitstring */
-  uint32_t *	read_rc;
+  uint32_t *	read[2];	/* the read as a bitstring */
 
-  uint32_t *	mapidx;		/* per-seed list of mapidxs in read */
-  uint32_t *	mapidx_rc;	/* per-seed list of mapidxs in read_rc */
-  bool *	mapidx_pos;	/* per-seed list of validity of mapidx positions in read; only if read has Ns */
-  bool *	mapidx_rc_pos;	/* per-seed list of validity of mapidx positions in read_rc; only if read has Ns */
+  uint32_t *	mapidx[2];	/* per-seed list of mapidxs in read */
+  bool *	mapidx_pos[2];	/* per-seed list of validity of mapidx positions in read; only if read has Ns */
 
-  struct uw_anchor *	anchors;	/* list of anchors */
-  struct uw_anchor *	anchors_rc;	/* list of anchors */
+  struct uw_anchor *	anchors[2];	/* list of anchors */
 
-  uint		n_anchors;
-  uint		n_anchors_rc;
+  uint		n_anchors[2];
 
-  int8_t	initbp;		/* colour space init letter */
-  int8_t	initbp_rc;
+  int8_t	initbp[2];		/* colour space init letter */
   uint8_t	read_len;
   uint8_t	window_len;
   uint32_t	sw_hits;
