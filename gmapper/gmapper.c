@@ -103,9 +103,13 @@ static uint32_t	 *genome_len;
 
 static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
-
+/* constants for thread control */
 static uint num_threads = DEF_NUM_THREADS;
 static uint chunk_size = DEF_CHUNK_SIZE;
+
+/* individual thread variable (Thread Private) */
+static read_entry *last_read;
+#pragma omp threadprivate(last_read)
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -897,9 +901,47 @@ scan_read_lscs_pass2(read_entry * re) {
 	stat_add(&matches_s, re->final_matches);
 }
 
-
 static void
 handle_read(read_entry *re){
+#ifdef USE_PREFETCH
+
+
+	read_get_mapidxs(re);
+
+	//prefetch 1
+	uint rc;
+	for(rc = 0;rc < 2; rc++){
+		uint sn;
+		for (sn = 0; sn < n_seeds; sn++){
+			uint i;
+			for (i = 0; i < re->read_len - seed[sn].span + 1 - re->min_kmer_pos;i++){
+				_mm_prefetch((const char *)(genomemap_len + re->mapidx[rc][sn*re->max_n_kmers + i]),_MM_HINT_NTA);
+				_mm_prefetch((const char *)(genomemap + re->mapidx[rc][sn*re->max_n_kmers + i]),_MM_HINT_NTA);
+			}
+		}
+	}
+
+	if(last_read != NULL){
+		read_get_anchor_list(last_read, true);
+		//finish with last read
+	}
+
+	//prefetch 2
+
+	uint rc;
+	for(rc = 0;rc < 2; rc++){
+		uint sn;
+		for (sn = 0; sn < n_seeds; sn++){
+			uint i;
+			for (i = 0; i < re->read_len - seed[sn].span + 1 - re->min_kmer_pos;i++){
+				_mm_prefetch((const char *)(genomemap[re->mapidx[rc][sn*re->max_n_kmers + i]]),_MM_HINT_NTA);
+			}
+		}
+	}
+
+	last_read = re;
+
+#else
 	int len,len_rc = 0;
 	uint32_t *list = NULL, *list_rc = NULL;
 	DEBUG("computing read locations for read %s",re->name);
@@ -1031,7 +1073,7 @@ handle_read(read_entry *re){
 
 	free(list);
 	free(list_rc);
-	
+#endif
 }
 
 /*
