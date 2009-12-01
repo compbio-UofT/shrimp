@@ -123,6 +123,15 @@ abs_or_pct(double x, double base) {
 		return base * (x / 100.0);
 }
 
+/* get contig number from absolute index */
+static inline void
+get_contig_num(uint idx, uint * cn) {
+  *cn = 0;
+  while (*cn < num_contigs - 1
+	 && idx >= contig_offsets[*cn + 1])
+    *cn++;
+}
+
 /* percolate down in our min-heap */
 static void
 reheap(struct re_score *scores, uint node)
@@ -617,10 +626,110 @@ read_get_anchor_list(struct read_entry * re, bool collapse) {
 
 static void
 read_pass1_per_strand(struct read_entry * re, uint rc) {
+  uint cn, i, max_idx;
+  uint32_t goff, glen, gstart, gend;
+  int score = 0, max_score, tmp_score = 0;
+  int j;
+  int short_len = 0, long_len = 0;
+  uint x_len;
+  int last_cn = -1;
+  uint32_t last_goff = 0;
 
+  for (i = 0; i < re->n_anchors[rc]; i++) {
+    // get contig num of crt anchor
+    get_contig_num(re->anchors[rc][i].x, &cn);
 
+    // set gstart and gend
+    gend = (re->anchors[rc][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[rc][i].y;
+    if (gend > genome_len[cn] - 1)
+      gend = genome_len[cn] - 1;
+
+    if (gend >= re->window_len) 
+      gstart = gend - re->window_len;
+    else
+      gstart = 0;
+
+    // by default, anchor matched by itself
+    max_idx = i;
+    // hack: avoid single matches
+    if (re->anchors[rc][i].weight > 1)
+      max_score = re->anchors[rc][i].length * match_score;
+    else
+      max_score = 0;
+
+    for (j = (int)i - 1;
+	 j >= 0
+	   && re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
+	 j--) {
+      if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
+	continue;
+
+      if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
+	  > (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
+	{ // deletion in read
+	  short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	  long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+	}
+      else
+	{ // insertion in read
+	  short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+	  long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	}
+
+      if (long_len > short_len)
+	tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
+      else
+	tmp_score = short_len * match_score;
+
+      if (tmp_score > max_score) {
+	max_idx = j;
+	max_score = tmp_score;
+      }
+    }
+
+    if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
+      // try SW filter call
+      x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
+
+      if ((re->window_len - x_len)/2 < re->anchors[rc][max_idx].x - contig_offsets[cn])
+	goff = (re->anchors[rc][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
+      else
+	goff = 0;
+
+      glen = re->window_len;
+      if (goff + glen > genome_len[cn])
+	glen = genome_len[cn] - goff;
+
+      // last check: window_overlap
+      if (last_cn != (int)cn
+	  || goff > last_goff + (uint)abs_or_pct(window_overlap, re->window_len)) {
+
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  score = sw_vector(genome_cs_contigs[cn], goff, glen,
+			    re->read[rc], re->read_len,
+			    genome_contigs[cn], re->initbp[rc], genome_is_rna);
+	} else if (shrimp_mode == MODE_LETTER_SPACE) {
+	  score = sw_vector(genome_contigs[cn], goff, glen,
+			    re->read[rc], re->read_len,
+			    NULL, -1, genome_is_rna);
+	}
+
+	if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+	  save_score(re, score, goff, cn, rc > 0);
+	  re->sw_hits++;
+	  last_cn = cn;
+	  last_goff = goff;
+	}
+      }
+    }
+  }
 }
 
+static void
+read_pass1(struct read_entry * re) {
+  read_pass1_per_strand(re, 0);
+  read_pass1_per_strand(re, 1);
+}
 
 /*
  * Find matches for the given read.
@@ -944,8 +1053,8 @@ handle_read(read_entry *re){
 #else
 	int len,len_rc = 0;
 	uint32_t *list = NULL, *list_rc = NULL;
-	DEBUG("computing read locations for read %s",re->name);
-	read_locations(re,&len,&len_rc,&list,&list_rc);
+	//DEBUG("computing read locations for read %s",re->name);
+	//read_locations(re,&len,&len_rc,&list,&list_rc);
 #ifdef DEBUGGING
 	int i;
 	fprintf(stderr,"read locations:");
@@ -1043,6 +1152,7 @@ handle_read(read_entry *re){
 	re->scores[0].heap_elems = 0;
 	re->scores[0].heap_capacity = num_outputs;
 
+	/*
 	if (len > 0 && Fflag) {
 		DEBUG("first pass on list");
 		scan_read_lscs_pass1(re,list,len,false);
@@ -1051,6 +1161,10 @@ handle_read(read_entry *re){
 		DEBUG("first pass on list_rc");
 		scan_read_lscs_pass1(re,list_rc,len_rc,true);
 	}
+	*/
+
+	read_pass1(re);
+
 	if (re->scores[0].heap_elems > 0) {
 		DEBUG("second pass");
 		scan_read_lscs_pass2(re);
