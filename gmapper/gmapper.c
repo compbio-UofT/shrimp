@@ -111,6 +111,8 @@ static uint chunk_size = DEF_CHUNK_SIZE;
 static read_entry *last_read;
 #pragma omp threadprivate(last_read)
 
+#define USE_PREFETCH
+
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
 
@@ -1011,10 +1013,41 @@ scan_read_lscs_pass2(read_entry * re) {
 }
 
 static void
+finish_read(read_entry *re){
+
+	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
+	re->scores[0].heap_elems = 0;
+	re->scores[0].heap_capacity = num_outputs;
+
+	read_get_anchor_list(re, true);
+	read_pass1(re);
+
+	if (re->scores[0].heap_elems > 0) {
+		DEBUG("second pass");
+		scan_read_lscs_pass2(re);
+	}
+
+	// done with this read; deallocate memory.
+	free(re->scores);
+	free(re->name);
+	free(re->read[0]);
+	free(re->read[1]);
+
+	free(re->mapidx[0]);
+	free(re->mapidx[1]);
+	if (re->has_Ns) {
+		free(re->mapidx_pos[0]);
+		free(re->mapidx_pos[1]);
+	}
+	free(re->anchors[0]);
+	free(re->anchors[1]);
+}
+
+static void
 handle_read(read_entry *re){
 #ifdef USE_PREFETCH
 
-
+	DEBUG("Getting mapidxs");
 	read_get_mapidxs(re);
 
 	//prefetch 1
@@ -1031,13 +1064,12 @@ handle_read(read_entry *re){
 	}
 
 	if(last_read != NULL){
-		read_get_anchor_list(last_read, true);
-		//finish with last read
+		DEBUG("Finishing last read");
+		finish_read(last_read);
 	}
 
 	//prefetch 2
 
-	uint rc;
 	for(rc = 0;rc < 2; rc++){
 		uint sn;
 		for (sn = 0; sn < n_seeds; sn++){
@@ -1051,8 +1083,6 @@ handle_read(read_entry *re){
 	last_read = re;
 
 #else
-	int len,len_rc = 0;
-	uint32_t *list = NULL, *list_rc = NULL;
 	//DEBUG("computing read locations for read %s",re->name);
 	//read_locations(re,&len,&len_rc,&list,&list_rc);
 #ifdef DEBUGGING
@@ -1184,9 +1214,6 @@ handle_read(read_entry *re){
 	}
 	free(re->anchors[0]);
 	free(re->anchors[1]);
-
-	free(list);
-	free(list_rc);
 #endif
 }
 
@@ -1257,6 +1284,12 @@ launch_scan_threads(const char *file){
 			for (j = 0; j < i; j++){
 				handle_read(&res[j]);
 			}
+#ifdef USE_PREFETCH
+			if(last_read != NULL){
+				DEBUG("Finishing very last read");
+				finish_read(last_read);
+			}
+#endif
 		}
 
 	}
@@ -1754,7 +1787,7 @@ void usage(char *progname,bool full_usage){
 			Mflag? "enabled" : "disabled");
 
 	fprintf(stderr,
-				"    -M    Toggle thread statistics                  (default: %s)\n",
+				"    -D    Toggle thread statistics                  (default: %s)\n",
 				Dflag? "enabled" : "disabled");
 	fprintf(stderr,
 			"    -?    Full list of parameters and options\n");
