@@ -1056,7 +1056,7 @@ handle_read(read_entry *re){
 		uint sn;
 		for (sn = 0; sn < n_seeds; sn++){
 			uint i;
-			for (i = 0; i < re->read_len - seed[sn].span + 1 - re->min_kmer_pos;i++){
+			for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++){
 				_mm_prefetch((const char *)(genomemap_len + re->mapidx[rc][sn*re->max_n_kmers + i]),_MM_HINT_NTA);
 				_mm_prefetch((const char *)(genomemap + re->mapidx[rc][sn*re->max_n_kmers + i]),_MM_HINT_NTA);
 			}
@@ -1074,7 +1074,7 @@ handle_read(read_entry *re){
 		uint sn;
 		for (sn = 0; sn < n_seeds; sn++){
 			uint i;
-			for (i = 0; i < re->read_len - seed[sn].span + 1 - re->min_kmer_pos;i++){
+			for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++){
 				_mm_prefetch((const char *)(genomemap[re->mapidx[rc][sn*re->max_n_kmers + i]]),_MM_HINT_NTA);
 			}
 		}
