@@ -131,7 +131,9 @@ get_contig_num(uint idx, uint * cn) {
   *cn = 0;
   while (*cn < num_contigs - 1
 	 && idx >= contig_offsets[*cn + 1])
-    *cn++;
+    (*cn)++;
+
+  assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
 
 /* percolate down in our min-heap */
@@ -1288,6 +1290,7 @@ launch_scan_threads(const char *file){
 			if(last_read != NULL){
 				DEBUG("Finishing very last read");
 				finish_read(last_read);
+				last_read = NULL;
 			}
 #endif
 		}
