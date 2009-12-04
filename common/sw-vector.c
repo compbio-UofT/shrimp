@@ -22,7 +22,7 @@
 #include "../common/util.h"
 #include "../common/sw-vector.h"
 
-#define USE_PREFETCH
+//#define USE_PREFETCH
 
 static int	initialised;
 static int8_t  *db, *db_ls, *qr;
