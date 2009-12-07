@@ -15,13 +15,13 @@ LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++
 LN=ln
 
-# statically compile on all but OS X.
-UNAME=$(shell uname -s)
-ifneq ($(UNAME),Darwin)
-ifneq ($(UNAME),SunOS)
-override CXXFLAGS+=-static
-endif
-endif
+# statically compile on all but OS X -- disabled
+#UNAME=$(shell uname -s)
+#ifneq ($(UNAME),Darwin)
+#ifneq ($(UNAME),SunOS)
+#override CXXFLAGS+=-static
+#endif
+#endif
 
 all: bin/gmapper bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
 
