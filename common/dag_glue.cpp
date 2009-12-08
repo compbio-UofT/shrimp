@@ -8,6 +8,7 @@
 #include <climits>
 #include <fstream>
 #include <zlib.h>
+#include <stdint.h>
 
 #include "../common/dag_align.h"
 #include "../common/dag_glue.h"
