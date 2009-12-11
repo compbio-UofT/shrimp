@@ -79,8 +79,6 @@ static uint64_t map_usecs;
 
 static count_t mem_genomemap;
 
-size_t capacity;
-
 /* files to use when saving and loading genome maps */
 char *save_file = NULL;
 char *load_file = NULL;
@@ -128,12 +126,12 @@ abs_or_pct(double x, double base) {
 /* get contig number from absolute index */
 static inline void
 get_contig_num(uint idx, uint * cn) {
-  *cn = 0;
-  while (*cn < num_contigs - 1
-	 && idx >= contig_offsets[*cn + 1])
-    (*cn)++;
+	*cn = 0;
+	while (*cn < num_contigs - 1
+			&& idx >= contig_offsets[*cn + 1])
+		(*cn)++;
 
-  assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
+	assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
 
 /* percolate down in our min-heap */
@@ -293,53 +291,305 @@ void print_info(){
 
 }
 
-static bool save_genome_map(const char *file) {
+static void print_everything(){
+	uint sn;
+	fprintf(stderr,"----------------------------------------\n");
+	fprintf(stderr,"%s\n",get_mode_string());
+	for (sn = 0; sn < n_seeds; sn++){
+		fprintf(stderr,"seed %u: %s (%u/%u)\n",sn,seed_to_string(sn),seed[sn].weight,seed[sn].span);
+		uint capacity;
+		if(Hflag){
+			capacity = power(4, HASH_TABLE_POWER);
+		} else {
+			capacity = power(4, seed[sn].weight);
+		}
+		uint mapidx;
+		for(mapidx = 0; mapidx < capacity; mapidx ++){
+			fprintf(stderr,"genomemap_len[%u][%u] = %u\n",sn,mapidx,genomemap_len[sn][mapidx]);
+			uint j;
+			for(j = 0; j < genomemap_len[sn][mapidx]; j++){
+				fprintf(stderr,"%u ",genomemap[sn][mapidx][j]);
+			}
+			fprintf(stderr,"\n");
+		}
+	}
+	fprintf(stderr,"----------------------------------------\n");
+	fprintf(stderr,"nkemers = %u\n",nkmers);
+	fprintf(stderr,"is rna? %s\n",genome_is_rna ? "yes":"no");
+	uint c;
+	for(c = 0; c < num_contigs; c++){
+		fprintf(stderr,"%s\n",contig_names[c]);
+		fprintf(stderr,"offset = %u, len = %u\n",contig_offsets[c],genome_len[c]);
+		uint j;
+		for(j = 0; j < genome_len[c];j++){
+			fprintf(stderr,"%c",base_translate(EXTRACT(genome_contigs[c],j),false));
+		}
+		fprintf(stderr,"\n");
+		for(j = 0; j < genome_len[c];j++){
+			fprintf(stderr,"%c",base_translate(EXTRACT(genome_contigs_rc[c],j),false));
+		}
+		fprintf(stderr,"\n");
+	}
+	fprintf(stderr,"----------------------------------------\n");
+}
+
+static bool save_genome_map_seed(const char *file,uint sn){
+	uint32_t total = 0;
+	uint32_t i;
+
 	gzFile fp = gzopen(file, "wb");
 	if (fp == NULL){
 		return false;
 	}
-
-	//write the header
-	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
-	gzwrite(fp,&shrimp_mode,sizeof(shrimp_mode_t));
+	// shrimp_mode
+	uint32_t m;
+	m = (uint32_t)(shrimp_mode);
+	xgzwrite(fp,&m,sizeof(uint32_t));
+	// Hflag
 	uint32_t h = (uint32_t)Hflag;
-	gzwrite(fp,&h,sizeof(int32_t));
+	xgzwrite(fp,&h,sizeof(uint32_t));
+	// Seed
+	xgzwrite(fp,&seed[sn], sizeof(seed_type));
+	// genomemap_len
+	size_t capacity;
+	if(Hflag){
+		capacity = power(4, HASH_TABLE_POWER);
+	} else {
+		capacity = power(4, seed[sn].weight);
+	}
+	xgzwrite(fp,genomemap_len[sn],sizeof(uint32_t) * capacity);
+
+	//total
+	for (i = 0; i < capacity;i++){
+		total += genomemap_len[sn][i];
+	}
+	xgzwrite(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
+
+	// genome_map
+	// TODO if memory usage to high change this
+	uint32_t *map,*ptr;
+	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	ptr = map;
+	for (i = 0;i<capacity;i++){
+		memcpy(ptr,genomemap[sn][i],sizeof(uint32_t)*genomemap_len[sn][i]);
+		ptr += genomemap_len[sn][i];
+	}
+	xgzwrite(fp,map,sizeof(uint32_t)*total);
+
+	gzclose(fp);
+	free(map);
+	return true;
+
+}
+
+static bool load_genome_map_seed(const char *file){
 	uint32_t i;
-	gzwrite(fp,&num_contigs,sizeof(uint32_t));
-	//fprintf(stderr,"saved num_contigs\n");
-	for (i = 0; i < num_contigs; i++) {
-		gzwrite(fp,&contig_offsets[i],sizeof(uint32_t));
-		uint32_t len = strlen(contig_names[i]);
-		gzwrite(fp,&len,sizeof(uint32_t));
-		gzwrite(fp,contig_names[i],len +1);
+	uint32_t total;
 
-		gzwrite(fp,genome_len + i,sizeof(uint32_t));
-		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		if(shrimp_mode == MODE_COLOUR_SPACE){
-			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-			gzwrite(fp,genome_initbp+i,sizeof(uint32_t));
-		}
+	gzFile fp = gzopen(file, "rb");
+	if (fp == NULL){
+		fprintf(stderr,"Could not open file [%s]\n",file);
+		return false;
 	}
-	//fprintf(stderr,"saving seeds\n");
-	//write the seeds and genome_maps
-	gzwrite(fp,&n_seeds,sizeof(uint32_t));
-	for (i = 0; i < n_seeds; i++) {
-		gzwrite(fp,&seed[i], sizeof(seed_type));
 
-		//write the genome_map for this seed
-		uint32_t j;
-		//uint32_t p = power(4, seed[i].weight);
-		//fprintf(stderr,"saving index\n");
-		gzwrite(fp,&capacity, sizeof(size_t));
-		for (j = 0; j < capacity; j++) {
-			uint32_t len = genomemap_len[i][j];
-			gzwrite(fp, &len, sizeof(uint32_t));
-			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
-		}
+	// shrimp_mode
+	uint32_t m;
+	xgzread(fp,&m,sizeof(uint32_t));
+	if(m != (uint32_t)shrimp_mode){
+		fprintf(stderr,"Shrimp mode in file %s does not match\n",file);
 	}
+	// Hflag
+	uint32_t h;
+	xgzread(fp,&h,sizeof(uint32_t));
+	if (h != (uint32_t)Hflag){
+		fprintf(stderr,"Hash settings do not match in file %s\n",file);
+	}
+	// Seed
+	uint sn = n_seeds;
+	n_seeds++;
+	seed = (seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
+	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
+	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **)*n_seeds);
+	xgzread(fp,seed + sn,sizeof(seed_type));
+
+	if (seed[sn].span > max_seed_span)
+		max_seed_span = seed[sn].span;
+
+	if (seed[sn].span < min_seed_span)
+		min_seed_span = seed[sn].span;
+
+	avg_seed_span = 0;
+	for(i =0; i < n_seeds;i++){
+		avg_seed_span += seed[i].span;
+	}
+	avg_seed_span = avg_seed_span/n_seeds;
+
+	// genomemap_len
+	size_t capacity;
+	if(Hflag){
+		capacity = power(4, HASH_TABLE_POWER);
+	} else {
+		capacity = power(4, seed[sn].weight);
+	}
+	genomemap_len[sn] = (uint32_t*)xmalloc(sizeof(uint32_t)*capacity);
+	genomemap[sn] = (uint32_t **)xmalloc(sizeof(uint32_t *)*capacity);
+	xgzread(fp,genomemap_len[sn],sizeof(uint32_t) * capacity);
+
+	// total
+	xgzread(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
+	nkmers += total;
+	// genome_map
+	uint32_t * map;
+	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	gzread(fp,map,sizeof(uint32_t)*total);
+	uint32_t * ptr;
+	ptr = map;
+
+	for (i = 0; i < capacity;i++){
+		genomemap[sn][i] = ptr;
+		ptr += genomemap_len[sn][i];
+	}
+
 	gzclose(fp);
 	return true;
+}
+
+static bool save_genome_map(const char *prefix) {
+	char *name;
+	name = (char *)xmalloc(strlen(prefix)+n_seeds+10);
+	uint sn;
+	for(sn = 0;sn < n_seeds;sn++){
+		sprintf(name,"%s.seed.%u",prefix,sn);
+		save_genome_map_seed(name,sn);
+	}
+
+	sprintf(name,"%s.genome",prefix);
+	gzFile fp = gzopen(name, "wb");
+	if (fp == NULL){
+		return false;
+	}
+
+	//shrimp mode
+	uint32_t m;
+	m = (uint32_t)(shrimp_mode);
+	xgzwrite(fp,&m,sizeof(uint32_t));
+
+	//Hflag
+	uint32_t h = (uint32_t)Hflag;
+	xgzwrite(fp,&h,sizeof(uint32_t));
+
+	// num contigs
+	xgzwrite(fp,&num_contigs,sizeof(uint32_t));
+
+	// genome_len
+	xgzwrite(fp,genome_len,sizeof(uint32_t)*num_contigs);
+
+	// contig_offsets
+	xgzwrite(fp,contig_offsets,sizeof(uint32_t)*num_contigs);
+
+	//names / total
+
+	uint i;
+	uint32_t total = 0;
+	for(i = 0; i < num_contigs; i++){
+		uint32_t len = (uint32_t)strlen(contig_names[i]);
+		xgzwrite(fp,&len,sizeof(uint32_t));
+		xgzwrite(fp,contig_names[i],len +1);
+		total += BPTO32BW(genome_len[i]);
+	}
+
+	xgzwrite(fp,&total,sizeof(uint32_t));
+
+	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
+	uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3;
+	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	ptr1 = gen;
+	gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	ptr2 = gen_rc;
+	if(shrimp_mode == MODE_COLOUR_SPACE){
+		gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+		ptr3 = gen_cs;
+	}
+
+	for(i = 0; i < num_contigs; i++){
+		memcpy(ptr1,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+		ptr1 += BPTO32BW(genome_len[i]);
+		memcpy(ptr2,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+		ptr2 += BPTO32BW(genome_len[i]);
+		if (shrimp_mode == MODE_COLOUR_SPACE){
+			memcpy(ptr3,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+			ptr3 += BPTO32BW(genome_len[i]);
+		}
+	}
+
+	xgzwrite(fp,gen,sizeof(uint32_t)*total);
+	xgzwrite(fp,gen_rc,sizeof(uint32_t)*total);
+	if(shrimp_mode == MODE_COLOUR_SPACE){
+		xgzwrite(fp,gen_cs,sizeof(uint32_t)*total);
+		xgzwrite(fp,genome_initbp,sizeof(uint32_t)*num_contigs);
+		free(gen_cs);
+	}
+	free(gen);
+	free(gen_rc);
+
+	gzclose(fp);
+	return true;
+	//	gzFile fp = gzopen(file, "wb0");
+	//	if (fp == NULL){
+	//		return false;
+	//	}
+	//
+	//	//write the header
+	//	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
+	//	gzwrite(fp,&shrimp_mode,sizeof(shrimp_mode_t));
+	//	fprintf(stderr,"shrimp_mode:%u\n",shrimp_mode);
+	//	uint32_t h = (uint32_t)Hflag;
+	//	fprintf(stderr,"h:%u\n",h);
+	//	gzwrite(fp,&h,sizeof(uint32_t));
+	//	uint32_t i;
+	//	gzwrite(fp,&num_contigs,sizeof(uint32_t));
+	//	//fprintf(stderr,"saved num_contigs\n");
+	//	for (i = 0; i < num_contigs; i++) {
+	//		fprintf(stderr,"offset:%u\n",contig_offsets[i]);
+	//		gzwrite(fp,&contig_offsets[i],sizeof(uint32_t));
+	//		size_t len = strlen(contig_names[i]);
+	//		fprintf(stderr,"len:%u\n",len);
+	//		gzwrite(fp,&len,sizeof(size_t));
+	//		gzwrite(fp,contig_names[i],len +1);
+	//
+	//		gzwrite(fp,genome_len + i,sizeof(uint32_t));
+	//		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//		if(shrimp_mode == MODE_COLOUR_SPACE){
+	//			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//			gzwrite(fp,genome_initbp+i,sizeof(uint32_t));
+	//		}
+	//	}
+	//	//fprintf(stderr,"saving seeds\n");
+	//	//write the seeds and genome_maps
+	//	gzwrite(fp,&n_seeds,sizeof(uint32_t));
+	//	for (i = 0; i < n_seeds; i++) {
+	//		gzwrite(fp,&seed[i], sizeof(seed_type));
+	//
+	//		//write the genome_map for this seed
+	//		uint32_t j;
+	//		//uint32_t p = power(4, seed[i].weight);
+	//		//fprintf(stderr,"saving index\n");
+	//		size_t capacity;
+	//		if(Hflag){
+	//			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+	//		} else {
+	//			capacity = power(4, seed[i].weight);
+	//		}
+	//		gzwrite(fp,&capacity, sizeof(size_t));
+	//		for (j = 0; j < capacity; j++) {
+	//			uint32_t len = genomemap_len[i][j];
+	//			gzwrite(fp, &len, sizeof(uint32_t));
+	//			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
+	//		}
+	//	}
+	//	gzclose(fp);
+	//	return true;
 }
 
 
@@ -349,68 +599,149 @@ static bool load_genome_map(const char *file){
 		return false;
 	}
 
-	uint32_t i;
-	gzread(fp,&shrimp_mode,sizeof(shrimp_mode_t)); //TODO make sure no conflict
-	int32_t f;
-	gzread(fp,&f,sizeof(int32_t));
-	Hflag = f;
-	gzread(fp,&num_contigs,sizeof(uint32_t));
-	//fprintf(stderr,"num_contigs = %u\n",num_contigs);
+	//shrimp mode
+	uint32_t m;
+	xgzread(fp,&m,sizeof(uint32_t));
+	shrimp_mode = (shrimp_mode_t)m;
 
-	contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
-	contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+	//Hflag
+	uint32_t h;
+	xgzread(fp,&h,sizeof(uint32_t));
+	Hflag = h;
 
-	genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
-	genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
-	genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+	// num_contigs
+	xgzread(fp,&num_contigs,sizeof(uint32_t));
+
+	genome_len = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
+	contig_offsets = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
+	contig_names = (char **)xmalloc(sizeof(char *)*num_contigs);
+
+	genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
+	genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
 	if(shrimp_mode == MODE_COLOUR_SPACE){
-		genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
-		genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t)*num_contigs);
+		genome_cs_contigs = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
+		genome_initbp = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
 	}
 
-	for (i = 0; i < num_contigs; i++){
-		gzread(fp,&contig_offsets[i],sizeof(uint32_t));
+	//genome_len
+	xgzread(fp,genome_len,sizeof(uint32_t)*num_contigs);
+	uint i;
 
+	// contig_offfsets
+	xgzread(fp,contig_offsets,sizeof(uint32_t)*num_contigs);
+
+	// names / total
+
+	for(i = 0; i < num_contigs; i++){
 		uint32_t len;
-		gzread(fp,&len,sizeof(uint32_t));
-		contig_names[i] = (char *)xrealloc(contig_names[i],sizeof(char)*len);
-		gzread(fp,contig_names[i],len+1);
+		xgzread(fp,&len,sizeof(uint32_t));
 
-		gzread(fp,genome_len + i,sizeof(uint32_t));
-
-		genome_contigs[i] = (uint32_t *)xrealloc(genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		gzread(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-
-		genome_contigs_rc[i] = (uint32_t *)xrealloc(genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		gzread(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-
-		if(shrimp_mode == MODE_COLOUR_SPACE){
-			genome_cs_contigs[i] = (uint32_t *)xrealloc(genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-			gzread(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-			gzread(fp,genome_initbp+i,sizeof(uint32_t));
-		}
+		contig_names[i] = (char *)xmalloc(sizeof(char)*(len+1));
+		xgzread(fp,contig_names[i],len+1);
 	}
-	gzread(fp,&n_seeds,sizeof(uint32_t));
-	//fprintf(stderr,"n_seeds = %u\n",n_seeds);
-	seed =(seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
-	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
-	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **) * n_seeds);
-	for (i = 0; i < n_seeds; i++){
-		gzread(fp,&seed[i], sizeof(seed_type));
-		//fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
-		uint32_t j;
-		gzread(fp,&capacity,sizeof(size_t));
-		genomemap_len[i] = (uint32_t *)xrealloc(genomemap_len[i],sizeof(uint32_t)*capacity);
-		genomemap[i] = (uint32_t **)xrealloc(genomemap[i],sizeof(uint32_t *)*capacity);
-		for (j = 0; j < capacity; j++){
-			gzread(fp,&genomemap_len[i][j],sizeof(uint32_t));
-			genomemap[i][j] = (uint32_t *)xrealloc(genomemap[i][j],
-					sizeof(uint32_t)*genomemap_len[i][j]);
-			gzread(fp,genomemap[i][j],sizeof(uint32_t) * genomemap_len[i][j]);
+
+	uint32_t total;
+	xgzread(fp,&total,sizeof(uint32_t));
+
+	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
+	uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3 = NULL;
+	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	xgzread(fp,gen,sizeof(uint32_t)*total);
+	ptr1 = gen;
+	gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	xgzread(fp,gen_rc,sizeof(uint32_t)*total);
+	ptr2 = gen_rc;
+	if(shrimp_mode == MODE_COLOUR_SPACE){
+		gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+		xgzread(fp,gen_cs,sizeof(uint32_t)*total);
+		ptr3 = gen_cs;
+		xgzread(fp,genome_initbp,sizeof(uint32_t)*num_contigs);
+	}
+	for(i = 0; i < num_contigs; i++){
+		genome_contigs[i] = ptr1;
+		ptr1 += BPTO32BW(genome_len[i]);
+		genome_contigs_rc[i] = ptr2;
+		ptr2 += BPTO32BW(genome_len[i]);
+		if(shrimp_mode == MODE_COLOUR_SPACE){
+			genome_cs_contigs[i] = ptr3;
+			ptr3 += BPTO32BW(genome_len[i]);
 		}
 	}
 	gzclose(fp);
 	return true;
+	//	gzFile fp = gzopen(file,"rb");
+	//	if (fp == NULL){
+	//		return false;
+	//	}
+	//
+	//	uint32_t i;
+	//	gzread(fp,&shrimp_mode,sizeof(shrimp_mode_t)); //TODO make sure no conflict
+	//	uint32_t f;
+	//	gzread(fp,&f,sizeof(uint32_t));
+	//	Hflag = f;
+	//	gzread(fp,&num_contigs,sizeof(uint32_t));
+	//	//fprintf(stderr,"num_contigs = %u\n",num_contigs);
+	//
+	//	contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
+	//	contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+	//
+	//	genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
+	//	genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+	//	genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+	//	if(shrimp_mode == MODE_COLOUR_SPACE){
+	//		genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
+	//		genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t)*num_contigs);
+	//	}
+	//
+	//	for (i = 0; i < num_contigs; i++){
+	//		gzread(fp,&contig_offsets[i],sizeof(uint32_t));
+	//
+	//		uint32_t len;
+	//		gzread(fp,&len,sizeof(uint32_t));
+	//		contig_names[i] = (char *)xrealloc(contig_names[i],sizeof(char)*len);
+	//		gzread(fp,contig_names[i],len+1);
+	//
+	//		gzread(fp,genome_len + i,sizeof(uint32_t));
+	//
+	//		genome_contigs[i] = (uint32_t *)xrealloc(genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//		gzread(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//
+	//		genome_contigs_rc[i] = (uint32_t *)xrealloc(genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//		gzread(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//
+	//		if(shrimp_mode == MODE_COLOUR_SPACE){
+	//			genome_cs_contigs[i] = (uint32_t *)xrealloc(genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//			gzread(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+	//			gzread(fp,genome_initbp+i,sizeof(uint32_t));
+	//		}
+	//	}
+	//	gzread(fp,&n_seeds,sizeof(uint32_t));
+	//	//fprintf(stderr,"n_seeds = %u\n",n_seeds);
+	//	seed =(seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
+	//	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
+	//	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **) * n_seeds);
+	//	for (i = 0; i < n_seeds; i++){
+	//		gzread(fp,&seed[i], sizeof(seed_type));
+	//		//fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
+	//		uint32_t j;
+	//		size_t capacity;
+	//		if(Hflag){
+	//			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+	//		} else {
+	//			capacity = power(4, seed[i].weight);
+	//		}
+	//		gzread(fp,&capacity,sizeof(size_t));
+	//		genomemap_len[i] = (uint32_t *)xrealloc(genomemap_len[i],sizeof(uint32_t)*capacity);
+	//		genomemap[i] = (uint32_t **)xrealloc(genomemap[i],sizeof(uint32_t *)*capacity);
+	//		for (j = 0; j < capacity; j++){
+	//			gzread(fp,&genomemap_len[i][j],sizeof(uint32_t));
+	//			genomemap[i][j] = (uint32_t *)xrealloc(genomemap[i][j],
+	//					sizeof(uint32_t)*genomemap_len[i][j]);
+	//			gzread(fp,genomemap[i][j],sizeof(uint32_t) * genomemap_len[i][j]);
+	//		}
+	//	}
+	//	gzclose(fp);
+	//	return true;
 }
 
 static int comp(const void *a, const void *b){
@@ -481,258 +812,258 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 
 static void
 read_get_mapidxs_per_strand(struct read_entry * re, uint rc) {
-  uint sn, i, load, base, r_idx;
-  uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+	uint sn, i, load, base, r_idx;
+	uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 
-  re->mapidx[rc] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
-  if (re->has_Ns) {
-    re->mapidx_pos[rc] = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx_pos[0][0]));
-  }
+	re->mapidx[rc] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
+	if (re->has_Ns) {
+		re->mapidx_pos[rc] = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx_pos[0][0]));
+	}
 
-  for (load = 0, i = 0; i < re->read_len; i++) {
-    base = EXTRACT(re->read[rc], i);
-    bitfield_prepend(kmerWindow, max_seed_span, base);
+	for (load = 0, i = 0; i < re->read_len; i++) {
+		base = EXTRACT(re->read[rc], i);
+		bitfield_prepend(kmerWindow, max_seed_span, base);
 
-    //skip past any Ns or Xs
-    if (re->has_Ns && (base == BASE_N || base == BASE_X))
-      load = 0;
-    else if (load < max_seed_span)
-      load++;
+		//skip past any Ns or Xs
+		if (re->has_Ns && (base == BASE_N || base == BASE_X))
+			load = 0;
+		else if (load < max_seed_span)
+			load++;
 
-    for (sn = 0; sn < n_seeds; sn++) {
-      if (i < re->min_kmer_pos + seed[sn].span - 1)
-	continue;
+		for (sn = 0; sn < n_seeds; sn++) {
+			if (i < re->min_kmer_pos + seed[sn].span - 1)
+				continue;
 
-      r_idx = i - seed[sn].span + 1;
-      if (re->has_Ns && load < seed[sn].span) {
-	re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
-	continue;
-      }
+			r_idx = i - seed[sn].span + 1;
+			if (re->has_Ns && load < seed[sn].span) {
+				re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
+				continue;
+			}
 
-      re->mapidx[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
-      if (re->has_Ns) {
-	re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
-      }
-    }
-  }
+			re->mapidx[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
+			if (re->has_Ns) {
+				re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
+			}
+		}
+	}
 
-  free(kmerWindow);
+	free(kmerWindow);
 }
 
 
 static void
 read_get_mapidxs(struct read_entry * re) {
-  read_get_mapidxs_per_strand(re, 0);
-  read_get_mapidxs_per_strand(re, 1);
+	read_get_mapidxs_per_strand(re, 0);
+	read_get_mapidxs_per_strand(re, 1);
 }
 
 
 static void
 read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) {
-  uint list_sz;
-  uint i, sn, offset;
-  struct heap_uu h;
-  uint * idx;
-  struct heap_uu_elem tmp;
+	uint list_sz;
+	uint i, sn, offset;
+	struct heap_uu h;
+	uint * idx;
+	struct heap_uu_elem tmp;
 
-  // compute size of anchor list
-  list_sz = 0;
-  for (sn = 0; sn < n_seeds; sn++) {
-    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
-      offset = sn*re->max_n_kmers + i;
-      if (!re->has_Ns || re->mapidx_pos[rc][offset]) {
-	list_sz += genomemap_len[sn][re->mapidx[rc][offset]];
-      }
-    }
-  }
-
-  // init anchor list
-  re->anchors[rc] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
-  re->n_anchors[rc] = 0;
-
-  // init min heap and indices in genomemap lists
-  heap_uu_init(&h, n_seeds * re->max_n_kmers);
-  idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
-
-  // load inital anchors in min heap
-  for (sn = 0; sn < n_seeds; sn++) {
-    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
-      offset = sn*re->max_n_kmers + i;
-      if ((!re->has_Ns || re->mapidx_pos[rc][offset])
-	  && idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]
-	  ) {
-	tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
-	tmp.rest = offset;
-	heap_uu_insert(&h, &tmp);
-	idx[offset]++;
-      }
-    }
-  }
-
-  while (h.load > 0) {
-    // extract min
-    heap_uu_extract_min(&h, &tmp);
-
-    // add to anchor list
-    offset = tmp.rest;
-    sn = offset / re->max_n_kmers;
-    i = offset % re->max_n_kmers;
-    re->anchors[rc][re->n_anchors[rc]].x = tmp.key;
-    re->anchors[rc][re->n_anchors[rc]].y = re->min_kmer_pos + i;
-    re->anchors[rc][re->n_anchors[rc]].length = seed[sn].span;
-    re->anchors[rc][re->n_anchors[rc]].weight = 1;
-    re->n_anchors[rc]++;
-
-    if (collapse) {
-      // merge last anchor with a previous one, if overlapping
-      int j = (int)re->n_anchors[rc] - 2;
-      uint cn = 0;
-
-      // get contig number of current anchor
-      while (cn < num_contigs - 1 && re->anchors[rc][re->n_anchors[rc]-1].x >= contig_offsets[cn+1])
-	cn++;
-      assert(contig_offsets[cn] <= re->anchors[rc][re->n_anchors[rc]-1].x
-	     && re->anchors[rc][re->n_anchors[rc]-1].x < contig_offsets[cn] + genome_len[cn]);
-
-      while (j >= 0							// valid index in anchor array
-	     && re->anchors[rc][j].x + re->anchors[rc][re->n_anchors[rc]-1].y
-	     >= re->anchors[rc][re->n_anchors[rc]-1].x			// left of base of crt anchor
-	     && re->anchors[rc][j].x >= contig_offsets[cn]		// same contig
-	     ) {
-	if (uw_anchors_intersect(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1])) {
-	  uw_anchors_join(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1]);
-	  re->n_anchors[rc]--;
+	// compute size of anchor list
+	list_sz = 0;
+	for (sn = 0; sn < n_seeds; sn++) {
+		for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+			offset = sn*re->max_n_kmers + i;
+			if (!re->has_Ns || re->mapidx_pos[rc][offset]) {
+				list_sz += genomemap_len[sn][re->mapidx[rc][offset]];
+			}
+		}
 	}
-	j--;
-      }
-    }
 
-    // load next anchor for that seed/mapidx
-    if (idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]) {
-      tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
-      tmp.rest = offset;
-      heap_uu_insert(&h, &tmp);
-      idx[offset]++;
-    }
-  }
+	// init anchor list
+	re->anchors[rc] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+	re->n_anchors[rc] = 0;
 
-  heap_uu_destroy(&h);
-  free(idx);
+	// init min heap and indices in genomemap lists
+	heap_uu_init(&h, n_seeds * re->max_n_kmers);
+	idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+
+	// load inital anchors in min heap
+	for (sn = 0; sn < n_seeds; sn++) {
+		for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+			offset = sn*re->max_n_kmers + i;
+			if ((!re->has_Ns || re->mapidx_pos[rc][offset])
+					&& idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]
+			) {
+				tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+				tmp.rest = offset;
+				heap_uu_insert(&h, &tmp);
+				idx[offset]++;
+			}
+		}
+	}
+
+	while (h.load > 0) {
+		// extract min
+		heap_uu_extract_min(&h, &tmp);
+
+		// add to anchor list
+		offset = tmp.rest;
+		sn = offset / re->max_n_kmers;
+		i = offset % re->max_n_kmers;
+		re->anchors[rc][re->n_anchors[rc]].x = tmp.key;
+		re->anchors[rc][re->n_anchors[rc]].y = re->min_kmer_pos + i;
+		re->anchors[rc][re->n_anchors[rc]].length = seed[sn].span;
+		re->anchors[rc][re->n_anchors[rc]].weight = 1;
+		re->n_anchors[rc]++;
+
+		if (collapse) {
+			// merge last anchor with a previous one, if overlapping
+			int j = (int)re->n_anchors[rc] - 2;
+			uint cn = 0;
+
+			// get contig number of current anchor
+			while (cn < num_contigs - 1 && re->anchors[rc][re->n_anchors[rc]-1].x >= contig_offsets[cn+1])
+				cn++;
+			assert(contig_offsets[cn] <= re->anchors[rc][re->n_anchors[rc]-1].x
+					&& re->anchors[rc][re->n_anchors[rc]-1].x < contig_offsets[cn] + genome_len[cn]);
+
+			while (j >= 0							// valid index in anchor array
+					&& re->anchors[rc][j].x + re->anchors[rc][re->n_anchors[rc]-1].y
+					>= re->anchors[rc][re->n_anchors[rc]-1].x			// left of base of crt anchor
+					&& re->anchors[rc][j].x >= contig_offsets[cn]		// same contig
+			) {
+				if (uw_anchors_intersect(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1])) {
+					uw_anchors_join(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1]);
+					re->n_anchors[rc]--;
+				}
+				j--;
+			}
+		}
+
+		// load next anchor for that seed/mapidx
+		if (idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]) {
+			tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+			tmp.rest = offset;
+			heap_uu_insert(&h, &tmp);
+			idx[offset]++;
+		}
+	}
+
+	heap_uu_destroy(&h);
+	free(idx);
 }
 
 
 static void
 read_get_anchor_list(struct read_entry * re, bool collapse) {
-  read_get_anchor_list_per_strand(re, 0, collapse);
-  read_get_anchor_list_per_strand(re, 1, collapse);
+	read_get_anchor_list_per_strand(re, 0, collapse);
+	read_get_anchor_list_per_strand(re, 1, collapse);
 }
 
 
 static void
 read_pass1_per_strand(struct read_entry * re, uint rc) {
-  uint cn, i, max_idx;
-  uint32_t goff, glen, gstart, gend;
-  int score = 0, max_score, tmp_score = 0;
-  int j;
-  int short_len = 0, long_len = 0;
-  uint x_len;
-  int last_cn = -1;
-  uint32_t last_goff = 0;
+	uint cn, i, max_idx;
+	uint32_t goff, glen, gstart, gend;
+	int score = 0, max_score, tmp_score = 0;
+	int j;
+	int short_len = 0, long_len = 0;
+	uint x_len;
+	int last_cn = -1;
+	uint32_t last_goff = 0;
 
-  for (i = 0; i < re->n_anchors[rc]; i++) {
-    // get contig num of crt anchor
-    get_contig_num(re->anchors[rc][i].x, &cn);
+	for (i = 0; i < re->n_anchors[rc]; i++) {
+		// get contig num of crt anchor
+		get_contig_num(re->anchors[rc][i].x, &cn);
 
-    // set gstart and gend
-    gend = (re->anchors[rc][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[rc][i].y;
-    if (gend > genome_len[cn] - 1)
-      gend = genome_len[cn] - 1;
+		// set gstart and gend
+		gend = (re->anchors[rc][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[rc][i].y;
+		if (gend > genome_len[cn] - 1)
+			gend = genome_len[cn] - 1;
 
-    if (gend >= re->window_len) 
-      gstart = gend - re->window_len;
-    else
-      gstart = 0;
+		if (gend >= re->window_len)
+			gstart = gend - re->window_len;
+		else
+			gstart = 0;
 
-    // by default, anchor matched by itself
-    max_idx = i;
-    // hack: avoid single matches
-    if (re->anchors[rc][i].weight > 1)
-      max_score = re->anchors[rc][i].length * match_score;
-    else
-      max_score = 0;
+		// by default, anchor matched by itself
+		max_idx = i;
+		// hack: avoid single matches
+		if (re->anchors[rc][i].weight > 1)
+			max_score = re->anchors[rc][i].length * match_score;
+		else
+			max_score = 0;
 
-    for (j = (int)i - 1;
-	 j >= 0
-	   && re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
-	 j--) {
-      if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
-	continue;
+		for (j = (int)i - 1;
+				j >= 0
+				&& re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
+				j--) {
+			if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
+				continue;
 
-      if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
-	  > (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
-	{ // deletion in read
-	  short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-	  long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+			if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
+					> (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
+			{ // deletion in read
+				short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+				long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+			}
+			else
+			{ // insertion in read
+				short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+				long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+			}
+
+			if (long_len > short_len)
+				tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
+			else
+				tmp_score = short_len * match_score;
+
+			if (tmp_score > max_score) {
+				max_idx = j;
+				max_score = tmp_score;
+			}
+		}
+
+		if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
+			// try SW filter call
+			x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
+
+			if ((re->window_len - x_len)/2 < re->anchors[rc][max_idx].x - contig_offsets[cn])
+				goff = (re->anchors[rc][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
+			else
+				goff = 0;
+
+			glen = re->window_len;
+			if (goff + glen > genome_len[cn])
+				glen = genome_len[cn] - goff;
+
+			// last check: window_overlap
+			if (last_cn != (int)cn
+					|| goff > last_goff + (uint)abs_or_pct(window_overlap, re->window_len)) {
+
+				if (shrimp_mode == MODE_COLOUR_SPACE) {
+					score = sw_vector(genome_cs_contigs[cn], goff, glen,
+							re->read[rc], re->read_len,
+							genome_contigs[cn], re->initbp[rc], genome_is_rna);
+				} else if (shrimp_mode == MODE_LETTER_SPACE) {
+					score = sw_vector(genome_contigs[cn], goff, glen,
+							re->read[rc], re->read_len,
+							NULL, -1, genome_is_rna);
+				}
+
+				if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+					save_score(re, score, goff, cn, rc > 0);
+					re->sw_hits++;
+					last_cn = cn;
+					last_goff = goff;
+				}
+			}
+		}
 	}
-      else
-	{ // insertion in read
-	  short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
-	  long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-	}
-
-      if (long_len > short_len)
-	tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
-      else
-	tmp_score = short_len * match_score;
-
-      if (tmp_score > max_score) {
-	max_idx = j;
-	max_score = tmp_score;
-      }
-    }
-
-    if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
-      // try SW filter call
-      x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
-
-      if ((re->window_len - x_len)/2 < re->anchors[rc][max_idx].x - contig_offsets[cn])
-	goff = (re->anchors[rc][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
-      else
-	goff = 0;
-
-      glen = re->window_len;
-      if (goff + glen > genome_len[cn])
-	glen = genome_len[cn] - goff;
-
-      // last check: window_overlap
-      if (last_cn != (int)cn
-	  || goff > last_goff + (uint)abs_or_pct(window_overlap, re->window_len)) {
-
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-	  score = sw_vector(genome_cs_contigs[cn], goff, glen,
-			    re->read[rc], re->read_len,
-			    genome_contigs[cn], re->initbp[rc], genome_is_rna);
-	} else if (shrimp_mode == MODE_LETTER_SPACE) {
-	  score = sw_vector(genome_contigs[cn], goff, glen,
-			    re->read[rc], re->read_len,
-			    NULL, -1, genome_is_rna);
-	}
-
-	if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
-	  save_score(re, score, goff, cn, rc > 0);
-	  re->sw_hits++;
-	  last_cn = cn;
-	  last_goff = goff;
-	}
-      }
-    }
-  }
 }
 
 static void
 read_pass1(struct read_entry * re) {
-  read_pass1_per_strand(re, 0);
-  read_pass1_per_strand(re, 1);
+	read_pass1_per_strand(re, 0);
+	read_pass1_per_strand(re, 1);
 }
 
 /*
@@ -850,12 +1181,12 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, uint rc){
 
 			if (shrimp_mode == MODE_COLOUR_SPACE) {
 				score = sw_vector(genome_cs_contigs[cn], goff, glen,
-						  re->read[rc], re->read_len,
-						  genome_contigs[cn], re->initbp[rc], genome_is_rna);
+						re->read[rc], re->read_len,
+						genome_contigs[cn], re->initbp[rc], genome_is_rna);
 			} else if (shrimp_mode == MODE_LETTER_SPACE) {
 				score = sw_vector(genome_contigs[cn], goff, glen,
-						  re->read[rc], re->read_len,
-						  NULL, -1, genome_is_rna);
+						re->read[rc], re->read_len,
+						NULL, -1, genome_is_rna);
 			}
 
 			if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
@@ -863,7 +1194,7 @@ scan_read_lscs_pass1(read_entry *re, uint32_t *list, uint len, uint rc){
 				//ES_count_increment(&es_total_filter_passes);
 				//ES_count32_increment(&re->es_filter_passes);
 
-			  save_score(re, score, goff, cn, rc > 0);
+				save_score(re, score, goff, cn, rc > 0);
 				re->sw_hits++;
 
 				while (first <= last
@@ -917,9 +1248,9 @@ scan_read_lscs_pass2(read_entry * re) {
 			gen = genome_contigs_rc[rs->contig_num];
 			goff = rs->g_idx + re->window_len - 1;
 			if (goff > genome_len[rs->contig_num] - 1) {
-			  goff = 0;
+				goff = 0;
 			} else {
-			  goff = genome_len[rs->contig_num] - 1 - goff;
+				goff = genome_len[rs->contig_num] - 1 - goff;
 			}
 		} else {
 			gen = genome_contigs[rs->contig_num];
@@ -928,7 +1259,7 @@ scan_read_lscs_pass2(read_entry * re) {
 
 		glen = re->window_len;
 		if (goff + glen > genome_len[rs->contig_num])
-		  glen = genome_len[rs->contig_num] - goff;
+			glen = genome_len[rs->contig_num] - goff;
 
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			sw_full_cs(gen, goff, glen,
@@ -1105,43 +1436,43 @@ handle_read(read_entry *re){
 
 #ifdef DEBUG_KMERS
 	fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
-		re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
+			re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
 	fprintf(stderr, "collapsed kmers from read:\n");
 	uint sn;
 	for (sn = 0; sn < n_seeds; sn++) {
-	  fprintf(stderr, "sn:%u\n", sn);
-	  for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
-	    fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-	    if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
-	      fprintf(stderr, "X\n");
-	    } else {
-	      uint j;
-	      for (j = 0; j < seed[sn].weight; j++) {
-		fprintf(stderr, "%c%s",
-			base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-				       shrimp_mode == MODE_COLOUR_SPACE),
-			j < seed[sn].weight - 1? "," : "\n");
-	      }
-	    }
-	  }
+		fprintf(stderr, "sn:%u\n", sn);
+		for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+			fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+			if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
+				fprintf(stderr, "X\n");
+			} else {
+				uint j;
+				for (j = 0; j < seed[sn].weight; j++) {
+					fprintf(stderr, "%c%s",
+							base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+									shrimp_mode == MODE_COLOUR_SPACE),
+									j < seed[sn].weight - 1? "," : "\n");
+				}
+			}
+		}
 	}
 	fprintf(stderr, "collapsed kmers from read_rc:\n");
 	for (sn = 0; sn < n_seeds; sn++) {
-	  fprintf(stderr, "sn:%u\n", sn);
-	  for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
-	    fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-	    if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
-	      fprintf(stderr, "X\n");
-	    } else {
-	      uint j;
-	      for (j = 0; j < seed[sn].weight; j++) {
-		fprintf(stderr, "%c%s",
-			base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-				       shrimp_mode == MODE_COLOUR_SPACE),
-			j < seed[sn].weight - 1? "," : "\n");
-	      }
-	    }
-	  }
+		fprintf(stderr, "sn:%u\n", sn);
+		for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+			fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+			if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
+				fprintf(stderr, "X\n");
+			} else {
+				uint j;
+				for (j = 0; j < seed[sn].weight; j++) {
+					fprintf(stderr, "%c%s",
+							base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+									shrimp_mode == MODE_COLOUR_SPACE),
+									j < seed[sn].weight - 1? "," : "\n");
+				}
+			}
+		}
 	}
 #endif
 
@@ -1150,32 +1481,32 @@ handle_read(read_entry *re){
 #ifdef DEBUG_ANCHOR_LIST
 	{
 #warning Dumping anchor list.
-	  uint i;
-	  fprintf(stderr,"read anchors:\n");
-	  for(i = 0; i < re->n_anchors[0]; i++){
-	    fprintf(stderr,"(%u,%u,%u)%s",re->anchors[0][i].x, re->anchors[0][i].length, re->anchors[0][i].weight,
-		    i < re->n_anchors[0]-1? "," : "\n");
-	  }
-	  fprintf(stderr,"read_rc anchors:\n");
-	  for(i = 0; i < re->n_anchors[1]; i++){
-	    fprintf(stderr,"(%u,%u,%u)%s",re->anchors[1][i].x, re->anchors[1][i].length, re->anchors[1][i].weight,
-		    i < re->n_anchors[1]-1? "," : "\n");
-	  }
+		uint i;
+		fprintf(stderr,"read anchors:\n");
+		for(i = 0; i < re->n_anchors[0]; i++){
+			fprintf(stderr,"(%u,%u,%u)%s",re->anchors[0][i].x, re->anchors[0][i].length, re->anchors[0][i].weight,
+					i < re->n_anchors[0]-1? "," : "\n");
+		}
+		fprintf(stderr,"read_rc anchors:\n");
+		for(i = 0; i < re->n_anchors[1]; i++){
+			fprintf(stderr,"(%u,%u,%u)%s",re->anchors[1][i].x, re->anchors[1][i].length, re->anchors[1][i].weight,
+					i < re->n_anchors[1]-1? "," : "\n");
+		}
 	}
 #endif
 
 #ifdef DEBUG_KWAY_MERGE
 	{
 #warning Checking k-way merge; make sure anchors are not being collapsed.
-	  uint i;
-	  assert(re->n_anchors[0] == (uint)len);
-	  assert(re->n_anchors[1] == (uint)len_rc);
-	  for(i = 0; i < re->n_anchors[0]; i++){
-	    assert(re->anchors[0][i].x == list[i]);
-	  }
-	  for(i = 0; i < re->n_anchors[1]; i++){
-	    assert(re->anchors[1][i].x == list_rc[i]);
-	  }
+		uint i;
+		assert(re->n_anchors[0] == (uint)len);
+		assert(re->n_anchors[1] == (uint)len_rc);
+		for(i = 0; i < re->n_anchors[0]; i++){
+			assert(re->anchors[0][i].x == list[i]);
+		}
+		for(i = 0; i < re->n_anchors[1]; i++){
+			assert(re->anchors[1][i].x == list_rc[i]);
+		}
 	}
 #endif
 
@@ -1193,7 +1524,7 @@ handle_read(read_entry *re){
 		DEBUG("first pass on list_rc");
 		scan_read_lscs_pass1(re,list_rc,len_rc,true);
 	}
-	*/
+	 */
 
 	read_pass1(re);
 
@@ -1211,8 +1542,8 @@ handle_read(read_entry *re){
 	free(re->mapidx[0]);
 	free(re->mapidx[1]);
 	if (re->has_Ns) {
-	  free(re->mapidx_pos[0]);
-	  free(re->mapidx_pos[1]);
+		free(re->mapidx_pos[0]);
+		free(re->mapidx_pos[1]);
 	}
 	free(re->anchors[0]);
 	free(re->anchors[1]);
@@ -1263,26 +1594,26 @@ launch_scan_threads(const char *file){
 			res[i].min_kmer_pos = 0;
 			count_increment(&reads_c);
 			if (shrimp_mode == MODE_COLOUR_SPACE){
-			  res[i].read_len--;
-			  res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
-			  res[i].min_kmer_pos = 1;
+				res[i].read_len--;
+				res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
+				res[i].min_kmer_pos = 1;
 				res[i].initbp[0] = fasta_get_initial_base(fasta,seq);
 				res[i].initbp[1] = res[i].initbp[0];
 				res[i].read[1] = reverse_complement_read_cs(res[i].read[0], res[i].initbp[0], res[i].initbp[1],
-									    res[i].read_len, is_rna);
+						res[i].read_len, is_rna);
 			} else {
 				res[i].read[1] = reverse_complement_read_ls(res[i].read[0],
-									    res[i].read_len,is_rna);
+						res[i].read_len,is_rna);
 			}
 			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
 			res[i].has_Ns = !(strcspn(seq, "nNxX.") == strlen(seq)); // from fasta.c
 			free(seq);
 		}
 		nreads += i;
-		#pragma omp parallel shared(res,i) num_threads(num_threads)
+#pragma omp parallel shared(res,i) num_threads(num_threads)
 		{
 			int j;
-			#pragma omp for
+#pragma omp for
 			for (j = 0; j < i; j++){
 				handle_read(&res[j]);
 			}
@@ -1352,7 +1683,7 @@ static bool
 load_genome(char **files, int nfiles)
 {
 	fasta_t fasta;
-	size_t seqlen;
+	size_t seqlen, capacity;
 	uint32_t *read;
 	char *seq, *name;
 	uint32_t *kmerWindow;
@@ -1370,7 +1701,7 @@ load_genome(char **files, int nfiles)
 	for (sn = 0; sn < n_seeds; sn++) {
 
 		if(Hflag){
-			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
+			capacity = power(4, HASH_TABLE_POWER);
 		} else {
 			capacity = power(4, seed[sn].weight);
 		}
@@ -1790,8 +2121,8 @@ void usage(char *progname,bool full_usage){
 			Mflag? "enabled" : "disabled");
 
 	fprintf(stderr,
-				"    -D    Toggle thread statistics                  (default: %s)\n",
-				Dflag? "enabled" : "disabled");
+			"    -D    Toggle thread statistics                  (default: %s)\n",
+			Dflag? "enabled" : "disabled");
 	fprintf(stderr,
 			"    -?    Full list of parameters and options\n");
 
@@ -2146,7 +2477,7 @@ int main(int argc, char **argv){
 		usage(progname,false);
 	}
 
-	if (n_seeds == 0)
+	if (n_seeds == 0 && load_file == NULL)
 		load_default_seeds();
 
 	kmer_to_mapidx = kmer_to_mapidx_orig;
@@ -2253,15 +2584,34 @@ int main(int argc, char **argv){
 	if ((a_gap_open_set && !b_gap_open_set)
 			|| (a_gap_extend_set && !b_gap_extend_set))
 		fputc('\n', stderr);
-
-	print_settings();
+	if(load_file == NULL){
+		print_settings();
+	}
 
 	uint64_t before;
 	before = gettimeinusecs();
 	if (load_file != NULL){
-		if (!load_genome_map(load_file)){
-			exit(1);
+		if (strchr(load_file, ',') == NULL) {
+			fprintf(stderr,"Must specify genome save file and map save file\n");
+			exit (1);
+		} else {
+			c = strtok(load_file, ",");
+			fprintf(stderr,"Loading genome from %s\n",c);
+			if (!load_genome_map(c)){
+				fprintf(stderr, "error: loading from genome file \"%s\"\n", c);
+				exit (1);
+			}
+			c = strtok(NULL, ",");
+			do {
+				fprintf(stderr,"Loading seed from %s\n",c);
+				if (!load_genome_map_seed(c)) {
+					fprintf(stderr, "error: loading from map file \"%s\"\n", c);
+					exit (1);
+				}
+				c = strtok(NULL, ",");
+			} while (c != NULL);
 		}
+		print_settings();
 	} else {
 		if (!load_genome(genome_files,ngenome_files)){
 			exit(1);
@@ -2271,57 +2621,58 @@ int main(int argc, char **argv){
 	map_usecs += (gettimeinusecs() - before);
 
 	if (save_file != NULL){
+		fprintf(stderr,"Saving genome map to %s\n",save_file);
 		if(save_genome_map(save_file)){
 			exit(0);
 		}
 		exit(1);
 	}
 
-		//TODO setup need max window and max read len
-		int longest_read_len = 100;
-		int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
+	//TODO setup need max window and max read len
+	int longest_read_len = 100;
+	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
-		{
-			if (sw_vector_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-					match_score, mismatch_score,
-					shrimp_mode == MODE_COLOUR_SPACE, false)) {
-				fprintf(stderr, "failed to initialise vector "
-						"Smith-Waterman (%s)\n", strerror(errno));
-				exit(1);
-			}
-
-			int ret;
-			if (shrimp_mode == MODE_COLOUR_SPACE) {
-				/* XXX - a vs. b gap */
-				ret = sw_full_cs_setup(max_window_len, longest_read_len,
-						a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
-						crossover_score, false, anchor_width);
-			} else {
-				ret = sw_full_ls_setup(max_window_len, longest_read_len,
-						a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-						match_score, mismatch_score, false, anchor_width);
-			}
-			if (ret) {
-				fprintf(stderr, "failed to initialise scalar "
-						"Smith-Waterman (%s)\n", strerror(errno));
-				exit(1);
-			}
+	{
+		if (sw_vector_setup(max_window_len, longest_read_len,
+				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				match_score, mismatch_score,
+				shrimp_mode == MODE_COLOUR_SPACE, false)) {
+			fprintf(stderr, "failed to initialise vector "
+					"Smith-Waterman (%s)\n", strerror(errno));
+			exit(1);
 		}
 
+		int ret;
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			/* XXX - a vs. b gap */
+			ret = sw_full_cs_setup(max_window_len, longest_read_len,
+					a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+					crossover_score, false, anchor_width);
+		} else {
+			ret = sw_full_ls_setup(max_window_len, longest_read_len,
+					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+					match_score, mismatch_score, false, anchor_width);
+		}
+		if (ret) {
+			fprintf(stderr, "failed to initialise scalar "
+					"Smith-Waterman (%s)\n", strerror(errno));
+			exit(1);
+		}
+	}
 
-		char * output;
 
-		output = output_format_line(Rflag);
-		puts(output);
-		free(output);
+	char * output;
 
-		before = gettimeinusecs();
-		launch_scan_threads(reads_file);
-		scan_usecs += (gettimeinusecs() - before);
+	output = output_format_line(Rflag);
+	puts(output);
+	free(output);
 
-		print_statistics();
+	before = gettimeinusecs();
+	launch_scan_threads(reads_file);
+	scan_usecs += (gettimeinusecs() - before);
+
+	print_statistics();
 }
 #endif
 //TODO ask matei about Fflag Cflag, setting up sw,

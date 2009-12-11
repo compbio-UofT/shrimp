@@ -942,6 +942,32 @@ fast_gztest(int nfiles, char **files)
 }
 #endif
 
+void xgzread(gzFile fp, voidp buf, unsigned len){
+	uint total = 0;
+	while (total < len){
+		uint res;
+		res = gzread(fp,(char *)buf+total,len-total);
+		if (res < 0){
+			fprintf(stderr,"error: gzread returned %u\n",res);
+			exit(0);
+		}
+		total += res;
+	}
+}
+
+void xgzwrite(gzFile fp, voidp buf, unsigned len){
+	uint total = 0;
+	while (total < len){
+		uint res;
+		res = gzwrite(fp,(char *)buf+total,len-total);
+		if (res < 0){
+			fprintf(stderr,"error: gzwrite returned %u\n",res);
+			exit(0);
+		}
+		total += res;
+	}
+}
+
 /*
  * Return a string on the stack corresponding to an unsigned integer that also
  * features commas. E.g.: int 1000 yields "1,000".

@@ -96,6 +96,8 @@ void	        strbuf_append(strbuf_t, char const *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
 char	       *comma_integer(uint64_t);
+void xgzwrite(gzFile fp, voidp buf, unsigned len);
+void xgzread(gzFile fp, voidp buf, unsigned len);
 
 
 /* for optarg (and to shut up icc) */
