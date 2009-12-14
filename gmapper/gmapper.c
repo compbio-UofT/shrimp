@@ -109,7 +109,7 @@ static uint chunk_size = DEF_CHUNK_SIZE;
 static read_entry *last_read;
 #pragma omp threadprivate(last_read)
 
-#define USE_PREFETCH
+//#define USE_PREFETCH
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -616,10 +616,10 @@ static bool load_genome_map(const char *file){
 	contig_offsets = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
 	contig_names = (char **)xmalloc(sizeof(char *)*num_contigs);
 
-	genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
-	genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
+	genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
+	genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
 	if(shrimp_mode == MODE_COLOUR_SPACE){
-		genome_cs_contigs = (uint32_t **)xmalloc(sizeof(uint32_t)*num_contigs);
+		genome_cs_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
 		genome_initbp = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
 	}
 
