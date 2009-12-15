@@ -947,7 +947,7 @@ void xgzread(gzFile fp, voidp buf, unsigned len){
 	while (total < len){
 		uint res;
 		res = gzread(fp,(char *)buf+total,len-total);
-		if (res < 0){
+		if (res <= 0){
 			fprintf(stderr,"error: gzread returned %u\n",res);
 			exit(0);
 		}
@@ -960,7 +960,7 @@ void xgzwrite(gzFile fp, voidp buf, unsigned len){
 	while (total < len){
 		uint res;
 		res = gzwrite(fp,(char *)buf+total,len-total);
-		if (res < 0){
+		if (res <= 0){
 			fprintf(stderr,"error: gzwrite returned %u\n",res);
 			exit(0);
 		}

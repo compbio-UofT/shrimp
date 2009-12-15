@@ -1581,37 +1581,41 @@ launch_scan_threads(const char *file){
 
 	//read the fasta file, s sequences at a time, and process in threads.
 	bool more = true;
-	while (more){
-		int i;
-		for(i = 0; i < s; i++){
-			if(!fasta_get_next(fasta, &res[i].name, &seq, &is_rna)){
-				more = false;
-				break;
+	int i;
+#pragma omp parallel shared(res,i,more) num_threads(num_threads)
+	{
+		while (more){
+#pragma omp barrier
+#pragma omp single
+			{
+				for(i = 0; i < s; i++){
+					if(!fasta_get_next(fasta, &res[i].name, &seq, &is_rna)){
+						more = false;
+						break;
+					}
+					res[i].read[0] = fasta_sequence_to_bitfield(fasta, seq);
+					res[i].read_len = strlen(seq);
+					res[i].max_n_kmers = res[i].read_len - min_seed_span + 1;
+					res[i].min_kmer_pos = 0;
+					count_increment(&reads_c);
+					if (shrimp_mode == MODE_COLOUR_SPACE){
+						res[i].read_len--;
+						res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
+						res[i].min_kmer_pos = 1;
+						res[i].initbp[0] = fasta_get_initial_base(fasta,seq);
+						res[i].initbp[1] = res[i].initbp[0];
+						res[i].read[1] = reverse_complement_read_cs(res[i].read[0], res[i].initbp[0], res[i].initbp[1],
+								res[i].read_len, is_rna);
+					} else {
+						res[i].read[1] = reverse_complement_read_ls(res[i].read[0],
+								res[i].read_len,is_rna);
+					}
+					res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
+					res[i].has_Ns = !(strcspn(seq, "nNxX.") == strlen(seq)); // from fasta.c
+					free(seq);
+				}
+				nreads += i;
 			}
-			res[i].read[0] = fasta_sequence_to_bitfield(fasta, seq);
-			res[i].read_len = strlen(seq);
-			res[i].max_n_kmers = res[i].read_len - min_seed_span + 1;
-			res[i].min_kmer_pos = 0;
-			count_increment(&reads_c);
-			if (shrimp_mode == MODE_COLOUR_SPACE){
-				res[i].read_len--;
-				res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
-				res[i].min_kmer_pos = 1;
-				res[i].initbp[0] = fasta_get_initial_base(fasta,seq);
-				res[i].initbp[1] = res[i].initbp[0];
-				res[i].read[1] = reverse_complement_read_cs(res[i].read[0], res[i].initbp[0], res[i].initbp[1],
-						res[i].read_len, is_rna);
-			} else {
-				res[i].read[1] = reverse_complement_read_ls(res[i].read[0],
-						res[i].read_len,is_rna);
-			}
-			res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
-			res[i].has_Ns = !(strcspn(seq, "nNxX.") == strlen(seq)); // from fasta.c
-			free(seq);
-		}
-		nreads += i;
-#pragma omp parallel shared(res,i) num_threads(num_threads)
-		{
 			int j;
 #pragma omp for
 			for (j = 0; j < i; j++){
@@ -1773,7 +1777,6 @@ load_genome(char **files, int nfiles)
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 			u_int load;
-			//DEBUG("indexing sequence");
 			for (load = 0; i < seqlen + contig_offsets[num_contigs-1]; i++) {
 				uint base;
 				int sn;
@@ -1785,31 +1788,24 @@ load_genome(char **files, int nfiles)
 				if (base == BASE_N || base == BASE_X)
 					load = 0;
 				else if (load < max_seed_span)
-					load++;
-				//DEBUG("looping seeds");
-#pragma omp parallel for shared(kmerWindow,genomemap_len,genomemap,nkmers,mem_genomemap,load,seed) num_threads(num_threads)
+					load++;;
 				for (sn = 0; sn < (int)n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
 
 
-					//DEBUG("hashing");
 					uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
 					//increase the match count and store the location of the match
-					//DEBUG("updating len");
 					genomemap_len[sn][mapidx]++;
-					//DEBUG("reallocing map");
 					genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx]),
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
 							&mem_genomemap);
-					//DEBUG("updateing map");
 					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i - seed[sn].span + 1;
 					nkmers++;
 
 				}
 			}
-			//DEBUG("done indexing sequence");
 			free(seq);
 			seq = name = NULL;
 
