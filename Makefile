@@ -8,12 +8,12 @@ LDFLAGS=-lm -lz -lc -lstdc++
 LN=ln
 
 # statically compile on all but OS X.
-UNAME=$(shell uname -s)
-ifneq ($(UNAME),Darwin)
-ifneq ($(UNAME),SunOS)
-override CXXFLAGS+=-static
-endif
-endif
+#UNAME=$(shell uname -s)
+#ifneq ($(UNAME),Darwin)
+#ifneq ($(UNAME),SunOS)
+#override CXXFLAGS+=-static
+#endif
+#endif
 
 all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
 
