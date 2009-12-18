@@ -2409,6 +2409,10 @@ usage(char * progname, bool full_usage)
 	  "disabled)\n");
 
   fprintf(stderr,
+	  "    -G    Perform Gapless Alignment                     (default: "
+	  "disabled)\n");
+
+  fprintf(stderr,
 	  "    -P    Pretty Print Alignments                       (default: "
 	  "disabled)\n"); 
 
@@ -2830,6 +2834,8 @@ main(int argc, char **argv)
     case 'G':
       gapless_sw = true;
       anchor_width = 1;
+      a_gap_open_score = -255;
+      b_gap_open_score = -255;
       break;
     default:
       usage(progname, false);

@@ -487,6 +487,14 @@ run-down of these options (in some strange, non-alphabetical order).
 	kmers. The default value  is 8. Use of anchors  is disabled by providing
 	-1 as width.
 
+	[ -G ]
+
+	Perform gapless alignment. When   this flag is specified, rmapper  looks
+	for gapless alignment between reads  and the database. In letter  space,
+	this means only mismatches are tolerated. In colour  space, there can be
+	both mismatches  and crossovers. Of  course,  the  scoring scheme  still
+	applies. -G also implies -A 1 -g -255 -q -255.	
+
 	[ -B ]
 
 	This option simply  prints a  progress bar to  stderr during  the spaced
