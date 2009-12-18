@@ -1,5 +1,3 @@
-/*	$Id: sw-vector.c 383 2009-09-30 22:47:56Z matei $	*/
-
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
