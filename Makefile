@@ -24,7 +24,8 @@ all: bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/
 bin/rmapper: rmapper/rmapper.o common/fasta.o common/dag_align.o \
     common/dag_glue.o common/dag_kmers.o common/sw-vector.o \
     common/sw-full-cs.o common/sw-full-ls.o common/input.o \
-    common/output.o common/util.o common/anchors.o common/bitmap.o
+    common/output.o common/util.o common/anchors.o common/bitmap.o \
+    common/sw-gapless.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf rmapper bin/rmapper-cs
 	$(LN) -sf rmapper bin/rmapper-hs
@@ -43,7 +44,7 @@ bin/probcalc: probcalc/probcalc.o common/fasta.o common/dynhash.o \
 
 probcalc/probcalc.o: probcalc/probcalc.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-	
+
 #
 # probcalc_mp 
 #
@@ -136,6 +137,10 @@ common/anchors.o: common/anchors.c common/anchors.h
 
 common/bitmap.o: common/bitmap.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/sw-gapless.o: common/sw-gapless.c common/sw-gapless.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 
 #
 # cleanup

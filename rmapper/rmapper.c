@@ -34,6 +34,7 @@
 #include "../common/stats.h"
 #include "../rmapper/rmapper.h"
 #include "../rmapper/cache.h"
+#include "../common/sw-gapless.h"
 
 static int	mode_read_length	= DEF_MODE_50BP;
 static int	mode_speed_tradeoff	= DEF_MODE_FAST;
@@ -81,6 +82,7 @@ static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
+static bool	gapless_sw		= DEF_GAPLESS_SW;
 
 /*
  * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
@@ -174,6 +176,7 @@ char const * reads_profile_file_name;
 /* Misc stats */
 static uint64_t scan_usecs;
 static uint64_t revcmpl_usecs;
+static uint64_t	project_usecs;
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -589,6 +592,40 @@ are_hits_colinear(struct read_entry_scan *res)
   return 1;
 }
 
+
+/*
+ * Determine a diagonal on which to try gapless alignment, based on hit array.
+ */
+static inline int
+get_gapless_anchor_from_hits(struct read_entry_scan * res, int * g_idx, int * r_idx)
+{
+  if (num_matches == 1) {
+    *g_idx = res->hits[res->last_hit].g_idx_start;
+    *r_idx = res->hits[res->last_hit].r_idx_end_first - seed[res->hits[res->last_hit].sn].span + 1;
+    return 1;
+  } else { // find two colinear hits, if any, starting from the last
+    int i, j, ri, rj;
+    for (i = 0; i < (int)num_matches; i++) {
+      for (j = i + 1; j < (int)num_matches; j++) {
+	ri = (res->last_hit + (num_matches - i)) % num_matches;
+	rj = (res->last_hit + (num_matches - j)) % num_matches;
+	if (res->hits[ri].g_idx_start
+	    + res->hits[rj].r_idx_end_first - seed[res->hits[rj].sn].span + 1
+	    ==
+	    res->hits[rj].g_idx_start
+	    + res->hits[ri].r_idx_end_first - seed[res->hits[ri].sn].span + 1
+	    ) {
+	  *g_idx = res->hits[ri].g_idx_start;
+	  *r_idx = res->hits[ri].r_idx_end_first - seed[res->hits[ri].sn].span + 1;
+	  return 1;
+	}	    
+      }
+    }
+    return 0;
+  }
+}
+
+
 /* scan the genome by kmers, running S-W as needed, and updating scores */
 static void
 scan(int contig_num, bool revcmpl)
@@ -792,6 +829,7 @@ scan(int contig_num, bool revcmpl)
 	    bool meets_thresh = false;
 	    cache_key_t key;
 	    uint rel_pos, abs_pos;
+	    int g_idx, r_idx;
 
 	    assert(re->offset == rme1->offset);
 
@@ -843,12 +881,26 @@ scan(int contig_num, bool revcmpl)
 		    ES_count_increment(&es_total_filter_calls_bypassed);
 		    ES_count32_increment(&re->es_filter_calls_bypassed);
 		  } else {
-		    if (shrimp_mode == MODE_COLOUR_SPACE) {
-		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-					 genome, re->initbp, genome_is_rna);
-		    } else if (shrimp_mode == MODE_LETTER_SPACE) {
-		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-					 NULL, -1, genome_is_rna);
+		    if (!gapless_sw) {
+		      if (shrimp_mode == MODE_COLOUR_SPACE) {
+			score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					   genome, re->initbp, genome_is_rna);
+		      } else if (shrimp_mode == MODE_LETTER_SPACE) {
+			score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					   NULL, -1, genome_is_rna);
+		      }
+		    } else {
+		      if (get_gapless_anchor_from_hits(res, &g_idx, &r_idx)) {
+			if (shrimp_mode == MODE_COLOUR_SPACE) {
+			  score1 = sw_gapless(scan_genome, genome_len, re->read1, re->read1_len, g_idx, r_idx,
+					      genome, re->initbp, genome_is_rna);
+			} else {
+			  score1 = sw_gapless(scan_genome, genome_len, re->read1, re->read1_len, g_idx, r_idx,
+					      NULL, -1, genome_is_rna);
+			}
+		      } else {
+			score1 = 0;
+		      }
 		    }
 
 		    /* save score */
@@ -863,12 +915,26 @@ scan(int contig_num, bool revcmpl)
 		}
 	      else  // Don't use cache
 		{
-		  if (shrimp_mode == MODE_COLOUR_SPACE) {
-		    score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				       genome, re->initbp, genome_is_rna);
-		  } else if (shrimp_mode == MODE_LETTER_SPACE) {
-		    score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
-				       NULL, -1, genome_is_rna);
+		  if (!gapless_sw) {
+		    if (shrimp_mode == MODE_COLOUR_SPACE) {
+		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					 genome, re->initbp, genome_is_rna);
+		    } else if (shrimp_mode == MODE_LETTER_SPACE) {
+		      score1 = sw_vector(scan_genome, goff, glen, re->read1, re->read1_len,
+					 NULL, -1, genome_is_rna);
+		    }
+		  } else {
+		    if (get_gapless_anchor_from_hits(res, &g_idx, &r_idx)) {
+		      if (shrimp_mode == MODE_COLOUR_SPACE) {
+			score1 = sw_gapless(scan_genome, genome_len, re->read1, re->read1_len, g_idx, r_idx,
+					    genome, re->initbp, genome_is_rna);
+		      } else {
+			score1 = sw_gapless(scan_genome, genome_len, re->read1, re->read1_len, g_idx, r_idx,
+					    NULL, -1, genome_is_rna);
+		      }
+		    } else {
+		      score1 = 0;
+		    }
 		  }
 		}
 
@@ -1315,6 +1381,9 @@ load_reads(const char *file)
 {
   uint sn;
   ssize_t ret, map_size;
+  int64_t before;
+
+  before = gettimeinusecs();
 
   // allocate as many readmaps as we have seeds
   readmap = (struct readmap_entry ***)xmalloc_c(n_seeds * sizeof(readmap[0]),
@@ -1338,6 +1407,8 @@ load_reads(const char *file)
     ret = load_reads_dag(file);
   else
     ret = load_reads_lscs(file);
+
+  project_usecs = gettimeinusecs() - before;
 
   return ret;
 }
@@ -1897,12 +1968,20 @@ print_statistics()
     total_matches += re->final_matches;
   }
 
-  sw_vector_stats(&invocs, &cells, &vticks, &cellspersec);
+  if (!gapless_sw)
+    sw_vector_stats(&invocs, &cells, &vticks, &cellspersec);
+  else
+    sw_gapless_stats(&invocs, &cells, &vticks, &cellspersec);
 
   seedscantime = ((double)scan_usecs / 1000000.0) - (vticks / hz);
   seedscantime = MAX(0, seedscantime);
 
   fprintf(stderr, "\nStatistics:\n");
+  fprintf(stderr, "    Project Reads:\n");
+  fprintf(stderr, "        Run-time:               %.2f seconds\n",
+	  (double)project_usecs / 1000000.0); 
+  fprintf(stderr, "\n");
+
   fprintf(stderr, "    Spaced Seed Scan:\n");
   fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	  seedscantime); 
@@ -1923,7 +2002,7 @@ print_statistics()
 #endif
   fprintf(stderr, "\n");
 
-  fprintf(stderr, "    Vector Smith-Waterman:\n");
+  fprintf(stderr, "    %s Smith-Waterman:\n", gapless_sw? "Gapless" : "Vector");
   fprintf(stderr, "        Run-time:               %.2f seconds\n",
 	  (cellspersec == 0) ? 0 : cells / cellspersec);
   fprintf(stderr, "        Invocations:            %s\n",
@@ -2481,11 +2560,11 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:ZY:W:M:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:ZY:W:M:G";
     selected_seed_weight = default_seed_weight_cs;
     break;
   case MODE_LETTER_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:ZY:W:M:";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:ZY:W:M:G";
     selected_seed_weight = default_seed_weight_ls;
     break;
   case MODE_HELICOS_SPACE:
@@ -2748,6 +2827,10 @@ main(int argc, char **argv)
 	c = strtok(NULL, ",");
       } while (c != NULL);
       break;
+    case 'G':
+      gapless_sw = true;
+      anchor_width = 1;
+      break;
     default:
       usage(progname, false);
     }
@@ -2991,6 +3074,8 @@ main(int argc, char **argv)
 	  hash_filter_calls ? "yes" : "no");
   fprintf(stderr, "    Cache settings:                       (%d,%d)\n",
 	  cache_min_size, cache_max_size);
+  fprintf(stderr, "    Gapless SW:                           %s\n",
+	  gapless_sw? "enabled" : "disabled");
   fprintf(stderr, "\n");
 
   dag_setup(dag_read_match, dag_read_mismatch, dag_read_gap, dag_ref_match,
@@ -3028,6 +3113,10 @@ main(int argc, char **argv)
     fprintf(stderr, "failed to initialise scalar "
 	    "Smith-Waterman (%s)\n", strerror(errno));
     exit(1);
+  }
+
+  if (gapless_sw) {
+    sw_gapless_setup(match_score, mismatch_score, false);
   }
 
   readmap_prune();

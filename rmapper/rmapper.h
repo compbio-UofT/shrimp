@@ -106,6 +106,7 @@ static int const default_score_set_id = 0;
 
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 #define DEF_HASH_FILTER_CALLS	true
+#define DEF_GAPLESS_SW		false
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an

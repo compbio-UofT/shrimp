@@ -3,6 +3,12 @@
 #ifndef _FASTA_H_
 #define _FASTA_H_
 
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <zlib.h>
+
+
 #define LETTER_SPACE	1
 #define COLOUR_SPACE	2
 
