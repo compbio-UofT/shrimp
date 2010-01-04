@@ -489,11 +489,11 @@ run-down of these options (in some strange, non-alphabetical order).
 
 	[ -G ]
 
-	Perform gapless alignment. When   this flag is specified, rmapper  looks
-	for gapless alignment between reads  and the database. In letter  space,
-	this means only mismatches are tolerated. In colour  space, there can be
-	both mismatches  and crossovers. Of  course,  the  scoring scheme  still
-	applies. -G also implies -A 1 -g -255 -q -255.	
+	Perform gapless  alignment. When this flag  is specified,  rmapper looks
+	for gapless alignment between  reads and the  database. In letter space,
+	this means only mismatches are tolerated.  In colour space, there can be
+	both mismatches  and crossovers. The  scoring  scheme still  applies. -G
+	also implies -A 1 -g -255 -q -255.
 
 	[ -B ]
 
