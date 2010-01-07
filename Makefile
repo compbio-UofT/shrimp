@@ -23,7 +23,7 @@ LN=ln
 #endif
 #endif
 
-all: bin/gmapper bin/rmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
+all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
 
 
 #
@@ -59,7 +59,7 @@ bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o comm
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
-	
+
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h common/debug.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
@@ -73,7 +73,7 @@ bin/probcalc: probcalc/probcalc.o common/fasta.o common/dynhash.o \
 
 probcalc/probcalc.o: probcalc/probcalc.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-	
+
 #
 # probcalc_mp 
 #

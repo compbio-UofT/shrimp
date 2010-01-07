@@ -514,21 +514,15 @@ sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 }
 
 void
-sw_full_ls_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
-    double *cellspersec)
+sw_full_ls_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 {
 	
-	if (invoc != NULL)
-		*invoc = swinvocs;
+	if (invocs != NULL)
+		*invocs = swinvocs;
 	if (cells != NULL)
 		*cells = swcells;
 	if (ticks != NULL)
 		*ticks = swticks;
-	if (cellspersec != NULL) {
-		*cellspersec = (double)swcells / ((double)swticks / cpuhz());
-		if (isnan(*cellspersec))
-			*cellspersec = 0;
-	}
 }
 
 void

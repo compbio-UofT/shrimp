@@ -5,7 +5,7 @@
 #include "../common/debug.h"
 
 #define DEF_NUM_THREADS 1
-#define DEF_CHUNK_SIZE 1000
+#define DEF_CHUNK_SIZE 25000
 
 struct re_score {
   struct sw_full_results * sfrp;	/* alignment results (final pass) */
