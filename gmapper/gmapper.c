@@ -40,6 +40,7 @@ static uint	num_matches		= DEF_NUM_MATCHES;
 static uint	num_outputs		= DEF_NUM_OUTPUTS;
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
+static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 
 /* Scores */
 static int	match_score		= DEF_MATCH_VALUE;
@@ -69,9 +70,11 @@ static count_t	dup_hits_c;			/* number of duplicate hits */
 static count_t	reads_c;
 static stat_t	matches_s;
 
-static uint64_t total_matches = 0;
+static uint64_t total_matches;
+static uint64_t reads_matched;
+static count_t f1_calls_bypassed;
 
-static uint64_t nreads = 0;
+static uint64_t nreads;
 
 static uint64_t total_work_usecs;
 static uint64_t map_usecs;
@@ -107,16 +110,12 @@ static uint chunk_size = DEF_CHUNK_SIZE;
 static uint64_t scan_ticks[50];
 static uint64_t readload_ticks;
 
-/* individual thread variable (Thread Private) */
+
 //static read_entry *last_read;
 //#pragma omp threadprivate(last_read)
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
-
-
-static volatile uint64_t reads_matched = 0;
-
 
 
 /* If x is negative, return its absolute value; else return base*x% */
@@ -138,6 +137,32 @@ get_contig_num(uint idx, uint * cn) {
 
 	assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
+
+/*
+ * Compute a hash value for this genome region.
+ */
+static inline uint32_t
+hash_window(uint32_t * scan_genome, uint goff, uint glen) {
+  uint i, j;
+  uint8_t base;
+  uint32_t key = 0;
+  uint32_t buffer;
+  static uint const bases_per_buffer = 16;
+
+  for (i = 0; i < ((glen - 1) / bases_per_buffer) + 1; i++) {
+    buffer = 0;
+    for (j = 0; j < bases_per_buffer && i * bases_per_buffer + j < glen; j++) {
+      base = EXTRACT(scan_genome, goff + i * bases_per_buffer + j);
+      buffer <<= 2;
+      buffer |= (base & 0x03);
+    }
+    hash_accumulate(&key, buffer);
+  }
+  hash_finalize(&key);
+
+  return key;
+}
+
 
 /* percolate down in our min-heap */
 static void
@@ -865,205 +890,241 @@ read_get_mapidxs(struct read_entry * re) {
 
 static void
 read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) {
-	uint list_sz;
-	uint i, sn, offset;
-	struct heap_uu h;
-	uint * idx;
-	struct heap_uu_elem tmp;
+  uint list_sz;
+  uint i, sn, offset;
+  struct heap_uu h;
+  uint * idx;
+  struct heap_uu_elem tmp;
+  int anchor_cache[re->read_len];
 
-	// compute size of anchor list
-	list_sz = 0;
-	for (sn = 0; sn < n_seeds; sn++) {
-		for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
-			offset = sn*re->max_n_kmers + i;
-			if (!re->has_Ns || re->mapidx_pos[rc][offset]) {
-				list_sz += genomemap_len[sn][re->mapidx[rc][offset]];
-			}
-		}
-	}
+  // compute size of anchor list
+  list_sz = 0;
+  for (sn = 0; sn < n_seeds; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+      if (!re->has_Ns || re->mapidx_pos[rc][offset]) {
+	list_sz += genomemap_len[sn][re->mapidx[rc][offset]];
+      }
+    }
+  }
 
-	// init anchor list
-	re->anchors[rc] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
-	re->n_anchors[rc] = 0;
+  // init anchor list
+  re->anchors[rc] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+  re->n_anchors[rc] = 0;
 
-	// init min heap and indices in genomemap lists
-	heap_uu_init(&h, n_seeds * re->max_n_kmers);
-	idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+  // init min heap, indices in genomemap lists, and anchor_cache
+  heap_uu_init(&h, n_seeds * re->max_n_kmers);
+  idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+  for (i = 0; i < re->read_len; i++)
+    anchor_cache[i] = -1;
 
-	// load inital anchors in min heap
-	for (sn = 0; sn < n_seeds; sn++) {
-		for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
-			offset = sn*re->max_n_kmers + i;
-			if ((!re->has_Ns || re->mapidx_pos[rc][offset])
-					&& idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]
-			) {
-				tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
-				tmp.rest = offset;
-				heap_uu_insert(&h, &tmp);
-				idx[offset]++;
-			}
-		}
-	}
+  // load inital anchors in min heap
+  for (sn = 0; sn < n_seeds; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+      if ((!re->has_Ns || re->mapidx_pos[rc][offset])
+	  && idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]
+	  ) {
+	tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+	tmp.rest = offset;
+	heap_uu_insert(&h, &tmp);
+	idx[offset]++;
+      }
+    }
+  }
 
-	while (h.load > 0) {
-		// extract min
-		heap_uu_extract_min(&h, &tmp);
+  while (h.load > 0) {
+    // extract min
+    heap_uu_get_min(&h, &tmp);
 
-		// add to anchor list
-		offset = tmp.rest;
-		sn = offset / re->max_n_kmers;
-		i = offset % re->max_n_kmers;
-		re->anchors[rc][re->n_anchors[rc]].x = tmp.key;
-		re->anchors[rc][re->n_anchors[rc]].y = re->min_kmer_pos + i;
-		re->anchors[rc][re->n_anchors[rc]].length = seed[sn].span;
-		re->anchors[rc][re->n_anchors[rc]].weight = 1;
-		re->n_anchors[rc]++;
+    // add to anchor list
+    offset = tmp.rest;
+    sn = offset / re->max_n_kmers;
+    i = offset % re->max_n_kmers;
+    re->anchors[rc][re->n_anchors[rc]].x = tmp.key;
+    re->anchors[rc][re->n_anchors[rc]].y = re->min_kmer_pos + i;
+    re->anchors[rc][re->n_anchors[rc]].length = seed[sn].span;
+    re->anchors[rc][re->n_anchors[rc]].weight = 1;
+    get_contig_num(re->anchors[rc][re->n_anchors[rc]].x, &re->anchors[rc][re->n_anchors[rc]].cn);
+    re->n_anchors[rc]++;
 
-		if (collapse) {
-			// merge last anchor with a previous one, if overlapping
-			int j = (int)re->n_anchors[rc] - 2;
-			uint cn = 0;
+    if (collapse) {
+      // check if current anchor intersects the cached one on the same diagonal
+      uint diag = (re->anchors[rc][re->n_anchors[rc]-1].x + re->read_len - re->anchors[rc][re->n_anchors[rc]-1].y) % re->read_len;
+      int j = anchor_cache[diag];
 
-			// get contig number of current anchor
-			while (cn < num_contigs - 1 && re->anchors[rc][re->n_anchors[rc]-1].x >= contig_offsets[cn+1])
-				cn++;
-			assert(contig_offsets[cn] <= re->anchors[rc][re->n_anchors[rc]-1].x
-					&& re->anchors[rc][re->n_anchors[rc]-1].x < contig_offsets[cn] + genome_len[cn]);
+      if (j >= 0
+	  && re->anchors[rc][j].cn == re->anchors[rc][re->n_anchors[rc]-1].cn
+	  && uw_anchors_intersect(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1])) {
+	uw_anchors_join(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1]);
+	re->n_anchors[rc]--;
+      } else {
+	anchor_cache[diag] = re->n_anchors[rc]-1;
+      }
+    }
 
-			while (j >= 0							// valid index in anchor array
-					&& re->anchors[rc][j].x + re->anchors[rc][re->n_anchors[rc]-1].y
-					>= re->anchors[rc][re->n_anchors[rc]-1].x			// left of base of crt anchor
-					&& re->anchors[rc][j].x >= contig_offsets[cn]		// same contig
-			) {
-				if (uw_anchors_intersect(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1])) {
-					uw_anchors_join(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1]);
-					re->n_anchors[rc]--;
-				}
-				j--;
-			}
-		}
+    // load next anchor for that seed/mapidx
+    if (idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]) {
+      tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+      tmp.rest = offset;
+      heap_uu_replace_min(&h, &tmp);
+      idx[offset]++;
+    } else {
+      heap_uu_extract_min(&h, &tmp);
+    }
+  }
 
-		// load next anchor for that seed/mapidx
-		if (idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]) {
-			tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
-			tmp.rest = offset;
-			heap_uu_insert(&h, &tmp);
-			idx[offset]++;
-		}
-	}
-
-	heap_uu_destroy(&h);
-	free(idx);
+  heap_uu_destroy(&h);
+  free(idx);
 }
 
 
 static void
 read_get_anchor_list(struct read_entry * re, bool collapse) {
-	read_get_anchor_list_per_strand(re, 0, collapse);
-	read_get_anchor_list_per_strand(re, 1, collapse);
+  read_get_anchor_list_per_strand(re, 0, collapse);
+  read_get_anchor_list_per_strand(re, 1, collapse);
 }
 
 
 static void
 read_pass1_per_strand(struct read_entry * re, uint rc) {
-	uint cn, i, max_idx;
-	uint32_t goff, glen, gstart, gend;
-	int score = 0, max_score, tmp_score = 0;
-	int j;
-	int short_len = 0, long_len = 0;
-	uint x_len;
-	int last_cn = -1;
-	uint32_t last_goff = 0;
+  static uint32_t hash_mark = 0;
+  static struct {
+    uint32_t mark;
+    uint32_t score;
+  } window_cache[1048576]; // 2^20
 
-	for (i = 0; i < re->n_anchors[rc]; i++) {
-		// get contig num of crt anchor
-		get_contig_num(re->anchors[rc][i].x, &cn);
+  uint cn, i, max_idx;
+  uint32_t goff, glen, gstart, gend;
+  int score = 0, max_score, tmp_score = 0;
+  int j;
+  int short_len = 0, long_len = 0;
+  uint x_len;
+  int last_cn = -1;
+  uint32_t last_goff = 0;
 
-		// set gstart and gend
-		gend = (re->anchors[rc][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[rc][i].y;
-		if (gend > genome_len[cn] - 1)
-			gend = genome_len[cn] - 1;
+  hash_mark++;
 
-		if (gend >= re->window_len)
-			gstart = gend - re->window_len;
-		else
-			gstart = 0;
+  for (i = 0; i < re->n_anchors[rc]; i++) {
+    // get contig num of crt anchor
+    cn = re->anchors[rc][i].cn;
 
-		// by default, anchor matched by itself
-		max_idx = i;
-		// hack: avoid single matches
-		if (re->anchors[rc][i].weight > 1)
-			max_score = re->anchors[rc][i].length * match_score;
-		else
-			max_score = 0;
+    // set gstart and gend
+    gend = (re->anchors[rc][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[rc][i].y;
+    if (gend > genome_len[cn] - 1)
+      gend = genome_len[cn] - 1;
 
-		for (j = (int)i - 1;
-				j >= 0
-				&& re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
-				j--) {
-			if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
-				continue;
+    if (gend >= re->window_len)
+      gstart = gend - re->window_len;
+    else
+      gstart = 0;
 
-			if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
-					> (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
-			{ // deletion in read
-				short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-				long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
-			}
-			else
-			{ // insertion in read
-				short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
-				long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-			}
+    // by default, anchor matched by itself
+    max_idx = i;
+    // hack: avoid single matches
+    if (re->anchors[rc][i].weight > 1)
+      max_score = re->anchors[rc][i].length * match_score;
+    else
+      max_score = 0;
 
-			if (long_len > short_len)
-				tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
-			else
-				tmp_score = short_len * match_score;
+    for (j = (int)i - 1;
+	 j >= 0
+	   && re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
+	 j--) {
+      if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
+	continue;
 
-			if (tmp_score > max_score) {
-				max_idx = j;
-				max_score = tmp_score;
-			}
-		}
-
-		if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
-			// try SW filter call
-			x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
-
-			if ((re->window_len - x_len)/2 < re->anchors[rc][max_idx].x - contig_offsets[cn])
-				goff = (re->anchors[rc][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
-			else
-				goff = 0;
-
-			glen = re->window_len;
-			if (goff + glen > genome_len[cn])
-				glen = genome_len[cn] - goff;
-
-			// last check: window_overlap
-			if (last_cn != (int)cn
-					|| goff > last_goff + (uint)abs_or_pct(window_overlap, re->window_len)) {
-
-				if (shrimp_mode == MODE_COLOUR_SPACE) {
-					score = sw_vector(genome_cs_contigs[cn], goff, glen,
-							re->read[rc], re->read_len,
-							genome_contigs[cn], re->initbp[rc], genome_is_rna);
-				} else if (shrimp_mode == MODE_LETTER_SPACE) {
-					score = sw_vector(genome_contigs[cn], goff, glen,
-							re->read[rc], re->read_len,
-							NULL, -1, genome_is_rna);
-				}
-
-				if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
-					save_score(re, score, goff, cn, rc > 0);
-					re->sw_hits++;
-					last_cn = cn;
-					last_goff = goff;
-				}
-			}
-		}
+      if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
+	  > (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
+	{ // deletion in read
+	  short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	  long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
 	}
+      else
+	{ // insertion in read
+	  short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+	  long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	}
+
+      if (long_len > short_len)
+	tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
+      else
+	tmp_score = short_len * match_score;
+
+      if (tmp_score > max_score) {
+	max_idx = j;
+	max_score = tmp_score;
+      }
+    }
+
+    if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
+      // try SW filter call
+      x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
+
+      if ((re->window_len - x_len)/2 < re->anchors[rc][max_idx].x - contig_offsets[cn])
+	goff = (re->anchors[rc][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
+      else
+	goff = 0;
+
+      glen = re->window_len;
+      if (goff + glen > genome_len[cn])
+	glen = genome_len[cn] - goff;
+
+      // last check: window_overlap
+      if (last_cn != (int)cn
+	  || goff > last_goff + (uint)abs_or_pct(window_overlap, re->window_len)) {
+
+	/*
+	 * Passed select filter; try SW filter
+	 */
+	if (hash_filter_calls) {
+	  uint32_t hash_val = hash_window(shrimp_mode == MODE_COLOUR_SPACE? genome_cs_contigs[cn] : genome_contigs[cn],
+					  goff, glen);
+	  hash_val %= 1048576;
+
+	  if (window_cache[hash_val].mark == hash_mark) {
+	    // cache hit
+	    score = window_cache[hash_val].score;
+#pragma omp atomic
+	    f1_calls_bypassed++;
+	  } else {
+	    // cache miss: compute & save
+	    if (shrimp_mode == MODE_COLOUR_SPACE) {
+	      score = sw_vector(genome_cs_contigs[cn], goff, glen,
+				re->read[rc], re->read_len,
+				genome_contigs[cn], re->initbp[rc], genome_is_rna);
+	    } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	      score = sw_vector(genome_contigs[cn], goff, glen,
+				re->read[rc], re->read_len,
+				NULL, -1, genome_is_rna);
+	    }
+	    window_cache[hash_val].score = score;
+	    window_cache[hash_val].mark = hash_mark;
+	  }
+
+	} else { // don't hash filter calls
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
+	    score = sw_vector(genome_cs_contigs[cn], goff, glen,
+			      re->read[rc], re->read_len,
+			      genome_contigs[cn], re->initbp[rc], genome_is_rna);
+	  } else if (shrimp_mode == MODE_LETTER_SPACE) {
+	    score = sw_vector(genome_contigs[cn], goff, glen,
+			      re->read[rc], re->read_len,
+			      NULL, -1, genome_is_rna);
+	  }
+	}
+
+	if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+	  save_score(re, score, goff, cn, rc > 0);
+	  re->sw_hits++;
+	  last_cn = cn;
+	  last_goff = goff;
+	}
+      }
+    }
+  }
 }
+
 
 static void
 read_pass1(struct read_entry * re) {
@@ -1298,10 +1359,8 @@ scan_read_lscs_pass2(read_entry * re) {
 
 	/* Output sorted list, removing any duplicates. */
 	if (re->scores[0].heap_elems > 0) {
-#pragma omp critical (reads_matched)
-	  {
-	    reads_matched++;
-	  }
+#pragma omp atomic
+	  reads_matched++;
 	}
 	memset(&last_sfr, 0, sizeof(last_sfr));
 	for (i = 1; i <= re->scores[0].heap_elems; i++) {
@@ -1339,6 +1398,7 @@ scan_read_lscs_pass2(read_entry * re) {
 			free(output1);
 			free(output2);
 
+#pragma omp atomic
 			total_matches++;
 		}
 
@@ -1526,9 +1586,8 @@ handle_read(read_entry *re){
 /*
  * Launch the threads that will scan the reads
  */
-
 static bool
-launch_scan_threads(const char *file){
+launch_scan_threads_OLD(const char *file){
 	fasta_t fasta;
 	int space;
 	int buffer_size = chunk_size*num_threads*64;
@@ -1598,18 +1657,89 @@ launch_scan_threads(const char *file){
 			for (j = 0; j < i; j++){
 				handle_read(&res[j]);
 			}
-#ifdef USE_PREFETCH
-			if(last_read != NULL){
-				DEBUG("Finishing very last read");
-				finish_read(last_read);
-				last_read = NULL;
-			}
-#endif
 		}
 
 	}
 	free(res);
 	return true;
+}
+
+
+/*
+ * Launch the threads that will scan the reads
+ */
+static bool
+launch_scan_threads(const char *file){
+  fasta_t fasta;
+  int space;
+
+  //open the fasta file and check for errors
+  if (shrimp_mode == MODE_LETTER_SPACE)
+    space = LETTER_SPACE;
+  else
+    space = COLOUR_SPACE;
+  fasta = fasta_open(file, space);
+  if (fasta == NULL) {
+    fprintf(stderr, "error: failded to open read file [%s]\n", file);
+    return (false);
+  } else {
+    fprintf(stderr, "- Processing read file [%s]\n", file);
+  }
+
+  bool more = true;
+#pragma omp parallel shared(more, fasta) num_threads(num_threads)
+  {
+    struct read_entry * re_buffer;
+    uint load, i;
+
+    re_buffer = (struct read_entry *)xmalloc(chunk_size * sizeof(re_buffer[0]));
+
+    while (more){
+#pragma omp critical (fill_reads_buffer)
+      {
+	uint64_t before = rdtsc();
+
+	for (load = 0; load < chunk_size; load++) {
+	  if (!fasta_get_next(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna)) {
+	    more = false;
+	    break;
+	  }
+	}
+
+	nreads += load;
+	readload_ticks += rdtsc() - before;
+      } // end critical section
+
+      for (i = 0; i < load; i++) {
+	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
+	re_buffer[i].read_len = strlen(re_buffer[i].seq);
+	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
+	re_buffer[i].min_kmer_pos = 0;
+	count_increment(&reads_c);
+	if (shrimp_mode == MODE_COLOUR_SPACE){
+	  re_buffer[i].read_len--;
+	  re_buffer[i].max_n_kmers -= 2; // 1st color always discarded from kmers
+	  re_buffer[i].min_kmer_pos = 1;
+	  re_buffer[i].initbp[0] = fasta_get_initial_base(fasta,re_buffer[i].seq);
+	  re_buffer[i].initbp[1] = re_buffer[i].initbp[0];
+	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], re_buffer[i].initbp[0], re_buffer[i].initbp[1],
+							    re_buffer[i].read_len, re_buffer[i].is_rna);
+	} else {
+	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
+	}
+	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
+	re_buffer[i].has_Ns = !(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq)); // from fasta.c
+	free(re_buffer[i].seq);
+
+	handle_read(&re_buffer[i]);
+      }
+    }
+
+    free(re_buffer);
+  } // end parallel section
+
+  fasta_close(fasta);
+  return true;
 }
 
 
@@ -1901,6 +2031,8 @@ print_statistics()
 		"Run-time:", f1_total_secs);
 	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
 		"Invocations:", comma_integer(f1_total_invocs));
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		"Bypassed Calls:", comma_integer(f1_calls_bypassed));
 	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
 		"Cells Computed:", (double)f1_total_cells / 1.0e6);
 	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
@@ -2165,6 +2297,7 @@ void print_settings() {
 	fprintf(stderr, "\n");
 	fprintf(stderr,"%s%-40s%u\n",my_tab,"Number of threads:",num_threads);
 	fprintf(stderr,"%s%-40s%u\n",my_tab,"Thread chuck size:",chunk_size);
+	fprintf(stderr,"%s%-40s%s\n",my_tab,"Hash Filter Calls:", hash_filter_calls? "yes" : "no");
 
 }
 
@@ -2267,10 +2400,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:K:BCFHPRTUA:MW:S:L:D";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:K:BCFHPRTUA:MW:S:L:DZ";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:K:BCFHPRTUA:MW:S:L:D";
+		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:K:BCFHPRTUA:MW:S:L:DZ";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -2443,6 +2576,9 @@ int main(int argc, char **argv){
 		case '?':
 			usage(progname, true);
 			break;
+		case 'Z':
+		  hash_filter_calls = !hash_filter_calls;
+		  break;
 		default:
 			usage(progname, false);
 		}

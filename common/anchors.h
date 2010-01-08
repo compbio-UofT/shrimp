@@ -18,6 +18,7 @@ struct uw_anchor {
   uint8_t	y;
   uint8_t	length;
   uint16_t	weight;
+  uint32_t	cn;
 };
 
 
@@ -38,8 +39,8 @@ static inline bool
 uw_anchors_intersect(struct uw_anchor const * a1, struct uw_anchor const * a2) {
   return uw_anchors_colinear(a1, a2)
     && ((a1->x == a2->x)
-	|| (a1->x < a2->x && a2->x <= a1->x + a1->length)
-	|| (a2->x < a1->x && a1->x <= a2->x + a2->length));
+	|| (a1->x < a2->x && a2->x <= a1->x + (uint32_t)a1->length)
+	|| (a2->x < a1->x && a1->x <= a2->x + (uint32_t)a2->length));
 }
 
 

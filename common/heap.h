@@ -101,6 +101,26 @@
     }									\
   }
 
+#define DEF_HEAP_REPLACE_MIN(_id)					\
+  static void								\
+  heap_##_id##_replace_min(struct heap_##_id * h, struct heap_##_id##_elem * e) \
+  {									\
+    assert(h != NULL && h->load > 0);					\
+									\
+    h->array[0] = *e;							\
+    heap_##_id##_percolate_down(h, 1);					\
+  }
+
+
+#define DEF_HEAP_GET_MIN(_id)						\
+  static void								\
+  heap_##_id##_get_min(struct heap_##_id * h, struct heap_##_id##_elem * dest) \
+  {									\
+    assert(h != NULL && h->load > 0);					\
+									\
+    *dest = h->array[0];						\
+  }
+
 #define DEF_HEAP_INSERT(_id)						\
   static void								\
   heap_##_id##_insert(struct heap_##_id * h, struct heap_##_id##_elem * e) \
@@ -121,6 +141,8 @@
   DEF_HEAP_PERCOLATE_UP(_id)			\
   DEF_HEAP_PERCOLATE_DOWN(_id)			\
   DEF_HEAP_EXTRACT_MIN(_id)			\
+  DEF_HEAP_GET_MIN(_id)				\
+  DEF_HEAP_REPLACE_MIN(_id)			\
   DEF_HEAP_INSERT(_id)
 
 DEF_HEAP(uint32_t,uint,uu)

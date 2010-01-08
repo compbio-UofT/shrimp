@@ -113,14 +113,14 @@ void uw_anchors_join(struct uw_anchor * dest, struct uw_anchor const * src) {
     uint32_t tmp = dest->x;
     dest->x = src->x;
     dest->y = src->y;
-    if (src->x + src->length > tmp + dest->length) {
+    if (src->x + (uint32_t)src->length > tmp + (uint32_t)dest->length) {
       dest->length = src->length;
     } else {
       dest->length += tmp - dest->x;
     }
   } else {
-    if (src->x + src->length > dest->x + dest->length) {
-      dest->length = src->x + src->length - dest->x;
+    if (src->x + (uint32_t)src->length > dest->x + (uint32_t)dest->length) {
+      dest->length = (uint16_t)(src->x + (uint32_t)src->length - dest->x);
     }
   }
   dest->weight += src->weight;

@@ -7,6 +7,8 @@
 #define DEF_NUM_THREADS 1
 #define DEF_CHUNK_SIZE 25000
 
+#define DEF_HASH_FILTER_CALLS true
+
 struct re_score {
   struct sw_full_results * sfrp;	/* alignment results (final pass) */
 
@@ -24,6 +26,7 @@ struct re_score {
 
 struct read_entry {
   char *	name;
+  char *	seq;
   re_score *	scores;
   uint32_t *	read[2];	/* the read as a bitstring */
 
@@ -43,6 +46,7 @@ struct read_entry {
   uint8_t	max_n_kmers;	/* = read_len - min_seed_span + 1 */
   uint8_t	min_kmer_pos;	/* = 0 in LS; = 1 in CS */
   bool		has_Ns;
+  bool		is_rna;
 };
 
 #endif
