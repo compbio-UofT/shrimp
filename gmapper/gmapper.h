@@ -3,14 +3,16 @@
 
 #include "../common/sw-full-common.h"
 #include "../common/debug.h"
+#include "../common/anchors.h"
 
 #define DEF_NUM_THREADS 1
 #define DEF_CHUNK_SIZE 25000
 
-#define DEF_HASH_FILTER_CALLS true
+#define DEF_HASH_FILTER_CALLS	true
 
 struct re_score {
   struct sw_full_results * sfrp;	/* alignment results (final pass) */
+  struct anchor	anchor;
 
   uint		contig_num;	/* contig index (for filename)*/
   union {

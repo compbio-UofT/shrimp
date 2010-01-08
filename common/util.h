@@ -21,6 +21,8 @@ extern "C" {
 
 #include "../common/fasta.h"
 #include "../common/stats.h"
+#include "../common/hash.h"
+
 
 typedef enum {
 	MODE_LETTER_SPACE = 1,
@@ -183,6 +185,40 @@ lstocs(int first_letter, int second_letter, bool is_rna)
 
 	return (colourmat[first_letter][second_letter]);
 }
+
+static inline uint
+ceil_div(uint a, uint b) {
+  assert(a > 0 && b > 0);
+
+  return ((a - 1) / b) + 1;
+}
+
+/*
+ * Compute a hash value for a genomic region.
+ */
+static inline uint32_t
+hash_genome_window(uint32_t * genome, uint goff, uint glen) {
+  static uint const bases_per_buffer = 16;
+
+  uint i, j;
+  uint base;
+  uint32_t key = 0;
+  uint32_t buffer;
+
+  for (i = 0; i < ceil_div(glen, bases_per_buffer); i++) {
+    buffer = 0;
+    for (j = 0; j < bases_per_buffer && i * bases_per_buffer + j < glen; j++) {
+      base = EXTRACT(genome, goff + i * bases_per_buffer + j);
+      buffer <<= 2;
+      buffer |= (base & 0x03);
+    }
+    hash_accumulate(&key, buffer);
+  }
+  hash_finalize(&key);
+
+  return key;
+}
+
 
 #ifdef __cplusplus
 } /* extern "C" */
