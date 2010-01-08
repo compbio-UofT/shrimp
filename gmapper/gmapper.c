@@ -111,8 +111,16 @@ static uint64_t scan_ticks[50];
 static uint64_t wait_ticks[50];
 
 
-//static read_entry *last_read;
-//#pragma omp threadprivate(last_read)
+/* Thread-private */
+static uint32_t hash_mark;
+struct window_cache_entry {
+  uint32_t mark;
+  uint32_t score;
+};
+static struct window_cache_entry * window_cache;
+
+#pragma omp threadprivate(hash_mark, window_cache)
+
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
@@ -988,12 +996,6 @@ read_get_anchor_list(struct read_entry * re, bool collapse) {
 
 static void
 read_pass1_per_strand(struct read_entry * re, uint rc) {
-  static uint32_t hash_mark = 0;
-  static struct {
-    uint32_t mark;
-    uint32_t score;
-  } window_cache[1048576]; // 2^20
-
   uint cn, i, max_idx;
   uint32_t goff, glen, gstart, gend;
   int score = 0, max_score, tmp_score = 0;
@@ -2750,6 +2752,9 @@ int main(int argc, char **argv){
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
+	  hash_mark = 0;
+	  window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
+
 		if (sw_vector_setup(max_window_len, longest_read_len,
 				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 				match_score, mismatch_score,
