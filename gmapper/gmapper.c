@@ -2007,14 +2007,14 @@ print_statistics()
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Scan", "Vector SW", "Scalar SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
+		  "", "Read Load", "Scan", "Vector SW", "Scalar SW", "Wait");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+		  "", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < (int)num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
+	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+		    i, readload_secs[i], scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
 	  }
 	  fprintf(stderr, "\n");
