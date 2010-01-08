@@ -108,7 +108,7 @@ static uint num_threads = DEF_NUM_THREADS;
 static uint chunk_size = DEF_CHUNK_SIZE;
 
 static uint64_t scan_ticks[50];
-static uint64_t readload_ticks;
+static uint64_t wait_ticks[50];
 
 
 //static read_entry *last_read;
@@ -1620,8 +1620,6 @@ launch_scan_threads_OLD(const char *file){
 #pragma omp barrier
 #pragma omp single
 			{
-			  uint64_t before = rdtsc();
-
 				for(i = 0; i < buffer_size; i++){
 					if(!fasta_get_next(fasta, &res[i].name, &seq, &is_rna)){
 						more = false;
@@ -1649,8 +1647,6 @@ launch_scan_threads_OLD(const char *file){
 					free(seq);
 				}
 				nreads += i;
-
-				readload_ticks += rdtsc() - before;
 			}
 			int j;
 #pragma omp for schedule(dynamic,chunk_size)
@@ -1687,17 +1683,21 @@ launch_scan_threads(const char *file){
   }
 
   bool more = true;
+
 #pragma omp parallel shared(more, fasta) num_threads(num_threads)
   {
     struct read_entry * re_buffer;
     uint load, i;
+    uint64_t before;
 
     re_buffer = (struct read_entry *)xmalloc(chunk_size * sizeof(re_buffer[0]));
 
     while (more){
+      before = rdtsc();
+
 #pragma omp critical (fill_reads_buffer)
       {
-	uint64_t before = rdtsc();
+	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 	for (load = 0; load < chunk_size; load++) {
 	  if (!fasta_get_next(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna)) {
@@ -1707,7 +1707,6 @@ launch_scan_threads(const char *file){
 	}
 
 	nreads += load;
-	readload_ticks += rdtsc() - before;
       } // end critical section
 
       for (i = 0; i < load; i++) {
@@ -1941,8 +1940,8 @@ print_statistics()
 	uint64_t f2_total_invocs = 0, f2_total_cells = 0;
 	double f2_total_secs = 0, f2_total_cellspersec = 0;
 
-	double scan_secs[num_threads], sync_secs[num_threads];
-	double total_scan_secs = 0, total_sync_secs = 0;
+	double scan_secs[num_threads], readload_secs[num_threads];
+	double total_scan_secs = 0, total_wait_secs = 0, total_readload_secs = 0;
 
 	double hz;
 	uint64_t fasta_load_ticks;
@@ -1976,7 +1975,7 @@ print_statistics()
 
 	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
-	  sync_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz);
+	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
 	}
 
 	fprintf(stderr, "\nStatistics:\n");
@@ -1992,7 +1991,8 @@ print_statistics()
 	int i;
 	for(i = 0; i < (int)num_threads; i++){
 	  total_scan_secs += scan_secs[i];
-	  total_sync_secs += sync_secs[i];
+	  total_readload_secs += readload_secs[i];
+	  total_wait_secs += (double)wait_ticks[i] / hz;
 
 	  f1_total_secs += f1_secs[i];
 	  f1_total_invocs += f1_invocs[i];
@@ -2008,14 +2008,14 @@ print_statistics()
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
 	  fprintf(stderr, "%s%s" "%11s %9s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Scan", "Vector SW", "Scalar SW", "Sync");
+		  "", "Scan", "Vector SW", "Scalar SW", "Wait");
 	  fprintf(stderr, "%s%s" "%11s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
 		  "", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < (int)num_threads; i++) {
 	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
 		    i, scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
-		    comma_integer(f2_invocs[i]), f2_secs[i], sync_secs[i]);
+		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
 	  }
 	  fprintf(stderr, "\n");
 	}
@@ -2052,13 +2052,13 @@ print_statistics()
 
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "%sMiscellaneous:\n", my_tab);
+	fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
 		"Fasta Lib Time:", (double)fasta_load_ticks / hz);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Buffer Load Time:", (double)readload_ticks / hz);
+		"Read Load Time:", total_readload_secs);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Sync Time:", total_sync_secs);
+		"Wait Time:", total_wait_secs);
 
 	fprintf(stderr, "\n");
 
