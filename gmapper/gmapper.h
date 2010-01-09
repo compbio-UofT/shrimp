@@ -6,7 +6,7 @@
 #include "../common/anchors.h"
 
 #define DEF_NUM_THREADS 1
-#define DEF_CHUNK_SIZE 25000
+#define DEF_CHUNK_SIZE 1000
 
 #define DEF_HASH_FILTER_CALLS	true
 

@@ -1141,6 +1141,7 @@ read_pass2(read_entry * re) {
 
 		rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
 
+		/*
 		if (rs->rev_cmpl) {
 			gen = genome_contigs_rc[rs->contig_num];
 			goff = rs->g_idx + re->window_len - 1;
@@ -1159,6 +1160,20 @@ read_pass2(read_entry * re) {
 		glen = re->window_len;
 		if (goff + glen > genome_len[rs->contig_num])
 			glen = genome_len[rs->contig_num] - goff;
+		*/
+
+		goff = rs->g_idx;
+		glen = re->window_len;
+		if (goff + glen > genome_len[rs->contig_num])
+		  glen = genome_len[rs->contig_num] - goff;
+
+		if (rs->rev_cmpl) {
+		  gen = genome_contigs_rc[rs->contig_num];
+		  goff = genome_len[rs->contig_num] - goff - glen;
+		  reverse_anchor(&rs->anchor, glen, re->read_len);
+		} else {
+		  gen = genome_contigs[rs->contig_num];
+		}
 
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			sw_full_cs(gen, goff, glen,
