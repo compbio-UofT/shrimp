@@ -59,7 +59,7 @@ uw_anchor_to_anchor(struct uw_anchor const * src, struct anchor * dest, uint32_t
 static inline void
 reverse_anchor(struct anchor * a, uint x_len, uint y_len) {
   a->x = (int16_t)(((int64_t)x_len - 1) - ((int64_t)a->x + (int64_t)a->length - 1 + (int64_t)a->width - 1));
-  a->y = (int16_t)(((int64_t)y_len - 1) - ((int64_t)a->y + (int64_t)a->length - 1 + (int64_t)a->width - 1));
+  a->y = (int16_t)(((int64_t)y_len - 1) - ((int64_t)a->y + (int64_t)a->length - 1 - ((int64_t)a->width - 1)));
 }
 
 
