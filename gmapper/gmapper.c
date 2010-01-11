@@ -1323,10 +1323,11 @@ handle_read(read_entry *re){
 	read_get_mapidxs(re);
 
 #ifdef DEBUG_KMERS
+	{
+	  uint sn, i, j;
 	fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
 			re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
 	fprintf(stderr, "collapsed kmers from read:\n");
-	uint sn;
 	for (sn = 0; sn < n_seeds; sn++) {
 		fprintf(stderr, "sn:%u\n", sn);
 		for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
@@ -1334,7 +1335,6 @@ handle_read(read_entry *re){
 			if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
 				fprintf(stderr, "X\n");
 			} else {
-				uint j;
 				for (j = 0; j < seed[sn].weight; j++) {
 					fprintf(stderr, "%c%s",
 							base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
@@ -1352,7 +1352,6 @@ handle_read(read_entry *re){
 			if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
 				fprintf(stderr, "X\n");
 			} else {
-				uint j;
 				for (j = 0; j < seed[sn].weight; j++) {
 					fprintf(stderr, "%c%s",
 							base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
@@ -1361,6 +1360,7 @@ handle_read(read_entry *re){
 				}
 			}
 		}
+	}
 	}
 #endif
 
