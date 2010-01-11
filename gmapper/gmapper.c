@@ -1124,7 +1124,7 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	  }
 
 #ifdef DEBUG_VECTOR_CALLS
-	  fprintf(stderr, " saving hit (score:%u,anchor:[%u,%u,%u,%u])\n",
+	  fprintf(stderr, " saving hit (score:%u,anchor:[%d,%d,%u,%u])\n",
 		  score, a[2].x, a[2].y, a[2].length, a[2].width);
 #endif
 	  save_score(re, score, goff, cn, rc > 0, &a[2]);
@@ -1205,7 +1205,7 @@ read_pass2(read_entry * re) {
     }
 
 #ifdef DEBUG_SW_FULL_CALLS
-    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u,anchor:(%u,%u,%u,%u))\n",
+    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u,anchor:(%d,%d,%u,%u))\n",
 	    re->name, rs->contig_num, rs->rev_cmpl, goff, glen,
 	    rs->anchor.x, rs->anchor.y, rs->anchor.length, rs->anchor.width);
 #endif
