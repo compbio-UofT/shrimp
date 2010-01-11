@@ -1067,8 +1067,12 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	 * Passed select filter; try SW filter
 	 */
 #ifdef DEBUG_VECTOR_CALLS
-	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (i:%u,max_idx:%u)",
-		re->name, cn, rc, goff, glen, i, max_idx);
+	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (i:(%u,%u,%u,%u,%u),max_idx:(%u,%u,%u,%u,%u))",
+		re->name, cn, rc, goff, glen,
+		re->anchors[rc][i].x, re->anchors[rc][i].y,
+		re->anchors[rc][i].length, re->anchors[rc][i].weight, re->anchors[rc][i].cn,
+		re->anchors[rc][max_idx].x, re->anchors[rc][max_idx].y,
+		re->anchors[rc][max_idx].length, re->anchors[rc][max_idx].weight, re->anchors[rc][max_idx].cn);
 #endif
 	if (hash_filter_calls) {
 	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE?
@@ -1199,6 +1203,12 @@ read_pass2(read_entry * re) {
     } else {
       gen = genome_contigs[rs->contig_num];
     }
+
+#ifdef DEBUG_SW_FULL_CALLS
+    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u,anchor:(%u,%u,%u,%u))\n",
+	    re->name, rs->contig_num, rs->rev_cmpl, goff, glen,
+	    rs->anchor.x, rs->anchor.y, rs->anchor.length, rs->anchor.width);
+#endif
 
     if (shrimp_mode == MODE_COLOUR_SPACE) {
       sw_full_cs(gen, goff, glen,
