@@ -1205,8 +1205,8 @@ read_pass2(read_entry * re) {
     }
 
 #ifdef DEBUG_SW_FULL_CALLS
-    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u,anchor:(%d,%d,%u,%u))\n",
-	    re->name, rs->contig_num, rs->rev_cmpl, goff, glen,
+    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,g_idx:%u,glen:%u,anchor:(%d,%d,%u,%u))\n",
+	    re->name, rs->contig_num, rs->rev_cmpl, goff, rs->g_idx, glen,
 	    rs->anchor.x, rs->anchor.y, rs->anchor.length, rs->anchor.width);
 #endif
 
