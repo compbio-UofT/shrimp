@@ -1067,12 +1067,13 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	 * Passed select filter; try SW filter
 	 */
 #ifdef DEBUG_VECTOR_CALLS
-	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (i:(%u,%u,%u,%u,%u),max_idx:(%u,%u,%u,%u,%u))",
+	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (max_idx:(%u,%u,%u,%u,%u),i:(%u,%u,%u,%u,%u),contig_offset:%u)",
 		re->name, cn, rc, goff, glen,
+		re->anchors[rc][max_idx].x, re->anchors[rc][max_idx].y,
+		re->anchors[rc][max_idx].length, re->anchors[rc][max_idx].weight, re->anchors[rc][max_idx].cn,
 		re->anchors[rc][i].x, re->anchors[rc][i].y,
 		re->anchors[rc][i].length, re->anchors[rc][i].weight, re->anchors[rc][i].cn,
-		re->anchors[rc][max_idx].x, re->anchors[rc][max_idx].y,
-		re->anchors[rc][max_idx].length, re->anchors[rc][max_idx].weight, re->anchors[rc][max_idx].cn);
+		contig_offsets[cn]);
 #endif
 	if (hash_filter_calls) {
 	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE?
@@ -1116,11 +1117,11 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	  struct anchor a[3];
 
 	  if (max_idx < i) {
-	    uw_anchor_to_anchor(&re->anchors[rc][i], &a[0], goff);
-	    uw_anchor_to_anchor(&re->anchors[rc][max_idx], &a[1], goff);
+	    uw_anchor_to_anchor(&re->anchors[rc][i], &a[0], contig_offsets[cn] + goff);
+	    uw_anchor_to_anchor(&re->anchors[rc][max_idx], &a[1], contig_offsets[cn] + goff);
 	    join_anchors(a, 2, &a[2]);
 	  } else {
-	    uw_anchor_to_anchor(&re->anchors[rc][i], &a[2], goff);
+	    uw_anchor_to_anchor(&re->anchors[rc][i], &a[2], contig_offsets[cn] + goff);
 	  }
 
 #ifdef DEBUG_VECTOR_CALLS
