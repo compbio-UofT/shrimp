@@ -1066,6 +1066,10 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	/*
 	 * Passed select filter; try SW filter
 	 */
+#ifdef DEBUG_VECTOR_CALLS
+	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (i:%u,max_idx:%u)",
+		re->name, cn, rc, goff, glen, i, max_idx);
+#endif
 	if (hash_filter_calls) {
 	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE?
 						 genome_cs_contigs[cn] : genome_contigs[cn],
@@ -1115,10 +1119,19 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	    uw_anchor_to_anchor(&re->anchors[rc][i], &a[2], goff);
 	  }
 
+#ifdef DEBUG_VECTOR_CALLS
+	  fprintf(stderr, " saving hit (score:%u,anchor:[%u,%u,%u,%u])\n",
+		  score, a[2].x, a[2].y, a[2].length, a[2].width);
+#endif
 	  save_score(re, score, goff, cn, rc > 0, &a[2]);
 	  re->sw_hits++;
 	  last_cn = cn;
 	  last_goff = goff;
+#ifdef DEBUG_VECTOR_CALLS
+	} else {
+	  fprintf(stderr, " did not pass threshold (score:%u,thres:%u)\n",
+		  score, (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len));
+#endif
 	}
       }
     }
@@ -1345,17 +1358,19 @@ handle_read(read_entry *re){
 #ifdef DEBUG_ANCHOR_LIST
 	{
 #warning Dumping anchor list.
-		uint i;
-		fprintf(stderr,"read anchors:\n");
-		for(i = 0; i < re->n_anchors[0]; i++){
-			fprintf(stderr,"(%u,%u,%u)%s",re->anchors[0][i].x, re->anchors[0][i].length, re->anchors[0][i].weight,
-					i < re->n_anchors[0]-1? "," : "\n");
-		}
-		fprintf(stderr,"read_rc anchors:\n");
-		for(i = 0; i < re->n_anchors[1]; i++){
-			fprintf(stderr,"(%u,%u,%u)%s",re->anchors[1][i].x, re->anchors[1][i].length, re->anchors[1][i].weight,
-					i < re->n_anchors[1]-1? "," : "\n");
-		}
+	  uint i;
+	  fprintf(stderr,"read anchors:\n");
+	  for(i = 0; i < re->n_anchors[0]; i++){
+	    fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[0][i].x, re->anchors[0][i].y,
+		    re->anchors[0][i].length, re->anchors[0][i].weight,
+		    i < re->n_anchors[0]-1? "," : "\n");
+	  }
+	  fprintf(stderr,"read_rc anchors:\n");
+	  for(i = 0; i < re->n_anchors[1]; i++){
+	    fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[1][i].x, re->anchors[0][i].y,
+		    re->anchors[1][i].length, re->anchors[1][i].weight,
+		    i < re->n_anchors[1]-1? "," : "\n");
+	  }
 	}
 #endif
 
