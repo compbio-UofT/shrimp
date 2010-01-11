@@ -38,8 +38,6 @@ static double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
 static uint	num_matches		= DEF_NUM_MATCHES;
 static uint	num_outputs		= DEF_NUM_OUTPUTS;
-static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
-static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 
@@ -51,6 +49,11 @@ static int	a_gap_extend_score	= DEF_A_GAP_EXTEND;
 static int	b_gap_open_score	= DEF_B_GAP_OPEN;
 static int	b_gap_extend_score	= DEF_B_GAP_EXTEND;
 static int	crossover_score		= DEF_XOVER_PENALTY;
+
+/* Score Thresholds */
+static double	window_gen_threshold	= DEF_WINDOW_GEN_THRESHOLD;
+static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
+static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Flags */
 static int Bflag = false;			/* print a progress bar */
@@ -997,45 +1000,53 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
     else
       gstart = 0;
 
-    // by default, anchor matched by itself
+    /*
+     * Two modes of matching:
+     * 1. single kmer match & no window_gen_threshold check
+     * 2. at least two kmer matches & window_gen_threshold check
+     */
     max_idx = i;
-    // hack: avoid single matches
-    if (re->anchors[rc][i].weight > 1)
-      max_score = re->anchors[rc][i].length * match_score;
-    else
-      max_score = 0;
+    max_score = 0;
 
-    for (j = (int)i - 1;
-	 j >= 0
-	   && re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
-	 j--) {
-      if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
-	continue;
+    if (num_matches > 1) {
+      // avoid single matches
+      if (re->anchors[rc][i].weight > 1)
+	max_score = re->anchors[rc][i].length * match_score;
 
-      if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
-	  > (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
-	{ // deletion in read
-	  short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-	  long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+      for (j = (int)i - 1;
+	   j >= 0
+	     && re->anchors[rc][j].x >= contig_offsets[cn] + gstart;
+	   j--) {
+	if (re->anchors[rc][j].y >= re->anchors[rc][i].y)
+	  continue;
+
+	if ((int64_t)(re->anchors[rc][i].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][i].y
+	    > (int64_t)(re->anchors[rc][j].x - contig_offsets[cn]) - (int64_t)re->anchors[rc][j].y)
+	  { // deletion in read
+	    short_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	    long_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+	  }
+	else
+	  { // insertion in read
+	    short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
+	    long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
+	  }
+
+	if (long_len > short_len)
+	  tmp_score = short_len * match_score + b_gap_open_score
+	    + (long_len - short_len) * b_gap_extend_score;
+	else
+	  tmp_score = short_len * match_score;
+
+	if (tmp_score > max_score) {
+	  max_idx = j;
+	  max_score = tmp_score;
 	}
-      else
-	{ // insertion in read
-	  short_len = (re->anchors[rc][i].x - re->anchors[rc][j].x) + re->anchors[rc][i].length;
-	  long_len = (re->anchors[rc][i].y - re->anchors[rc][j].y) + re->anchors[rc][i].length;
-	}
-
-      if (long_len > short_len)
-	tmp_score = short_len * match_score + b_gap_open_score + (long_len - short_len) * b_gap_extend_score;
-      else
-	tmp_score = short_len * match_score;
-
-      if (tmp_score > max_score) {
-	max_idx = j;
-	max_score = tmp_score;
       }
     }
 
-    if (max_score >= (int)abs_or_pct(55.0, re->read_len * match_score)) {
+    if (num_matches == 1 // (mode 1; then max_idx == i)
+	|| max_score >= (int)abs_or_pct(window_gen_threshold, re->read_len * match_score)) {
       // try SW filter call
       x_len = (re->anchors[rc][i].x - re->anchors[rc][max_idx].x) + re->anchors[rc][i].length;
 
@@ -1056,7 +1067,8 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	 * Passed select filter; try SW filter
 	 */
 	if (hash_filter_calls) {
-	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE? genome_cs_contigs[cn] : genome_contigs[cn],
+	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE?
+						 genome_cs_contigs[cn] : genome_contigs[cn],
 						 goff, glen);
 	  hash_val %= 1048576;
 
@@ -1127,172 +1139,142 @@ read_pass1(struct read_entry * re) {
  */
 static void
 read_pass2(read_entry * re) {
-	uint i;
-	int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
-	struct sw_full_results last_sfr;
+  uint i;
+  int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
+  struct sw_full_results last_sfr;
 
-	assert(re != NULL && re->scores != NULL);
+  assert(re != NULL && re->scores != NULL);
 
-	/* compute full alignment scores */
-	for (i = 1; i <= re->scores[0].heap_elems; i++) {
-		struct re_score * rs = &re->scores[i];
-		uint32_t * gen;
-		uint goff, glen;
+  /* compute full alignment scores */
+  for (i = 1; i <= re->scores[0].heap_elems; i++) {
+    struct re_score * rs = &re->scores[i];
+    uint32_t * gen;
+    uint goff, glen;
 
-		rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
+    rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
 
-		/*
-		if (rs->rev_cmpl) {
-			gen = genome_contigs_rc[rs->contig_num];
-			goff = rs->g_idx + re->window_len - 1;
-			if (goff <= genome_len[rs->contig_num] - 1) {
-				goff = genome_len[rs->contig_num] - 1 - goff;
-				reverse_anchor(&rs->anchor, re->window_len, re->read_len);
-			} else {
-				goff = 0;
-				reverse_anchor(&rs->anchor, genome_len[rs->contig_num] - rs->g_idx, re->read_len);
-			}
-		} else {
-			gen = genome_contigs[rs->contig_num];
-			goff = rs->g_idx;
-		}
+    /*
+      if (rs->rev_cmpl) {
+      gen = genome_contigs_rc[rs->contig_num];
+      goff = rs->g_idx + re->window_len - 1;
+      if (goff <= genome_len[rs->contig_num] - 1) {
+      goff = genome_len[rs->contig_num] - 1 - goff;
+      reverse_anchor(&rs->anchor, re->window_len, re->read_len);
+      } else {
+      goff = 0;
+      reverse_anchor(&rs->anchor, genome_len[rs->contig_num] - rs->g_idx, re->read_len);
+      }
+      } else {
+      gen = genome_contigs[rs->contig_num];
+      goff = rs->g_idx;
+      }
 
-		glen = re->window_len;
-		if (goff + glen > genome_len[rs->contig_num])
-			glen = genome_len[rs->contig_num] - goff;
-		*/
+      glen = re->window_len;
+      if (goff + glen > genome_len[rs->contig_num])
+      glen = genome_len[rs->contig_num] - goff;
+    */
 
-		goff = rs->g_idx;
-		glen = re->window_len;
-		if (goff + glen > genome_len[rs->contig_num])
-		  glen = genome_len[rs->contig_num] - goff;
+    goff = rs->g_idx;
+    glen = re->window_len;
+    if (goff + glen > genome_len[rs->contig_num])
+      glen = genome_len[rs->contig_num] - goff;
 
-		if (rs->rev_cmpl) {
-		  gen = genome_contigs_rc[rs->contig_num];
-		  goff = genome_len[rs->contig_num] - goff - glen;
-		  reverse_anchor(&rs->anchor, glen, re->read_len);
-		} else {
-		  gen = genome_contigs[rs->contig_num];
-		}
+    if (rs->rev_cmpl) {
+      gen = genome_contigs_rc[rs->contig_num];
+      goff = genome_len[rs->contig_num] - goff - glen;
+      reverse_anchor(&rs->anchor, glen, re->read_len);
+    } else {
+      gen = genome_contigs[rs->contig_num];
+    }
 
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			sw_full_cs(gen, goff, glen,
-				   re->read[0], re->read_len, re->initbp[0],
-				   thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna,
-				   &rs->anchor, 1);
-		} else {
-			/*
-			 * The full SW in letter space assumes it's given the correct max score.
-			 * This might not be true just yet if we're using hashing&caching because
-			 * of possible hash collosions.
-			 */
-			rs->score = sw_vector(gen, goff, glen,
-					re->read[0], re->read_len,
-					NULL, -1, genome_is_rna);
-			if (rs->score >= thresh) {
-				sw_full_ls(gen, goff, glen,
-					   re->read[0], re->read_len,
-					   thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,
-					   &rs->anchor, 1);
-				assert(rs->sfrp->score == rs->score);
-			} else { // this wouldn't have passed the filter; eliminated in loop below
-				rs->sfrp->score = rs->score;
-				rs->sfrp->dbalign = NULL;
-				rs->sfrp->qralign = NULL;
-			}
-		}
-		rs->score = rs->sfrp->score;
-	}
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      sw_full_cs(gen, goff, glen,
+		 re->read[0], re->read_len, re->initbp[0],
+		 thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna,
+		 &rs->anchor, 1);
+    } else {
+      /*
+       * The full SW in letter space assumes it's given the correct max score.
+       * This might not be true just yet if we're using hashing&caching because
+       * of possible hash collosions.
+       */
+      rs->score = sw_vector(gen, goff, glen,
+			    re->read[0], re->read_len,
+			    NULL, -1, genome_is_rna);
+      if (rs->score >= thresh) {
+	sw_full_ls(gen, goff, glen,
+		   re->read[0], re->read_len,
+		   thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,
+		   &rs->anchor, 1);
+	assert(rs->sfrp->score == rs->score);
+      } else { // this wouldn't have passed the filter; eliminated in loop below
+	rs->sfrp->score = rs->score;
+	rs->sfrp->dbalign = NULL;
+	rs->sfrp->qralign = NULL;
+      }
+    }
+    rs->score = rs->sfrp->score;
+  }
 
-	/* sort scores */
-	qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+  /* sort scores */
+  qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
 
-	/* Output sorted list, removing any duplicates. */
-	if (re->scores[0].heap_elems > 0) {
+  /* Output sorted list, removing any duplicates. */
+  if (re->scores[0].heap_elems > 0 && re->scores[1].score >= thresh) {
 #pragma omp atomic
-	  reads_matched++;
-	}
-	memset(&last_sfr, 0, sizeof(last_sfr));
-	for (i = 1; i <= re->scores[0].heap_elems; i++) {
-		struct re_score * rs = &re->scores[i];
-		bool dup;
+    reads_matched++;
+  }
+  memset(&last_sfr, 0, sizeof(last_sfr));
+  for (i = 1; i <= re->scores[0].heap_elems; i++) {
+    struct re_score * rs = &re->scores[i];
+    bool dup;
 
-		dup = sw_full_results_equal(&last_sfr, rs->sfrp);
-		if (dup)
-			count_increment(&dup_hits_c);
+    dup = sw_full_results_equal(&last_sfr, rs->sfrp);
+    if (dup)
+      count_increment(&dup_hits_c);
 
-		if (rs->score >= thresh && dup == false) {
-			char *output1 = NULL,*output2 = NULL,*format;
+    if (rs->score >= thresh && dup == false) {
+      char *output1 = NULL,*output2 = NULL,*format;
 
-			re->final_matches++;
+      re->final_matches++;
 
-			output1 = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
-					genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
-					re->read_len, re->initbp[0], rs->rev_cmpl, Rflag);
+      output1 = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
+			      genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
+			      re->read_len, re->initbp[0], rs->rev_cmpl, Rflag);
 
-			if (Pflag) {
-				output2 = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
-						genome_contigs[rs->contig_num], genome_len[rs->contig_num],
-						(shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
-						re->read_len, re->initbp[0], rs->rev_cmpl);
-			}
-			if(output2 != NULL){
-				format = (char *)"%s\n\n%s\n";
-			} else{
-				format = (char *)"%s\n";
-			}
+      if (Pflag) {
+	output2 = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
+				genome_contigs[rs->contig_num], genome_len[rs->contig_num],
+				(shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
+				re->read_len, re->initbp[0], rs->rev_cmpl);
+      }
+      if(output2 != NULL){
+	format = (char *)"%s\n\n%s\n";
+      } else{
+	format = (char *)"%s\n";
+      }
 #pragma omp critical (stdout)
-			{
-				fprintf(stdout,format,output1,output2);
-			}
-			free(output1);
-			free(output2);
+      {
+	fprintf(stdout,format,output1,output2);
+      }
+      free(output1);
+      free(output2);
 
 #pragma omp atomic
-			total_matches++;
-		}
+      total_matches++;
+    }
 
-		last_sfr = *rs->sfrp;
-		if (rs->sfrp->dbalign != NULL)
-			free(rs->sfrp->dbalign);
-		if (rs->sfrp->qralign != NULL)
-			free(rs->sfrp->qralign);
-		free(rs->sfrp);
-	}
+    last_sfr = *rs->sfrp;
+    if (rs->sfrp->dbalign != NULL)
+      free(rs->sfrp->dbalign);
+    if (rs->sfrp->qralign != NULL)
+      free(rs->sfrp->qralign);
+    free(rs->sfrp);
+  }
 
-	stat_add(&matches_s, re->final_matches);
+  stat_add(&matches_s, re->final_matches);
 }
 
-static void
-finish_read(read_entry *re){
-
-	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
-	re->scores[0].heap_elems = 0;
-	re->scores[0].heap_capacity = num_outputs;
-
-	read_get_anchor_list(re, true);
-	read_pass1(re);
-
-	if (re->scores[0].heap_elems > 0) {
-		DEBUG("second pass");
-		read_pass2(re);
-	}
-
-	// done with this read; deallocate memory.
-	free(re->scores);
-	free(re->name);
-	free(re->read[0]);
-	free(re->read[1]);
-
-	free(re->mapidx[0]);
-	free(re->mapidx[1]);
-	if (re->has_Ns) {
-		free(re->mapidx_pos[0]);
-		free(re->mapidx_pos[1]);
-	}
-	free(re->anchors[0]);
-	free(re->anchors[1]);
-}
 
 static void
 handle_read(read_entry *re){
@@ -1933,23 +1915,7 @@ print_statistics()
 
 void usage(char *progname,bool full_usage){
 	char *slash;
-	double vect_sw_threshold = -1;
 	uint sn;
-
-	switch (shrimp_mode) {
-	case MODE_LETTER_SPACE:
-		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
-		break;
-	case MODE_COLOUR_SPACE:
-		vect_sw_threshold = DEF_SW_VECT_THRESHOLD;
-		break;
-	case MODE_HELICOS_SPACE:
-		fprintf(stderr,"Helicos mode not supported");
-		exit(1);
-		break;
-	default:
-		assert(0);
-	}
 
 	load_default_seeds();
 
@@ -1985,8 +1951,12 @@ void usage(char *progname,bool full_usage){
 	fprintf(stderr,
 			"    -o    Maximum Hits per Read                   (default: %d)\n",
 			DEF_NUM_OUTPUTS);
+	fprintf(stderr,
+		"    -N    Set the number of threads               (default: %u)\n",
+		DEF_NUM_THREADS);
 
 	fprintf(stderr, "\n");
+
 	fprintf(stderr,
 			"    -m    S-W Match Value                         (default: %d)\n",
 			DEF_MATCH_VALUE);
@@ -2017,33 +1987,31 @@ void usage(char *progname,bool full_usage){
 				"default: %d)\n", DEF_XOVER_PENALTY);
 	}
 
+	fprintf(stderr, "\n");
+
+	fprintf(stderr,
+		"    -r    Window Generation Threshold:            "
+		  "(default: %.02f%%)\n", DEF_WINDOW_GEN_THRESHOLD);
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
-		fprintf(stderr,
-				"    -h    S-W Full Hit Threshold                  "
-				"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
+	  fprintf(stderr,
+		  "    -v    S-W Vector Hit Threshold                "
+		  "(default: %.02f%%)\n", DEF_SW_VECT_THRESHOLD);
 	}
-	if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_HELICOS_SPACE) {
-		fprintf(stderr,
-				"    -v    S-W Vector Hit Threshold                "
-				"(default: %.02f%%)\n", vect_sw_threshold);
-	} else {
-		fprintf(stderr,
-				"    -h    S-W Hit Threshold                       "
-				"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
-	}
+	fprintf(stderr,
+		"    -h    S-W Full Hit Threshold                  "
+		"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
 
 	if (full_usage) {
-		fprintf(stderr, "\n");
-		if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
-			fprintf(stderr,
-					"    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
-					DEF_ANCHOR_WIDTH);
-		}
-
+	  fprintf(stderr, "\n");
+	  if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
+	    fprintf(stderr,
+		    "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
+		    DEF_ANCHOR_WIDTH);
+	    fprintf(stderr,
+		    "    -K    Set the thread chunk size               (default: %u)\n",
+		    DEF_CHUNK_SIZE);
+	  }
 	}
-	fprintf(stderr,"\n");
-	fprintf(stderr,"    -N    Set the number of threads               (default: %u)\n",DEF_NUM_THREADS);
-	fprintf(stderr,"    -K    Set the thread chunk size               (default: %u)\n",DEF_CHUNK_SIZE);
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Options:\n");
@@ -2092,63 +2060,76 @@ void usage(char *progname,bool full_usage){
 }
 
 void print_settings() {
-	static char const my_tab[] = "    ";
-	uint i;
+  static char const my_tab[] = "    ";
+  uint i;
 
-	fprintf(stderr, "Settings:\n");
-	fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
-			(n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
-					seed_to_string(0), seed[0].weight, seed[0].span);
-	for (i = 1; i < n_seeds; i++) {
-		fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
-				seed_to_string(i), seed[i].weight, seed[i].span);
-	}
+  fprintf(stderr, "Settings:\n");
+  fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
+	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
+	  seed_to_string(0), seed[0].weight, seed[0].span);
+  for (i = 1; i < n_seeds; i++) {
+    fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
+	    seed_to_string(i), seed[i].weight, seed[i].span);
+  }
 
-	fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
 
-	if (IS_ABSOLUTE(window_len)) {
-		fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
-	} else {
-		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
-	}
+  if (IS_ABSOLUTE(window_len)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
+  }
 
-	if (IS_ABSOLUTE(window_overlap)) {
-		fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
-	} else {
-		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
-	}
+  if (IS_ABSOLUTE(window_overlap)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
+  }
 
-	fprintf(stderr, "\n");
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
-	fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-		fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
-	}
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-		if (IS_ABSOLUTE(sw_vect_threshold)) {
-			fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
-		} else {
-			fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
-		}
-	}
-	if (IS_ABSOLUTE(sw_full_threshold)) {
-		fprintf(stderr, "%s%-40s%u\n", my_tab,
-				shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
-						(uint)-sw_full_threshold);
-	} else {
-		fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
-				shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
-						sw_full_threshold);
-	}
-	fprintf(stderr, "\n");
-	fprintf(stderr,"%s%-40s%u\n",my_tab,"Number of threads:",num_threads);
-	fprintf(stderr,"%s%-40s%u\n",my_tab,"Thread chuck size:",chunk_size);
-	fprintf(stderr,"%s%-40s%s\n",my_tab,"Hash Filter Calls:", hash_filter_calls? "yes" : "no");
-	fprintf(stderr,"%s%-40s%d%s\n",my_tab,"Anchor Width:", anchor_width, anchor_width == -1? " (disabled)" : "");
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
+  }
+
+  fprintf(stderr, "\n");
+
+  if (IS_ABSOLUTE(window_gen_threshold)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab,
+	    "Window Generation Threshold:", (uint)-window_gen_threshold);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
+	    "Window Generation Threshold:", window_gen_threshold);
+  }
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    if (IS_ABSOLUTE(sw_vect_threshold)) {
+      fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
+    } else {
+      fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
+    }
+  }
+  if (IS_ABSOLUTE(sw_full_threshold)) {
+    fprintf(stderr, "%s%-40s%u\n", my_tab,
+	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    (uint)-sw_full_threshold);
+  } else {
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
+	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    sw_full_threshold);
+  }
+
+  fprintf(stderr, "\n");
+
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of threads:", num_threads);
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Thread chuck size:", chunk_size);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
+	  anchor_width == -1? " (disabled)" : "");
 
 }
 
@@ -2251,10 +2232,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:x:h:v:N:K:BCFHPRTUA:MW:S:L:DZ";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZ";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:r:m:i:g:q:e:f:h:X:N:K:BCFHPRTUA:MW:S:L:DZ";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZ";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -2299,9 +2280,6 @@ int main(int argc, char **argv){
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
-			break;
-		case 'r':
-			/* max_read_len is gone - silently ignore */
 			break;
 		case 'm':
 			match_score = atoi(optarg);
@@ -2352,6 +2330,15 @@ int main(int argc, char **argv){
 			if (strcspn(optarg, "%.") == strlen(optarg))
 				sw_vect_threshold = -sw_vect_threshold;	//absol.
 			break;
+		case 'r':
+		  window_gen_threshold = atof(optarg);
+		  if (window_gen_threshold < 0.0) {
+		    fprintf(stderr, "error: invalid window generation threshold [%s]\n", optarg);
+		    exit(1);
+		  }
+		  if (strcspn(optarg, "%.") == strlen(optarg))
+		    window_gen_threshold = -window_gen_threshold;	//absol.
+		  break;
 		case 'B':
 			Bflag = true;
 			break;
@@ -2532,8 +2519,22 @@ int main(int argc, char **argv){
 
 	if (shrimp_mode == MODE_COLOUR_SPACE && !IS_ABSOLUTE(sw_vect_threshold) &&
 			sw_vect_threshold > 100.0) {
-		fprintf(stderr, "error: invalid s-w full hit threshold\n");
+		fprintf(stderr, "error: invalid s-w vector threshold\n");
 		exit(1);
+	}
+
+	if (!IS_ABSOLUTE(window_gen_threshold)
+	    && window_gen_threshold > 100.0) {
+	  fprintf(stderr, "error: invalid window generation threshold\n");
+	  exit(1);
+	}
+
+	if ((IS_ABSOLUTE(window_gen_threshold) && IS_ABSOLUTE(sw_full_threshold)
+	     && -window_gen_threshold > -sw_full_threshold)
+	    ||
+	    (!IS_ABSOLUTE(window_gen_threshold) && !IS_ABSOLUTE(sw_full_threshold)
+	     && window_gen_threshold > sw_full_threshold)) {
+	  fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
 	}
 
 	if ((a_gap_open_set && !b_gap_open_set)

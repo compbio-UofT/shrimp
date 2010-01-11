@@ -14,10 +14,11 @@
 
 
 /* Default parameters */
-#define DEF_WINDOW_LEN		135.0
+#define DEF_WINDOW_LEN		140.0
 #define DEF_WINDOW_OVERLAP	80.0
-#define DEF_NUM_MATCHES		4
+#define DEF_NUM_MATCHES		2
 #define DEF_NUM_OUTPUTS		100
+#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 
 /* SW Scores */
 #define DEF_MATCH_VALUE		10
@@ -28,10 +29,10 @@
 #define DEF_B_GAP_EXTEND	 DEF_A_GAP_EXTEND
 #define DEF_XOVER_PENALTY	-14	/* CS only */
 
+/* Score Thresholds */
+#define DEF_WINDOW_GEN_THRESHOLD	55.0	/* Min required to generate match window */
 #define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
-
-#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 
 
 #define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */

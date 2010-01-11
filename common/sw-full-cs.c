@@ -521,6 +521,15 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
   if (cell->from[k].score_n > fromscore)
     from = cell->from[k].back_n;
 
+  if (from == 0) {
+    int l, base;
+    fprintf(stderr, "Assertion failed.\nQr:");
+    for (l = 1, base = qr[0][0]; l < qrlen; l++) {
+      fprintf(stderr, "%d", lstocs(base, qr[0][l], false));
+      base = qr[0][l];
+    }
+    fprintf(stderr, "\n");
+  }
   assert(from != 0);
 
   /* fill out the backtrace */
