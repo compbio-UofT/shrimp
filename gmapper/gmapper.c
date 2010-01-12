@@ -79,7 +79,6 @@ static stat_t	matches_s;
 
 static uint64_t total_matches;
 static uint64_t reads_matched;
-static count_t f1_calls_bypassed;
 
 static uint64_t nreads;
 
@@ -1814,6 +1813,7 @@ print_statistics()
 	double f1_secs[num_threads], f1_cellspersec[num_threads];
 	uint64_t f1_total_invocs = 0, f1_total_cells = 0;
 	double f1_total_secs = 0, f1_total_cellspersec = 0;
+	uint64_t f1_calls_bypassed = 0;
 
 	uint64_t f2_invocs[num_threads], f2_cells[num_threads], f2_ticks[num_threads];
 	double f2_secs[num_threads], f2_cellspersec[num_threads];
@@ -1857,6 +1857,7 @@ print_statistics()
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
 	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
 	}
+	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
 	fprintf(stderr, "\nStatistics:\n");
 
