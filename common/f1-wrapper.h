@@ -71,7 +71,7 @@ f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rle
   
   /* Look-up */
   if (hash_filter_calls && tag != 0) {
-    hash_val = hash_genome_window(genome, goff, glen) % f1_window_cache_size;
+    hash_val = hash_genome_window(genome, goff, wlen) % f1_window_cache_size;
 
     if (f1_window_cache[hash_val].tag == tag) { // Cache hit
       return f1_window_cache[hash_val].score;

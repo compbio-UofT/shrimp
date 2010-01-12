@@ -1072,6 +1072,7 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	 * Passed select filter; try SW filter
 	 */
 #ifdef DEBUG_VECTOR_CALLS
+#warning Dumping SW Vector Calls.
 	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (max_idx:(%u,%u,%u,%u,%u),i:(%u,%u,%u,%u,%u),contig_offset:%u,g_idx:%u,r_idx:%u)",
 		re->name, cn, rc, goff, glen,
 		re->anchors[rc][max_idx].x, re->anchors[rc][max_idx].y,
