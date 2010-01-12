@@ -9,6 +9,7 @@
 #define DEF_CHUNK_SIZE 1000
 
 #define DEF_HASH_FILTER_CALLS	true
+#define DEF_GAPLESS_SW		false
 
 struct re_score {
   struct sw_full_results * sfrp;	/* alignment results (final pass) */

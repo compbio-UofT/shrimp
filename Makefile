@@ -54,8 +54,8 @@ rmapper/rmapper.o: rmapper/rmapper.c common/bitmap.h common/anchors.h
 #
 
 bin/gmapper: mapper/mapper.o gmapper/gmapper.o common/fasta.o common/util.o common/bitmap.o \
-	common/sw-vector.o common/sw-full-cs.o common/sw-full-ls.o common/output.o common/anchors.o \
-	common/input.o
+	common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o common/sw-full-ls.o \
+	common/output.o common/anchors.o common/input.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
@@ -156,6 +156,9 @@ common/sw-full-ls.o: common/sw-full-ls.c common/sw-full-ls.h common/sw-full-comm
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/sw-vector.o: common/sw-vector.c common/sw-vector.h common/util.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/sw-gapless.o: common/sw-gapless.c common/sw-gapless.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/util.o: common/util.c common/util.h

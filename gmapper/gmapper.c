@@ -40,6 +40,10 @@ static uint	num_matches		= DEF_NUM_MATCHES;
 static uint	num_outputs		= DEF_NUM_OUTPUTS;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
+static bool	gapless_sw		= DEF_GAPLESS_SW;
+
+#include "../common/f1-wrapper.h"
+
 
 /* Scores */
 static int	match_score		= DEF_MATCH_VALUE;
@@ -115,14 +119,14 @@ static uint64_t wait_ticks[50];
 
 
 /* Thread-private */
-static uint32_t hash_mark;
-struct window_cache_entry {
-  uint32_t mark;
-  uint32_t score;
-};
-static struct window_cache_entry * window_cache;
+//static uint32_t hash_mark;
+//struct window_cache_entry {
+//  uint32_t mark;
+//  uint32_t score;
+//};
+//static struct window_cache_entry * window_cache;
 
-#pragma omp threadprivate(hash_mark, window_cache)
+//#pragma omp threadprivate(hash_mark, window_cache)
 
 
 /* kmer_to_mapidx function */
@@ -984,7 +988,8 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
   int last_cn = -1;
   uint32_t last_goff = 0;
 
-  hash_mark++;
+  //hash_mark++;
+  f1_hash_tag++;
 
   for (i = 0; i < re->n_anchors[rc]; i++) {
     // get contig num of crt anchor
@@ -1067,14 +1072,17 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 	 * Passed select filter; try SW filter
 	 */
 #ifdef DEBUG_VECTOR_CALLS
-	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (max_idx:(%u,%u,%u,%u,%u),i:(%u,%u,%u,%u,%u),contig_offset:%u)",
+	fprintf(stderr, "SW vector call: (name:[%s],cn:%u,rc:%u,goff:%u,glen:%u) (max_idx:(%u,%u,%u,%u,%u),i:(%u,%u,%u,%u,%u),contig_offset:%u,g_idx:%u,r_idx:%u)",
 		re->name, cn, rc, goff, glen,
 		re->anchors[rc][max_idx].x, re->anchors[rc][max_idx].y,
 		re->anchors[rc][max_idx].length, re->anchors[rc][max_idx].weight, re->anchors[rc][max_idx].cn,
 		re->anchors[rc][i].x, re->anchors[rc][i].y,
 		re->anchors[rc][i].length, re->anchors[rc][i].weight, re->anchors[rc][i].cn,
-		contig_offsets[cn]);
+		contig_offsets[cn],
+		re->anchors[rc][i].x - contig_offsets[cn], re->anchors[rc][i].y);
 #endif
+
+	/*
 	if (hash_filter_calls) {
 	  uint32_t hash_val = hash_genome_window(shrimp_mode == MODE_COLOUR_SPACE?
 						 genome_cs_contigs[cn] : genome_contigs[cn],
@@ -1112,6 +1120,16 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 			      NULL, -1, genome_is_rna);
 	  }
 	}
+	*/
+
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+	  score = f1_run(genome_cs_contigs[cn], genome_len[cn], goff, glen,
+			 re->read[rc], re->read_len, re->anchors[rc][i].x - contig_offsets[cn], re->anchors[rc][i].y,
+			 genome_contigs[cn], re->initbp[rc], genome_is_rna, f1_hash_tag);
+	else
+	  score = f1_run(genome_contigs[cn], genome_len[cn], goff, glen,
+			 re->read[rc], re->read_len, re->anchors[rc][i].x - contig_offsets[cn], re->anchors[rc][i].y,
+			 NULL, -1, genome_is_rna, f1_hash_tag);
 
 	if (score >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
 	  struct anchor a[3];
@@ -1817,7 +1835,7 @@ print_statistics()
 	{
 	  int tid = omp_get_thread_num();
 
-	  sw_vector_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid]);
+	  f1_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid]);
 
 	  f1_secs[tid] = (double)f1_ticks[tid] / hz;
 	  f1_cellspersec[tid] = (double)f1_cells[tid] / f1_secs[tid];
@@ -2261,10 +2279,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZ";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZG";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZ";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZG";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -2445,6 +2463,9 @@ int main(int argc, char **argv){
 			break;
 		case 'Z':
 		  hash_filter_calls = !hash_filter_calls;
+		  break;
+		case 'G':
+		  gapless_sw = true;
 		  break;
 		default:
 			usage(progname, false);
@@ -2631,13 +2652,13 @@ int main(int argc, char **argv){
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-	  hash_mark = 0;
-	  window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
+	  //hash_mark = 0;
+	  //window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
 
-		if (sw_vector_setup(max_window_len, longest_read_len,
-				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-				match_score, mismatch_score,
-				shrimp_mode == MODE_COLOUR_SPACE, false)) {
+		if (f1_setup(max_window_len, longest_read_len,
+			     a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+			     match_score, mismatch_score,
+			     shrimp_mode == MODE_COLOUR_SPACE, false)) {
 			fprintf(stderr, "failed to initialise vector "
 					"Smith-Waterman (%s)\n", strerror(errno));
 			exit(1);
