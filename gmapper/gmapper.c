@@ -1608,7 +1608,10 @@ void print_genomemap_stats() {
 	fprintf(stderr, "Genome Map stats:\n");
 
 	for (sn = 0; sn < n_seeds; sn++) {
-		capacity = power(4, seed[sn].weight);
+	  if (Hflag)
+	    capacity = power(4, HASH_TABLE_POWER);
+	  else
+	    capacity = power(4, seed[sn].weight);
 
 		stat_init(&list_size);
 		stat_init(&list_size_non0);
