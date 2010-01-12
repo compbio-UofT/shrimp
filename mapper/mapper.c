@@ -84,7 +84,7 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
 {
 	bitmap_type a = seed[sn].mask[0];
 	uint32_t mapidx = 0;
-	int i = seed[sn].span - 1;
+	int i = 0;
 
 	do {
 		if ((a & 0x1) == 0x1) {
@@ -92,7 +92,7 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
 			mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
 		}
 		a >>= 1;
-		i--;
+		i++;
 
 	} while (a != 0x0);
 
