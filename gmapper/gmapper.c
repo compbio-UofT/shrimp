@@ -1836,7 +1836,7 @@ print_statistics()
 	{
 	  int tid = omp_get_thread_num();
 
-	  f1_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid]);
+	  f1_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid], NULL);
 
 	  f1_secs[tid] = (double)f1_ticks[tid] / hz;
 	  f1_cellspersec[tid] = (double)f1_cells[tid] / f1_secs[tid];

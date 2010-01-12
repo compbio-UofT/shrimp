@@ -16,6 +16,8 @@
 
 static int const f1_window_cache_size = 1048576;
 
+static uint64_t f1_calls_bypassed;
+
 
 /* Thread-private */
 static uint32_t f1_hash_tag;
@@ -49,9 +51,16 @@ f1_setup(int _dblen, int _qrlen,
 }
 
 
+/*
+ * Get statistics of this filter.
+ * Called independently by various threads.
+ */
 static inline void
-f1_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
+f1_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks, uint64_t *calls_bypassed)
 {
+  if (calls_bypassed != NULL)
+    *calls_bypassed = f1_calls_bypassed;
+
   if (!gapless_sw)
     return sw_vector_stats(invocs, cells, ticks);
   else
@@ -60,7 +69,8 @@ f1_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 
 
 /*
- * Run SW filter. If tag != 0, look up score in hash table.
+ * Run SW filter. Called independently by different threads.
+ * If tag != 0, look up score in hash table.
  */
 static inline int
 f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rlen, int g_idx, int r_idx,
@@ -74,6 +84,9 @@ f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rle
     hash_val = hash_genome_window(genome, goff, wlen) % f1_window_cache_size;
 
     if (f1_window_cache[hash_val].tag == tag) { // Cache hit
+#pragma omp atomic
+      f1_calls_bypassed++;
+
       return f1_window_cache[hash_val].score;
     }
   }
