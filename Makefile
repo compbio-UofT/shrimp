@@ -23,7 +23,7 @@ LN=ln
 #endif
 #endif
 
-all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var
+all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var bin/shrimp2sam
 
 
 #
@@ -108,6 +108,19 @@ bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
 prettyprint/prettyprint.o: prettyprint/prettyprint.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# shrimp2sam
+#
+
+bin/shrimp2sam: shrimp2sam/shrimp2sam.o common/fasta.o common/dynhash.o \
+    common/input.o common/output.o \
+    common/util.o common/anchors.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+	$(LN) -sf prettyprint bin/prettyprint-ls
+
+shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

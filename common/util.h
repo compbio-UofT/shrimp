@@ -85,6 +85,8 @@ uint32_t *
 reverse_complement_read_cs(uint32_t * read,int8_t initbp, int8_t initbp_rc, uint32_t len, bool is_rna);
 uint32_t *
 reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna);
+void
+reverse_complement_read_ls_text(char * read, char *ret);
 uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
@@ -219,6 +221,8 @@ hash_genome_window(uint32_t * genome, uint goff, uint glen) {
   return key;
 }
 
+void
+edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res);
 
 #ifdef __cplusplus
 } /* extern "C" */

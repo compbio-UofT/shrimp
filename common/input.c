@@ -138,7 +138,7 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 	return (!inparen);
 }
 
-static struct format_spec * 
+struct format_spec *
 format_get_default()
 {
 	struct format_spec *fsp;
@@ -155,7 +155,7 @@ format_get_default()
 	return (fsp);
 }
 
-static struct format_spec *
+struct format_spec *
 format_get_from_string(char *format)
 {
 	struct format_spec *fsp;
@@ -192,7 +192,7 @@ format_get_from_string(char *format)
 	return (fsp);
 }
 
-static void
+void
 format_free(struct format_spec *fsp)
 {
 
@@ -284,6 +284,23 @@ input_free(struct input *inp)
 		free(inp->edit);
 }
 
+void
+input_parse_string(char * buf,struct format_spec *fsp,struct input *inp){
+	if (buf[0] == '>') {
+		buf++;
+	}
+		char *val;
+		int i;
+
+		val = strtok(buf, "\t");
+		for (i = 0; val != NULL; i++) {
+			if (i < fsp->nfields)
+				handle_field(inp, fsp->fields[i], val);
+
+			val = strtok(NULL, "\t");
+		}
+}
+
 /*
  * Parse the key-value paired output created by output_normal in output.c.
  * This will only parse lines beginning with '>', so it'll work just fine
@@ -314,17 +331,7 @@ input_parseline(gzFile fp, struct input *inp)
 			format_free(fsp);
 			fsp = format_get_from_string(buf);
 		} else if (buf[0] == '>') {
-			char *str = &buf[1];
-			char *val;
-			int i;
-
-			val = strtok(str, "\t");
-			for (i = 0; val != NULL; i++) {
-				if (i < fsp->nfields)
-					handle_field(inp, fsp->fields[i], val);
-
-				val = strtok(NULL, "\t");
-			}
+			input_parse_string(buf,fsp,inp);
 
 			break;
 		}

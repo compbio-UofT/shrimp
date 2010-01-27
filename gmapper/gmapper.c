@@ -31,6 +31,7 @@
 #include "../common/sw-full-ls.h"
 #include "../common/sw-vector.h"
 #include "../common/output.h"
+#include "../common/input.h"
 #include "../common/heap.h"
 
 /* Parameters */
@@ -70,6 +71,7 @@ static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
 static int Mflag = true;			/* print memory usage stats */
 static int Dflag = false;			/* print statistics for each thread */
+static int Eflag = false;			/* output sam format */
 
 
 /* Statistics */
@@ -1289,7 +1291,43 @@ read_pass2(read_entry * re) {
 				genome_contigs[rs->contig_num], genome_len[rs->contig_num],
 				(shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
 				re->read_len, re->initbp[0], rs->rev_cmpl);
+      } else if(Eflag){
+    	  struct format_spec *fsp;
+    	  char * output = output_format_line(Rflag);
+    	  fsp = format_get_from_string(output);
+    	  free(output);
+
+    	  struct input inp;
+    	  memset(&inp, 0, sizeof(inp));
+    	  input_parse_string(output1,fsp,&inp);
+    	  char * cigar, *read;
+    	  cigar = (char *)xmalloc(sizeof(char)*200);
+    	  edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
+    	  if(inp.flags & INPUT_FLAG_IS_REVCMPL){
+    		  read = readtostr(re->read[1], re->read_len, false, 0);
+    	  } else {
+    		  read = readtostr(re->read[0], re->read_len, false, 0);
+    	  }
+    	  free(output1);
+    	  output1 = (char *)xmalloc(sizeof(char *)*2000);
+    	  sprintf(output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
+    	  				inp.read,
+    	  				((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
+    	  				inp.genome,
+    	  				inp.genome_start + 1,
+    	  				255,
+    	  				cigar,
+    	  				"*",
+    	  				inp.read_start,
+    	  				0,
+    	  				read,
+    	  				"*",
+    	  				inp.score);
+    	  free(read);
+    	  free(cigar);
+    	  format_free(fsp);
       }
+
       if(output2 != NULL){
 	format = (char *)"%s\n\n%s\n";
       } else{
@@ -2080,6 +2118,9 @@ void usage(char *progname,bool full_usage){
 	fprintf(stderr,
 			"    -P    Pretty Print Alignments                       (default: "
 			"disabled)\n");
+	fprintf(stderr,
+			"    -E    Output in SAM format                          (default: "
+			"disabled)\n");
 
 	fprintf(stderr,
 			"    -R    Print Reads in Output                         (default: "
@@ -2284,7 +2325,7 @@ int main(int argc, char **argv){
 		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZG";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZG";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGE";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -2469,6 +2510,9 @@ int main(int argc, char **argv){
 		case 'G':
 		  gapless_sw = true;
 		  break;
+		case 'E':
+			Eflag = true;
+			break;
 		default:
 			usage(progname, false);
 		}
@@ -2530,6 +2574,15 @@ int main(int argc, char **argv){
 
 	if (shrimp_mode == MODE_LETTER_SPACE)
 		sw_vect_threshold = sw_full_threshold;
+
+	if (Eflag && Pflag){
+		fprintf(stderr,"-E and -P are incompatable\n");
+		exit(1);
+	}
+	if (Eflag && Rflag){
+			fprintf(stderr,"-E and -R are incompatable\n");
+			exit(1);
+		}
 
 	if (!valid_spaced_seeds()) {
 		fprintf(stderr, "error: invalid spaced seed\n");
@@ -2686,10 +2739,20 @@ int main(int argc, char **argv){
 
 
 	char * output;
+	if (Eflag){
+		//Print sam header
+		fprintf(stdout,"@HD\tVN:%i\tSO:%s\n",1,"unsorted");
 
-	output = output_format_line(Rflag);
-	puts(output);
-	free(output);
+		uint s;
+		for(s = 0; s < num_contigs; s++){
+			fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[s],genome_len[s]);
+		}
+		fprintf(stdout,"@PG\tID:%s\tVN:%s\n","gmapper",SHRIMP_VERSION_STRING);
+	} else {
+		output = output_format_line(Rflag);
+		puts(output);
+		free(output);
+	}
 
 	before = gettimeinusecs();
 	launch_scan_threads(reads_file);
@@ -2698,4 +2761,3 @@ int main(int argc, char **argv){
 	print_statistics();
 }
 #endif
-//TODO ask matei about Fflag Cflag, setting up sw,

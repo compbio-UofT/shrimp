@@ -586,6 +586,26 @@ reverse_complement_read_cs(uint32_t * read, int8_t initbp, int8_t initbp_rc, uin
 	return read_rc;
 }
 
+void
+reverse_complement_read_ls_text(char * read, char *ret){
+	int len = strlen(read);
+	int c;
+	for (c = 0; c < len; c ++){
+		char base = read[len - 1 - c];
+		if (base == 'g' || base == 'G'){
+			base = 'c';
+		} else if (base == 'a' || base == 'A'){
+			base = 't';
+		} else if (base == 't' || base == 'T'){
+			base = 'a';
+		} else if (base == 'c' || base == 'C'){
+			base = 'g';
+		}
+		ret[c] = base;
+	}
+	ret[len] = '\0';
+}
+
 /*
  * Given a path, if it's a regular file (or symlink to one), call fh on it.
  * If it's a directory, call fh on all regular files within it (or symlinks to
@@ -998,3 +1018,82 @@ comma_integer(uint64_t val)
 
 	return (ret);
 }
+enum mode {start,match,mismatch,ref_gap,read_gap};
+
+static int
+finish_mode(enum mode mode,int count,char *res){
+	if (mode == match || mode == mismatch) return sprintf(res,"%iM",count);
+	else if (mode == ref_gap) return sprintf(res,"%iI",count);
+	else if (mode == read_gap) return sprintf(res,"%iD",count);
+	else return 0;
+}
+
+void
+edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res){
+	char * current=edit;
+	enum mode mode = start;
+	int count = 0;
+	int last_count = 0;
+
+	if(read_start != 0){
+		res += sprintf(res,"%uS",read_start);
+	}
+
+	while(*current != '\0'){
+		if (*current <= '9' && *current >= '0'){
+			if(mode != match && mode){
+				if (mode == mismatch){
+					last_count += count;
+				} else {
+					res += finish_mode(mode,count + last_count, res);
+					last_count = 0;
+				}
+				count = 0;
+			}
+			count = count*10 + *current - '0';
+			mode = match;
+		} else if(*current == '('){
+			res += finish_mode(mode, count + last_count, res);
+			count = 0;
+			last_count = 0;
+			mode = ref_gap;
+		} else if(*current == 'G' || *current == 'A' || *current == 'T' || *current == 'C'){
+			if (mode == ref_gap){
+				count++;
+			} else{
+				if (mode != mismatch){
+					if (mode == match){
+						last_count += count;
+					} else{
+						res += finish_mode(mode,count + last_count,res);
+						last_count = 0;
+					}
+					count = 0;
+				}
+				count++;
+				mode = mismatch;
+
+			}
+
+		} else if (*current == ')'){
+			res += finish_mode(mode, count + last_count, res);
+			count = 0;
+			last_count = 0;
+			mode = start;
+		} else if (*current == '-'){
+			if (mode != read_gap){
+				res += finish_mode(mode, count + last_count, res);
+				count = 0;
+				last_count = 0;
+			}
+			count ++;
+			mode = read_gap;
+		}
+		current++;
+	}
+	res += finish_mode(mode,count+ last_count,res);
+	if(read_end + 1 != read_length){
+		sprintf(res,"%uS",read_length - read_end - 1);
+	}
+}
+
