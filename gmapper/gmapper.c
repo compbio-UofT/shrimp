@@ -34,6 +34,8 @@
 #include "../common/input.h"
 #include "../common/heap.h"
 
+DEF_HEAP(uint32_t,uint,uu)
+
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
@@ -69,20 +71,29 @@ static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
 static int Uflag = false;			/* output unmapped reads, too */
-static int Mflag = true;			/* print memory usage stats */
+static int Mflag = false;			/* print insert histogram */
 static int Dflag = false;			/* print statistics for each thread */
 static int Eflag = false;			/* output sam format */
 
+/* Mate Pairs */
+static int	pair_mode		= DEF_PAIR_MODE;
+static int	min_insert_size		= DEF_MIN_INSERT_SIZE;
+static int	max_insert_size		= DEF_MAX_INSERT_SIZE;
+static uint64_t	insert_histogram[100];
+static int	insert_histogram_bucket_size;
 
 /* Statistics */
-static count_t	dup_hits_c;			/* number of duplicate hits */
-static count_t	reads_c;
-static stat_t	matches_s;
-
-static uint64_t total_matches;
-static uint64_t reads_matched;
-
 static uint64_t nreads;
+
+static uint64_t total_reads_matched;
+static uint64_t total_pairs_matched;
+
+static uint64_t total_single_matches;
+static uint64_t total_paired_matches;
+
+static uint64_t	total_dup_single_matches;			/* number of duplicate hits */
+static uint64_t total_dup_paired_matches;
+
 
 static uint64_t total_work_usecs;
 static uint64_t map_usecs;
@@ -523,7 +534,7 @@ static bool save_genome_map(const char *prefix) {
 	xgzwrite(fp,&total,sizeof(uint32_t));
 
 	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
-	uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3;
+	uint32_t *gen, *gen_rc, *gen_cs = NULL, *ptr1, *ptr2, *ptr3 = NULL;
 	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
 	ptr1 = gen;
 	gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
@@ -833,55 +844,160 @@ read_locations(read_entry *re, int *len,int *len_rc,uint32_t **list, uint32_t **
 
 
 static void
-read_get_mapidxs_per_strand(struct read_entry * re, uint rc) {
-	uint sn, i, load, base, r_idx;
-	uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+read_get_mapidxs_per_strand(struct read_entry * re, uint st) {
+  uint sn, i, load, base, r_idx;
+  uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
 
-	re->mapidx[rc] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
-	if (re->has_Ns) {
-		re->mapidx_pos[rc] = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx_pos[0][0]));
-	}
+  re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
+  if (re->has_Ns) {
+    re->mapidx_pos[st] = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx_pos[0][0]));
+  }
 
-	for (load = 0, i = 0; i < re->read_len; i++) {
-		base = EXTRACT(re->read[rc], i);
-		bitfield_prepend(kmerWindow, max_seed_span, base);
+  for (load = 0, i = 0; i < re->read_len; i++) {
+    base = EXTRACT(re->read[st], i);
+    bitfield_prepend(kmerWindow, max_seed_span, base);
 
-		//skip past any Ns or Xs
-		if (re->has_Ns && (base == BASE_N || base == BASE_X))
-			load = 0;
-		else if (load < max_seed_span)
-			load++;
+    //skip past any Ns or Xs
+    if (re->has_Ns && (base == BASE_N || base == BASE_X))
+      load = 0;
+    else if (load < max_seed_span)
+      load++;
 
-		for (sn = 0; sn < n_seeds; sn++) {
-			if (i < re->min_kmer_pos + seed[sn].span - 1)
-				continue;
+    for (sn = 0; sn < n_seeds; sn++) {
+      if (i < re->min_kmer_pos + seed[sn].span - 1)
+	continue;
 
-			r_idx = i - seed[sn].span + 1;
-			if (re->has_Ns && load < seed[sn].span) {
-				re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
-				continue;
-			}
+      r_idx = i - seed[sn].span + 1;
+      if (re->has_Ns && load < seed[sn].span) {
+	re->mapidx_pos[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
+	continue;
+      }
 
-			re->mapidx[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
-			if (re->has_Ns) {
-				re->mapidx_pos[rc][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
-			}
-		}
-	}
+      re->mapidx[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
+      if (re->has_Ns) {
+	re->mapidx_pos[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
+      }
+    }
+  }
 
-	free(kmerWindow);
+  free(kmerWindow);
 }
 
 
-static void
+/*
+ * Extract spaced kmers from read, save them in re->mapidx.
+ */
+static inline void
 read_get_mapidxs(struct read_entry * re) {
-	read_get_mapidxs_per_strand(re, 0);
-	read_get_mapidxs_per_strand(re, 1);
+  read_get_mapidxs_per_strand(re, 0);
+  read_get_mapidxs_per_strand(re, 1);
+}
+
+
+static int
+uw_anchor_cmp(void const * p1, void const * p2)
+{
+  if (((struct uw_anchor *)p1)->x < ((struct uw_anchor *)p2)->x)
+    return -1;
+  else if (((struct uw_anchor *)p1)->x > ((struct uw_anchor *)p2)->x)
+    return 1;
+  else
+    return 0;
+}
+
+
+static uint
+bin_search(uint32_t * array, uint l, uint r, uint32_t value)
+{
+  uint m;
+  while (l + 1 < r) {
+    m = (l + r - 1)/2;
+    if (array[m] < value)
+      l = m + 1;
+    else
+      r = m + 1;
+  }
+  if (l < r && array[l] < value)
+    return l + 1;
+  else
+    return l;
 }
 
 
 static void
-read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) {
+read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) {
+  uint i, j, k, sn, offset;
+  uint g_start, g_end;
+  uint idx_start, idx_end;
+  uint32_t mapidx;
+  int anchor_cache[re->read_len];
+  uint diag;
+  int l;
+
+  assert(re->mapidx[st] != NULL);
+
+  re->n_anchors[st] = 0;
+
+  for (j = 0; j < re->n_ranges; j++) {
+    if (re->ranges[j].st != st)
+      continue;
+
+    g_start = contig_offsets[re->ranges[j].cn] + re->ranges[j].g_start;
+    g_end = contig_offsets[re->ranges[j].cn] + re->ranges[j].g_end;
+
+    for (sn = 0; sn < n_seeds; sn++) {
+      for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+	offset = sn*re->max_n_kmers + i;
+	mapidx = re->mapidx[st][offset];
+
+	idx_start = bin_search(genomemap[sn][mapidx], 0, genomemap_len[sn][mapidx], g_start);
+	idx_end = bin_search(genomemap[sn][mapidx], idx_start, genomemap_len[sn][mapidx], g_end + 1);
+
+	if (idx_start >= idx_end)
+	  continue;
+
+	re->anchors[st] = (struct uw_anchor *)xrealloc(re->anchors[st],
+						       (re->n_anchors[st] + (idx_end - idx_start))
+						       * sizeof(re->anchors[0][0]));
+	for (k = 0; idx_start + k < idx_end; k++) {
+	  re->anchors[st][re->n_anchors[st] + k].cn = re->ranges[j].cn;
+	  re->anchors[st][re->n_anchors[st] + k].x =
+	    genomemap[sn][mapidx][idx_start + k] - contig_offsets[re->ranges[j].cn];
+	  re->anchors[st][re->n_anchors[st] + k].y = re->min_kmer_pos + i;
+	  re->anchors[st][re->n_anchors[st] + k].length = seed[sn].span;
+	  re->anchors[st][re->n_anchors[st] + k].weight = 1;
+	}
+	re->n_anchors[st] += idx_end - idx_start;
+      }
+    }
+  }
+
+  qsort(re->anchors[st], re->n_anchors[st], sizeof(re->anchors[0][0]), uw_anchor_cmp);
+
+  if (collapse) {
+    for (i = 0; i < re->read_len; i++)
+      anchor_cache[i] = -1;
+
+    for (k = 0, i = 0; i < re->n_anchors[st]; i++) {
+      re->anchors[st][k] = re->anchors[st][i];
+      diag = (re->anchors[st][k].x + re->read_len - re->anchors[st][k].y) % re->read_len;
+      l = anchor_cache[diag];
+      if (l >= 0
+	  && re->anchors[st][l].cn == re->anchors[st][k].cn
+	  && uw_anchors_intersect(&re->anchors[st][l], &re->anchors[st][k])) {
+	uw_anchors_join(&re->anchors[st][l], &re->anchors[st][k]);
+      } else {
+	anchor_cache[diag] = k;
+	k++;
+      }
+    }
+    re->n_anchors[st] = k;
+  }
+}
+
+
+static void
+read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) {
   uint list_sz;
   uint i, sn, offset;
   struct heap_uu h;
@@ -889,20 +1005,22 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) 
   struct heap_uu_elem tmp;
   int anchor_cache[re->read_len];
 
+  assert(re->mapidx[st] != NULL);
+
   // compute size of anchor list
   list_sz = 0;
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
-      if (!re->has_Ns || re->mapidx_pos[rc][offset]) {
-	list_sz += genomemap_len[sn][re->mapidx[rc][offset]];
+      if (!re->has_Ns || re->mapidx_pos[st][offset]) {
+	list_sz += genomemap_len[sn][re->mapidx[st][offset]];
       }
     }
   }
 
   // init anchor list
-  re->anchors[rc] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
-  re->n_anchors[rc] = 0;
+  re->anchors[st] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+  re->n_anchors[st] = 0;
 
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
@@ -914,10 +1032,18 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) 
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
-      if ((!re->has_Ns || re->mapidx_pos[rc][offset])
-	  && idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]
+
+#ifdef DEBUG_TRIM_LONG_LISTS
+#warning Trimming long genomemap lists
+      if (genomemap_len[sn][re->mapidx[st][offset]] > DEBUG_TRIM_LONG_LISTS) {
+	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
+      }
+#endif
+
+      if ((!re->has_Ns || re->mapidx_pos[st][offset])
+	  && idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]
 	  ) {
-	tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+	tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
 	tmp.rest = offset;
 	heap_uu_insert(&h, &tmp);
 	idx[offset]++;
@@ -933,31 +1059,31 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) 
     offset = tmp.rest;
     sn = offset / re->max_n_kmers;
     i = offset % re->max_n_kmers;
-    re->anchors[rc][re->n_anchors[rc]].x = tmp.key;
-    re->anchors[rc][re->n_anchors[rc]].y = re->min_kmer_pos + i;
-    re->anchors[rc][re->n_anchors[rc]].length = seed[sn].span;
-    re->anchors[rc][re->n_anchors[rc]].weight = 1;
-    get_contig_num(re->anchors[rc][re->n_anchors[rc]].x, &re->anchors[rc][re->n_anchors[rc]].cn);
-    re->n_anchors[rc]++;
+    re->anchors[st][re->n_anchors[st]].x = tmp.key;
+    re->anchors[st][re->n_anchors[st]].y = re->min_kmer_pos + i;
+    re->anchors[st][re->n_anchors[st]].length = seed[sn].span;
+    re->anchors[st][re->n_anchors[st]].weight = 1;
+    get_contig_num(re->anchors[st][re->n_anchors[st]].x, &re->anchors[st][re->n_anchors[st]].cn);
+    re->n_anchors[st]++;
 
     if (collapse) {
       // check if current anchor intersects the cached one on the same diagonal
-      uint diag = (re->anchors[rc][re->n_anchors[rc]-1].x + re->read_len - re->anchors[rc][re->n_anchors[rc]-1].y) % re->read_len;
+      uint diag = (re->anchors[st][re->n_anchors[st]-1].x + re->read_len - re->anchors[st][re->n_anchors[st]-1].y) % re->read_len;
       int j = anchor_cache[diag];
 
       if (j >= 0
-	  && re->anchors[rc][j].cn == re->anchors[rc][re->n_anchors[rc]-1].cn
-	  && uw_anchors_intersect(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1])) {
-	uw_anchors_join(&re->anchors[rc][j], &re->anchors[rc][re->n_anchors[rc]-1]);
-	re->n_anchors[rc]--;
+	  && re->anchors[st][j].cn == re->anchors[st][re->n_anchors[st]-1].cn
+	  && uw_anchors_intersect(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
+	uw_anchors_join(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1]);
+	re->n_anchors[st]--;
       } else {
-	anchor_cache[diag] = re->n_anchors[rc]-1;
+	anchor_cache[diag] = re->n_anchors[st]-1;
       }
     }
 
     // load next anchor for that seed/mapidx
-    if (idx[offset] < genomemap_len[sn][re->mapidx[rc][offset]]) {
-      tmp.key = genomemap[sn][re->mapidx[rc][offset]][idx[offset]];
+    if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
+      tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
       tmp.rest = offset;
       heap_uu_replace_min(&h, &tmp);
       idx[offset]++;
@@ -971,15 +1097,42 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint rc, bool collapse) 
 }
 
 
-static void
+/*
+ * Given the kmer lists in mapidx, lookup matching kmers in genomemap.
+ * Create a list of unit-width anchors, possibly collapsing intersecting kmers.
+ * Save anchor lists in re->anchors[][] and their sizes in re->n_anchors[]
+ */
+static inline void
 read_get_anchor_list(struct read_entry * re, bool collapse) {
-  read_get_anchor_list_per_strand(re, 0, collapse);
-  read_get_anchor_list_per_strand(re, 1, collapse);
+  if (re->n_ranges == 0) {
+    read_get_anchor_list_per_strand(re, 0, collapse);
+    read_get_anchor_list_per_strand(re, 1, collapse);
+  } else {
+    read_get_restricted_anchor_list_per_strand(re, 0, collapse);
+    read_get_restricted_anchor_list_per_strand(re, 1, collapse);    
+  }
+
+#ifdef DEBUG_ANCHOR_LIST
+  {
+#warning Dumping anchor list.
+    uint i, st;
+
+    fprintf(stderr,"Dumping anchors for read:[%s]\n", re->name);
+    for (st = 0; st < 2; st++) {
+      fprintf(stderr, "st:%u ", st);
+      for(i = 0; i < re->n_anchors[st]; i++){
+	fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[st][i].x, re->anchors[st][i].y,
+		re->anchors[st][i].length, re->anchors[st][i].weight,
+		i < re->n_anchors[st]-1? "," : "\n");
+      }
+    }
+  }
+#endif
 }
 
 
 static void
-read_pass1_per_strand(struct read_entry * re, uint rc) {
+read_pass1_per_strand_OLD(struct read_entry * re, uint rc) {
   uint cn, i, max_idx;
   uint32_t goff, glen, gstart, gend;
   int score = 0, max_score, tmp_score = 0;
@@ -1164,10 +1317,538 @@ read_pass1_per_strand(struct read_entry * re, uint rc) {
 }
 
 
+static inline void
+read_pass1_OLD(struct read_entry * re) {
+  read_pass1_per_strand_OLD(re, 0);
+  read_pass1_per_strand_OLD(re, 1);
+}
+
+
+#if defined (DEBUG_HIT_LIST_CREATION) || defined (DEBUG_HIT_LIST_PAIR_UP) \
+  || defined (DEBUG_HIT_LIST_PASS1) || defined (DEBUG_HIT_LIST_PAIRED_HITS)
 static void
-read_pass1(struct read_entry * re) {
-	read_pass1_per_strand(re, 0);
-	read_pass1_per_strand(re, 1);
+dump_hit(struct read_hit * hit) {
+  fprintf(stderr, "(cn:%u,st:%u,gen_st:%u,g_off:%u,w_len:%u,scores:(%d,%d,%d),matches:%u,pair_min:%d,pair_max:%d,anchor:(%d,%d,%u,%u))\n",
+	  hit->cn, hit->st, hit->gen_st, hit->g_off, hit->w_len,
+	  hit->score_window_gen, hit->score_vector, hit->score_full,
+	  hit->matches, hit->pair_min, hit->pair_max,
+	  hit->anchor.x, hit->anchor.y, hit->anchor.length, hit->anchor.width);
+}
+#endif
+
+
+#if defined (DEBUG_HIT_LIST_CREATION) || defined (DEBUG_HIT_LIST_PAIR_UP) \
+  || defined (DEBUG_HIT_LIST_PASS1)
+static void
+dump_hit_list(struct read_entry * re, uint st, bool only_paired, bool only_after_vector)
+{
+  int i;
+  for (i = 0; i < (int)re->n_hits[st]; i++) {
+    if (only_paired && re->hits[st][i].pair_min < 0)
+      continue;
+    if (only_after_vector && re->hits[st][i].score_vector < 0)
+      continue;
+
+    dump_hit(&re->hits[st][i]);
+  }
+}
+#endif
+
+
+static void
+read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
+  uint cn, i, max_idx;
+  uint32_t goff, w_len, gstart, gend;
+  int max_score, tmp_score = 0;
+  int j;
+  int short_len = 0, long_len = 0;
+  uint x_len;
+  struct anchor a[3];
+
+  re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
+  re->n_hits[st] = 0;
+
+  for (i = 0; i < re->n_anchors[st]; i++) {
+    // contig num of crt anchor
+    cn = re->anchors[st][i].cn;
+
+    // set gstart and gend
+    gend = (re->anchors[st][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[st][i].y;
+    if (gend > genome_len[cn] - 1)
+      gend = genome_len[cn] - 1;
+
+    if (gend >= re->window_len)
+      gstart = gend - re->window_len;
+    else
+      gstart = 0;
+
+    /*
+     * Modes of matching:
+     * 1. gapless: only extend current anchor; no window_gen_threshold check
+     * 2. n=1: one kmer match & no window_gen_threshold check; or at least two matches
+     * 3. n=2: at least two kmer matches & window_gen_threshold check
+     */
+    max_idx = i;
+    max_score = re->anchors[st][i].length * match_score;
+
+    if (!gapless_sw) {
+      // avoid single matches when n=2
+      if (match_mode > 1 && re->anchors[st][i].weight == 1)
+	max_score = 0;
+
+      for (j = (int)i - 1;
+	   j >= 0
+	     && re->anchors[st][j].x >= contig_offsets[cn] + gstart;
+	   j--) {
+	if (re->anchors[st][j].y >= re->anchors[st][i].y)
+	  continue;
+
+	if ((int64_t)(re->anchors[st][i].x - contig_offsets[cn]) - (int64_t)re->anchors[st][i].y
+	    > (int64_t)(re->anchors[st][j].x - contig_offsets[cn]) - (int64_t)re->anchors[st][j].y)
+	  { // deletion in read
+	    short_len = (re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
+	    long_len = (re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
+	  }
+	else
+	  { // insertion in read
+	    short_len = (re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
+	    long_len = (re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
+	  }
+
+	if (long_len > short_len)
+	  tmp_score = short_len * match_score + b_gap_open_score
+	    + (long_len - short_len) * b_gap_extend_score;
+	else
+	  tmp_score = short_len * match_score;
+
+	if (tmp_score > max_score) {
+	  max_idx = j;
+	  max_score = tmp_score;
+	}
+      }
+    }
+
+    if (gapless_sw
+	|| match_mode == 1
+	|| max_score >= (int)abs_or_pct(window_gen_threshold, re->read_len * match_score))
+      {
+	// set goff & w_len
+	x_len = (re->anchors[st][i].x - re->anchors[st][max_idx].x) + re->anchors[st][i].length;
+
+	if ((re->window_len - x_len)/2 < re->anchors[st][max_idx].x - contig_offsets[cn])
+	  goff = (re->anchors[st][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
+	else
+	  goff = 0;
+
+	w_len = re->window_len;
+	if (w_len > genome_len[cn])
+	  w_len = genome_len[cn];
+	if (goff + w_len > genome_len[cn])
+	  goff = genome_len[cn] - w_len;
+
+	// compute anchor
+	if (max_idx < i) {
+	  uw_anchor_to_anchor(&re->anchors[st][i], &a[0], contig_offsets[cn] + goff);
+	  uw_anchor_to_anchor(&re->anchors[st][max_idx], &a[1], contig_offsets[cn] + goff);
+	  join_anchors(a, 2, &a[2]);
+	} else {
+	  uw_anchor_to_anchor(&re->anchors[st][i], &a[2], contig_offsets[cn] + goff);
+	}
+
+	// add hit
+	re->hits[st][re->n_hits[st]].g_off = goff;
+	re->hits[st][re->n_hits[st]].w_len = w_len;
+	re->hits[st][re->n_hits[st]].cn = cn;
+	re->hits[st][re->n_hits[st]].st = st;
+	re->hits[st][re->n_hits[st]].gen_st = 0;
+	re->hits[st][re->n_hits[st]].anchor = a[2];
+	re->hits[st][re->n_hits[st]].score_window_gen = max_score;
+	re->hits[st][re->n_hits[st]].matches = (gapless_sw || max_idx == i?
+						re->anchors[st][i].weight :
+						re->anchors[st][i].weight + re->anchors[st][max_idx].weight);
+	re->hits[st][re->n_hits[st]].score_vector = -1;
+	re->hits[st][re->n_hits[st]].score_full = -1;
+	re->hits[st][re->n_hits[st]].pair_min = -1;
+	re->hits[st][re->n_hits[st]].pair_max = -1;
+	re->n_hits[st]++;
+      }
+  }
+
+  // sort list (there might be few misordered pairs because of the goff computation
+  for (i = 1; i < re->n_hits[st]; i++) {
+    j = i;
+    while (j >= 1
+	   && re->hits[st][j-1].cn == re->hits[st][i].cn
+	   && re->hits[st][j-1].g_off > re->hits[st][i].g_off)
+      j--;
+    if (j < (int)i) { // shift elements at indexes j..i-1 higher
+      struct read_hit tmp = re->hits[st][i];
+      int k;
+      for (k = (int)i-1; k >= j; k--)
+	re->hits[st][k+1] = re->hits[st][k];
+      re->hits[st][j] = tmp;
+    }
+  }
+}
+
+
+/*
+ * Given the list of unit-width anchors, create a set of potential hits that might be later
+ * investigated by the SW vector filter.
+ */
+static inline void
+read_get_hit_list(struct read_entry * re, int match_mode) {
+  read_get_hit_list_per_strand(re, match_mode, 0);
+  read_get_hit_list_per_strand(re, match_mode, 1);
+
+#ifdef DEBUG_HIT_LIST_CREATION
+  fprintf(stderr, "Dumping hit list after creation for read:[%s]\n", re->name);
+  dump_hit_list(re, 0, false, false);
+  dump_hit_list(re, 1, false, false);
+#endif
+}
+
+
+static void
+read_pass1_per_strand(struct read_entry * re, bool only_paired, uint st) {
+  uint i;
+  int j;
+
+  f1_hash_tag++;
+  j = -1; // last good hit
+
+  for (i = 0; i < re->n_hits[st]; i++) {
+    if (only_paired && re->hits[st][i].pair_min < 0)
+      continue;
+
+    // check window overlap
+    if (j >= 0
+	&& re->hits[st][i].cn == re->hits[st][j].cn
+	&& re->hits[st][i].g_off <= re->hits[st][j].g_off + (uint)abs_or_pct(window_overlap, re->window_len)) {
+      re->hits[st][i].score_vector = 0;
+      continue;
+    }
+
+    if (shrimp_mode == MODE_COLOUR_SPACE)
+      re->hits[st][i].score_vector = f1_run(genome_cs_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
+					    re->hits[st][i].g_off, re->hits[st][i].w_len,
+					    re->read[st], re->read_len,
+					    re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
+					    genome_contigs[re->hits[st][i].cn], re->initbp[st], genome_is_rna, f1_hash_tag);
+    else
+      re->hits[st][i].score_vector = f1_run(genome_cs_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
+					    re->hits[st][i].g_off, re->hits[st][i].w_len,
+					    re->read[st], re->read_len,
+					    re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
+					    NULL, -1, genome_is_rna, f1_hash_tag);
+
+    if (re->hits[st][i].score_vector >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)) {
+      //save_score(re, re->hits[st][i].score, re->hits[st][i].g_off, re->hits[st][i].cn,
+      //	   re->hits[st][i].st > 0, &re->hits[st][i].anchor);
+      j = i;
+    }
+  }
+}
+
+
+/*
+ * Go through hit list, apply vector filter, and save top scores.
+ */
+static inline void
+read_pass1(struct read_entry * re, bool only_paired) {
+  read_pass1_per_strand(re, only_paired, 0);
+  read_pass1_per_strand(re, only_paired, 1);
+
+#ifdef DEBUG_HIT_LIST_PASS1
+  fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
+  dump_hit_list(re, 0, only_paired, false);
+  dump_hit_list(re, 1, only_paired, false);
+#endif
+}
+
+
+static void
+readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
+  uint st1, st2, i, j, k, l;
+  int64_t delta_min, delta_max; // add to re1->g_off
+
+  for (st1 = 0; st1 < 2; st1++) {
+    st2 = 1 - st1; // opposite strand
+    if (st1 == 0) {
+      delta_min = (int64_t)re1->window_len + (int64_t)min_insert_size;
+      delta_max = (int64_t)re1->window_len + (int64_t)max_insert_size;
+    } else {
+      delta_min = - (int64_t)max_insert_size - (int64_t)re2->window_len;
+      delta_max = - (int64_t)min_insert_size - (int64_t)re2->window_len;
+    }
+
+    j = 0; // invariant: matching hit at index j or larger
+    for (i = 0; i < re1->n_hits[st1]; i++) {
+      // find matching hit, if any
+      while (j < re2->n_hits[st2]
+	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
+		 || (re2->hits[st2][j].cn == re1->hits[st1][i].cn // same contig, but too close
+		     && (int64_t)re2->hits[st2][j].g_off < (int64_t)re1->hits[st1][i].g_off + delta_min
+		     )
+		 )
+	     )
+	j++;
+
+      k = j;
+      while (k < re2->n_hits[st2]
+	     && re2->hits[st2][k].cn == re1->hits[st1][i].cn
+	     && (int64_t)re2->hits[st2][k].g_off <= (int64_t)re1->hits[st1][i].g_off + delta_max)
+	k++;
+
+      if (j == k) // no paired hit
+	continue;
+
+      re1->hits[st1][i].pair_min = j;
+      re1->hits[st1][i].pair_max = k-1;
+      for (l = j; l < k; l++) {
+	if (re2->hits[st2][l].pair_min < 0) {
+	  re2->hits[st2][l].pair_min = i;
+	}
+	re2->hits[st2][l].pair_max = i;
+      }
+    }
+  }
+
+#ifdef DEBUG_HIT_LIST_PAIR_UP
+  fprintf(stderr, "Dumping hit list after pair-up for read:[%s]\n", re1->name);
+  dump_hit_list(re1, 0, false, false);
+  dump_hit_list(re1, 1, false, false);
+  fprintf(stderr, ".. and read:[%s]\n", re2->name);
+  dump_hit_list(re2, 0, false, false);
+  dump_hit_list(re2, 1, false, false);
+#endif
+}
+
+
+/*
+ * Go through the list adding hits to the heap.
+ */
+static void
+read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
+{
+  uint st, i;
+  heap_unpaired_elem tmp;
+
+  assert(re != NULL && h != NULL);
+  assert(pair_mode == PAIR_NONE);
+
+  for (st = 0; st < 2; st++) {
+    assert(re->n_hits[st] == 0 || re->hits[st] != NULL);
+
+    for (i = 0; i < re->n_hits[st]; i++) {
+      if (re->hits[st][i].score_vector >= (int)abs_or_pct(sw_vect_threshold, match_score * re->read_len)
+	  && (h->load < h->capacity
+	      || re->hits[st][i].score_vector > (int)h->array[0].key)) {
+	tmp.key = re->hits[st][i].score_vector;
+	tmp.rest.hit = &re->hits[st][i];
+
+	if (h->load < h->capacity)
+	  heap_unpaired_insert(h, &tmp);
+	else
+	  heap_unpaired_replace_min(h, &tmp);
+      }
+    }
+  }
+}
+
+
+/*
+ * Go through the hit lists, constructing paired hits.
+ */
+static void
+readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struct heap_paired * h)
+{
+  uint st1, st2, i, j;
+  heap_paired_elem tmp;
+
+  assert(re1 != NULL && re2 != NULL && h != NULL);
+  assert(pair_mode != PAIR_NONE);
+
+  for (st1 = 0; st1 < 2; st1++) {
+    st2 = 1 - st1; // opposite strand
+
+    for (i = 0; i < re1->n_hits[st1]; i++) {
+      if (re1->hits[st1][i].pair_min < 0)
+	continue;
+
+      for (j = re1->hits[st1][i].pair_min; (int)j <= re1->hits[st1][i].pair_max; j++) {
+	if (num_matches == 3 // require at least two matches on one of the feet
+	    && re1->hits[st1][i].matches == 1
+	    && re2->hits[st2][j].matches == 1)
+	  continue;
+
+	if (re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector
+	    >= (int)abs_or_pct(sw_vect_threshold, match_score * (re1->read_len + re2->read_len))
+	    && (h->load < h->capacity
+		|| re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector > (int)h->array[0].key)) {
+	  tmp.key = re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector;
+	  tmp.rest.hit[0] = &re1->hits[st1][i];
+	  tmp.rest.hit[1] = &re2->hits[st2][j];
+	  tmp.rest.insert_size = (st1 == 0?
+				  re2->hits[st2][j].g_off - (re1->hits[st1][i].g_off + re1->hits[st1][i].w_len) :
+				  re1->hits[st1][i].g_off - (re2->hits[st2][j].g_off + re2->hits[st2][j].w_len));
+
+	  if (h->load < h->capacity)
+	    heap_paired_insert(h, &tmp);
+	  else
+	    heap_paired_replace_min(h, &tmp);
+	}
+      }
+    }
+  }
+}
+
+
+/*
+ * Reverse read hit.
+ *
+ * The 'st' strand of the read matches the 'gen_st' strand of the genome. Negate both.
+ */
+static inline void
+reverse_hit(struct read_entry * re, struct read_hit * rh)
+{
+  assert(re != NULL && rh != NULL);
+
+  rh->g_off = genome_len[rh->cn] - rh->g_off - rh->w_len;
+  reverse_anchor(&rh->anchor, rh->w_len, re->read_len);
+  rh->gen_st = 1 - rh->gen_st;
+  rh->st = 1 - rh->st;
+}
+
+
+/*
+ * Run full SW filter on this hit.
+ */
+static void
+hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
+{
+  uint32_t * gen = NULL;
+
+  assert(re != NULL && rh != NULL);
+  assert(rh->gen_st == 0);
+
+  if (rh->st == re->input_strand) {
+    gen = genome_contigs[rh->cn];
+  } else {
+    reverse_hit(re, rh);
+    gen = genome_contigs_rc[rh->cn];
+  }
+
+  assert(rh->st == re->input_strand);
+
+  rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
+
+#ifdef DEBUG_SW_FULL_CALLS
+  fprintf(stderr, "SW full call: (name:[%s],cn:%u,st:%u,gen_st:%u,g_off:%u,w_len:%u,anchor:(%d,%d,%u,%u))\n",
+	  re->name, rh->cn, rh->st, rh->gen_st, rh->g_off, rh->w_len,
+	  rh->anchor.x, rh->anchor.y, rh->anchor.length, rh->anchor.width);
+#endif
+
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    sw_full_cs(gen, rh->g_off, rh->w_len,
+	       re->read[rh->st], re->read_len, re->initbp[rh->st],
+	       thresh, rh->sfrp, rh->gen_st && Tflag, genome_is_rna,
+	       &rh->anchor, 1);
+  } else {
+    /*
+     * The full SW in letter space assumes it's given the correct max score.
+     * This might not be true just yet if we're using hashing&caching because
+     * of possible hash collosions.
+     */
+    rh->score_vector = sw_vector(gen, rh->g_off, rh->w_len,
+				 re->read[rh->st], re->read_len,
+				 NULL, -1, genome_is_rna);
+    if (rh->score_vector >= thresh) {
+      sw_full_ls(gen, rh->g_off, rh->w_len,
+		 re->read[rh->st], re->read_len,
+		 thresh, rh->score_vector, rh->sfrp, rh->gen_st && Tflag,
+		 &rh->anchor, 1);
+      assert(rh->sfrp->score == rh->score_vector);
+    } else { // this wouldn't have passed the filter
+      rh->sfrp->score = rh->score_vector;
+    }
+  }
+  rh->score_full = rh->sfrp->score;
+}
+
+
+/*
+ * Print given hit.
+ *
+ */
+static inline void
+hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char ** output2)
+{
+  assert(re != NULL && rh != NULL);
+  assert(rh->sfrp != NULL);
+
+  *output1 = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
+			   genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
+			   re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
+
+  if(Pflag) {
+    *output2 = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
+			     genome_contigs[rh->cn], genome_len[rh->cn],
+			     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
+			     re->read_len, re->initbp[rh->st], rh->gen_st);
+  } else if(Eflag){
+    struct format_spec *fsp;
+    char * output = output_format_line(Rflag);
+    fsp = format_get_from_string(output);
+    free(output);
+
+    struct input inp;
+    memset(&inp, 0, sizeof(inp));
+    input_parse_string(*output1,fsp,&inp);
+    char * cigar, *read;
+    cigar = (char *)xmalloc(sizeof(char)*200);
+    edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
+    if(inp.flags & INPUT_FLAG_IS_REVCMPL){
+      read = readtostr(re->read[1 - rh->st], re->read_len, false, 0);
+    } else {
+      read = readtostr(re->read[rh->st], re->read_len, false, 0);
+    }
+    free(*output1);
+    *output1 = (char *)xmalloc(sizeof(char *)*2000);
+    sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
+	    inp.read,
+	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
+	    inp.genome,
+	    inp.genome_start + 1,
+	    255,
+	    cigar,
+	    "*",
+	    inp.read_start,
+	    0,
+	    read,
+	    "*",
+	    inp.score);
+    free(read);
+    free(cigar);
+    format_free(fsp);
+  }
+}
+
+
+/*
+ * Free sfrp for given hit.
+ */
+static void
+hit_free_sfrp(struct read_hit * rh)
+{
+  assert(rh != NULL);
+
+  if (rh->sfrp != NULL) {
+    free(rh->sfrp->dbalign);
+    free(rh->sfrp->qralign);
+  }
+  free(rh->sfrp);
+  rh->sfrp = NULL;
 }
 
 
@@ -1176,326 +1857,325 @@ read_pass1(struct read_entry * re) {
  * Highest scoring matches are in scores heap.
  */
 static void
-read_pass2(read_entry * re) {
+read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   uint i;
   int thresh = (int)abs_or_pct(sw_full_threshold, match_score * re->read_len);
-  struct sw_full_results last_sfr;
 
-  assert(re != NULL && re->scores != NULL);
+  assert(re != NULL && h != NULL);
 
   /* compute full alignment scores */
-  for (i = 1; i <= re->scores[0].heap_elems; i++) {
-    struct re_score * rs = &re->scores[i];
-    uint32_t * gen;
-    uint goff, glen;
+  for (i = 0; i < h->load; i++) {
+    struct read_hit * rh = h->array[i].rest.hit;
 
-    rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(struct sw_full_results));
-
-    /*
-      if (rs->rev_cmpl) {
-      gen = genome_contigs_rc[rs->contig_num];
-      goff = rs->g_idx + re->window_len - 1;
-      if (goff <= genome_len[rs->contig_num] - 1) {
-      goff = genome_len[rs->contig_num] - 1 - goff;
-      reverse_anchor(&rs->anchor, re->window_len, re->read_len);
-      } else {
-      goff = 0;
-      reverse_anchor(&rs->anchor, genome_len[rs->contig_num] - rs->g_idx, re->read_len);
-      }
-      } else {
-      gen = genome_contigs[rs->contig_num];
-      goff = rs->g_idx;
-      }
-
-      glen = re->window_len;
-      if (goff + glen > genome_len[rs->contig_num])
-      glen = genome_len[rs->contig_num] - goff;
-    */
-
-    goff = rs->g_idx;
-    glen = re->window_len;
-    if (goff + glen > genome_len[rs->contig_num])
-      glen = genome_len[rs->contig_num] - goff;
-
-    if (rs->rev_cmpl) {
-      gen = genome_contigs_rc[rs->contig_num];
-      goff = genome_len[rs->contig_num] - goff - glen;
-      reverse_anchor(&rs->anchor, glen, re->read_len);
-    } else {
-      gen = genome_contigs[rs->contig_num];
-    }
-
-#ifdef DEBUG_SW_FULL_CALLS
-    fprintf(stderr, "SW full call: (name:[%s],cn:%u,rc:%u,goff:%u,g_idx:%u,glen:%u,anchor:(%d,%d,%u,%u))\n",
-	    re->name, rs->contig_num, rs->rev_cmpl, goff, rs->g_idx, glen,
-	    rs->anchor.x, rs->anchor.y, rs->anchor.length, rs->anchor.width);
-#endif
-
-    if (shrimp_mode == MODE_COLOUR_SPACE) {
-      sw_full_cs(gen, goff, glen,
-		 re->read[0], re->read_len, re->initbp[0],
-		 thresh, rs->sfrp, rs->rev_cmpl && Tflag, genome_is_rna,
-		 &rs->anchor, 1);
-    } else {
-      /*
-       * The full SW in letter space assumes it's given the correct max score.
-       * This might not be true just yet if we're using hashing&caching because
-       * of possible hash collosions.
-       */
-      rs->score = sw_vector(gen, goff, glen,
-			    re->read[0], re->read_len,
-			    NULL, -1, genome_is_rna);
-      if (rs->score >= thresh) {
-	sw_full_ls(gen, goff, glen,
-		   re->read[0], re->read_len,
-		   thresh, rs->score, rs->sfrp, rs->rev_cmpl && Tflag,
-		   &rs->anchor, 1);
-	assert(rs->sfrp->score == rs->score);
-      } else { // this wouldn't have passed the filter; eliminated in loop below
-	rs->sfrp->score = rs->score;
-	rs->sfrp->dbalign = NULL;
-	rs->sfrp->qralign = NULL;
-      }
-    }
-    rs->score = rs->sfrp->score;
+    hit_run_full_sw(re, rh, thresh);
+    h->array[i].key = rh->score_full;
   }
 
   /* sort scores */
-  qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+  //qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+  
+  //heap_unpaired_heapify(h);
+  //heap_unpaired_heapsort(h);
+  heap_unpaired_qsort(h);
+
+  if ((int)h->array[0].key >= thresh) {
+#pragma omp atomic
+    total_reads_matched++;
+  }
 
   /* Output sorted list, removing any duplicates. */
-  if (re->scores[0].heap_elems > 0 && re->scores[1].score >= thresh) {
-#pragma omp atomic
-    reads_matched++;
-  }
-  memset(&last_sfr, 0, sizeof(last_sfr));
-  for (i = 1; i <= re->scores[0].heap_elems; i++) {
-    struct re_score * rs = &re->scores[i];
+  for (i = 0; i < h->load && (int)h->array[i].key >= thresh; i++) {
+    struct read_hit * rh = h->array[i].rest.hit;
     bool dup;
 
-    dup = sw_full_results_equal(&last_sfr, rs->sfrp);
-    if (dup)
-      count_increment(&dup_hits_c);
+    if (i == 0)
+      dup = false;
+    else
+      dup = sw_full_results_equal(h->array[i-1].rest.hit->sfrp, rh->sfrp);
 
-    if (rs->score >= thresh && dup == false) {
-      char *output1 = NULL,*output2 = NULL,*format;
+    if (!dup) {
+      char * output1 = NULL, * output2 = NULL;
 
       re->final_matches++;
 
-      output1 = output_normal(re->name, contig_names[rs->contig_num], rs->sfrp,
-			      genome_len[rs->contig_num], (shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
-			      re->read_len, re->initbp[0], rs->rev_cmpl, Rflag);
+      hit_output(re, rh, &output1, &output2);
 
-      if (Pflag) {
-	output2 = output_pretty(re->name, contig_names[rs->contig_num], rs->sfrp,
-				genome_contigs[rs->contig_num], genome_len[rs->contig_num],
-				(shrimp_mode == MODE_COLOUR_SPACE), re->read[0],
-				re->read_len, re->initbp[0], rs->rev_cmpl);
-      } else if(Eflag){
-    	  struct format_spec *fsp;
-    	  char * output = output_format_line(Rflag);
-    	  fsp = format_get_from_string(output);
-    	  free(output);
-
-    	  struct input inp;
-    	  memset(&inp, 0, sizeof(inp));
-    	  input_parse_string(output1,fsp,&inp);
-    	  char * cigar, *read;
-    	  cigar = (char *)xmalloc(sizeof(char)*200);
-    	  edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
-    	  if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-    		  read = readtostr(re->read[1], re->read_len, false, 0);
-    	  } else {
-    		  read = readtostr(re->read[0], re->read_len, false, 0);
-    	  }
-    	  free(output1);
-    	  output1 = (char *)xmalloc(sizeof(char *)*2000);
-    	  sprintf(output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
-    	  				inp.read,
-    	  				((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
-    	  				inp.genome,
-    	  				inp.genome_start + 1,
-    	  				255,
-    	  				cigar,
-    	  				"*",
-    	  				inp.read_start,
-    	  				0,
-    	  				read,
-    	  				"*",
-    	  				inp.score);
-    	  free(read);
-    	  free(cigar);
-    	  format_free(fsp);
-      }
-
-      if(output2 != NULL){
-	format = (char *)"%s\n\n%s\n";
-      } else{
-	format = (char *)"%s\n";
-      }
+      if (!Pflag) {
 #pragma omp critical (stdout)
-      {
-	fprintf(stdout,format,output1,output2);
+	{
+	  fprintf(stdout, "%s\n", output1);
+	}
+      } else {
+#pragma omp critical (stdout)
+	{
+	  fprintf(stdout, "%s\n\n%s\n", output1, output2);
+	}
       }
+
       free(output1);
       free(output2);
 
 #pragma omp atomic
-      total_matches++;
+      total_single_matches++;
+    } else {
+#pragma omp atomic
+      total_dup_single_matches++;
     }
-
-    last_sfr = *rs->sfrp;
-    if (rs->sfrp->dbalign != NULL)
-      free(rs->sfrp->dbalign);
-    if (rs->sfrp->qralign != NULL)
-      free(rs->sfrp->qralign);
-    free(rs->sfrp);
   }
 
-  stat_add(&matches_s, re->final_matches);
+}
+
+
+/*
+ * Do a final pass for given pair of reads.
+ * Highest scoring matches are in scores heap.
+ */
+static void
+readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_paired * h) {
+  uint i, j;
+  int thresh = (int)abs_or_pct(sw_full_threshold, match_score * (re1->read_len + re2->read_len));
+
+  assert(re1 != NULL && re2 != NULL && h != NULL);
+
+  /* compute full alignment scores */
+  for (i = 0; i < h->load; i++) {
+    for (j = 0; j < 2; j++) {
+      struct read_hit * rh = h->array[i].rest.hit[j];
+      struct read_entry * re = (j == 0? re1 : re2);
+
+      if (rh->score_full >= 0) // previously insepcted foot
+	continue;
+
+      hit_run_full_sw(re, rh, thresh/3);
+    }
+    if (h->array[i].rest.hit[0]->score_full == 0 || h->array[i].rest.hit[1]->score_full == 0)
+      h->array[i].key = 0;
+    else
+      h->array[i].key = h->array[i].rest.hit[0]->score_full + h->array[i].rest.hit[1]->score_full;
+  }
+
+  /* sort scores */
+  //qsort(&re->scores[1], re->scores[0].heap_elems, sizeof(re->scores[1]), score_cmp);
+  
+  //heap_paired_heapify(h);
+  //heap_paired_heapsort(h);
+  heap_paired_qsort(h);
+
+  if ((int)h->array[0].key >= thresh) {
+#pragma omp atomic
+    total_pairs_matched++;
+  }
+
+  /* Output sorted list, removing any duplicates. */
+  for (i = 0; i < h->load && (int)h->array[i].key >= thresh; i++) {
+    struct read_hit * rh1 = h->array[i].rest.hit[0];
+    struct read_hit * rh2 = h->array[i].rest.hit[1];
+    bool dup;
+    uint bucket;
+
+    if (i == 0)
+      dup = false;
+    else
+      dup = sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
+	&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
+
+    if (!dup) {
+      char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
+
+      //re1->paired_final_matches++;
+
+      hit_output(re1, rh1, &output1, &output2);
+      hit_output(re2, rh2, &output3, &output4);
+
+      if (!Pflag) {
+#pragma omp critical (stdout)
+	{
+	  fprintf(stdout, "%s\t%s\n", output1, output3);
+	}
+      } else {
+#pragma omp critical (stdout)
+	{
+	  fprintf(stdout, "%s\t%s\n%s\n%s\n", output1, output3, output2, output4);
+	}
+      }
+
+      if (h->array[i].rest.insert_size < min_insert_size)
+	bucket = 0;
+      else if (h->array[i].rest.insert_size > max_insert_size)
+	bucket = 99;
+      else
+	bucket = (uint)((h->array[i].rest.insert_size - min_insert_size) / insert_histogram_bucket_size);
+
+      if (bucket >= 100) {
+	fprintf(stderr, "error: insert_size:%d re1->name:(%s)\n", h->array[i].rest.insert_size, re1->name);
+      }
+      assert(bucket < 100);
+
+#pragma omp atomic
+      insert_histogram[bucket]++;
+
+      free(output1);
+      free(output2);
+      free(output3);
+      free(output4);
+
+#pragma omp atomic
+      total_paired_matches++;
+    } else {
+#pragma omp atomic
+      total_dup_paired_matches++;
+    }
+  }
+}
+
+
+/*
+ * Free memory allocated by this read.
+ */
+static void
+read_free(struct read_entry * re)
+{
+  free(re->name);
+  free(re->read[0]);
+  free(re->read[1]);
+
+  free(re->mapidx[0]);
+  free(re->mapidx[1]);
+  if (re->has_Ns) {
+    free(re->mapidx_pos[0]);
+    free(re->mapidx_pos[1]);
+  }
+  free(re->anchors[0]);
+  free(re->anchors[1]);
+  free(re->hits[0]);
+  free(re->hits[1]);
+
+  if (re->n_ranges > 0) {
+    free(re->ranges);
+  }
 }
 
 
 static void
 handle_read(read_entry *re){
+  heap_unpaired h;
+  uint i;
   uint64_t before = rdtsc();
 
-	//DEBUG("computing read locations for read %s",re->name);
-	//read_locations(re,&len,&len_rc,&list,&list_rc);
-#ifdef DEBUGGING
-	int i;
-	fprintf(stderr,"read locations:");
-	for(i = 0; i < len; i++){
-		fprintf(stderr,"%u,",list[i]);
-	}
-	fprintf(stderr,"\n");
-	fprintf(stderr,"read locations revcmpl:");
-	for(i = 0; i < len_rc; i++){
-		fprintf(stderr,"%u,",list_rc[i]);
-	}
-	fprintf(stderr,"\n");
-#endif
-
-	read_get_mapidxs(re);
+  read_get_mapidxs(re);
 
 #ifdef DEBUG_KMERS
-	{
-	  uint sn, i, j;
-	fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
-			re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
-	fprintf(stderr, "collapsed kmers from read:\n");
-	for (sn = 0; sn < n_seeds; sn++) {
-		fprintf(stderr, "sn:%u\n", sn);
-		for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
-			fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-			if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
-				fprintf(stderr, "X\n");
-			} else {
-				for (j = 0; j < seed[sn].weight; j++) {
-					fprintf(stderr, "%c%s",
-							base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-									shrimp_mode == MODE_COLOUR_SPACE),
-									j < seed[sn].weight - 1? "," : "\n");
-				}
-			}
-		}
-	}
-	fprintf(stderr, "collapsed kmers from read_rc:\n");
-	for (sn = 0; sn < n_seeds; sn++) {
-		fprintf(stderr, "sn:%u\n", sn);
-		for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
-			fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-			if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
-				fprintf(stderr, "X\n");
-			} else {
-				for (j = 0; j < seed[sn].weight; j++) {
-					fprintf(stderr, "%c%s",
-							base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-									shrimp_mode == MODE_COLOUR_SPACE),
-									j < seed[sn].weight - 1? "," : "\n");
-				}
-			}
-		}
-	}
-	}
-#endif
-
-	read_get_anchor_list(re, true);
-
-#ifdef DEBUG_ANCHOR_LIST
-	{
-#warning Dumping anchor list.
-	  uint i;
-	  fprintf(stderr,"read anchors:\n");
-	  for(i = 0; i < re->n_anchors[0]; i++){
-	    fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[0][i].x, re->anchors[0][i].y,
-		    re->anchors[0][i].length, re->anchors[0][i].weight,
-		    i < re->n_anchors[0]-1? "," : "\n");
-	  }
-	  fprintf(stderr,"read_rc anchors:\n");
-	  for(i = 0; i < re->n_anchors[1]; i++){
-	    fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[1][i].x, re->anchors[0][i].y,
-		    re->anchors[1][i].length, re->anchors[1][i].weight,
-		    i < re->n_anchors[1]-1? "," : "\n");
+  {
+    uint sn, i, j;
+    fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
+	    re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
+    fprintf(stderr, "collapsed kmers from read:\n");
+    for (sn = 0; sn < n_seeds; sn++) {
+      fprintf(stderr, "sn:%u\n", sn);
+      for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+	fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+	if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
+	  fprintf(stderr, "X\n");
+	} else {
+	  for (j = 0; j < seed[sn].weight; j++) {
+	    fprintf(stderr, "%c%s",
+		    base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				   shrimp_mode == MODE_COLOUR_SPACE),
+		    j < seed[sn].weight - 1? "," : "\n");
 	  }
 	}
+      }
+    }
+    fprintf(stderr, "collapsed kmers from read_rc:\n");
+    for (sn = 0; sn < n_seeds; sn++) {
+      fprintf(stderr, "sn:%u\n", sn);
+      for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
+	fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
+	if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
+	  fprintf(stderr, "X\n");
+	} else {
+	  for (j = 0; j < seed[sn].weight; j++) {
+	    fprintf(stderr, "%c%s",
+		    base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				   shrimp_mode == MODE_COLOUR_SPACE),
+		    j < seed[sn].weight - 1? "," : "\n");
+	  }
+	}
+      }
+    }
+  }
 #endif
 
-#ifdef DEBUG_KWAY_MERGE
-	{
-#warning Checking k-way merge; make sure anchors are not being collapsed.
-		uint i;
-		assert(re->n_anchors[0] == (uint)len);
-		assert(re->n_anchors[1] == (uint)len_rc);
-		for(i = 0; i < re->n_anchors[0]; i++){
-			assert(re->anchors[0][i].x == list[i]);
-		}
-		for(i = 0; i < re->n_anchors[1]; i++){
-			assert(re->anchors[1][i].x == list_rc[i]);
-		}
-	}
-#endif
+  read_get_anchor_list(re, true);
 
-	// initialize heap of best hits for this read
-	re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
-	re->scores[0].heap_elems = 0;
-	re->scores[0].heap_capacity = num_outputs;
+  read_get_hit_list(re, (num_matches >= 2? 2 : 1));
+  read_pass1(re, false);
 
-	/*
-	if (len > 0 && Fflag) {
-		DEBUG("first pass on list");
-		scan_read_lscs_pass1(re,list,len,false);
-	}
-	if (len_rc > 0 && Cflag) {
-		DEBUG("first pass on list_rc");
-		scan_read_lscs_pass1(re,list_rc,len_rc,true);
-	}
-	 */
+  // initialize heap of best hits for this read
+  //re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
+  //re->scores[0].heap_elems = 0;
+  //re->scores[0].heap_capacity = num_outputs;
+  heap_unpaired_init(&h, num_outputs);
 
-	read_pass1(re);
+  read_get_vector_hits(re, &h);
 
-	if (re->scores[0].heap_elems > 0) {
-		DEBUG("second pass");
-		read_pass2(re);
-	}
+  DEBUG("second pass");
+  if (h.load > 0)
+    read_pass2(re, &h);
 
-	// done with this read; deallocate memory.
-	free(re->scores);
-	free(re->name);
-	free(re->read[0]);
-	free(re->read[1]);
+  // Done with this read; deallocate memory.
+  for (i = 0; i < h.load; i++)
+    hit_free_sfrp(h.array[i].rest.hit);
+  heap_unpaired_destroy(&h);
 
-	free(re->mapidx[0]);
-	free(re->mapidx[1]);
-	if (re->has_Ns) {
-		free(re->mapidx_pos[0]);
-		free(re->mapidx_pos[1]);
-	}
-	free(re->anchors[0]);
-	free(re->anchors[1]);
+  read_free(re);
 
-	scan_ticks[omp_get_thread_num()] += rdtsc() - before;
+  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
+
+
+static void
+handle_readpair(struct read_entry * re1, struct read_entry * re2) {
+  heap_paired h;
+  uint i;
+
+  uint64_t before = rdtsc();
+
+  read_get_mapidxs(re1);
+  read_get_mapidxs(re2);
+
+  read_get_anchor_list(re1, true);
+  read_get_anchor_list(re2, true);
+
+  read_get_hit_list(re1, (num_matches >= 4? 2 : 1));
+  read_get_hit_list(re2, (num_matches >= 4? 2 : 1));
+
+  readpair_pair_up_hits(re1, re2);
+
+  read_pass1(re1, true); // check pairing
+  read_pass1(re2, true);
+
+  heap_paired_init(&h, num_outputs);
+
+  readpair_get_vector_hits(re1, re2, &h);
+
+  if (h.load > 0)
+    readpair_pass2(re1, re2, &h);
+
+  /* Done; free read entry */
+  for (i = 0; i < h.load; i++) {
+    hit_free_sfrp(h.array[i].rest.hit[0]);
+    hit_free_sfrp(h.array[i].rest.hit[1]);
+  }
+
+  heap_paired_destroy(&h);
+
+  read_free(re1);
+  read_free(re2);
+
+  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
+}
+
 
 /*
  * Launch the threads that will scan the reads
@@ -1543,7 +2223,6 @@ launch_scan_threads_OLD(const char *file){
 					res[i].read_len = strlen(seq);
 					res[i].max_n_kmers = res[i].read_len - min_seed_span + 1;
 					res[i].min_kmer_pos = 0;
-					count_increment(&reads_c);
 					if (shrimp_mode == MODE_COLOUR_SPACE){
 						res[i].read_len--;
 						res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
@@ -1576,6 +2255,96 @@ launch_scan_threads_OLD(const char *file){
 
 
 /*
+ * Reverse read.
+ *
+ * This is useful for dealing with the various possibilities for matepair orientation in a unified way.
+ */
+static void
+read_reverse(struct read_entry * re) {
+  uint32_t * tmp1 = re->read[0];
+  re->read[0] = re->read[1];
+  re->read[1] = tmp1;
+  
+  int8_t tmp2 = re->initbp[0];
+  re->initbp[0] = re->initbp[1];
+  re->initbp[1] = tmp2;
+
+  re->input_strand = 1 - re->input_strand;
+}
+
+
+static uint
+get_contig_number_from_name(char const * c)
+{
+  uint cn;
+  // hack: accept '>' for cn=0
+  if (*c == '>')
+    return 0;
+  for (cn = 0; cn < num_contigs; cn++) {
+    if (!strcmp(c, contig_names[cn]))
+      break;
+  }
+  return cn;
+}
+
+
+/*
+ * Compute range limitations for this read.
+ */
+static void
+read_compute_ranges(struct read_entry * re)
+{
+  char * r, * r_save, * c, * c_save;
+  uint cn, st, g_start, g_end;
+
+  assert(re->range_string != NULL);
+
+  for (r = strtok_r(re->range_string, " ", &r_save); r != NULL; r = strtok_r(NULL, " ", &r_save))
+    {
+      c = strtok_r(r, ",", &c_save); // contig name
+      if (c == NULL)
+	continue;
+      cn = get_contig_number_from_name(c);
+      if (cn >= num_contigs)
+	continue;
+
+      c = strtok_r(NULL, ",", &c_save); // strand
+      if (c == NULL)
+	continue;
+      if (*c == '+')
+	st = 0;
+      else if (*c == '-')
+	st = 1;
+      else
+	continue;
+
+      c = strtok_r(NULL, ",", &c_save); // g_start
+      if (c == NULL)
+	continue;
+      g_start = (uint)atoll(c);
+      if (g_start == 0)
+	continue;
+      g_start--;
+
+      c = strtok_r(NULL, ",", &c_save); // g_end
+      if (c == NULL)
+	continue;
+      g_end = (uint)atoll(c);
+      if (g_end == 0)
+	continue;
+      g_end--;
+
+      re->n_ranges++;
+      re->ranges = (struct range_restriction *)xrealloc(re->ranges, re->n_ranges * sizeof(re->ranges[0]));
+      re->ranges[re->n_ranges - 1].cn = cn;
+      re->ranges[re->n_ranges - 1].st = st;
+      re->ranges[re->n_ranges - 1].g_start = g_start;
+      re->ranges[re->n_ranges - 1].g_end = g_end;
+    }
+}
+
+
+/*
  * Launch the threads that will scan the reads
  */
 static bool
@@ -1596,6 +2365,9 @@ launch_scan_threads(const char *file){
     fprintf(stderr, "- Processing read file [%s]\n", file);
   }
 
+  if (pair_mode != PAIR_NONE)
+    assert(chunk_size % 2 == 0); // read an even number of reads
+
   bool more = true;
 
 #pragma omp parallel shared(more, fasta) num_threads(num_threads)
@@ -1614,7 +2386,8 @@ launch_scan_threads(const char *file){
 	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 	for (load = 0; load < chunk_size; load++) {
-	  if (!fasta_get_next(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna)) {
+	  if (!fasta_get_next_with_range(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna,
+					 &re_buffer[load].range_string)) {
 	    more = false;
 	    break;
 	  }
@@ -1623,12 +2396,34 @@ launch_scan_threads(const char *file){
 	nreads += load;
       } // end critical section
 
+      if (pair_mode != PAIR_NONE)
+	assert(load % 2 == 0); // read even number of reads
+
       for (i = 0; i < load; i++) {
+
+	// if running in paired mode and first foot is ignored, ignore this one, too
+	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].name == NULL) {
+	  free(re_buffer[i].name);
+	  re_buffer[i].name = NULL;
+	  free(re_buffer[i].seq);
+	  continue;
+	}
+
+	re_buffer[i].has_Ns = !(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq)); // from fasta.c
+	if (re_buffer[i].has_Ns) { // ignore this read
+	  if (pair_mode != PAIR_NONE && i % 2 == 1) {
+	    free(re_buffer[i-1].name);
+	  }
+	  free(re_buffer[i].name);
+	  re_buffer[i].name = NULL;
+	  free(re_buffer[i].seq);
+	  continue;
+	}
+
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
 	re_buffer[i].min_kmer_pos = 0;
-	count_increment(&reads_c);
 	if (shrimp_mode == MODE_COLOUR_SPACE){
 	  re_buffer[i].read_len--;
 	  re_buffer[i].max_n_kmers -= 2; // 1st color always discarded from kmers
@@ -1641,10 +2436,40 @@ launch_scan_threads(const char *file){
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
 	}
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
-	re_buffer[i].has_Ns = !(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq)); // from fasta.c
+	re_buffer[i].input_strand = 0;
+
+	re_buffer[i].mapidx[0] = NULL;
+	re_buffer[i].mapidx[1] = NULL;
+	re_buffer[i].mapidx_pos[0] = NULL;
+	re_buffer[i].mapidx_pos[1] = NULL;
+	re_buffer[i].anchors[0] = NULL;
+	re_buffer[i].anchors[1] = NULL;
+	re_buffer[i].hits[0] = NULL;
+	re_buffer[i].hits[1] = NULL;
+	re_buffer[i].ranges = NULL;
+	re_buffer[i].n_ranges = 0;
+
+	if (re_buffer[i].range_string != NULL) {
+	  read_compute_ranges(&re_buffer[i]);
+	  free(re_buffer[i].range_string);
+	  re_buffer[i].range_string = NULL;
+	}
+
 	free(re_buffer[i].seq);
 
-	handle_read(&re_buffer[i]);
+	if (pair_mode == PAIR_NONE)
+	  {
+	    handle_read(&re_buffer[i]);
+	  }
+	else if (i % 2 == 1) 
+	  {
+	    if (pair_reverse[pair_mode][0])
+	      read_reverse(&re_buffer[i-1]);
+	    if (pair_reverse[pair_mode][1])
+	      read_reverse(&re_buffer[i]);
+
+	    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
+	  }
       }
     }
 
@@ -1657,49 +2482,68 @@ launch_scan_threads(const char *file){
 
 
 void print_genomemap_stats() {
-	stat_t list_size, list_size_non0;
-	uint sn;
-	uint64_t capacity, mapidx;
+  stat_t list_size, list_size_non0;
+  uint sn;
+  uint64_t capacity, mapidx;
+  uint max;
 
-	fprintf(stderr, "Genome Map stats:\n");
+  fprintf(stderr, "Genome Map stats:\n");
 
-	for (sn = 0; sn < n_seeds; sn++) {
-	  if (Hflag)
-	    capacity = power(4, HASH_TABLE_POWER);
-	  else
-	    capacity = power(4, seed[sn].weight);
+  for (sn = 0; sn < n_seeds; sn++) {
+    if (Hflag)
+      capacity = power(4, HASH_TABLE_POWER);
+    else
+      capacity = power(4, seed[sn].weight);
 
-		stat_init(&list_size);
-		stat_init(&list_size_non0);
-		for (mapidx = 0; mapidx < capacity; mapidx++) {
-			stat_add(&list_size, genomemap_len[sn][mapidx]);
-			if (genomemap_len[sn][mapidx] > 0)
-				stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
-		}
+    stat_init(&list_size);
+    stat_init(&list_size_non0);
+    for (max = 0, mapidx = 0; mapidx < capacity; mapidx++) {
+#ifdef DEBUG_TRIM_LONG_LISTS
+      if (genomemap_len[sn][mapidx] > DEBUG_TRIM_LONG_LISTS)
+	continue;
+#endif
+      stat_add(&list_size, genomemap_len[sn][mapidx]);
+      if (genomemap_len[sn][mapidx] > 0)
+	stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
 
-		fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f)\n",
-				sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
-				(long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
-				stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
-				stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0));
-	}
+      if (genomemap_len[sn][mapidx] > max)
+	max = genomemap_len[sn][mapidx];
+    }
+
+    fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f) max:%u\n",
+	    sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
+	    (long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
+	    stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
+	    stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0), max);
+
+#ifdef DEBUG_DUMP_MAP_DIST
+#warning Dumping genomemap length distribution
+    {
+      uint64_t histogram[100];
+      uint bucket_size = ceil_div(max, 100);
+      uint i, bucket;
+
+      for (i = 0; i < 100; i++) {
+	histogram[i] = 0;
+      }
+
+      for (mapidx = 0; mapidx < capacity; mapidx++) {
+#ifdef DEBUG_TRIM_LONG_LISTS
+	if (genomemap_len[sn][mapidx] > DEBUG_TRIM_LONG_LISTS)
+	  continue;
+#endif
+	bucket = genomemap_len[sn][mapidx] / bucket_size;
+	histogram[bucket]++;
+      }
+
+      for (i = 0; i < 100; i++) {
+	fprintf(stderr, "[%d-%d]: %lld\n", i*bucket_size, (i+1)*bucket_size, histogram[i]);
+      }
+    }
+#endif
+
+  }
 }
-
-
-void print_run_stats() {
-	static char const my_tab[] = "    ";
-
-	fprintf(stderr, "%sGeneral:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab, "Reads Matched:",
-			comma_integer(stat_get_count(&matches_s)),
-			count_get_count(&reads_c) == 0? 0 : ((double)stat_get_count(&matches_s) / (double)count_get_count(&reads_c)) * 100);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Total Matches:",
-			comma_integer(stat_get_sum(&matches_s)));
-	fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab, "Avg Hits/Matched Read:",
-			stat_get_sum(&matches_s) == 0 ? 0 : ((double)stat_get_sum(&matches_s) / (double)stat_get_count(&matches_s)));
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab, "Duplicate Hits Pruned:",
-			comma_integer(count_get_count(&dup_hits_c)));
-}  
 
 
 /*
@@ -1842,6 +2686,20 @@ load_genome(char **files, int nfiles)
 
 }
 
+
+static void
+print_insert_histogram()
+{
+  uint i;
+  for (i = 0; i < 100; i++) {
+    fprintf(stderr, "[%d-%d]: %.2f%%\n",
+	    min_insert_size + i * insert_histogram_bucket_size,
+	    min_insert_size + (i + 1) * insert_histogram_bucket_size - 1,
+	    ((double)insert_histogram[i] / (double)total_paired_matches) * 100);
+  }
+}
+
+
 static void
 print_statistics()
 {
@@ -1981,22 +2839,65 @@ print_statistics()
 
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "    General:\n");
-	fprintf(stderr, "        Reads Matched:          %s    "
-			"(%.4f%%)\n", comma_integer(reads_matched),
-			(nreads == 0) ? 0 : ((double)reads_matched / (double)nreads) * 100);
-	fprintf(stderr, "        Total Matches:          %s\n",
-			comma_integer(total_matches));
-	fprintf(stderr, "        Avg Hits/Matched Read:  %.2f\n",
-			(total_matches == 0) ? 0 : ((double)total_matches /
-					(double)reads_matched));
-	fprintf(stderr, "        Duplicate Hits Pruned:  %s\n",
-			comma_integer(dup_hits_c));
+	fprintf(stderr, "%sGeneral:\n", my_tab);
+	if (pair_mode == PAIR_NONE)
+	  {
+	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "Reads Matched:",
+		    comma_integer(total_reads_matched),
+		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		    "Total Matches:",
+		    comma_integer(total_single_matches));
+	    fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab,
+		    "Avg Hits/Matched Read:",
+		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		    "Duplicate Hits Pruned:",
+		    comma_integer(total_dup_single_matches));
+	  }
+	else // paired hits
+	  {
+	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "Pairs Matched:",
+		    comma_integer(total_pairs_matched),
+		    (nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
+	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		    "Total Paired Matches:",
+		    comma_integer(total_paired_matches));
+	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+		    "Avg Matches/Pair Matched:",
+		    (total_pairs_matched == 0) ? 0 : ((double)total_paired_matches / (double)total_pairs_matched));
+	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		    "Duplicate Paired Matches Pruned:",
+		    comma_integer(total_dup_paired_matches));
+
+	    fprintf(stderr, "\n");
+
+	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "Additional Reads Matched Unpaired:",
+		    comma_integer(total_reads_matched),
+		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		    "Total Single Matches:",
+		    comma_integer(total_single_matches));
+	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+		    "Avg Matches/Unpaired Matched Read:",
+		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		    "Duplicate Unpaired Matches Pruned:",
+		    comma_integer(total_dup_single_matches));
+	  }
+
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "%sMemory usage:\n", my_tab);
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		"Genomemap:",
+		comma_integer(count_get_count(&mem_genomemap)));
 
 	if (Mflag) {
-		fprintf(stderr, "\n    Memory usage:\n");
-		fprintf(stderr, "        Genomemap:                %s\n",
-				comma_integer(count_get_count(&mem_genomemap)));
+	  print_insert_histogram();
 	}
 }
 
@@ -2215,6 +3116,14 @@ void print_settings() {
 
   fprintf(stderr, "\n");
 
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Pair mode:", pair_mode_string[pair_mode]);
+  if (pair_mode != PAIR_NONE) {
+    fprintf(stderr, "%s%-40smin:%d max:%d\n", my_tab, "Insert sizes:", min_insert_size, max_insert_size);
+    fprintf(stderr, "%s%-40s%d\n", my_tab, "Bucket size:", insert_histogram_bucket_size);
+  }
+
+  fprintf(stderr, "\n");
+
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of threads:", num_threads);
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Thread chuck size:", chunk_size);
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
@@ -2289,7 +3198,6 @@ int main(int argc, char **argv){
 		}
 		fprintf(stderr,"done\n");
 	}
-	print_run_stats();
 }
 
 #else
@@ -2322,10 +3230,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZG";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGE";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGp:I:E";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -2510,6 +3418,41 @@ int main(int argc, char **argv){
 		case 'G':
 		  gapless_sw = true;
 		  break;
+		case 'p':
+		  if (!strcmp(optarg, "none")) {
+		    pair_mode = PAIR_NONE;
+		  } else if (!strcmp(optarg, "opp-in")) {
+		    pair_mode = PAIR_OPP_IN;
+		  } else if (!strcmp(optarg, "opp-out")) {
+		    pair_mode = PAIR_OPP_OUT;
+		  } else if (!strcmp(optarg, "col-fw")) {
+		    pair_mode = PAIR_COL_FW;
+		  } else if (!strcmp(optarg, "col-bw")) {
+		    pair_mode = PAIR_COL_BW;
+		  } else {
+		    fprintf(stderr, "error: unrecognized pair mode (%s)\n", optarg);
+		    exit(1);
+		  }
+		  break;
+		case 'I':
+		  c = strtok(optarg, ",");
+		  if (c == NULL) {
+		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
+		    exit(1);
+		  }
+		  min_insert_size = (uint)atoi(c);
+		  c = strtok(NULL, ",");
+		  if (c == NULL) {
+		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
+		    exit(1);
+		  }
+		  max_insert_size = (uint)atoi(c);
+		  if (min_insert_size > max_insert_size) {
+		    fprintf(stderr, "error: invalid insert sizes (min:%d,max:%d)\n",
+			    min_insert_size, max_insert_size);
+		    exit(1);
+		  }
+		  break;
 		case 'E':
 			Eflag = true;
 			break;
@@ -2520,6 +3463,8 @@ int main(int argc, char **argv){
 
 	argc -= optind;
 	argv += optind;
+
+	insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
 
 	if(load_file != NULL && n_seeds != 0){
 		fprintf(stderr,"error: cannot specify seeds when loading genome map\n");

@@ -20,7 +20,7 @@
   };
 
 #define DEF_HEAP_INIT(_id)						\
-  static void								\
+  static inline void								\
   heap_##_id##_init(struct heap_##_id * h, uint capacity)		\
   {									\
     assert(h != NULL);							\
@@ -31,7 +31,7 @@
   }
 
 #define DEF_HEAP_DESTROY(_id)			\
-  static void					\
+  static inline void					\
   heap_##_id##_destroy(struct heap_##_id * h)	\
   {						\
     assert(h != NULL);				\
@@ -87,7 +87,7 @@
   }
 
 #define DEF_HEAP_EXTRACT_MIN(_id)					\
-  static void								\
+  static inline void								\
   heap_##_id##_extract_min(struct heap_##_id * h, struct heap_##_id##_elem * dest) \
   {									\
     assert(h != NULL && h->load > 0);					\
@@ -102,7 +102,7 @@
   }
 
 #define DEF_HEAP_REPLACE_MIN(_id)					\
-  static void								\
+  static inline void								\
   heap_##_id##_replace_min(struct heap_##_id * h, struct heap_##_id##_elem * e) \
   {									\
     assert(h != NULL && h->load > 0);					\
@@ -113,7 +113,7 @@
 
 
 #define DEF_HEAP_GET_MIN(_id)						\
-  static void								\
+  static inline void								\
   heap_##_id##_get_min(struct heap_##_id * h, struct heap_##_id##_elem * dest) \
   {									\
     assert(h != NULL && h->load > 0);					\
@@ -122,7 +122,7 @@
   }
 
 #define DEF_HEAP_INSERT(_id)						\
-  static void								\
+  static inline void								\
   heap_##_id##_insert(struct heap_##_id * h, struct heap_##_id##_elem * e) \
   {									\
     assert(h != NULL && h->load < h->capacity);				\
@@ -131,6 +131,56 @@
     h->load++;								\
 									\
     heap_##_id##_percolate_up(h, h->load);				\
+  }
+
+#define DEF_HEAP_HEAPIFY(_id)				\
+  static void						\
+  heap_##_id##_heapify(struct heap_##_id * h)		\
+  {							\
+    assert(h != NULL);					\
+							\
+    uint node;						\
+    for (node = h->load / 2; node >= 1; node--) {	\
+      heap_##_id##_percolate_down(h, node);		\
+    }							\
+  }
+
+#define DEF_HEAP_HEAPSORT(_id)			\
+  static void					\
+  heap_##_id##_heapsort(struct heap_##_id * h)	\
+  {						\
+    assert(h != NULL);				\
+						\
+    uint orig_load = h->load;			\
+    heap_##_id##_elem tmp;			\
+						\
+    while (h->load > 1) {			\
+      tmp = h->array[0];			\
+      h->array[0] = h->array[h->load-1];	\
+      h->array[h->load-1] = tmp;		\
+      h->load--;				\
+						\
+      heap_##_id##_percolate_down(h, 1);	\
+    }						\
+    h->load = orig_load;			\
+  }
+
+#define DEF_HEAP_ELEM_CMP(_id)						\
+  static int								\
+  heap_##_id##_elem_cmp(void const * p1, void const * p2)		\
+  {									\
+    int64_t res = (int64_t)((heap_##_id##_elem *)p1)->key -		\
+      (int64_t)((heap_##_id##_elem *)p2)->key;				\
+    return res > (int64_t)0 ? -1 :					\
+      res < (int64_t)0? 1 : 0;						\
+  }
+
+#define DEF_HEAP_QSORT(_id)					\
+  static inline void						\
+  heap_##_id##_qsort(struct heap_##_id * h)			\
+  {								\
+    qsort(h->array, h->load, sizeof(struct heap_##_id##_elem),	\
+	  heap_##_id##_elem_cmp);				\
   }
 
 #define DEF_HEAP(_key_t,_rest_t,_id)		\
@@ -143,9 +193,13 @@
   DEF_HEAP_EXTRACT_MIN(_id)			\
   DEF_HEAP_GET_MIN(_id)				\
   DEF_HEAP_REPLACE_MIN(_id)			\
-  DEF_HEAP_INSERT(_id)
+  DEF_HEAP_INSERT(_id)				\
+  DEF_HEAP_HEAPIFY(_id)				\
+  DEF_HEAP_HEAPSORT(_id)			\
+  DEF_HEAP_ELEM_CMP(_id)			\
+  DEF_HEAP_QSORT(_id)
 
-DEF_HEAP(uint32_t,uint,uu)
+//DEF_HEAP(uint32_t,uint,uu)
 
 
 #endif

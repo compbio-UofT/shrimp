@@ -127,26 +127,43 @@ fasta_stats()
 }
 
 static char *
-extract_name(char *buffer)
+extract_name(char *buffer, char * * ranges)
 {
 	char *extracted;
 	char *ret;
 	int len;
+	char * tok_save;
 
 	assert(buffer[0] == '>');
 
 	/* Funny business for valgrind. See bottom of fasta_get_next. */
+	/*
 	extracted = strtrim(&buffer[1]);
 	len = strlen(extracted);
 	ret = (char *)xmalloc(len + 17);
 	memcpy(ret, extracted, len);
 	memset(ret + len, 0, 17);
+	*/
+
+	extracted = strtok_r(&buffer[1], "\t", &tok_save);
+	extracted = strtrim(extracted);
+	len = strlen(extracted);
+	ret = (char *)xmalloc(len + 17);
+	memcpy(ret, extracted, len);
+	memset(ret + len, 0, 17);
+
+	if (ranges != NULL && (extracted = strtok_r(NULL, "\t", &tok_save)) != NULL) {
+	  len = strlen(extracted);
+	  *ranges = (char *)xmalloc(len + 17);
+	  memcpy(*ranges, extracted, len);
+	  memset(*ranges + len, 0, 17);
+	}
 
 	return (ret);
 }
 
 bool
-fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
+fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_rna, char * * ranges)
 {
 	static int categories[256] = { 42 };
 	enum { CAT_SPACE, CAT_NEWLINE, CAT_NUL, CAT_ELSE };
@@ -177,7 +194,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 	*name = *sequence = readinseq = NULL;
 
 	if (fasta->leftover) {
-		*name = extract_name(fasta->buffer);
+		*name = extract_name(fasta->buffer, ranges);
 		fasta->leftover = false;
 		gotname = true;
 	}
@@ -192,7 +209,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 				break;
 			}
 
-			*name = extract_name(fasta->buffer);
+			*name = extract_name(fasta->buffer, ranges);
 			gotname = true;
 			continue;
 		}
