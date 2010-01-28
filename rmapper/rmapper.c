@@ -38,6 +38,7 @@
 
 static int	mode_read_length	= DEF_MODE_50BP;
 static int	mode_speed_tradeoff	= DEF_MODE_FAST;
+static bool	mode_mirna		= false;
 
 /* Seed management */
 static struct seed_type *seed = NULL;
@@ -411,7 +412,7 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
 {
   bitmap_type a = seed[sn].mask[0];
   uint32_t mapidx = 0;
-  int i = seed[sn].span - 1;
+  int i = 0;
 
   do {
     if ((a & 0x1) == 0x1) {
@@ -419,7 +420,7 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
       mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
     }
     a >>= 1;
-    i--;
+    i++;
 
   } while (a != 0x0);
 
@@ -1567,7 +1568,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
       }
     }
 
-    rs->sfrp = (struct sw_full_results *)xmalloc(sizeof(*rs->sfrp));
+    rs->sfrp = (struct sw_full_results *)xcalloc(sizeof(*rs->sfrp));
 
     if (shrimp_mode == MODE_COLOUR_SPACE) {
       sw_full_cs(genome, goff, glen, re->read1, re->read1_len,
@@ -1605,7 +1606,7 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
     struct read_entry * re = rs->parent;
     bool dup;
 
-    dup = sw_full_results_equal(&last_sfr, rs->sfrp);
+    dup = i > 0 && sw_full_results_equal(&last_sfr, rs->sfrp);
     if (dup)
       nduphits++;
 
@@ -1639,10 +1640,8 @@ generate_output_lscs(struct re_score *rs_array, size_t rs_len, bool revcmpl)
     }
 
     last_sfr = *rs->sfrp;
-    if (rs->sfrp->dbalign != NULL)
-      free(rs->sfrp->dbalign);
-    if (rs->sfrp->qralign != NULL)
-      free(rs->sfrp->qralign);
+    free(rs->sfrp->dbalign);
+    free(rs->sfrp->qralign);
     free(rs->sfrp);
   }
 }
@@ -2409,7 +2408,7 @@ usage(char * progname, bool full_usage)
 	  "disabled)\n");
 
   fprintf(stderr,
-	  "    -G    Perform Gapless Alignment                     (default: "
+	  "    -ungapped Perform Gapless Alignment                 (default: "
 	  "disabled)\n");
 
   fprintf(stderr,
@@ -2455,14 +2454,37 @@ set_mode_from_string(char const * s) {
     mode_read_length = DEF_MODE_50BP;
   } else if (!strcmp(s, "70bp")) {
     mode_read_length = DEF_MODE_70BP;
-  } else
+  } else if (!strcmp(s, "mirna")) {
+    mode_mirna = true;
+  } else {
     return 0;
+  }
   return 1;
 }
 
 
 static void
 set_params_from_mode(bool num_matches_set, bool window_len_set, bool hit_taboo_len_set) {
+  if (mode_mirna) {
+    uint i;
+    for (i = 0; (int)i < default_seeds_cnt_mirna[0]; i++)
+      add_spaced_seed(default_seeds_mirna[0][i]);
+
+    Hflag = !Hflag;
+
+    gapless_sw = true;
+    anchor_width = 0;
+    a_gap_open_score = -255;
+    b_gap_open_score = -255;
+
+    if (!num_matches_set)
+      num_matches = 1;
+    if (!window_len_set)
+      window_len = 100.0;
+
+    return;
+  }
+
   switch (mode_speed_tradeoff) {
   case DEF_MODE_FAST:
 
@@ -2564,11 +2586,11 @@ main(int argc, char **argv)
   /* set the appropriate defaults based on mode */
   switch (shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:ZY:W:M:G";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:x:h:v:BCFHPRTUA:ZY:W:M:u:";
     selected_seed_weight = default_seed_weight_cs;
     break;
   case MODE_LETTER_SPACE:
-    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:ZY:W:M:G";
+    optstr = "?s:n:t:9:w:o:r:d:m:i:g:q:e:f:h:X:BCFHPRTUA:ZY:W:M:u:";
     selected_seed_weight = default_seed_weight_ls;
     break;
   case MODE_HELICOS_SPACE:
@@ -2676,7 +2698,17 @@ main(int argc, char **argv)
       dag_ref_mismatch_deletion = atoi(optarg);
       break;
     case 'u':
-      dag_ref_error_insertion = atoi(optarg);
+      if (!strcmp(optarg, "ngapped")) {
+	gapless_sw = true;
+	anchor_width = 0;
+	a_gap_open_score = -255;
+	b_gap_open_score = -255;
+      } else if (strspn(optarg, "+-.0123456789") == strlen(optarg)) {
+	dag_ref_error_insertion = atoi(optarg);
+      } else {
+	fprintf(stderr, "error: unrecognized parameter for option -u (%s)\n", optarg);
+	exit(1);
+      }
       break;
     case '2':
       dag_ref_weighted_thresh = atof(optarg);
@@ -2753,7 +2785,7 @@ main(int argc, char **argv)
       Fflag = true;
       break;
     case 'H':
-      Hflag = true;
+      Hflag = !Hflag;
       break;
     case 'P':
       Pflag = true;
@@ -2830,12 +2862,6 @@ main(int argc, char **argv)
 	}
 	c = strtok(NULL, ",");
       } while (c != NULL);
-      break;
-    case 'G':
-      gapless_sw = true;
-      anchor_width = 1;
-      a_gap_open_score = -255;
-      b_gap_open_score = -255;
       break;
     default:
       usage(progname, false);

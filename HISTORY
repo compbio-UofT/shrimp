@@ -1,9 +1,17 @@
 $Id$
 
-1.3.2: January 4, 2010
-	- Added option -G, which replaces SW vector filter by a gapless
-	alignment filter. This filter still catches mismatches (e.g., SNPs)
-	and colourspace crossovers.
+1.3.2: January 28, 2010
+	- Added option -ungapped, which replaces SW vector filter by a gapless
+	  alignment filter. This filter still catches mismatches (e.g., SNPs)
+	  and colourspace crossovers.
+	- Fixed bug which would cause spaced seeds to be applied in reverse
+	  when not using -H.
+	- Fixed bug which would cause undesirable effects (including failed
+	  assertions when omitting -DNDEBUG) when colour space crossover score
+	  would be set very low (e.g., to prevent rmapper from calling any
+	  crossovers).
+	- Added -M mirna mode, which loads some parameters suitable for
+	  searching mirna databses. See README. (Thanks Alessandro Guffanti)
 
 1.3.1: November 23, 2009
 	- Fixed bug which caused allocation of 8 bytes per int even on systems

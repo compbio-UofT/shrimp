@@ -1024,13 +1024,17 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 #endif
 
   sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt);
-  k = do_backtrace(glen, i, j, k, sfr);
-  pretty_print(sfr->read_start, sfr->genome_start, k);
-  sfr->gmapped = j - sfr->genome_start + 1;
-  sfr->genome_start += goff;
-  sfr->rmapped = i - sfr->read_start + 1;
-  sfr->dbalign = xstrdup(dbalign);
-  sfr->qralign = xstrdup(qralign);
+  if (sfr->score >= 0 && sfr->score >= threshscore) {
+    k = do_backtrace(glen, i, j, k, sfr);
+    pretty_print(sfr->read_start, sfr->genome_start, k);
+    sfr->gmapped = j - sfr->genome_start + 1;
+    sfr->genome_start += goff;
+    sfr->rmapped = i - sfr->read_start + 1;
+    sfr->dbalign = xstrdup(dbalign);
+    sfr->qralign = xstrdup(qralign);
+  } else {
+    sfr->score = 0;
+  }
 
   //swcells += (glen * rlen);
   swticks += (rdtsc() - before);

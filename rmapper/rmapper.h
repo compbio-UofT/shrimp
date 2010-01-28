@@ -29,7 +29,7 @@ extern const bool use_dag;
 #define DEF_MAX_READ_LEN	1000		/* high sanity mark */
 #define DEF_KMER_STDDEV_LIMIT	-1		/* disabled by default */
 
-#define DEF_MAX_N_DEFAULT_SEEDS 4
+#define DEF_MAX_N_DEFAULT_SEEDS 5
 typedef char const * const default_seed_array_t[DEF_MAX_N_DEFAULT_SEEDS];
 
 static int const default_seed_weight_cs = 12;
@@ -60,6 +60,10 @@ static int const default_seed_max_weight_hs = 7;
 static int const default_seeds_cnt_hs[1] = { 1 };
 static default_seed_array_t const default_seeds_hs[1] =
   { { "11110111" } };
+
+static int const default_seeds_cnt_mirna[1] = { 5 };
+static default_seed_array_t const default_seeds_mirna[1] =
+  { { "00111111001111111100", "00111111110011111100", "00111111111100111100", "00111111111111001100", "00111111111111110000" } };
 
 /* DAG Scores/Parameters */
 #define DEF_DAG_EPSILON		  0
