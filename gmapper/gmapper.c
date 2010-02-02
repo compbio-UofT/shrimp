@@ -2376,7 +2376,7 @@ launch_scan_threads(const char *file){
     uint load, i;
     uint64_t before;
 
-    re_buffer = (struct read_entry *)xmalloc(chunk_size * sizeof(re_buffer[0]));
+    re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
 
     while (more){
       before = rdtsc();
