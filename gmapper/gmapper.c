@@ -1770,7 +1770,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
 		 &rh->anchor, 1);
       assert(rh->sfrp->score == rh->score_vector);
     } else { // this wouldn't have passed the filter
-      rh->sfrp->score = rh->score_vector;
+      rh->sfrp->score = 0;
     }
   }
   rh->score_full = rh->sfrp->score;
