@@ -636,7 +636,10 @@ static bool load_genome_map(const char *file){
 	//shrimp mode
 	uint32_t m;
 	xgzread(fp,&m,sizeof(uint32_t));
-	shrimp_mode = (shrimp_mode_t)m;
+	if (shrimp_mode != (shrimp_mode_t)m) {
+	  fprintf(stderr, "error: shrimp mode does not match genome file (%s)\n", file);
+	  exit(1);
+	}
 
 	//Hflag
 	uint32_t h;
