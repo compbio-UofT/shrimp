@@ -13,6 +13,7 @@
 
 #define DEF_HASH_FILTER_CALLS	true
 #define DEF_GAPLESS_SW		false
+#define DEF_LIST_CUTOFF		4294967295u // 2^32 - 1
 
 #define PAIR_NONE	0
 #define PAIR_OPP_IN	1

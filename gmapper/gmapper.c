@@ -44,6 +44,7 @@ static uint	num_outputs		= DEF_NUM_OUTPUTS;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
+static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 
 #include "../common/f1-wrapper.h"
 
@@ -1033,12 +1034,9 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
 
-#ifdef DEBUG_TRIM_LONG_LISTS
-#warning Trimming long genomemap lists
-      if (genomemap_len[sn][re->mapidx[st][offset]] > DEBUG_TRIM_LONG_LISTS) {
+      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
 	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
       }
-#endif
 
       if ((!re->has_Ns || re->mapidx_pos[st][offset])
 	  && idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]
@@ -2498,10 +2496,9 @@ void print_genomemap_stats() {
     stat_init(&list_size);
     stat_init(&list_size_non0);
     for (max = 0, mapidx = 0; mapidx < capacity; mapidx++) {
-#ifdef DEBUG_TRIM_LONG_LISTS
-      if (genomemap_len[sn][mapidx] > DEBUG_TRIM_LONG_LISTS)
+      if (genomemap_len[sn][mapidx] > list_cutoff)
 	continue;
-#endif
+
       stat_add(&list_size, genomemap_len[sn][mapidx]);
       if (genomemap_len[sn][mapidx] > 0)
 	stat_add(&list_size_non0, genomemap_len[sn][mapidx]);
@@ -2528,10 +2525,9 @@ void print_genomemap_stats() {
       }
 
       for (mapidx = 0; mapidx < capacity; mapidx++) {
-#ifdef DEBUG_TRIM_LONG_LISTS
-	if (genomemap_len[sn][mapidx] > DEBUG_TRIM_LONG_LISTS)
+	if (genomemap_len[sn][mapidx] > list_cutoff)
 	  continue;
-#endif
+
 	bucket = genomemap_len[sn][mapidx] / bucket_size;
 	histogram[bucket]++;
       }
@@ -2998,6 +2994,9 @@ void usage(char *progname,bool full_usage){
 	    fprintf(stderr,
 		    "    -K    Set the thread chunk size               (default: %u)\n",
 		    DEF_CHUNK_SIZE);
+	    fprintf(stderr,
+		    "    -Y    Index list cutoff length                (default: %u)\n",
+		    DEF_LIST_CUTOFF);
 	  }
 	}
 
@@ -3037,8 +3036,7 @@ void usage(char *progname,bool full_usage){
 			"    -U    Print Unmapped Read Names in Output           (default: "
 			"disabled)\n");
 	fprintf(stderr,
-			"    -M    Toggle brief memory usage statistics          (default: %s)\n",
-			Mflag? "enabled" : "disabled");
+		"    -M    Print insert size histogram                   (default: disabled)\n");
 
 	fprintf(stderr,
 			"    -D    Toggle thread statistics                  (default: %s)\n",
@@ -3119,7 +3117,9 @@ void print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Pair mode:", pair_mode_string[pair_mode]);
   if (pair_mode != PAIR_NONE) {
     fprintf(stderr, "%s%-40smin:%d max:%d\n", my_tab, "Insert sizes:", min_insert_size, max_insert_size);
-    fprintf(stderr, "%s%-40s%d\n", my_tab, "Bucket size:", insert_histogram_bucket_size);
+    if (Mflag) {
+      fprintf(stderr, "%s%-40s%d\n", my_tab, "Bucket size:", insert_histogram_bucket_size);
+    }
   }
 
   fprintf(stderr, "\n");
@@ -3129,6 +3129,7 @@ void print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
 
 }
 
@@ -3230,10 +3231,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:Y:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGp:I:E";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGp:I:EY:";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -3456,6 +3457,13 @@ int main(int argc, char **argv){
 		case 'E':
 			Eflag = true;
 			break;
+		case 'Y':
+		  list_cutoff = atoi(optarg);
+		  if (list_cutoff == 0) {
+		    fprintf(stderr, "error: invalid list cutoff (%s)\n", optarg);
+		    exit(1);
+		  }
+		  break;
 		default:
 			usage(progname, false);
 		}
