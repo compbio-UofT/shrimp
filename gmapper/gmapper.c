@@ -1807,16 +1807,34 @@ hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char *
     memset(&inp, 0, sizeof(inp));
     input_parse_string(*output1,fsp,&inp);
     char * cigar, *read;
+    uint32_t * read_bitstring, *read_ls_bitstring;
     cigar = (char *)xmalloc(sizeof(char)*200);
+	int first_bp;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
-    if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-      read = readtostr(re->read[1 - rh->st], re->read_len, false, 0);
+	if(inp.flags & INPUT_FLAG_IS_REVCMPL){
+	  read_bitstring = re->read[1 - rh->st];
+	  first_bp = re->initbp[1 - rh->st];
+	} else {
+	  read_bitstring = re->read[rh->st];
+	  first_bp = re->initbp[rh->st];
+	}
+
+    if (shrimp_mode == COLOUR_SPACE){
+    	uint index;
+    	read_ls_bitstring = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(re->read_len + 1));
+    	int current_bp = first_bp;
+    	for (index = 0; index < re->read_len;index++){
+    		bitfield_append(read_ls_bitstring, index, current_bp);
+    		current_bp = cstols(current_bp,EXTRACT(read_bitstring,index),re->is_rna);
+    	}
+    	bitfield_append(read_ls_bitstring, index, current_bp);
     } else {
-      read = readtostr(re->read[rh->st], re->read_len, false, 0);
+    	read_ls_bitstring = read_bitstring;
     }
+    read = readtostr(read_bitstring,re->read_len,false,0);
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
-    sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
+    char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
 	    inp.read,
 	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
 	    inp.genome,
@@ -1829,6 +1847,10 @@ hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char *
 	    read,
 	    "*",
 	    inp.score);
+    if (shrimp_mode == COLOUR_SPACE){
+    	sprintf(extra,"CS:Z:%s",readtostr(read_bitstring,re->read_len,true,first_bp));
+    	free(read_ls_bitstring);
+    }
     free(read);
     free(cigar);
     format_free(fsp);
@@ -3234,7 +3256,7 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:Y:";
+		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:EY:";
 		break;
 	case MODE_LETTER_SPACE:
 		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGp:I:EY:";
