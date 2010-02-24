@@ -1783,7 +1783,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char ** output2)
+hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2)
 {
   assert(re != NULL && rh != NULL);
   assert(rh->sfrp != NULL);
@@ -1803,9 +1803,16 @@ hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char *
     fsp = format_get_from_string(output);
     free(output);
 
-    struct input inp;
+    struct input inp, inp_mp;
     memset(&inp, 0, sizeof(inp));
     input_parse_string(*output1,fsp,&inp);
+    if(re_mp != NULL){
+    	free(*output1);
+		*output1 = output_normal(re_mp->name, contig_names[rh_mp->cn], rh_mp->sfrp,
+    			   genome_len[rh_mp->cn], shrimp_mode == MODE_COLOUR_SPACE, re_mp->read[rh_mp->st],
+    			   re_mp->read_len, re_mp->initbp[rh_mp->st], rh_mp->gen_st, Rflag);
+		input_parse_string(*output1,fsp,&inp_mp);
+    }
     char * cigar, *read;
     uint32_t * read_bitstring, *read_ls_bitstring;
     cigar = (char *)xmalloc(sizeof(char)*200);
@@ -1832,16 +1839,33 @@ hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char *
     	read_ls_bitstring = read_bitstring;
     }
     read = readtostr(read_bitstring,re->read_len,false,0);
+    char *name;
+    bool first = false, second = false;
+    if (re_mp == NULL){
+    	name = inp.read;
+    } else {
+    	name = (char *)xmalloc(sizeof(char *)*strlen(inp.read)+1);
+    	strncpy(name,inp.read,strlen(inp.read)+1);
+    	char * end = strrchr(name,':');
+    	*end = '\0';
+    	end++;
+    	if (*end == '1'){
+    		first = true;
+    	} else {
+    		second = true;
+    	}
+    }
+
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
     char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
 	    inp.read,
-	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
+	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((re_mp != NULL) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
 	    inp.genome,
 	    inp.genome_start + 1,
 	    255,
 	    cigar,
-	    "*",
+	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
 	    inp.read_start,
 	    0,
 	    read,
@@ -1850,6 +1874,9 @@ hit_output(struct read_entry * re, struct read_hit * rh, char ** output1, char *
     if (shrimp_mode == COLOUR_SPACE){
     	sprintf(extra,"\tCS:Z:%s",readtostr(read_bitstring,re->read_len,true,first_bp));
     	free(read_ls_bitstring);
+    }
+    if(re_mp != NULL){
+    	free(name);
     }
     free(read);
     free(cigar);
@@ -1921,7 +1948,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
       re->final_matches++;
 
-      hit_output(re, rh, &output1, &output2);
+      hit_output(re, rh, NULL, NULL, &output1, &output2);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -2007,8 +2034,8 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 
       //re1->paired_final_matches++;
 
-      hit_output(re1, rh1, &output1, &output2);
-      hit_output(re2, rh2, &output3, &output4);
+      hit_output(re1, rh1, re2, rh2, &output1, &output2);
+      hit_output(re2, rh2, re1, rh2, &output3, &output4);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -3680,7 +3707,7 @@ int main(int argc, char **argv){
 	}
 
 	//TODO setup need max window and max read len
-	int longest_read_len = 100;
+	int longest_read_len = 1000;
 	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
