@@ -1866,7 +1866,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	    255,
 	    cigar,
 	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
-	    inp.read_start,
+	    inp_mp.genome_start + 1,
 	    0,
 	    read,
 	    "*",
