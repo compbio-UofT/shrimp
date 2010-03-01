@@ -1859,14 +1859,14 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
     char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
-	    inp.read,
+	    name,
 	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((re_mp != NULL) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
 	    inp.genome,
 	    inp.genome_start + 1,
 	    255,
 	    cigar,
 	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
-	    inp_mp.genome_start + 1,
+	    ((re_mp == NULL) ? 0:(inp_mp.genome_start + 1)),
 	    0,
 	    read,
 	    "*",
