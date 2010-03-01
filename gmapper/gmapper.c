@@ -1818,15 +1818,11 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     cigar = (char *)xmalloc(sizeof(char)*200);
 	int first_bp;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
-	if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-	  read_bitstring = re->read[1 - rh->st];
-	  first_bp = re->initbp[1 - rh->st];
-	} else {
-	  read_bitstring = re->read[rh->st];
-	  first_bp = re->initbp[rh->st];
-	}
+
+	read_bitstring = re->read[rh->gen_st];
 
     if (shrimp_mode == COLOUR_SPACE){
+		first_bp = re->initbp[rh->gen_st];
     	uint index;
     	read_ls_bitstring = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(re->read_len + 1));
     	int current_bp = first_bp;
