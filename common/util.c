@@ -1050,7 +1050,10 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 				}
 				count = 0;
 			}
-			count = count*10 + *current - '0';
+			int t;
+			t = *current - '0';
+			assert(t >= 0 && t <= 9);
+			count = count*10 + t;
 			mode = match;
 		} else if(*current == '('){
 			res += finish_mode(mode, count + last_count, res);
