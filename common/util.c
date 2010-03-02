@@ -1091,6 +1091,9 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 			}
 			count ++;
 			mode = read_gap;
+		} else if (*current == 'x'){
+			last_count += count;
+			count = 0;
 		}
 		current++;
 	}
