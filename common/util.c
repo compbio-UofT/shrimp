@@ -1041,7 +1041,7 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 
 	while(*current != '\0'){
 		if (*current <= '9' && *current >= '0'){
-			if(mode != match && mode){
+			if(mode != match){
 				if (mode == mismatch){
 					last_count += count;
 				} else {

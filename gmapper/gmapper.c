@@ -1852,6 +1852,16 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     	}
     }
 
+    int ins_size =0;
+    if (re_mp != NULL){
+    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
+    		ins_size = inp_mp.genome_start - inp.genome_start;
+    	} else {
+    		//TODO make sure this is correct
+    		ins_size = inp_mp.genome_start - inp.genome_start - re->read_len;
+    	}
+    }
+
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
     char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
@@ -1863,7 +1873,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	    cigar,
 	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
 	    ((re_mp == NULL) ? 0:(inp_mp.genome_start + 1)),
-	    0,
+	    ins_size,
 	    read,
 	    "*",
 	    inp.score);
@@ -2036,12 +2046,12 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
       if (!Pflag) {
 #pragma omp critical (stdout)
 	{
-	  fprintf(stdout, "%s\t%s\n", output1, output3);
+	  fprintf(stdout, "%s\n%s\n", output1, output3);
 	}
       } else {
 #pragma omp critical (stdout)
 	{
-	  fprintf(stdout, "%s\t%s\n%s\n%s\n", output1, output3, output2, output4);
+	  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output3, output2, output4);
 	}
       }
 
