@@ -1856,9 +1856,21 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     if (re_mp != NULL){
     	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
     		ins_size = inp_mp.genome_start - inp.genome_start;
-    	} else {
-    		//TODO make sure this is correct
-    		ins_size = inp_mp.genome_start - inp.genome_start - re->read_len;
+    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
+    		bool point_in = false;
+    		if (( pair_mode == PAIR_OPP_IN && !(inp.flags & INPUT_FLAG_IS_REVCMPL))
+    				|| (pair_mode == PAIR_OPP_OUT && (inp.flags & INPUT_FLAG_IS_REVCMPL))){
+    			point_in = true;
+    		}
+    		if (point_in && first){
+    			ins_size = inp_mp.genome_end - inp.genome_start;
+    		} else if(point_in && second){
+    			ins_size = inp_mp.genome_start - inp.genome_end;
+    		} else if(!point_in && first){
+    			ins_size = inp_mp.genome_start - inp.genome_end;
+    		} else if(!point_in && second){
+    			ins_size = inp_mp.genome_end - inp.genome_start;
+    		}
     	}
     }
 
@@ -2041,7 +2053,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
       //re1->paired_final_matches++;
 
       hit_output(re1, rh1, re2, rh2, &output1, &output2);
-      hit_output(re2, rh2, re1, rh2, &output3, &output4);
+      hit_output(re2, rh2, re1, rh1, &output3, &output4);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
