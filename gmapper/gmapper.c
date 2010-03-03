@@ -1858,8 +1858,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     		ins_size = inp_mp.genome_start - inp.genome_start;
     	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
     		bool point_in = false;
-    		if (( pair_mode == PAIR_OPP_IN && !(inp.flags & INPUT_FLAG_IS_REVCMPL))
-    				|| (pair_mode == PAIR_OPP_OUT && (inp.flags & INPUT_FLAG_IS_REVCMPL))){
+    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
+    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
     			point_in = true;
     		}
     		if (point_in && first){
