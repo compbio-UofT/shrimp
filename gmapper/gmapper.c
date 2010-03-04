@@ -2063,7 +2063,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
       } else {
 #pragma omp critical (stdout)
 	{
-	  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output3, output2, output4);
+	  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
 	}
       }
 
