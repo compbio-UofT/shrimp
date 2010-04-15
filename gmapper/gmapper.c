@@ -1816,7 +1816,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     char * cigar, *read;
     uint32_t * read_bitstring, *read_ls_bitstring;
     cigar = (char *)xmalloc(sizeof(char)*200);
-	int first_bp;
+	int first_bp = 0;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
 
 	read_bitstring = re->read[rh->gen_st];
