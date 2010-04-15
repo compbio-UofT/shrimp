@@ -25,7 +25,7 @@
 #include "../common/util.h"
 #include "../common/version.h"
 
-#include "../rmapper/rmapper.h"		/* for External parameters below */
+#include "../mapper/mapper.h"		/* for External parameters below */
 
 /* External parameters */
 static int match_value    = DEF_MATCH_VALUE;
@@ -35,6 +35,8 @@ static int b_gap_open	  = DEF_B_GAP_OPEN;
 static int a_gap_extend   = DEF_A_GAP_EXTEND;
 static int b_gap_extend   = DEF_B_GAP_EXTEND;
 static int xover_penalty  = DEF_XOVER_PENALTY;
+
+static int anchor_width	  = DEF_ANCHOR_WIDTH;
 
 static dynhash_t read_list;		/* cache of reads we need */
 static dynhash_t contig_list;		/* cache of reads per contig list */
@@ -471,6 +473,10 @@ usage(char *progname)
 	    "    -R    Print Reads in Output (if in input)     (default: "
 	    "disabled)\n");
 
+	fprintf(stderr,
+	    "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
+		DEF_ANCHOR_WIDTH);
+
 	exit(1);
 }
 
@@ -488,6 +494,7 @@ main(int argc, char **argv)
 
 	set_mode_from_argv(argv);
 
+	/*
 	if (shrimp_mode == MODE_HELICOS_SPACE) {
 		match_value	= DEF_MATCH_VALUE_DAG;
 		mismatch_value	= DEF_MISMATCH_VALUE_DAG;
@@ -496,6 +503,7 @@ main(int argc, char **argv)
 		a_gap_extend	= DEF_A_GAP_EXTEND_DAG;
 		b_gap_extend	= DEF_B_GAP_EXTEND_DAG;
 	}
+	*/
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
@@ -545,6 +553,14 @@ main(int argc, char **argv)
 		case 'T':
 			Tflag = true;
 			break;
+		case 'A':
+			anchor_width = atoi(optarg);
+			if (anchor_width < -1 || anchor_width >= 100) {
+				fprintf(stderr, "error: anchor_width requested is invalid (%s)\n",
+						optarg);
+				exit(1);
+			}
+			break;
 		default:
 			usage(progname);
 		}
@@ -583,6 +599,8 @@ main(int argc, char **argv)
 		    xover_penalty);
 	}
 	fputc('\n', stderr);
+	fprintf(stderr, "    Anchor Width:                     %d%s\n",
+		anchor_width, anchor_width == -1? " (disabled)" : "");
 
 	read_list   = dynhash_create(keyhasher, keycomparer);
 	contig_list = dynhash_create(keyhasher, keycomparer);
@@ -612,11 +630,11 @@ main(int argc, char **argv)
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
-		    xover_penalty, false, -1);
+		    xover_penalty, false, anchor_width);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value,
-		    mismatch_value, false, -1);
+		    mismatch_value, false, anchor_width);
 	}
 	if (ret) {
 		fprintf(stderr, "failed to initialise scalar Smith-Waterman "
