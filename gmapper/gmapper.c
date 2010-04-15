@@ -1783,7 +1783,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2)
+hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2,bool paired)
 {
   assert(re != NULL && rh != NULL);
   assert(rh->sfrp != NULL);
@@ -1878,7 +1878,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
     char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
 	    name,
-	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((re_mp != NULL) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
+	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((paired) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
 	    inp.genome,
 	    inp.genome_start + 1,
 	    255,
@@ -1966,7 +1966,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
       re->final_matches++;
 
-      hit_output(re, rh, NULL, NULL, &output1, &output2);
+      hit_output(re, rh, NULL, NULL, &output1, &output2,false);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -2052,8 +2052,8 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 
       //re1->paired_final_matches++;
 
-      hit_output(re1, rh1, re2, rh2, &output1, &output2);
-      hit_output(re2, rh2, re1, rh1, &output3, &output4);
+      hit_output(re1, rh1, re2, rh2, &output1, &output2,true);
+      hit_output(re2, rh2, re1, rh1, &output3, &output4,true);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
