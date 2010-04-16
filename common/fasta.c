@@ -37,13 +37,9 @@ fasta_open(const char *file, int space)
 	if (!S_ISREG(sb.st_mode))
 		goto out;
 
-	if (file == NULL) {
-	  fp = stdin;
-	} else {
-	  fp = gzopen(file, "r");
-	  if (fp == NULL)
-	    goto out;
-	}
+	fp = gzopen(file, "r");
+	if (fp == NULL)
+		goto out;
 
 	fasta = (fasta_t)xmalloc(sizeof(*fasta));
 	memset(fasta, 0, sizeof(*fasta));
@@ -112,8 +108,7 @@ fasta_close(fasta_t fasta)
 {
 	uint64_t before = rdtsc();
 
-	if (fasta->fp != stdin)
-	  gzclose(fasta->fp);
+	gzclose(fasta->fp);
 	free(fasta->file);
 	free(fasta);
 
@@ -204,9 +199,7 @@ fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_
 		gotname = true;
 	}
 
-	while ((fasta->fp != stdin && fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL)
-	       || fgets(fasta->buffer, sizeof(fasta->buffer), stdin) != NULL)
-	  {
+	while (fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL) {
 		if (fasta->buffer[0] == '#')
 			continue;
 
