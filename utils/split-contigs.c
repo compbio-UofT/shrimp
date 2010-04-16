@@ -27,7 +27,8 @@ int contig_size[MAX_CONTIGS];
 
 struct contig {
   char * name;
-  int size;
+  unsigned int size;
+  int used;
 } contig[MAX_CONTIGS];
 
 
@@ -94,8 +95,10 @@ main(int argc, char *argv[]) {
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
 
+  fprintf(stderr, "scanning contigs...\n");
   while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
     contig[n_contigs].size = strlen(seq);
+    contig[n_contigs].used = 0;
     free(seq);
     n_contigs++;
   }
@@ -108,9 +111,47 @@ main(int argc, char *argv[]) {
 
   qsort(contig, n_contigs, sizeof(contig[0]), cmp);
 
+  /*
   for (i = 0; i < n_contigs; i++) {
     fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
   }
+  */
+
+  if (contig[0].size > target_len) {
+    fprintf(stderr, "error: the largest contig [%s,%d] does not fit in target memory\n", contig[0].name, contig[0].size);
+    exit(1);
+  }
+
+  bool more = true;
+  int chunk = 0;
+  long long unsigned tmp;
+
+  while (more) {
+    more = false;
+
+    for (i = 0; i < n_contigs && contig[i].used; i++);
+    if (i == n_contigs)
+      break;
+
+    chunk++;
+    fprintf(stdout, "chunk %d:\n", chunk);
+    fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
+    contig[i].used = 1;
+    tmp = contig[i].size;
+
+    for ( ; i < n_contigs; i++) {
+      if (!contig[i].used) {
+	if (tmp + contig[i].size < target_len) {
+	  fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
+	  contig[i].used = 1;
+	  tmp += contig[i].size;
+	} else {
+	  more = true;
+	}
+      }
+    }
+  }
+
 
   return 0;
 }
