@@ -41,11 +41,13 @@ main(int argc, char *argv[]) {
   fasta_t fasta_file;
   double target_size;
   int n_contigs = 0;
+  int n_seeds = 3;
+  int seed_weight = 12;
   char * seq;
   int i;
 
   if (argc < 3) {
-    fprintf(stderr, "Usage: %s <genome_file> <target_RAM_size_in_GB>\n", argv[0]);
+    fprintf(stderr, "Usage: %s <genome_file> <target_RAM_size_in_GB> [<n_seeds> = 3] [<seed_weight> = 12]\n", argv[0]);
     exit(1);
   }
 
@@ -60,6 +62,31 @@ main(int argc, char *argv[]) {
     fprintf(stderr, "error: the target memory size doesn't seem right in GB [%s]\n", argv[2]);
     exit(1);
   }
+
+  if (argc >= 4) {
+    n_seeds = atoi(argv[3]);
+    if (n_seeds < 1 || n_seeds > 16) {
+      fprintf(stderr, "error: the number of seeds [%s] is not in [1,16]\n", argv[3]);
+      exit(1);
+    }
+  }
+
+  if (argc >= 5) {
+    seed_weight = atoi(argv[4]);
+    if (seed_weight < 7 || seed_weight > 16) {
+      fprintf(stderr, "error: the seed weight [%s] is not in [7,16]\n", argv[4]);
+      exit(1);
+    }
+  }
+
+  double index_size = ((double)((4llu << seed_weight) * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
+
+  fprintf(stderr, "per-seed index size: %.2f\n", index_size);
+
+  // save 0.5GB for keeping reads and other data
+  long long unsigned target_len = (long long unsigned)((((target_size - 0.5)/(double)n_seeds) - index_size) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
+
+  fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
 
   while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
     contig[n_contigs].size = strlen(seq);
