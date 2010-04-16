@@ -79,9 +79,15 @@ main(int argc, char *argv[]) {
     }
   }
 
-  double index_size = ((double)((4llu << seed_weight) * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
+  fprintf(stderr, "number of seeds: %d\n", n_seeds);
+  fprintf(stderr, "seed weight: %d\n", seed_weight);
 
-  fprintf(stderr, "per-seed index size: %.2f\n", index_size);
+  long long unsigned entries = 1llu << (2 * seed_weight);
+  fprintf(stderr, "number of entries: %llu\n", entries);
+
+  double index_size = ((double)(entries * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
+
+  fprintf(stderr, "per-seed index size: %.3f GB\n", index_size);
 
   // save 0.5GB for keeping reads and other data
   long long unsigned target_len = (long long unsigned)((((target_size - 0.5)/(double)n_seeds) - index_size) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
