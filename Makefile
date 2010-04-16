@@ -23,7 +23,7 @@ LN=ln
 #endif
 #endif
 
-all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var bin/shrimp2sam
+all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp bin/shrimp_var bin/shrimp2sam bin/split-contigs
 
 
 #
@@ -136,6 +136,16 @@ bin/mergehits: mergehits/mergehits.o common/fasta.o common/dynhash.o \
 
 mergehits/mergehits.o: mergehits/mergehits.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# bin/split-contigs
+#
+bin/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+utils/split-contigs.o: utils/split-contigs.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 
 #
 # common/
