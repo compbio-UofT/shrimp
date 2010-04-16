@@ -32,7 +32,7 @@ struct contig {
 
 
 int cmp(const void *p1, const void *p2) {
-  return ((struct contig *)p1)->size - ((struct contig *)p2)->size;
+  return ((struct contig *)p2)->size - ((struct contig *)p1)->size;
 }
 
 
