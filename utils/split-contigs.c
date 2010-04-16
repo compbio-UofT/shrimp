@@ -50,20 +50,20 @@ main(int argc, char *argv[]) {
     exit(1);
   }
 
-  while (n < MAX_CONTIGS && fasta_get_next(fasta_file, &contig_name[n], &seq, NULL)) {
-    contig_size[n] = strlen(seq);
+  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig_name[n_contigs], &seq, NULL)) {
+    contig_size[n_contigs] = strlen(seq);
     free(seq);
-    n++;
+    n_contigs++;
   }
-  if (n >= MAX_CONTIGS) {
+  if (n_contigs >= MAX_CONTIGS) {
     fprintf(stderr, "error: too many contigs\n");
     exit(1);
   }
 
   fasta_close(fasta_file);
 
-  for (i = 0; i < n; i++) {
-    fprintf("%s\t%d\n", contig_name[i], contig_size[i]);
+  for (i = 0; i < n_contigs; i++) {
+    fprintf(stdout, "%s\t%d\n", contig_name[i], contig_size[i]);
   }
 
   return 0;
