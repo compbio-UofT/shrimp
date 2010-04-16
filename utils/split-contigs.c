@@ -97,6 +97,7 @@ main(int argc, char *argv[]) {
 
   fprintf(stderr, "scanning contigs...\n");
   while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
+    fprintf(stderr, "%s\n", contig[n_contigs].name);
     contig[n_contigs].size = strlen(seq);
     contig[n_contigs].used = 0;
     free(seq);
