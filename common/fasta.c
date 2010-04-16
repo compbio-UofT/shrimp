@@ -37,9 +37,13 @@ fasta_open(const char *file, int space)
 	if (!S_ISREG(sb.st_mode))
 		goto out;
 
-	fp = gzopen(file, "r");
-	if (fp == NULL)
-		goto out;
+	if (file == NULL) {
+	  fp = stdin;
+	} else {
+	  fp = gzopen(file, "r");
+	  if (fp == NULL)
+	    goto out;
+	}
 
 	fasta = (fasta_t)xmalloc(sizeof(*fasta));
 	memset(fasta, 0, sizeof(*fasta));

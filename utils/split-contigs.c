@@ -43,10 +43,14 @@ main(int argc, char *argv[]) {
     exit(1);
   }
 
-  fasta_file = fasta_open(argv[1], LETTER_SPACE);
-  if (fasta_file == NULL) {
-    fprintf(stderr, "error: could not open genome file [%s]\n", argv[1]);
-    exit(1);
+  if (!strncmp(argv[1], "-", 2)) {
+    fasta_file = fasta_open(NULL, LETTER_SPACE);
+  } else {
+    fasta_file = fasta_open(argv[1], LETTER_SPACE);
+    if (fasta_file == NULL) {
+      fprintf(stderr, "error: could not open genome file [%s]\n", argv[1]);
+      exit(1);
+    }
   }
 
   target_size = atof(argv[2]);
