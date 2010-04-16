@@ -25,10 +25,16 @@
 char * contig_name[MAX_CONTIGS];
 int contig_size[MAX_CONTIGS];
 
-struct {
+struct contig {
   char * name;
   int size;
 } contig[MAX_CONTIGS];
+
+
+int cmp(const void *p1, const void *p2) {
+  return ((struct contig *)p1)->size - ((struct contig *)p2)->size;
+}
+
 
 int
 main(int argc, char *argv[]) {
@@ -43,14 +49,10 @@ main(int argc, char *argv[]) {
     exit(1);
   }
 
-  if (!strncmp(argv[1], "-", 2)) {
-    fasta_file = fasta_open(NULL, LETTER_SPACE);
-  } else {
-    fasta_file = fasta_open(argv[1], LETTER_SPACE);
-    if (fasta_file == NULL) {
-      fprintf(stderr, "error: could not open genome file [%s]\n", argv[1]);
-      exit(1);
-    }
+  fasta_file = fasta_open(argv[1], LETTER_SPACE);
+  if (fasta_file == NULL) {
+    fprintf(stderr, "error: could not open genome file [%s]\n", argv[1]);
+    exit(1);
   }
 
   target_size = atof(argv[2]);
@@ -74,6 +76,9 @@ main(int argc, char *argv[]) {
   for (i = 0; i < n_contigs; i++) {
     fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
   }
+
+  qsort(contig, n_contigs, sizeof(contig[0]), cmp);
+
 
   return 0;
 }
