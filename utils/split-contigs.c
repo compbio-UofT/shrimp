@@ -25,6 +25,11 @@
 char * contig_name[MAX_CONTIGS];
 int contig_size[MAX_CONTIGS];
 
+struct {
+  char * name;
+  int size;
+} contig[MAX_CONTIGS];
+
 int
 main(int argc, char *argv[]) {
   fasta_t fasta_file;
@@ -50,8 +55,8 @@ main(int argc, char *argv[]) {
     exit(1);
   }
 
-  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig_name[n_contigs], &seq, NULL)) {
-    contig_size[n_contigs] = strlen(seq);
+  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
+    contig[n_contigs].size = strlen(seq);
     free(seq);
     n_contigs++;
   }
@@ -63,7 +68,7 @@ main(int argc, char *argv[]) {
   fasta_close(fasta_file);
 
   for (i = 0; i < n_contigs; i++) {
-    fprintf(stdout, "%s\t%d\n", contig_name[i], contig_size[i]);
+    fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
   }
 
   return 0;
