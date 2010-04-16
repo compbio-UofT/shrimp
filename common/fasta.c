@@ -112,7 +112,8 @@ fasta_close(fasta_t fasta)
 {
 	uint64_t before = rdtsc();
 
-	gzclose(fasta->fp);
+	if (fasta->fp != stdin)
+	  gzclose(fasta->fp);
 	free(fasta->file);
 	free(fasta);
 
@@ -203,7 +204,9 @@ fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_
 		gotname = true;
 	}
 
-	while (fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL) {
+	while ((fasta->fp != stdin && fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL)
+	       || fgets(fasta->buffer, sizeof(fasta->buffer), stdin) != NULL)
+	  {
 		if (fasta->buffer[0] == '#')
 			continue;
 
