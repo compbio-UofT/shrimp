@@ -73,12 +73,11 @@ main(int argc, char *argv[]) {
 
   fasta_close(fasta_file);
 
+  qsort(contig, n_contigs, sizeof(contig[0]), cmp);
+
   for (i = 0; i < n_contigs; i++) {
     fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
   }
-
-  qsort(contig, n_contigs, sizeof(contig[0]), cmp);
-
 
   return 0;
 }
