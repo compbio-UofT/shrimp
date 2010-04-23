@@ -36,8 +36,6 @@ static int a_gap_extend   = DEF_A_GAP_EXTEND;
 static int b_gap_extend   = DEF_B_GAP_EXTEND;
 static int xover_penalty  = DEF_XOVER_PENALTY;
 
-static int anchor_width	  = DEF_ANCHOR_WIDTH;
-
 static dynhash_t read_list;		/* cache of reads we need */
 static dynhash_t contig_list;		/* cache of reads per contig list */
 
@@ -127,11 +125,13 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	}
 
 	if (sfr.score != fpo->input.score) {
-		fprintf(stderr, "warning: score differs from input "
-		    "file (read=\"%s\", genome=\"%s\")\n",
+	  static bool warned = false;
+	  if (!warned) {
+	    fprintf(stderr, "warning: score differs from input file (read=\"%s\", genome=\"%s\")\n",
 		    fpo->input.read, fpo->input.genome);
-		fprintf(stderr, "         Are you using different S-W "
-		    "parameters than before?\n");
+	    fprintf(stderr, "         Most likely cause is that prettyprint does not use anchors.\n");
+	    warned = true;
+	  }
 	}
 
 	fpo->output_normal = output_normal(read->name, contig->name, &sfr,
@@ -473,10 +473,6 @@ usage(char *progname)
 	    "    -R    Print Reads in Output (if in input)     (default: "
 	    "disabled)\n");
 
-	fprintf(stderr,
-	    "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
-		DEF_ANCHOR_WIDTH);
-
 	exit(1);
 }
 
@@ -553,14 +549,6 @@ main(int argc, char **argv)
 		case 'T':
 			Tflag = true;
 			break;
-		case 'A':
-			anchor_width = atoi(optarg);
-			if (anchor_width < -1 || anchor_width >= 100) {
-				fprintf(stderr, "error: anchor_width requested is invalid (%s)\n",
-						optarg);
-				exit(1);
-			}
-			break;
 		default:
 			usage(progname);
 		}
@@ -599,8 +587,6 @@ main(int argc, char **argv)
 		    xover_penalty);
 	}
 	fputc('\n', stderr);
-	fprintf(stderr, "    Anchor Width:                     %d%s\n",
-		anchor_width, anchor_width == -1? " (disabled)" : "");
 
 	read_list   = dynhash_create(keyhasher, keycomparer);
 	contig_list = dynhash_create(keyhasher, keycomparer);
@@ -630,11 +616,11 @@ main(int argc, char **argv)
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, match_value, mismatch_value,
-		    xover_penalty, false, anchor_width);
+		    xover_penalty, false, -1);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,
 		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value,
-		    mismatch_value, false, anchor_width);
+		    mismatch_value, false, -1);
 	}
 	if (ret) {
 		fprintf(stderr, "failed to initialise scalar Smith-Waterman "

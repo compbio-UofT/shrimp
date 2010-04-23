@@ -103,7 +103,10 @@ struct read_hit {
   uint		g_off;
   int		score_window_gen;
   int		score_vector;
+  int		pct_score_vector;
   int		score_full;
+  int		pct_score_full;
+  int		score_max;
   uint		matches;
   uint		cn;
   int		pair_min;
