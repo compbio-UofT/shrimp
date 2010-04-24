@@ -2946,6 +2946,7 @@ void print_settings() {
 
   fprintf(stderr, "\n");
 
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of threads:", num_threads);
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Thread chuck size:", chunk_size);
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
