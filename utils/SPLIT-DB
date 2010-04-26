@@ -1,0 +1,101 @@
+split-db
+--------
+
+This script is used to split a given reference genome into a set of fasta files
+that fit into a target RAM size. gmapper can then be run independently on each
+of these files.
+
+
+Parameters:
+
+<file1.fa> <file2.fa> ...
+	List of reference genome files in fasta format.
+
+--ram-size <ram-size>
+	Target RAM size, in GB. This parameter is required.
+
+--dest-dir <dest-dir>
+	Destination directory where to place the database files. If not given,
+	files are placed in the current working directory.
+
+--prefix <prefix>
+	Prefix for database files. Default is "db".
+
+--tmp-dir <tmp-dir>
+	Directory to store temporary files into. This defaults to
+	/tmp/<PID>. Note, the script requires 1x(genome size) temporary space.
+
+--seed <seed0,seed1,...>
+	Comma-separated list of seeds that gmapper will use. This list is passed
+	on directly to gmapper as argument of parameter -s. See README for more
+	details. If absent, gmapper will not be given explicitly any seeds, so
+	it will run with its default set of seeds.
+
+--h-flag
+	This corresponds to giving gmapper the flag -H, telling it to use
+	hashing to index spaced kmers. For seeds of weight greater than 14, this
+	is required. See README for more details.
+
+Output:
+
+<dest-dir>/<prefix>-<ram-size>gb-<i>of<n>.fa
+	This is the <i>-th of <n> pieces in fasta format.
+
+
+How it works:
+
+Step 1. Parse options.
+
+Step 2. If exist files <dest-dir>/<prefix>-<ram-size>gb-*.fa:
+  Print message "splitting already done in files <dest-dir>/<prefix>-<ram-size>gb-*.fa"
+  Exit without error
+
+Step 3. All non-option arguments are intepreted as genome files in fasta
+format. Test all files exist and are readable. Exit with error otherwise.
+
+Step 4. Exit with error if <tmp-dir> exists. Make <tmp-dir>. cat together all
+genome files into <tmp-dir>/all.fa
+
+Step 5. Create a comma-separated list of seed weights, called SEED_WEIGHTS, as
+follows:
+
+Let DEF_NUM_SEEDS denote the default number of seed in gampper (currently, "4").
+Let DEF_SEED_WEIGHTS denote the comma-separated list of default seed weights
+(currently, "12,12,12,12"). Let HASH_TABLE_WEIGHT denote the seed weight used by
+gmapper if given -H (currently, "12").
+
+If --h-flag IS NOT given
+  If --seed IS NOT given
+    SEED_WEIGHTS := DEF_SEED_WEIGHTS
+  else --seed IS given
+    parse the argument of --seed into individual seeds, count the number of 1s
+    in each, put those in SEED_WEIGHTS
+else --h-flag IS given
+  If --seed IS NOT given
+    SEED_WEIGHTS := HASH_TABLE_WEIGHT,HASH_TABLE_WEIGHT,..,HASH_TABLE_WEIGHT,
+    repeated DEF_NUM_SEEDS times
+  else --seed IS given
+    parse the argument of --seed, count the number of seeds, make a list of that
+    many HASH_TABLE_WEIGHT entries
+
+Examples:
+
+(neither --seed nor --h-flag)
+  SEED_WEIGHTS=12,12,12,12
+
+--seed 00111111001111111100,00111111110011111100,00111111111100111100,1110111,1110110111
+  SEED_WEIGHTS=14,14,14,6,8
+
+--h-flag
+  SEED_WEIGHTS=12,12,12,12
+
+--seed 00111111001111111100,00111111110011111100,00111111111100111100,1110111,1110110111
+--h-flag
+  SEED_WEIGHTS=12,12,12,12,12
+
+Step 6. Run split-contigs on <tmp-dir>/all.fa, pass it <ram-size> parameter, as
+well as SEED_WEIGHTS. Obtain number of buckets <n>, and list of contigs in each
+bucket. Note: count buckets from 1.
+
+Step 7. For each bucket <i>, extract appropriate contigs from <tmp-dir>/all.fa
+into <dest-dir>/<prefix>-<ram-size>gb-${SEED_WEIGHTS}seeds-<i>of<n>.fa.

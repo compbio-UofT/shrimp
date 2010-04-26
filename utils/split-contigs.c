@@ -25,6 +25,9 @@
 char * contig_name[MAX_CONTIGS];
 int contig_size[MAX_CONTIGS];
 
+int n_seeds = 4;
+int weight[20] = { 12, 12, 12, 12 };
+
 struct contig {
   char * name;
   unsigned int size;
@@ -42,13 +45,12 @@ main(int argc, char *argv[]) {
   fasta_t fasta_file;
   double target_size;
   int n_contigs = 0;
-  int n_seeds = 3;
-  int seed_weight = 12;
-  char * seq;
+  char * seq, * c;
   int i;
+  double index_size = 0.0;
 
   if (argc < 3) {
-    fprintf(stderr, "Usage: %s <genome_file> <target_RAM_size_in_GB> [<n_seeds> = 3] [<seed_weight> = 12]\n", argv[0]);
+    fprintf(stderr, "Usage: %s <genome_file> <target_RAM_size_in_GB> [<seed_weights>]\n", argv[0]);
     exit(1);
   }
 
@@ -65,33 +67,42 @@ main(int argc, char *argv[]) {
   }
 
   if (argc >= 4) {
-    n_seeds = atoi(argv[3]);
-    if (n_seeds < 1 || n_seeds > 16) {
-      fprintf(stderr, "error: the number of seeds [%s] is not in [1,16]\n", argv[3]);
-      exit(1);
+    n_seeds = 0;
+    for (c = strtok(argv[3], ","); c != NULL && n_seeds < 16; c = strtok(NULL, ","), n_seeds++) {
+      weight[n_seeds] = atoi(c);
+      if (weight[n_seeds] < 5 || weight[n_seeds] > 16) {
+	fprintf(stderr, "error: the seed weight [%s] is not in [5,16]\n", c);
+	exit(1);
+      }
     }
-  }
-
-  if (argc >= 5) {
-    seed_weight = atoi(argv[4]);
-    if (seed_weight < 7 || seed_weight > 16) {
-      fprintf(stderr, "error: the seed weight [%s] is not in [7,16]\n", argv[4]);
+    if (n_seeds < 1 || c != NULL) {
+      fprintf(stderr, "error: the number of seeds is not in [1,16]\n");
       exit(1);
     }
   }
 
   fprintf(stderr, "number of seeds: %d\n", n_seeds);
-  fprintf(stderr, "seed weight: %d\n", seed_weight);
+  fprintf(stderr, "seed weights: ");
+  for (i = 0; i < n_seeds; i++) {
+    fprintf(stderr, "%d%s", weight[i], i < n_seeds - 1? "," : "\n");
+  }
 
-  long long unsigned entries = 1llu << (2 * seed_weight);
-  fprintf(stderr, "number of entries: %llu\n", entries);
-
-  double index_size = ((double)(entries * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
-
-  fprintf(stderr, "per-seed index size: %.3f GB\n", index_size);
+  for (i = 0; i < n_seeds; i++) {
+    double crt;
+    long long unsigned entries;
+    entries = 1llu << (2 * weight[i]);
+    crt = ((double)(entries * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
+    fprintf(stderr, "seed %d: number of entries: %llu, index size: %.3f GB\n", i, entries, crt);
+    index_size += crt;
+  }
 
   // save 0.5GB for keeping reads and other data
-  long long unsigned target_len = (long long unsigned)((((target_size - 0.5)/(double)n_seeds) - index_size) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
+  if (target_size < 0.5 + index_size) {
+    fprintf(stderr, "error: not enough memory for current settings\n");
+    exit(1);
+  }
+
+  long long unsigned target_len = (long long unsigned)(((target_size - 0.5 - index_size)/(double)n_seeds) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
 

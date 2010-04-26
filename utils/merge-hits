@@ -1,0 +1,72 @@
+#!/bin/bash
+
+TMP_DIR="/tmp/$$"
+PAIRED=""
+
+# read options (...)
+# sets DEST_FILE, PAIRED, TMP_DIR, SUFFIX
+
+# make temporary directory
+if [ -d $TMP_DIR ]; then
+  echo 1>&2 "error: temporary directory [$TMP_DIR] exists"
+  exit 1
+fi
+mkdir -p $TMP_DIR
+
+# detect output format
+if [ ! -r "$1" ]; then
+  echo 1>&2 "error: file [$1] unreadable"
+  exit 1
+fi
+if [ ( head -n 50 $1 | cut -f 1 | grep -q '^>' ) ]; then
+  FORMAT="shrimp"
+  IGNORE="#"
+else
+  FORMAT="sam"
+  IGNORE="@"
+fi
+echo 1>&2 "Detected format: $FORMAT"
+
+# if pairing is unspecified, detect it with script
+if [ -z "$PAIRED" ]; then
+  if [ head -n 10000 $1 | awk -v SUFFIX="\"$SUFFIX\"" test-unpaired-$FORMAT ]; then
+    PAIRED="no"
+  else
+    PAIRED="yes"
+  fi
+  echo 1>&2 "Detected pairing: $PAIRED"
+fi
+
+# write header from first file
+head -n 50 $1 \\
+  | grep "^$IGNORE" \\
+  >$DEST_FILE
+
+while [ "$#" -gt 0 ]; do
+  if [ ! -r "$1" ]; then
+    echo 1>&2 "error: file [$1] unreadable"
+    exit 1
+  fi
+
+  if [ "$PAIRED" = "yes" ]; then
+    grep -v "^$IGNORE" $1 \\
+      | awk '{ first = $0; if (!getline) exit; printf "%s&&&&%s\n", first, $0; }' \\
+      | sort \\
+      >$TMP_DIR/$1.sort
+  else
+    grep -v "^$IGNORE" $1 \\
+      | sort \\
+      >$TMP_DIR/$1.sort
+  fi
+  shift
+done
+
+# merge into destination
+if [ "$PAIRED" = "yes" ]; then
+  sort -m $TMP_DIR/*.sort \\
+    | sed 's/&&&&/\n/' \\
+    >>$DEST_FILE
+else
+  sort -m $TMP_DIR/*.sort \\
+    >>$DEST_FILE
+fi

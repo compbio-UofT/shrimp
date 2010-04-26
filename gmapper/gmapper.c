@@ -1785,7 +1785,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
 							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
 	      || (~IS_ABSOLUTE(sw_full_threshold)
-		  && (int)h->array[0].key >= (int)sw_full_threshold) );
+		  && (int)h->array[i].key >= (int)sw_full_threshold) );
        i++) {
     struct read_hit * rh1 = h->array[i].rest.hit[0];
     struct read_hit * rh2 = h->array[i].rest.hit[1];
