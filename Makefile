@@ -6,7 +6,7 @@
 #override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
 
 ifndef CXXFLAGS
-CXXFLAGS=-O3 -DNDEBUG -mmmx -msse -msse2 -fopenmp -Wall
+CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall
 endif
 override CXXFLAGS+=-DEXTRA_STATS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSHRIMP_BUGS=OFF
 
