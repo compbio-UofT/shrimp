@@ -194,10 +194,10 @@
   DEF_HEAP_GET_MIN(_id)				\
   DEF_HEAP_REPLACE_MIN(_id)			\
   DEF_HEAP_INSERT(_id)				\
-  DEF_HEAP_HEAPIFY(_id)				\
-  DEF_HEAP_HEAPSORT(_id)			\
   DEF_HEAP_ELEM_CMP(_id)			\
   DEF_HEAP_QSORT(_id)
+  //DEF_HEAP_HEAPIFY(_id)
+  //DEF_HEAP_HEAPSORT(_id)
 
 //DEF_HEAP(uint32_t,uint,uu)
 

@@ -25,7 +25,7 @@
 #include "../common/util.h"
 #include "../common/version.h"
 
-#include "../mapper/mapper.h"		/* for External parameters below */
+#include "../gmapper/gmapper.h"		/* for External parameters below */
 
 /* External parameters */
 static int match_value    = DEF_MATCH_VALUE;

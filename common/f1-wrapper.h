@@ -13,7 +13,6 @@
 #include "../common/sw-vector.h"
 #include "../common/sw-gapless.h"
 
-
 static int const f1_window_cache_size = 1048576;
 
 static uint64_t f1_calls_bypassed;

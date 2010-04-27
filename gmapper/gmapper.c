@@ -23,7 +23,6 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 #include "../gmapper/gmapper.h"
-#include "../mapper/mapper.h" // why? to reduce code duplication contains common functions from gmapper and rmapper
 #include "../common/version.h"
 
 #include "../common/sw-full-common.h"
@@ -32,9 +31,11 @@
 #include "../common/sw-vector.h"
 #include "../common/output.h"
 #include "../common/input.h"
-#include "../common/heap.h"
 
+#include "../common/heap.h"
 DEF_HEAP(uint32_t,uint,uu)
+DEF_HEAP(uint, struct read_hit_holder, unpaired)
+DEF_HEAP(uint, struct read_hit_pair_holder, paired)
 
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
@@ -42,13 +43,13 @@ static double	window_overlap		= DEF_WINDOW_OVERLAP;
 static uint	num_matches		= DEF_NUM_MATCHES;
 static uint	num_outputs		= DEF_NUM_OUTPUTS;
 static uint	num_tmp_outputs		= 20 + num_outputs;
-static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
-static bool	gapless_sw		= DEF_GAPLESS_SW;
 static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
+static bool	gapless_sw		= DEF_GAPLESS_SW;
+static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 
+/* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
-
 
 /* Scores */
 static int	match_score		= DEF_MATCH_VALUE;
@@ -65,24 +66,23 @@ static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Flags */
-static int Bflag = false;			/* print a progress bar */
 static int Cflag = false;			/* do complement only */
 static int Fflag = false;			/* do positive (forward) only */
 static int Hflag = false;			/* use hash table, not lookup */
 static int Pflag = false;			/* pretty print results */
 static int Rflag = false;			/* add read sequence to output*/
 static int Tflag = false;			/* reverse sw full tie breaks */
-static int Uflag = false;			/* output unmapped reads, too */
-static int Mflag = false;			/* print insert histogram */
 static int Dflag = false;			/* print statistics for each thread */
 static int Eflag = false;			/* output sam format */
+static int Xflag = false;			/* print insert histogram */
+static int Yflag = false;			/* print genome projection histogram */
 
 /* Mate Pairs */
 static int	pair_mode		= DEF_PAIR_MODE;
 static int	min_insert_size		= DEF_MIN_INSERT_SIZE;
 static int	max_insert_size		= DEF_MAX_INSERT_SIZE;
 static uint64_t	insert_histogram[100];
-static int	insert_histogram_bucket_size;
+static int	insert_histogram_bucket_size = 1;
 
 /* Statistics */
 static uint64_t nreads;
@@ -131,20 +131,193 @@ static uint chunk_size = DEF_CHUNK_SIZE;
 static uint64_t scan_ticks[50];
 static uint64_t wait_ticks[50];
 
-
-/* Thread-private */
-//static uint32_t hash_mark;
-//struct window_cache_entry {
-//  uint32_t mark;
-//  uint32_t score;
-//};
-//static struct window_cache_entry * window_cache;
-
-//#pragma omp threadprivate(hash_mark, window_cache)
-
-
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
+
+
+/* seed management */
+struct seed_type *	seed = NULL;
+uint32_t * *		seed_hash_mask = NULL;
+uint			max_seed_span = 0;
+uint			min_seed_span = MAX_SEED_SPAN;
+uint32_t		n_seeds = 0;
+uint			avg_seed_span = 0;
+
+static size_t
+power(size_t base, size_t exp)
+{
+	size_t result = 1;
+
+	while (exp > 0) {
+		if ((exp % 2) == 1)
+			result *= base;
+		base *= base;
+		exp /= 2;
+	}
+
+	return (result);
+}
+
+
+/* pulled off the web; this may or may not be any good */
+static uint32_t
+hash(uint32_t a)
+{
+	a = (a+0x7ed55d16) + (a<<12);
+	a = (a^0xc761c23c) ^ (a>>19);
+	a = (a+0x165667b1) + (a<<5);
+	a = (a+0xd3a2646c) ^ (a<<9);
+	a = (a+0xfd7046c5) + (a<<3);
+	a = (a^0xb55a4f09) ^ (a>>16);
+	return (a);
+}
+
+/* hash-based version or kmer -> map index function for larger seeds */
+uint32_t
+kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
+{
+	static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
+
+	uint32_t mapidx = 0;
+	uint i;
+
+	assert(seed_hash_mask != NULL);
+
+	for (i = 0; i < BPTO32BW(max_seed_span); i++)
+		mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
+
+	return mapidx & maxidx;
+}
+
+/*
+ * Compress the given kmer into an index in 'readmap' according to the seed.
+ * While not optimal, this is only about 20% of the spaced seed scan time.
+ *
+ * This is the original version for smaller seeds.
+ *
+ * XXX- This algorithm only considers bases 0-3, which implies overlap
+ *      when we have other bases (mainly uracil, but also wobble codes).
+ *      This won't affect sensitivity, but may cause extra S-W calls.
+ */
+uint32_t
+kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
+{
+	bitmap_type a = seed[sn].mask[0];
+	uint32_t mapidx = 0;
+	int i = 0;
+
+	do {
+		if ((a & 0x1) == 0x1) {
+			mapidx <<= 2;
+			mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
+		}
+		a >>= 1;
+		i++;
+
+	} while (a != 0x0);
+
+	assert(mapidx < power(4, seed[sn].weight));
+
+	return mapidx;
+}
+
+static bool
+add_spaced_seed(const char *seedStr)
+{
+	uint i;
+
+	seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
+	seed[n_seeds].mask[0] = 0x0;
+	seed[n_seeds].span = strlen(seedStr);
+	seed[n_seeds].weight = strchrcnt(seedStr, '1');
+
+	if (seed[n_seeds].span < 1
+			|| seed[n_seeds].span > MAX_SEED_SPAN
+			|| seed[n_seeds].weight < 1
+			|| strchrcnt(seedStr, '0') != seed[n_seeds].span - seed[n_seeds].weight)
+		return false;
+
+	for (i = 0; i < seed[n_seeds].span; i++)
+		bitmap_prepend(seed[n_seeds].mask, 1, (seedStr[i] == '1' ? 1 : 0));
+
+	if (seed[n_seeds].span > max_seed_span)
+		max_seed_span = seed[n_seeds].span;
+
+	if (seed[n_seeds].span < min_seed_span)
+		min_seed_span = seed[n_seeds].span;
+
+	n_seeds++;
+
+	avg_seed_span = 0;
+	for(i =0; i < n_seeds;i++){
+		avg_seed_span += seed[i].span;
+	}
+	avg_seed_span = avg_seed_span/n_seeds;
+
+	return true;
+}
+
+
+static void
+load_default_seeds() {
+	int i;
+
+	n_seeds = 0;
+	switch(shrimp_mode) {
+	case MODE_COLOUR_SPACE:
+		for (i = 0; i < default_spaced_seeds_cs_cnt; i++)
+			add_spaced_seed(default_spaced_seeds_cs[i]);
+		break;
+	case MODE_LETTER_SPACE:
+		for (i = 0; i < default_spaced_seeds_ls_cnt; i++)
+			add_spaced_seed(default_spaced_seeds_ls[i]);
+		break;
+	case MODE_HELICOS_SPACE:
+	  fprintf(stderr, "error: helicos mode not implemented\n");
+	  exit(1);
+	  break;
+	}
+}
+
+
+static void
+init_seed_hash_mask(void)
+{
+	uint sn;
+	int i;
+
+	seed_hash_mask = (uint32_t **)xmalloc(sizeof(seed_hash_mask[0])*n_seeds);
+	for (sn = 0; sn < n_seeds; sn++) {
+		seed_hash_mask[sn] = (uint32_t *)xcalloc(sizeof(seed_hash_mask[sn][0])*BPTO32BW(max_seed_span));
+
+		for (i = seed[sn].span - 1; i >= 0; i--)
+			bitfield_prepend(seed_hash_mask[sn], max_seed_span,
+					bitmap_extract(seed[sn].mask, 1, i) == 1? 0xf : 0x0);
+	}
+}
+
+
+static char *
+seed_to_string(uint sn)
+{
+	static char buffer[100];
+	bitmap_type tmp;
+	int i;
+
+	assert(sn < n_seeds);
+
+	buffer[seed[sn].span] = 0;
+	for (i = seed[sn].span - 1, tmp = seed[sn].mask[0];
+			i >= 0;
+			i--, tmp >>= 1) {
+		if (bitmap_extract(&tmp, 1, 0) == 1)
+			buffer[i] = '1';
+		else
+			buffer[i] = '0';
+	}
+
+	return buffer;
+}
 
 
 /* If x is negative, return its absolute value; else return base*x% */
@@ -321,7 +494,6 @@ static void print_everything(){
 		}
 	}
 	fprintf(stderr,"----------------------------------------\n");
-	fprintf(stderr,"nkemers = %u\n",nkmers);
 	fprintf(stderr,"is rna? %s\n",genome_is_rna ? "yes":"no");
 	uint c;
 	for(c = 0; c < num_contigs; c++){
@@ -446,7 +618,6 @@ static bool load_genome_map_seed(const char *file){
 
 	// total
 	xgzread(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
-	nkmers += total;
 	// genome_map
 	uint32_t * map;
 	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
@@ -852,6 +1023,9 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool
 
   re->n_anchors[st] = 0;
 
+  if ((st == 0 && !Fflag) || (st == 1 && !Cflag))
+    return;
+
   for (j = 0; j < re->n_ranges; j++) {
     if (re->ranges[j].st != st)
       continue;
@@ -921,6 +1095,11 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
 
   assert(re->mapidx[st] != NULL);
 
+  re->n_anchors[st] = 0;
+
+  if ((st == 0 && !Fflag) || (st == 1 && !Cflag))
+    return;
+
   // compute size of anchor list
   list_sz = 0;
   for (sn = 0; sn < n_seeds; sn++) {
@@ -934,7 +1113,6 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
 
   // init anchor list
   re->anchors[st] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
-  re->n_anchors[st] = 0;
 
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
@@ -1818,20 +1996,22 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	}
       }
 
-      if (h->array[i].rest.insert_size < min_insert_size)
-	bucket = 0;
-      else if (h->array[i].rest.insert_size > max_insert_size)
-	bucket = 99;
-      else
-	bucket = (uint)((h->array[i].rest.insert_size - min_insert_size) / insert_histogram_bucket_size);
+      if (Xflag) {
+	if (h->array[i].rest.insert_size < min_insert_size)
+	  bucket = 0;
+	else if (h->array[i].rest.insert_size > max_insert_size)
+	  bucket = 99;
+	else
+	  bucket = (uint)((h->array[i].rest.insert_size - min_insert_size) / insert_histogram_bucket_size);
 
-      if (bucket >= 100) {
-	fprintf(stderr, "error: insert_size:%d re1->name:(%s)\n", h->array[i].rest.insert_size, re1->name);
-      }
-      assert(bucket < 100);
+	if (bucket >= 100) {
+	  fprintf(stderr, "error: insert_size:%d re1->name:(%s)\n", h->array[i].rest.insert_size, re1->name);
+	}
+	assert(bucket < 100);
 
 #pragma omp atomic
-      insert_histogram[bucket]++;
+	insert_histogram[bucket]++;
+      }
 
       free(output1);
       free(output2);
@@ -1995,85 +2175,6 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
   scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
-
-/*
- * Launch the threads that will scan the reads
- *
-static bool
-launch_scan_threads_OLD(const char *file){
-	fasta_t fasta;
-	int space;
-	int buffer_size = chunk_size*num_threads*64;
-	read_entry *res;
-	char *seq;
-
-	bool is_rna;
-
-	res = (read_entry *)xmalloc(sizeof(read_entry) * buffer_size);
-
-	//open the fasta file and check for errors
-	if (shrimp_mode == MODE_LETTER_SPACE)
-		space = LETTER_SPACE;
-	else
-		space = COLOUR_SPACE;
-	fasta = fasta_open(file,space);
-	if (fasta == NULL) {
-		fprintf(stderr,"error: failded to open read file [%s]\n",file);
-		return (false);
-	} else {
-		fprintf(stderr,"- Processing read file [%s]\n",file);
-	}
-
-	//read the fasta file, s sequences at a time, and process in threads.
-	bool more = true;
-	int i;
-#pragma omp parallel shared(res,i,more) num_threads(num_threads)
-	{
-		while (more){
-#pragma omp barrier
-#pragma omp single
-			{
-				for(i = 0; i < buffer_size; i++){
-					if(!fasta_get_next(fasta, &res[i].name, &seq, &is_rna)){
-						more = false;
-						break;
-					}
-					res[i].read[0] = fasta_sequence_to_bitfield(fasta, seq);
-					res[i].read_len = strlen(seq);
-					res[i].max_n_kmers = res[i].read_len - min_seed_span + 1;
-					res[i].min_kmer_pos = 0;
-					if (shrimp_mode == MODE_COLOUR_SPACE){
-						res[i].read_len--;
-						res[i].max_n_kmers -= 2; // 1st color always discarded from kmers
-						res[i].min_kmer_pos = 1;
-						res[i].initbp[0] = fasta_get_initial_base(fasta,seq);
-						res[i].initbp[1] = res[i].initbp[0];
-						res[i].read[1] = reverse_complement_read_cs(res[i].read[0], res[i].initbp[0], res[i].initbp[1],
-								res[i].read_len, is_rna);
-					} else {
-						res[i].read[1] = reverse_complement_read_ls(res[i].read[0],
-								res[i].read_len,is_rna);
-					}
-					res[i].window_len = (uint16_t)abs_or_pct(window_len,res[i].read_len);
-					res[i].has_Ns = !(strcspn(seq, "nNxX.") == strlen(seq)); // from fasta.c
-					free(seq);
-				}
-				nreads += i;
-			}
-			int j;
-#pragma omp for schedule(dynamic,chunk_size)
-			for (j = 0; j < i; j++){
-				handle_read(&res[j]);
-			}
-		}
-
-	}
-	free(res);
-	return true;
-}
-*/
-
-
 /*
  * Reverse read.
  *
@@ -2092,7 +2193,6 @@ read_reverse(struct read_entry * re) {
   re->input_strand = 1 - re->input_strand;
 }
 
-
 static uint
 get_contig_number_from_name(char const * c)
 {
@@ -2106,7 +2206,6 @@ get_contig_number_from_name(char const * c)
   }
   return cn;
 }
-
 
 /*
  * Compute range limitations for this read.
@@ -2307,6 +2406,11 @@ void print_genomemap_stats() {
   uint64_t capacity, mapidx;
   uint max;
 
+  uint64_t histogram[100];
+  uint bucket_size;
+  uint i, bucket;
+
+
   fprintf(stderr, "Genome Map stats:\n");
 
   for (sn = 0; sn < n_seeds; sn++) {
@@ -2317,7 +2421,8 @@ void print_genomemap_stats() {
 
     stat_init(&list_size);
     stat_init(&list_size_non0);
-    for (max = 0, mapidx = 0; mapidx < capacity; mapidx++) {
+    max = 0;
+    for (mapidx = 0; mapidx < capacity; mapidx++) {
       if (genomemap_len[sn][mapidx] > list_cutoff)
 	continue;
 
@@ -2335,30 +2440,24 @@ void print_genomemap_stats() {
 	    stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
 	    stat_get_sample_stddev(&list_size), stat_get_sample_stddev(&list_size_non0), max);
 
-#ifdef DEBUG_DUMP_MAP_DIST
-#warning Dumping genomemap length distribution
-    {
-      uint64_t histogram[100];
-      uint bucket_size = ceil_div(max, 100);
-      uint i, bucket;
-
-      for (i = 0; i < 100; i++) {
-	histogram[i] = 0;
-      }
-
-      for (mapidx = 0; mapidx < capacity; mapidx++) {
-	if (genomemap_len[sn][mapidx] > list_cutoff)
-	  continue;
-
-	bucket = genomemap_len[sn][mapidx] / bucket_size;
-	histogram[bucket]++;
-      }
-
-      for (i = 0; i < 100; i++) {
-	fprintf(stderr, "[%d-%d]: %lld\n", i*bucket_size, (i+1)*bucket_size, histogram[i]);
-      }
+    for (i = 0; i < 100; i++) {
+      histogram[i] = 0;
     }
-#endif
+
+    bucket_size = ceil_div(max, 100);
+    for (mapidx = 0; mapidx < capacity; mapidx++) {
+      if (genomemap_len[sn][mapidx] > list_cutoff)
+	continue;
+
+      bucket = genomemap_len[sn][mapidx] / bucket_size;
+      if (bucket >= 100)
+	bucket = 99;
+      histogram[bucket]++;
+    }
+
+    for (i = 0; i < 100; i++) {
+      fprintf(stderr, "[%d-%d]: %lld\n", i*bucket_size, (i+1)*bucket_size, histogram[i]);
+    }
 
   }
 }
@@ -2487,7 +2586,6 @@ load_genome(char **files, int nfiles)
 							sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
 							&mem_genomemap);
 					genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i - seed[sn].span + 1;
-					nkmers++;
 
 				}
 			}
@@ -2513,7 +2611,7 @@ print_insert_histogram()
     fprintf(stderr, "[%d-%d]: %.2f%%\n",
 	    min_insert_size + i * insert_histogram_bucket_size,
 	    min_insert_size + (i + 1) * insert_histogram_bucket_size - 1,
-	    ((double)insert_histogram[i] / (double)total_paired_matches) * 100);
+	    total_paired_matches == 0? 0 : ((double)insert_histogram[i] / (double)total_paired_matches) * 100);
   }
 }
 
@@ -2597,8 +2695,8 @@ print_statistics()
 	  f2_total_invocs += f2_invocs[i];
 	  f2_total_cells += f2_cells[i];
 	}
-	f1_total_cellspersec = (double)f1_total_cells / f1_total_secs;
-	f2_total_cellspersec = (double)f2_total_cells / f2_total_secs;
+	f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
+	f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
@@ -2714,160 +2812,148 @@ print_statistics()
 		"Genomemap:",
 		comma_integer(count_get_count(&mem_genomemap)));
 
-	if (Mflag) {
+	if (Xflag) {
 	  print_insert_histogram();
 	}
 }
 
 void usage(char *progname,bool full_usage){
-	char *slash;
-	uint sn;
+  char *slash;
+  uint sn;
 
-	load_default_seeds();
+  load_default_seeds();
 
-	slash = strrchr(progname, '/');
-	if (slash != NULL)
-		progname = slash + 1;
+  slash = strrchr(progname, '/');
+  if (slash != NULL)
+    progname = slash + 1;
 
-	fprintf(stderr, "usage: %s [parameters] [options] "
-			"reads_file genome_file1 genome_file2...\n", progname);
+  fprintf(stderr, "usage: %s [parameters] [options] reads_file genome_file1 genome_file2...\n", progname);
 
-	fprintf(stderr, "Parameters:\n");
+  fprintf(stderr, "Parameters:\n");
 
-	fprintf(stderr,
-			"    -s    Spaced Seed(s)                          (default: ");
-	for (sn = 0; sn < n_seeds; sn++) {
-		if (sn > 0)
-			fprintf(stderr, "                                                            ");
-		fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
-	}
+  fprintf(stderr,
+	  "    -s    Spaced Seed(s)                          (default: ");
+  for (sn = 0; sn < n_seeds; sn++) {
+    if (sn > 0)
+      fprintf(stderr, "                                                            ");
+    fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
+  }
 
-	fprintf(stderr,
-			"    -n    Seed Matches per Window                 (default: %d)\n",
-			DEF_NUM_MATCHES);
+  fprintf(stderr,
+	  "    -o    Maximum Hits per Read                   (default: %d)\n",
+	  DEF_NUM_OUTPUTS);
+  fprintf(stderr,
+	  "    -w    Match Window Length                     (default: %.02f%%)\n",
+	  DEF_WINDOW_LEN);
+  fprintf(stderr,
+	  "    -n    Seed Matches per Window                 (default: %d)\n",
+	  DEF_NUM_MATCHES);
+  if (full_usage) {
+  fprintf(stderr,
+	  "    -l    Match Window Overlap Length             (default: %.02f%%)\n",
+	  DEF_WINDOW_OVERLAP);
+  fprintf(stderr,
+	  "    -a    Anchor Width Limiting Full SW           (default: %d; disable: -1)\n",
+	  DEF_ANCHOR_WIDTH);
 
-	fprintf(stderr,
-			"    -w    Seed Window Length                      (default: %.02f%%)\n",
-			DEF_WINDOW_LEN);
+  fprintf(stderr, "\n");
+  fprintf(stderr,
+	  "    -S    Save Genome Projection in File          (default: no)\n");
+  fprintf(stderr,
+	  "    -L    Load Genome Projection from File        (default: no)\n");
+  fprintf(stderr,
+	  "    -z    Projection List Cut-off Length          (default: %u)\n",
+	  DEF_LIST_CUTOFF);
+  }
 
-	fprintf(stderr,
-			"    -W    Seed Window Overlap Length              (default: %.02f%%)\n",
-			DEF_WINDOW_OVERLAP);
+  fprintf(stderr, "\n");
+  fprintf(stderr,
+	  "    -m    S-W Match Score                         (default: %d)\n",
+	  DEF_MATCH_VALUE);
+  fprintf(stderr,
+	  "    -i    S-W Mismatch Score                      (default: %d)\n",
+	  DEF_MISMATCH_VALUE);
+  fprintf(stderr,
+	  "    -g    S-W Gap Open Score (Reference)          (default: %d)\n",
+	  DEF_A_GAP_OPEN);
+  fprintf(stderr,
+	  "    -q    S-W Gap Open Score (Query)              (default: %d)\n",
+	  DEF_B_GAP_OPEN);
+  fprintf(stderr,
+	  "    -e    S-W Gap Extend Score (Reference)        (default: %d)\n",
+	  DEF_A_GAP_EXTEND);
+  fprintf(stderr,
+	  "    -f    S-W Gap Extend Score (Query)            (default: %d)\n",
+	  DEF_B_GAP_EXTEND);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+  fprintf(stderr,
+	  "    -x    S-W Crossover Score                     (default: %d)\n",
+	  DEF_XOVER_PENALTY);
+  }
+  fprintf(stderr,
+	  "    -r    Window Generation Threshold             (default: %.02f%%)\n",
+	  DEF_WINDOW_GEN_THRESHOLD);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+  fprintf(stderr,
+	  "    -v    S-W Vector Hit Threshold                (default: %.02f%%)\n",
+	  DEF_SW_VECT_THRESHOLD);
+  }
+  fprintf(stderr,
+	  "    -h    S-W Full Hit Threshold                  (default: %.02f%%)\n",
+	  DEF_SW_FULL_THRESHOLD);
 
-	fprintf(stderr,
-			"    -o    Maximum Hits per Read                   (default: %d)\n",
-			DEF_NUM_OUTPUTS);
-	fprintf(stderr,
-		"    -N    Set the number of threads               (default: %u)\n",
-		DEF_NUM_THREADS);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr,
+	  "    -N    Number of Threads                       (default: %u)\n",
+	  DEF_NUM_THREADS);
+  if (full_usage) {
+  fprintf(stderr,
+	  "    -K    Thread Chunk Size                       (default: %u)\n",
+	  DEF_CHUNK_SIZE);
+  }
 
-	fprintf(stderr,
-			"    -m    S-W Match Value                         (default: %d)\n",
-			DEF_MATCH_VALUE);
+  fprintf(stderr, "\n");
+  fprintf(stderr,
+	  "    -p    Pair-end Mode                           (default: %s)\n",
+	  pair_mode_string[pair_mode]);
+  fprintf(stderr,
+	  "    -I    Min and Max Insert Size                 (default: %d,%d)\n",
+	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
 
-	fprintf(stderr,
-			"    -i    S-W Mismatch Value                      (default: %d)\n",
-			DEF_MISMATCH_VALUE);
+  fprintf(stderr, "\n");
+  fprintf(stderr, "Options:\n");
 
-	fprintf(stderr,
-			"    -g    S-W Gap Open Penalty (Reference)        (default: %d)\n",
-			DEF_A_GAP_OPEN);
+  fprintf(stderr,
+	  "    -U    Perform Ungapped Alignment                    (default: disabled)\n");
+  fprintf(stderr,
+	  "    -C    Only Process Negative Strand (Rev. Compl.)    (default: disabled)\n");
+  fprintf(stderr,
+	  "    -F    Only Process Positive Strand                  (default: disabled)\n");
+  fprintf(stderr,
+	  "    -P    Pretty Print Alignments                       (default: disabled)\n");
+  fprintf(stderr,
+	  "    -E    Output SAM Format                             (default: disabled)\n");
+  if (full_usage) {
+  fprintf(stderr,
+	  "    -R    Print Reads in Output                         (default: disabled)\n");
+  fprintf(stderr,
+	  "    -T    Reverse Tie-break on Negative Strand          (default: disabled)\n");
+  fprintf(stderr,
+	  "    -X    Print Insert Size Histogram                   (default: disabled)\n");
+  fprintf(stderr,
+	  "    -Y    Print Genome Projection Histogram             (default: disabled)\n");
+  fprintf(stderr,
+	  "    -Z    Disable Cache Bypass for SW Vector Calls      (default: enabled)\n");
+  fprintf(stderr,
+	  "    -H    Hash Spaced Kmers in Genome Projection        (default: disabled)\n");
+  fprintf(stderr,
+	  "    -D    Individual Thread Statistics                  (default: disabled)\n");
+  }
+  fprintf(stderr,
+	  "    -?    Full List of Parameters and Options\n");
 
-	fprintf(stderr,
-			"    -q    S-W Gap Open Penalty (Query)            (default: %d)\n",
-			DEF_B_GAP_OPEN);
-
-	fprintf(stderr,
-			"    -e    S-W Gap Extend Penalty (Reference)      (default: %d)\n",
-			DEF_A_GAP_EXTEND);
-
-	fprintf(stderr,
-			"    -f    S-W Gap Extend Penalty (Query)          (default: %d)\n",
-			DEF_B_GAP_EXTEND);
-
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-		fprintf(stderr,
-				"    -x    S-W Crossover Penalty                   ("
-				"default: %d)\n", DEF_XOVER_PENALTY);
-	}
-
-	fprintf(stderr, "\n");
-
-	fprintf(stderr,
-		"    -r    Window Generation Threshold:            "
-		  "(default: %.02f%%)\n", DEF_WINDOW_GEN_THRESHOLD);
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-	  fprintf(stderr,
-		  "    -v    S-W Vector Hit Threshold                "
-		  "(default: %.02f%%)\n", DEF_SW_VECT_THRESHOLD);
-	}
-	fprintf(stderr,
-		"    -h    S-W Full Hit Threshold                  "
-		"(default: %.02f%%)\n", DEF_SW_FULL_THRESHOLD);
-
-	if (full_usage) {
-	  fprintf(stderr, "\n");
-	  if (shrimp_mode == MODE_COLOUR_SPACE || shrimp_mode == MODE_LETTER_SPACE) {
-	    fprintf(stderr,
-		    "    -A    Anchor width limiting full SW           (default: %d; disable: -1)\n",
-		    DEF_ANCHOR_WIDTH);
-	    fprintf(stderr,
-		    "    -K    Set the thread chunk size               (default: %u)\n",
-		    DEF_CHUNK_SIZE);
-	    fprintf(stderr,
-		    "    -Y    Index list cutoff length                (default: %u)\n",
-		    DEF_LIST_CUTOFF);
-	  }
-	}
-
-	fprintf(stderr, "\n");
-	fprintf(stderr, "Options:\n");
-
-	fprintf(stderr,
-			"    -B    Print Scan Progress Bar                       (default: "
-			"disabled)\n");
-
-	fprintf(stderr,
-			"    -C    Only Process Negative Strand (Rev. Compl.)    (default: "
-			"disabled)\n");
-
-	fprintf(stderr,
-			"    -F    Only Process Positive Strand                  (default: "
-			"disabled)\n");
-
-	fprintf(stderr,
-			"    -P    Pretty Print Alignments                       (default: "
-			"disabled)\n");
-	fprintf(stderr,
-			"    -E    Output in SAM format                          (default: "
-			"disabled)\n");
-
-	fprintf(stderr,
-			"    -R    Print Reads in Output                         (default: "
-			"disabled)\n");
-
-	if (shrimp_mode != MODE_HELICOS_SPACE) {
-		fprintf(stderr,
-				"    -T    Reverse tie-break choice on negative strand   (default: "
-				"disabled)\n");
-	}
-
-	fprintf(stderr,
-			"    -U    Print Unmapped Read Names in Output           (default: "
-			"disabled)\n");
-	fprintf(stderr,
-		"    -M    Print insert size histogram                   (default: disabled)\n");
-
-	fprintf(stderr,
-			"    -D    Toggle thread statistics                  (default: %s)\n",
-			Dflag? "enabled" : "disabled");
-	fprintf(stderr,
-			"    -?    Full list of parameters and options\n");
-
-
-	exit(1);
+  exit(1);
 }
 
 void print_settings() {
@@ -2939,7 +3025,7 @@ void print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Pair mode:", pair_mode_string[pair_mode]);
   if (pair_mode != PAIR_NONE) {
     fprintf(stderr, "%s%-40smin:%d max:%d\n", my_tab, "Insert sizes:", min_insert_size, max_insert_size);
-    if (Mflag) {
+    if (Xflag) {
       fprintf(stderr, "%s%-40s%d\n", my_tab, "Bucket size:", insert_histogram_bucket_size);
     }
   }
@@ -2957,74 +3043,6 @@ void print_settings() {
 }
 
 
-#ifdef DEBUG_MAIN
-int main(int argc, char **argv){
-	if (argc > 1){
-		set_mode_from_argv(argv);
-		if (n_seeds == 0)
-			load_default_seeds();
-		init_seed_hash_mask();
-
-		print_settings();
-
-		int max_window_len = 200;
-		int longest_read_len = 100;
-		if (sw_vector_setup(max_window_len, longest_read_len,
-				a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-				match_score, mismatch_score,
-				shrimp_mode == MODE_COLOUR_SPACE, false)) {
-			fprintf(stderr, "failed to initialise vector "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
-
-		int ret;
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			/* XXX - a vs. b gap */
-			ret = sw_full_cs_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
-					crossover_score, false, 0);
-		} else {
-			ret = sw_full_ls_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-					match_score, mismatch_score, false, 0);
-		}
-		if (ret) {
-			fprintf(stderr, "failed to initialise scalar "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
-
-
-		if (1){
-			fprintf(stderr,"loading gneomfile\n");
-			load_genome(argv+1,1);
-			print_genomemap_stats();
-		}
-		if (0){
-			fprintf(stderr,"saving compressed index\n");
-			save_genome_map("testfile.gz");
-		}
-		if (0){
-			print_info();
-		}
-		if(1){
-			char * output;
-
-			output = output_format_line(Rflag);
-			puts(output);
-			free(output);
-			launch_scan_threads(argv[2]);
-		}
-		if (0){
-			fprintf(stderr,"loading compressed index\n");
-			load_genome_map("testfile.gz");
-		}
-		fprintf(stderr,"done\n");
-	}
-}
-
-#else
 int main(int argc, char **argv){
 	char **genome_files = NULL;
 	int ngenome_files = 0;
@@ -3037,12 +3055,11 @@ int main(int argc, char **argv){
 
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
+	bool num_matches_set = false;
 
 	set_mode_from_argv(argv);
 
 	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
-
-	set_mode_from_argv(argv);
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
@@ -3054,19 +3071,16 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:x:h:v:r:N:K:BCFHPRTUA:MW:S:L:DZGp:I:EY:";
+		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUXYZx:v:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:o:m:i:g:q:e:f:h:r:X:N:K:BCFHPRTUA:MW:S:L:DZGp:I:EY:";
+		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUXYZ";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
 		exit(1);
 		break;
-	default:
-		assert(0);
 	}
-
 
 	while ((ch = getopt(argc,argv,optstr)) != -1){
 		switch (ch) {
@@ -3089,6 +3103,7 @@ int main(int argc, char **argv){
 			break;
 		case 'n':
 			num_matches = atoi(optarg);
+			num_matches_set = true;
 			break;
 		case 'w':
 			window_len = atof(optarg);
@@ -3130,7 +3145,6 @@ int main(int argc, char **argv){
 			crossover_score = atoi(optarg);
 			break;
 		case 'h':
-			assert(shrimp_mode != MODE_HELICOS_SPACE);
 			sw_full_threshold = atof(optarg);
 			if (sw_full_threshold < 0.0) {
 				fprintf(stderr, "error: invalid s-w full "
@@ -3141,8 +3155,7 @@ int main(int argc, char **argv){
 				sw_full_threshold = -sw_full_threshold;	//absol.
 			break;
 		case 'v':
-			assert(shrimp_mode == MODE_COLOUR_SPACE ||
-					shrimp_mode == MODE_HELICOS_SPACE);
+		  assert(shrimp_mode == MODE_COLOUR_SPACE);
 			sw_vect_threshold = atof(optarg);
 			if (sw_vect_threshold < 0.0) {
 				fprintf(stderr, "error: invalid s-w vector "
@@ -3161,9 +3174,6 @@ int main(int argc, char **argv){
 		  if (strcspn(optarg, "%.") == strlen(optarg))
 		    window_gen_threshold = -window_gen_threshold;	//absol.
 		  break;
-		case 'B':
-			Bflag = true;
-			break;
 		case 'C':
 			if (Fflag) {
 				fprintf(stderr, "error: -C and -F are mutually "
@@ -3192,13 +3202,10 @@ int main(int argc, char **argv){
 		case 'T':
 			Tflag = true;
 			break;
-		case 'U':
-			Uflag = true;
-			break;
 			/*
 			 * New options/parameters since SHRiMP 1.2.1
 			 */
-		case 'A':
+		case 'a':
 			anchor_width = atoi(optarg);
 			if (anchor_width < -1 || anchor_width >= 100) {
 				fprintf(stderr, "error: anchor_width requested is invalid (%s)\n",
@@ -3206,10 +3213,13 @@ int main(int argc, char **argv){
 				exit(1);
 			}
 			break;
-		case 'M':
-			Mflag = !Mflag;
+		case 'X':
+			Xflag = true;
 			break;
-		case 'W':
+		case 'Y':
+			Yflag = true;
+			break;
+		case 'l':
 			window_overlap = atof(optarg);
 			if (window_overlap <= 0.0) {
 				fprintf(stderr, "error: invalid window overlap\n");
@@ -3239,7 +3249,7 @@ int main(int argc, char **argv){
 		case 'Z':
 		  hash_filter_calls = !hash_filter_calls;
 		  break;
-		case 'G':
+		case 'U':
 		  gapless_sw = true;
 		  break;
 		case 'p':
@@ -3280,7 +3290,7 @@ int main(int argc, char **argv){
 		case 'E':
 			Eflag = true;
 			break;
-		case 'Y':
+		case 'z':
 		  list_cutoff = atoi(optarg);
 		  if (list_cutoff == 0) {
 		    fprintf(stderr, "error: invalid list cutoff (%s)\n", optarg);
@@ -3295,117 +3305,135 @@ int main(int argc, char **argv){
 	argc -= optind;
 	argv += optind;
 
-	insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
-
-	if(load_file != NULL && n_seeds != 0){
-		fprintf(stderr,"error: cannot specify seeds when loading genome map\n");
-		usage(progname,false);
+	if (pair_mode != PAIR_NONE && !num_matches_set) {
+	  num_matches = 4;
 	}
 
-	if (n_seeds == 0 && load_file == NULL)
-		load_default_seeds();
+	if (Xflag) {
+	  if (pair_mode == PAIR_NONE) {
+	    fprintf(stderr, "warning: insert histogram not available in unpaired mode; ignoring\n");
+	    Xflag = false;
+	  } else {
+	    insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
+	  }
+	}
+
+	if(load_file != NULL && n_seeds != 0){
+	  fprintf(stderr,"error: cannot specify seeds when loading genome map\n");
+	  usage(progname,false);
+	}
+
+	if (n_seeds == 0 && load_file == NULL) {
+	  load_default_seeds();
+	}
 
 	kmer_to_mapidx = kmer_to_mapidx_orig;
 	if (Hflag){
-		kmer_to_mapidx = kmer_to_mapidx_hash;
-		init_seed_hash_mask();
+	  kmer_to_mapidx = kmer_to_mapidx_hash;
+	  init_seed_hash_mask();
 	}
 
 	if (save_file != NULL && load_file != NULL){
-		fprintf(stderr,"error: -L and -S incompatible\n");
-		exit(1);
+	  fprintf(stderr,"error: -L and -S incompatible\n");
+	  exit(1);
 	}
 
 	if(load_file != NULL){
-		if (argc == 0){
-			fprintf(stderr,"error: read_file not specified\n");
-			usage(progname,false);
-		}
-		if (argc == 1){
-			reads_file    = argv[0];
-		} else {
-			fprintf(stderr,"error: too many arguments with -L\n");
-			usage(progname,false);
-		}
+	  if (argc == 0){
+	    fprintf(stderr,"error: read_file not specified\n");
+	    usage(progname,false);
+	  }
+	  if (argc == 1){
+	    reads_file    = argv[0];
+	  } else {
+	    fprintf(stderr,"error: too many arguments with -L\n");
+	    usage(progname,false);
+	  }
 	} else if (save_file != NULL){
-		if (argc == 0){
-			fprintf(stderr, "error: genome_file(s) not specified\n");
-			usage(progname,false);
-		}
-		genome_files  = &argv[0];
-		ngenome_files = argc;
+	  if (argc == 0){
+	    fprintf(stderr, "error: genome_file(s) not specified\n");
+	    usage(progname,false);
+	  }
+	  genome_files  = &argv[0];
+	  ngenome_files = argc;
 	} else {
-		if (argc < 2) {
-			fprintf(stderr, "error: %sgenome_file(s) not specified\n",
-					(argc == 0) ? "reads_file, " : "");
-			usage(progname, false);
-		}
-
-		reads_file    = argv[0];
-		genome_files  = &argv[1];
-		ngenome_files = argc - 1;
+	  if (argc < 2) {
+	    fprintf(stderr, "error: %sgenome_file(s) not specified\n",
+		    (argc == 0) ? "reads_file, " : "");
+	    usage(progname, false);
+	  }
+	  reads_file    = argv[0];
+	  genome_files  = &argv[1];
+	  ngenome_files = argc - 1;
 	}
-	if (!Cflag && !Fflag)
-		Cflag = Fflag = true;
 
-	if (shrimp_mode == MODE_LETTER_SPACE)
-		sw_vect_threshold = sw_full_threshold;
+	if (!Cflag && !Fflag) {
+	  Cflag = Fflag = true;
+	}
+
+	if (pair_mode != PAIR_NONE && (!Cflag || !Fflag)) {
+	  fprintf(stderr, "warning: in paired mode, both strands must be inspected; ignoring -C and -F\n");
+	  Cflag = Fflag = true;
+	}
+
+	if (shrimp_mode == MODE_LETTER_SPACE) {
+	  sw_vect_threshold = sw_full_threshold;
+	}
 
 	if (Eflag && Pflag){
-		fprintf(stderr,"-E and -P are incompatable\n");
-		exit(1);
+	  fprintf(stderr,"-E and -P are incompatable\n");
+	  exit(1);
 	}
-	if (Eflag && Rflag){
-			fprintf(stderr,"-E and -R are incompatable\n");
-			exit(1);
-		}
+
+	if (Eflag && Rflag) {
+	  fprintf(stderr,"-E and -R are incompatable\n");
+	  exit(1);
+	}
 
 	if (!valid_spaced_seeds()) {
-		fprintf(stderr, "error: invalid spaced seed\n");
-		if (!Hflag)
-			fprintf(stderr, "       for longer seeds, try using the -H flag\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid spaced seed\n");
+	  if (!Hflag)
+	    fprintf(stderr, "       for longer seeds, try using the -H flag\n");
+	  exit(1);
 	}
 
 	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
-		fprintf(stderr, "error: window length < 100%% "
-				"of read length\n");
-		exit(1);
+	  fprintf(stderr, "error: window length < 100%% of read length\n");
+	  exit(1);
 	}
 
 	if (num_matches < 1) {
-		fprintf(stderr, "error: invalid number of matches\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid number of matches\n");
+	  exit(1);
 	}
 
 	if (num_outputs < 1) {
-		fprintf(stderr, "error: invalid maximum hits per read\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid maximum hits per read\n");
+	  exit(1);
 	}
 
 	if (a_gap_open_score > 0 || b_gap_open_score > 0) {
-		fprintf(stderr, "error: invalid gap open penalty\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid gap open penalty\n");
+	  exit(1);
 	}
 
 	if (a_gap_extend_score > 0 || b_gap_extend_score > 0) {
-		fprintf(stderr, "error: invalid gap extend penalty\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid gap extend penalty\n");
+	  exit(1);
 	}
 
 	if (!IS_ABSOLUTE(sw_full_threshold) && sw_full_threshold > 100.0) {
-		fprintf(stderr, "error: invalid s-w full hit threshold\n");
-		exit(1);
+	  fprintf(stderr, "error: invalid s-w full hit threshold\n");
+	  exit(1);
 	}
 
-	if (shrimp_mode == MODE_COLOUR_SPACE && !IS_ABSOLUTE(sw_vect_threshold) &&
-			sw_vect_threshold > 100.0) {
-		fprintf(stderr, "error: invalid s-w vector threshold\n");
-		exit(1);
+	if (shrimp_mode == MODE_COLOUR_SPACE && !IS_ABSOLUTE(sw_vect_threshold)
+	    && sw_vect_threshold > 100.0) {
+	  fprintf(stderr, "error: invalid s-w vector threshold\n");
+	  exit(1);
 	}
 
-	if (!IS_ABSOLUTE(window_gen_threshold)
-	    && window_gen_threshold > 100.0) {
+	if (!IS_ABSOLUTE(window_gen_threshold) && window_gen_threshold > 100.0) {
 	  fprintf(stderr, "error: invalid window generation threshold\n");
 	  exit(1);
 	}
@@ -3418,22 +3446,25 @@ int main(int argc, char **argv){
 	  fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
 	}
 
-	if ((a_gap_open_set && !b_gap_open_set)
-			|| (a_gap_extend_set && !b_gap_extend_set))
-		fputc('\n', stderr);
+	if ((a_gap_open_set && !b_gap_open_set) || (a_gap_extend_set && !b_gap_extend_set)) {
+	  fputc('\n', stderr);
+	}
+
 	if (a_gap_open_set && !b_gap_open_set) {
-		fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
-		b_gap_open_score = a_gap_open_score;
+	  fprintf(stderr, "Notice: Gap open penalty set for reference but not query; assuming symmetry.\n");
+	  b_gap_open_score = a_gap_open_score;
 	}
 	if (a_gap_extend_set && !b_gap_extend_set) {
-		fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
-		b_gap_extend_score = a_gap_extend_score;
+	  fprintf(stderr, "Notice: Gap extend penalty set for reference but not query; assuming symmetry.\n");
+	  b_gap_extend_score = a_gap_extend_score;
 	}
-	if ((a_gap_open_set && !b_gap_open_set)
-			|| (a_gap_extend_set && !b_gap_extend_set))
-		fputc('\n', stderr);
+
+	if ((a_gap_open_set && !b_gap_open_set) || (a_gap_extend_set && !b_gap_extend_set)) {
+	  fputc('\n', stderr);
+	}
+
 	if(load_file == NULL){
-		print_settings();
+	  print_settings();
 	}
 
 	uint64_t before;
@@ -3467,7 +3498,8 @@ int main(int argc, char **argv){
 	}
 	map_usecs += (gettimeinusecs() - before);
 
-	print_genomemap_stats();
+	if (Yflag)
+	  print_genomemap_stats();
 
 	if (save_file != NULL){
 		fprintf(stderr,"Saving genome map to %s\n",save_file);
@@ -3536,4 +3568,3 @@ int main(int argc, char **argv){
 
 	print_statistics();
 }
-#endif
