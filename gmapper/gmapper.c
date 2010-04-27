@@ -2563,7 +2563,6 @@ load_genome(char **files, int nfiles)
 			u_int load;
 			for (load = 0; i < seqlen + contig_offsets[num_contigs-1]; i++) {
 				uint base;
-				int sn;
 
 				base = EXTRACT(read, i - contig_offsets[num_contigs-1]);
 				bitfield_prepend(kmerWindow, max_seed_span, base);
@@ -2573,7 +2572,7 @@ load_genome(char **files, int nfiles)
 					load = 0;
 				else if (load < max_seed_span)
 					load++;;
-				for (sn = 0; sn < (int)n_seeds; sn++) {
+				for (sn = 0; sn < n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
 
@@ -2596,6 +2595,25 @@ load_genome(char **files, int nfiles)
 		}
 		fasta_close(fasta);
 	}
+
+	// trim long genome lists
+	for (sn = 0; sn < n_seeds; sn++) {
+	  if(Hflag){
+	    capacity = power(4, HASH_TABLE_POWER);
+	  } else {
+	    capacity = power(4, seed[sn].weight);
+	  }
+
+	  uint32_t mapidx;
+	  for (mapidx = 0; mapidx < capacity; mapidx++) {
+	    if (genomemap_len[sn][mapidx] > list_cutoff) {
+	      free(genomemap[sn][mapidx]);
+	      genomemap[sn][mapidx] = NULL;
+	      genomemap_len[sn][mapidx] = 0;
+	    }
+	  }
+	}
+
 	fprintf(stderr,"Loaded Genome\n");
 
 	return (true);
