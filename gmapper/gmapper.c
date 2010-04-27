@@ -3489,8 +3489,42 @@ int main(int argc, char **argv){
 	before = gettimeinusecs();
 	if (load_file != NULL){
 		if (strchr(load_file, ',') == NULL) {
-			fprintf(stderr,"Must specify genome save file and map save file\n");
-			exit (1);
+			//use prefix
+			int buf_size = strlen(load_file) + 20;
+			char * genome_name = (char *)xmalloc(sizeof(char)*buf_size);
+			strncpy(genome_name,load_file,buf_size);
+			strncat(genome_name,".genome",buf_size);
+			fprintf(stderr,"Loading genome from %s\n",genome_name);
+			if (!load_genome_map(genome_name)){
+				fprintf(stderr, "error: loading from genome file \"%s\"\n", genome_name);
+				exit (1);
+			}
+			free(genome_name);
+			int seed_count = 0;
+			char * seed_name = (char *)xmalloc(sizeof(char)*buf_size);
+			char * buff = (char *)xmalloc(sizeof(char)*buf_size);
+			strncpy(seed_name,load_file,buf_size);
+			strncat(seed_name,".seed.",buf_size);
+			sprintf(buff,"%d",seed_count);
+			strncat(seed_name,buff,buf_size);
+			FILE *f = fopen(seed_name,"r");
+			while(f != NULL){
+				fclose(f);
+				fprintf(stderr,"Loading seed from %s\n",seed_name);
+				if (!load_genome_map_seed(seed_name)) {
+					fprintf(stderr, "error: loading from map file \"%s\"\n", seed_name);
+					exit (1);
+				}
+				seed_count++;
+				strncpy(seed_name,load_file,buf_size);
+				strncat(seed_name,".seed.",buf_size);
+				sprintf(buff,"%d",seed_count);
+				strncat(seed_name,buff,buf_size);
+				f = fopen(seed_name,"r");
+			}
+			free(seed_name);
+			free(buff);
+
 		} else {
 			c = strtok(load_file, ",");
 			fprintf(stderr,"Loading genome from %s\n",c);
