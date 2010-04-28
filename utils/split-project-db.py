@@ -67,9 +67,11 @@ def main(argv):
 
 	genome_files=args
 	for fasta_filename in genome_files:
-		print split_db_args+[fasta_filename]
+		#print split_db_args+[fasta_filename]
 		output_filenames=split_db.main(split_db_args+[fasta_filename])
-		print output_filenames
+		#print output_filenames
+		#needs to be a few more lines here invoking project_db
+		#have potential problem with specs though
 
 if __name__=='__main__':
 	main(sys.argv[1:])
