@@ -17,6 +17,25 @@ def remove_tailing(s):
 		return m.group(0)
 	return None
 
+#copied from    
+#http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
+#but hard to condense?
+def which(program):
+    import os
+    def is_exe(fpath):
+        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+        
+    fpath, fname = os.path.split(program)
+    if fpath:           
+        if is_exe(program):
+            return program
+    else:               
+        for path in os.environ["PATH"].split(os.pathsep):
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+
+    return None
 
 def append_fasta_file(source_handle,destination_handle):
 	#make sure that there are not extra new lines between
@@ -173,7 +192,8 @@ def main(argv):
 	print seed_weights
 
 	#want to run split-contigs
-	if not os.access('./split-contigs',os.X_OK):	
+	split_contigs_executable=which('split-contigs')
+	if not split_contigs_executable:	
 		print "Cannot find split-contigs in current directory"
 		#clean up and exit
 		os.remove(tmp_filename)
@@ -181,7 +201,7 @@ def main(argv):
 		sys.exit(1)
 	split_contigs_output_filename=tmp_dir+'/split_contigs_out'
 	split_contigs_output_handle=open(split_contigs_output_filename,'w')
-	command=('./split-contigs %s %d %s' % (tmp_filename,ram_size,seed_weights)).split()
+	command=('%s %s %d %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
 	split_contigs_process=subprocess.Popen(command,stdout=split_contigs_output_handle)
 	split_contigs_process.wait()
 	split_contigs_output_handle.close()	
