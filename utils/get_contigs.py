@@ -38,11 +38,14 @@ def get_contigs(reference_filename,splits_filename,prefix=""):
 		chunks[current_chunk[0]]="".join(map(f,current_chunk[1:]))
 	h.close()
 	#write it out
+	output_filenames=[]
 	for k in chunks.keys():
 		filename=prefix+k[:-2].split()[1]+"of"+str(len(chunks.keys()))+".fa"
+		output_filenames.append(filename)
 		h=open(filename,'w')
 		h.write(chunks[k])
 		h.close()
+	return output_filenames
 
 
 if __name__=='__main__':

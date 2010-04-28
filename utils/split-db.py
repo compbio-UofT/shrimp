@@ -32,10 +32,10 @@ def append_fasta_file(source_handle,destination_handle):
 	destination_handle.write(data_current.rstrip()+'\n')
 	source_handle.close()
 
-if __name__=='__main__':
+def main(argv):
 	#Parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], "r:d:p:t:s:h", ["ram-size=", "dest-dir=","prefix="\
+		opts, args = getopt.getopt(argv, "r:d:p:t:s:h", ["ram-size=", "dest-dir=","prefix="\
 ,"tmp-dir=","seed=","h-flag"])
 	except getopt.GetoptError, err:
 		print str(err)
@@ -188,11 +188,15 @@ if __name__=='__main__':
 
 	#extract the contigs	
 	output_prefix='%s/%s-%dgb-%sseeds-' % (dest_dir,prefix,ram_size,seed_weights)
-	get_contigs(tmp_filename,split_contigs_output_filename,output_prefix)
+	ret=get_contigs(tmp_filename,split_contigs_output_filename,output_prefix)
 	
 	#clean up 
 	#remove the tmp_dir
 	os.remove(tmp_filename)
+	os.remove(split_contigs_output_filename)
 	os.rmdir(tmp_dir)
+	return ret
 
+if __name__=='__main__':
+	main(sys.argv[1:])
 

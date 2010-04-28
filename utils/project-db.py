@@ -36,10 +36,11 @@ def which(program):
 
     return None
 
-if __name__=='__main__':
+
+def main(argv):
 	#Parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], "d:m:s:h", ["dest-dir=",\
+		opts, args = getopt.getopt(argv, "d:m:s:h", ["dest-dir=",\
 "shrimp-mode=","seed=","h-flag"])
 	except getopt.GetoptError, err:
 		print str(err)
@@ -103,5 +104,7 @@ if __name__=='__main__':
 			gmapper_process=subprocess.Popen(command)
 			gmapper_process.wait()
 
+if __name__=='__main__':
+	main(sys.argv[1:])
 
 
