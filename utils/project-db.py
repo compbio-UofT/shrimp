@@ -6,7 +6,52 @@ import getopt
 import re
 
 def usage():
-	print '%s rest of usage here' % sys.argv[0]
+	print '%s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
+	print '''
+This script is used to split a given reference genome into a set of database
+files that fit into a target RAM size. gmapper can then be run independently on
+each of the database files.
+
+Parameters:
+
+<file1.fa> <file2.fa> ...
+        Input files in fasta format.
+
+--dest-dir <dest-dir>
+        Destination directory where to place the database files. If not given,
+        files are placed in the current working directory.
+
+--shrimp-mode <mode>
+        This is "ls" or "cs", for letter space or color space,
+        respectively. This is a required parameter.
+
+--seed <seed0,seed1,...>
+        Comma-separated list of seeds that gmapper will use. This list is passed
+        on directly to gmapper as argument of parameter -s. See README for more
+        details. If absent, gmapper will not be given explicitly any seeds, so
+        it will run with its default set of seeds.
+
+--h-flag
+        This corresponds to giving gmapper the flag -H, telling it to use
+        hashing to index spaced kmers. For seeds of weight greater than 14, this
+        is required. See README for more details.
+
+Notes:
+
+1) The gmapper calls issued by this script can be parallelized across machines.
+
+2) A single machine needs about (1.5)*<ram-size> to create an index to be used
+in a machine with <ram-size> RAM. Thus, to create an index for a 16GB machine,
+it is highly recommended to use a machine with 32GB of RAM in order to avoid the
+use of the swap.
+
+
+Output:
+
+<file>-<mode>.genome
+<file>-<mode>.seed.*
+        This is the projection of <file.fa>
+'''
 
 #need to fix this if going to run on windows
 rt=re.compile("/*.*[^/]+")
@@ -48,10 +93,9 @@ def main(argv):
 		sys.exit(1)
 	#default parameters
 	dest_dir="."
-	shrimp_mode="ls"
+	shrimp_mode=""
 	seed=""
 	h_flag=False
-
 	for o,a in opts:
 		if o in ("-m","--shrimp-mode"):
 			shrimp_mode=a
@@ -64,6 +108,29 @@ def main(argv):
 			seed=a
 		elif o in ("-h","--h-flag"):
 			h_flag=True
+	#check that shrimp_mode is set
+	if shrimp_mode not in ("ls","cs"):
+		if len(shrimp_mode)>0:
+			print "%s is not a valid shrimp mode" % shrimp_mode
+		else:
+			print "Please specify a shrimp_mode"
+		usage()
+		sys.exit(1)
+
+	#check h flag
+	valid_seed=re.compile('[01]+$')
+	seeds=seed.split(',')
+	mx=0
+	for s in seeds:
+		m=valid_seed.match(s)
+		if not m:
+			print "Invalid seed %s" % s
+			sys.exit(1)
+		mx=max(mx,len(s.replace('0','')))
+	if not h_flag and mx>14:
+		print "For seeds of weight greater then 14, h-flag is required"
+		usage()
+		sys.exit(1)
 
 	#get non option parameters, aka genome files
 	genome_files=args

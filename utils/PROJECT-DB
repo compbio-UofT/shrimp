@@ -17,7 +17,7 @@ Parameters:
 
 --shrimp-mode <mode>
 	This is "ls" or "cs", for letter space or color space,
-	respectively. Defaults to "ls".
+	respectively. This is a required parameter.
 
 --seed <seed0,seed1,...>
 	Comma-separated list of seeds that gmapper will use. This list is passed

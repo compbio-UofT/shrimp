@@ -7,7 +7,47 @@ import re
 from get_contigs import get_contigs
 
 def usage():
-	print '%s rest of usage here' % sys.argv[0]
+	print '%s --ram-size ramsize file1.fa file2.fa ...' % sys.argv[0]
+	print  '''
+This script is used to split a given reference genome into a set of fasta files
+that fit into a target RAM size. gmapper can then be run independently on each
+of these files.
+
+Parameters:
+
+<file1.fa> <file2.fa> ...
+        List of reference genome files in fasta format.
+
+--ram-size <ram-size>
+        Target RAM size, in GB. This parameter is required.
+
+--dest-dir <dest-dir>
+        Destination directory where to place the database files. If not given,
+        files are placed in the current working directory.
+
+--prefix <prefix>
+        Prefix for database files. Default is "db".
+
+--tmp-dir <tmp-dir>
+        Directory to store temporary files into. This defaults to
+        /tmp/<PID>. Note, the script requires 1x(genome size) temporary space.
+
+--seed <seed0,seed1,...>
+        Comma-separated list of seeds that gmapper will use. This list is passed
+        on directly to gmapper as argument of parameter -s. See README for more
+        details. If absent, gmapper will not be given explicitly any seeds, so
+        it will run with its default set of seeds.
+
+--h-flag
+        This corresponds to giving gmapper the flag -H, telling it to use
+        hashing to index spaced kmers. For seeds of weight greater than 14, this
+        is required. See README for more details.
+
+Output:
+
+<dest-dir>/<prefix>-<ram-size>gb-<i>of<n>.fa
+        This is the <i>-th of <n> pieces in fasta format.
+'''
 
 #need to fix this if going to run on windows
 rt=re.compile("/*.*[^/]+")
@@ -87,11 +127,27 @@ def main(argv):
 			seed=a
 		elif o in ("-h","--h-flag"):
 			h_flag=True
-	print 'ram-size %dGB, dest-dir %s, prefix %s' % (ram_size,dest_dir,prefix)
-	print 'tmp-dir %s, seed %s, h flag %s' % (tmp_dir, seed, str(h_flag))
+
+	#check the ram size
 	if ram_size<0:
 		usage()
 		sys.exit(1)
+
+        #check h flag
+        valid_seed=re.compile('[01]+$')
+        seeds=seed.split(',')
+        mx=0
+        for s in seeds:
+                m=valid_seed.match(s)
+                if not m:
+                        print "Invalid seed %s" % s
+                        sys.exit(1)
+                mx=max(mx,len(s.replace('0','')))
+        if not h_flag and mx>14:
+                print "For seeds of weight greater then 14, h-flag is required"
+                usage()
+                sys.exit(1)
+
 
 	#check for files already in the destination
 	#<dest-dir>/<prefix>-<ram-size>gb-*.fa
@@ -145,12 +201,11 @@ def main(argv):
 		append_fasta_file(handle,tmp_file)	
 	tmp_file.close()
 
-	#do the seeds
+	#do the seeds - seeds are gauranteed to be valid by h_flag check
 	default_number_seeds=4
 	default_seed_weights="12,12,12,12"
 	hash_table_weight=12
 	seed_weights=""
-	valid_seed=re.compile('[01]+$')
 	if not h_flag:
 		if seed=="":
 			#this means no H flag and no seeds given
@@ -160,16 +215,7 @@ def main(argv):
 			seeds=seed.split(',')
 			seed_weights=[]
 			for seed in seeds:
-				m=valid_seed.match(seed)
-				if m:
-					seed_weights.append(len(seed.replace('0','')))
-				else:
-					print "Invalid seed, %s" % seed
-					#remove the tmp_dir
-					os.rempve(tmp_filename)
-					os.rmdir(tmp_dir)
-					usage()
-					sys.exit(1)		
+				seed_weights.append(len(seed.replace('0','')))
 			seed_weights=",".join(map( lambda x : str(x), seed_weights))
 	else:
 		if seed=="":
@@ -178,16 +224,7 @@ def main(argv):
 			seeds=seed.split(',')
 			seed_weights=[]
 			for seed in seeds:
-				m=valid_seed.match(seed)
-				if m:
-					seed_weights.append(str(hash_table_weight))
-				else:
-					print "Invalid seed, %s" % seed
-					#remove the tmp_dir
-					os.remove(tmp_filename)
-					os.rmdir(tmp_dir)
-					usage()
-					sys.exit(1)		
+				seed_weights.append(str(hash_table_weight))
 			seed_weights=",".join(seed_weights)
 	print seed_weights
 
