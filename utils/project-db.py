@@ -96,13 +96,16 @@ def main(argv):
 			usage()
 			sys.exit(1)
 		else:
-			command=command_template
+			command=command_template[:]
 			command.append('-S')
 			command.append('%s/%s' % (dest_dir,".".join(fasta_filename.split('.')[:-1])+'-'+shrimp_mode))
 			command.append(fasta_filename)
 			#run the thing
 			gmapper_process=subprocess.Popen(command)
-			gmapper_process.wait()
+			if gmapper_process.wait()!=0:
+				print "An error has occured"
+				sys.exit(1)
+			
 
 if __name__=='__main__':
 	main(sys.argv[1:])

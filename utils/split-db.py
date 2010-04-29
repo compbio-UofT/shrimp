@@ -203,11 +203,13 @@ def main(argv):
 	split_contigs_output_handle=open(split_contigs_output_filename,'w')
 	command=('%s %s %d %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
 	split_contigs_process=subprocess.Popen(command,stdout=split_contigs_output_handle)
-	split_contigs_process.wait()
-	split_contigs_output_handle.close()	
+	if split_contigs_process.wait()!=0:
+		print "An error has occured."
+		sys.exit(1)
+	split_contigs_output_handle.close()
 
 	#extract the contigs	
-	output_prefix='%s/%s-%dgb-%sseeds-' % (dest_dir,prefix,ram_size,seed_weights)
+	output_prefix='%s/%s-%dgb-%sseeds-' % (dest_dir,prefix,ram_size,seed_weights.replace(",","_"))
 	ret=get_contigs(tmp_filename,split_contigs_output_filename,output_prefix)
 	
 	#clean up 
