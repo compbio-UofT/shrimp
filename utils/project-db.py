@@ -6,8 +6,8 @@ import getopt
 import re
 
 def usage():
-	print '%s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
-	print '''
+	print >> sys.stderr, '%s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
+	print >> sys.stderr, '''
 This script is used to split a given reference genome into a set of database
 files that fit into a target RAM size. gmapper can then be run independently on
 each of the database files.
@@ -65,7 +65,6 @@ def remove_tailing(s):
 #http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 #but hard to condense?
 def which(program):
-    import os
     def is_exe(fpath):
         return os.path.exists(fpath) and os.access(fpath, os.X_OK)
 
@@ -85,16 +84,17 @@ def which(program):
 def main(argv):
 	#Parse options
 	try:
-		opts, args = getopt.getopt(argv, "d:m:s:h", ["dest-dir=",\
-"shrimp-mode=","seed=","h-flag"])
+		opts, args = getopt.getopt(argv, "d:m:s:hp",\
+                  ["dest-dir=","shrimp-mode=","seed=","h-flag","print-script"])
 	except getopt.GetoptError, err:
-		print str(err)
+		print >> sys.stderr, str(err)
 		usage()
 		sys.exit(1)
 	#default parameters
 	dest_dir="."
 	shrimp_mode=""
 	seed=""
+	script=False
 	h_flag=False
 	for o,a in opts:
 		if o in ("-m","--shrimp-mode"):
@@ -106,43 +106,45 @@ def main(argv):
 				sys.exit(1)
 		elif o in ("-s","--seed"):
 			seed=a
+		elif o in ("-p","--print-script"):
+			script=True
 		elif o in ("-h","--h-flag"):
 			h_flag=True
 	#check that shrimp_mode is set
 	if shrimp_mode not in ("ls","cs"):
 		if len(shrimp_mode)>0:
-			print "%s is not a valid shrimp mode" % shrimp_mode
+			print >> sys.stderr, "%s is not a valid shrimp mode" % shrimp_mode
 		else:
-			print "Please specify a shrimp_mode"
+			print >> sys.stderr, "Please specify a shrimp-mode"
 		usage()
 		sys.exit(1)
 
 	#check h flag
 	valid_seed=re.compile('[01]+$')
 	seeds=seed.split(',')
-	mx=0
-	for s in seeds:
-		m=valid_seed.match(s)
-		if not m:
-			print "Invalid seed %s" % s
+	if len(seeds[0])>0:
+		max_seed_length=0
+		for s in seeds:
+			if not valid_seed.match(s):
+				print >> sys.stderr, "Invalid seed %s" % s
+				sys.exit(1)
+			max_seed_length=max(max_seed_length,len(s.replace('0','')))
+		if not h_flag and max_seed_length>14:
+			print >> sys.stderr, "For seeds of weight greater then 14, h-flag is required"
+			usage()
 			sys.exit(1)
-		mx=max(mx,len(s.replace('0','')))
-	if not h_flag and mx>14:
-		print "For seeds of weight greater then 14, h-flag is required"
-		usage()
-		sys.exit(1)
 
 	#get non option parameters, aka genome files
 	genome_files=args
 	if not genome_files:
-		print "No genome files given..."
+		print >> sys.stderr, "No genome files given..."
 		usage()
 		sys.exit(1)
 
 	#check gmapper in path
 	gmapper_executable="gmapper-"+shrimp_mode
 	if not which(gmapper_executable):	
-		print "Cannot find %s executable" % gmapper_executable
+		print >> sys.stderr, "Cannot find %s executable" % gmapper_executable
 		sys.exit(1)
 	command_template=[gmapper_executable]
 	if seed!="":
@@ -157,9 +159,9 @@ def main(argv):
 	for fasta_filename in genome_files:
 		target_filename=".".join(fasta_filename.split('.')[:-1])+'-'+shrimp_mode+".genome"
 		if listing.__contains__(target_filename):
-			print "database already exists in file %s" % target_filename
+			print >> sys.stderr, "Database already exists in file %s" % target_filename
 		elif not os.path.exists(fasta_filename):
-			print '%s does not exist!' % fasta_filename
+			print >> sys.stderr, '%s does not exist!' % fasta_filename
 			usage()
 			sys.exit(1)
 		else:
@@ -168,10 +170,13 @@ def main(argv):
 			command.append('%s/%s' % (dest_dir,".".join(fasta_filename.split('.')[:-1])+'-'+shrimp_mode))
 			command.append(fasta_filename)
 			#run the thing
-			gmapper_process=subprocess.Popen(command)
-			if gmapper_process.wait()!=0:
-				print "An error has occured"
-				sys.exit(1)
+			if not script:
+				gmapper_process=subprocess.Popen(command)
+				if gmapper_process.wait()!=0:
+					print >> sys.stderr, "An error has occured"
+					sys.exit(1)
+			else:
+				print " ".join(command)
 			
 
 if __name__=='__main__':

@@ -3,6 +3,7 @@ import subprocess
 import sys
 import os
 import getopt
+import re
 split_db=__import__('split-db')
 project_db=__import__('project-db')
 
@@ -63,7 +64,7 @@ def main(argv):
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "r:d:p:t:s:hm:", ["ram-size=", "dest-dir=","prefix="\
-,"tmp-dir=","seed=","h-flag","shrimp-mode"])
+,"tmp-dir=","seed=","h-flag","shrimp-mode="])
 	except getopt.GetoptError, err:
 		print str(err)
 		usage()
@@ -115,6 +116,7 @@ def main(argv):
 		usage()
 		sys.exit(1)
 
+
         #check that shrimp_mode is set
         if shrimp_mode not in ("ls","cs"):
                 if len(shrimp_mode)>0:
@@ -128,16 +130,17 @@ def main(argv):
         valid_seed=re.compile('[01]+$')
         seeds=seed.split(',')
         mx=0
-        for s in seeds:
-                m=valid_seed.match(s)
-                if not m:
-                        print "Invalid seed %s" % s
-                        sys.exit(1)
-                mx=max(mx,len(s.replace('0','')))
-        if not h_flag and mx>14:
-                print "For seeds of weight greater then 14, h-flag is required"
-                usage()
-                sys.exit(1)
+	if len(seeds[0])>0:
+       		for s in seeds:
+                	m=valid_seed.match(s)
+                	if not m:
+                        	print "Invalid seed %s" % s
+                        	sys.exit(1)
+                	mx=max(mx,len(s.replace('0','')))
+        	if not h_flag and mx>14:
+                	print "For seeds of weight greater then 14, h-flag is required"
+                	usage()
+                	sys.exit(1)
 
 
 	genome_files=args

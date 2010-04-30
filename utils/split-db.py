@@ -7,8 +7,8 @@ import re
 from get_contigs import get_contigs
 
 def usage():
-	print '%s --ram-size ramsize file1.fa file2.fa ...' % sys.argv[0]
-	print  '''
+	print >> sys.stderr, '%s --ram-size ramsize file1.fa file2.fa ...' % sys.argv[0]
+	print >> sys.stderr, '''
 This script is used to split a given reference genome into a set of fasta files
 that fit into a target RAM size. gmapper can then be run independently on each
 of these files.
@@ -61,7 +61,6 @@ def remove_tailing(s):
 #http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 #but hard to condense?
 def which(program):
-    import os
     def is_exe(fpath):
         return os.path.exists(fpath) and os.access(fpath, os.X_OK)
         
@@ -81,7 +80,7 @@ def append_fasta_file(source_handle,destination_handle):
 	#make sure that there are not extra new lines between
 	#fasta files, when writting last chunk, strip whitespace
 	#from the right
-	buffer_size=1024*1024*10 #10 megs
+	buffer_size=1024*1024*60 #60 megs
 	data_current=source_handle.read(buffer_size)
 	data_next=source_handle.read(buffer_size)
 	while data_next:
@@ -136,17 +135,17 @@ def main(argv):
         #check h flag
         valid_seed=re.compile('[01]+$')
         seeds=seed.split(',')
-        mx=0
-        for s in seeds:
-                m=valid_seed.match(s)
-                if not m:
-                        print "Invalid seed %s" % s
-                        sys.exit(1)
-                mx=max(mx,len(s.replace('0','')))
-        if not h_flag and mx>14:
-                print "For seeds of weight greater then 14, h-flag is required"
-                usage()
-                sys.exit(1)
+        if len(seeds[0])>0:
+        	max_seed_length=0
+		for s in seeds:
+                	if not valid_seed.match(s):
+                       		print >> sys.stderr, "Invalid seed %s" % s
+                        	sys.exit(1)
+                	max_seed_length=max(max_seed_length,len(s.replace('0','')))
+        	if not h_flag and max_seed_length>14:
+                	print >> sys.stderr, "For seeds of weight greater then 14, h-flag is required"
+                	usage()
+                	sys.exit(1)
 
 
 	#check for files already in the destination
@@ -155,18 +154,17 @@ def main(argv):
 	listing=os.listdir(dest_dir+"/")
 	r=re.compile('%s-%dgb-.+[.]fa$' % (prefix,ram_size))
 	for filename in listing:
-		m=r.match(filename)
-		if m:
+		if r.match(filename):
 			matching.append(filename)
 	if matching:
 		matching=", ".join(map(lambda x : dest_dir+"/"+x,matching))
-		print 'splitting already done in files %s' % matching
+		print >> sys.stderr, 'splitting already done in files %s' % matching
 		sys.exit(0)
 
 	#get non option parameters, aka genome files
 	genome_files=args
 	if not genome_files:
-		print "No genome files given..."
+		print >> sys.stderr, "No genome files given..."
 		usage()
 		sys.exit(1)
 	#could use os.access but this could cause a security hole? by python docs
@@ -176,7 +174,7 @@ def main(argv):
 		try:
 			handles.append(open(filename,'rU'))
 		except IOError, err:
-			print str(err)
+			print >> sys.stderr, str(err)
 			for handle in handles:
 				handle.close()
 			usage()
@@ -187,7 +185,7 @@ def main(argv):
 	if os.path.exists(tmp_dir):
 		for handle in handles:
 			handle.close()
-		print "Temp directory %s exists!" % tmp_dir
+		print >> sys.stderr, "Temp directory %s exists!" % tmp_dir
 		usage()
 		sys.exit(1)
 	#make the directory
@@ -216,7 +214,7 @@ def main(argv):
 			seed_weights=[]
 			for seed in seeds:
 				seed_weights.append(len(seed.replace('0','')))
-			seed_weights=",".join(map( lambda x : str(x), seed_weights))
+			seed_weights=",".join(map(str, seed_weights))
 	else:
 		if seed=="":
 			seed_weights=",".join([str(hash_table_weight)]*default_number_seeds)
@@ -231,7 +229,7 @@ def main(argv):
 	#want to run split-contigs
 	split_contigs_executable=which('split-contigs')
 	if not split_contigs_executable:	
-		print "Cannot find split-contigs in current directory"
+		print >> sys.stderr, "Cannot find split-contigs in current directory"
 		#clean up and exit
 		os.remove(tmp_filename)
 		os.rmdir(tmp_dir)
@@ -241,7 +239,7 @@ def main(argv):
 	command=('%s %s %d %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
 	split_contigs_process=subprocess.Popen(command,stdout=split_contigs_output_handle)
 	if split_contigs_process.wait()!=0:
-		print "An error has occured."
+		print >> sys.stderr, "An error has occured."
 		sys.exit(1)
 	split_contigs_output_handle.close()
 
