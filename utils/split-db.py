@@ -51,7 +51,7 @@ Output:
 
 #need to fix this if going to run on windows
 rt=re.compile("/*.*[^/]+")
-def remove_tailing(s):
+def remove_trailing(s):
 	m=rt.match(s)
 	if m:
 		return m.group(0)
@@ -61,20 +61,17 @@ def remove_tailing(s):
 #http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 #but hard to condense?
 def which(program):
-    def is_exe(fpath):
-        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+	def is_exe(fpath):
+		return os.path.exists(fpath) and os.access(fpath, os.X_OK)
         
-    fpath, fname = os.path.split(program)
-    if fpath:           
-        if is_exe(program):
-            return program
-    else:               
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
-            if is_exe(exe_file):
-                return exe_file
-
-    return None
+	fpath, fname = os.path.split(program)
+	if is_exe("./"+program):
+		return "./"+program
+	for path in os.environ["PATH"].split(os.pathsep):
+		exe_file = os.path.join(path, program)
+		if is_exe(exe_file):
+			return exe_file
+	return None
 
 def append_fasta_file(source_handle,destination_handle):
 	#make sure that there are not extra new lines between
@@ -132,6 +129,14 @@ def main(argv):
 		usage()
 		sys.exit(1)
 
+	#check if temp directory exists
+	if os.path.exists(tmp_dir):
+		for handle in handles:
+			handle.close()
+		print >> sys.stderr, "Temp directory %s exists!" % tmp_dir
+		usage()
+		sys.exit(1)
+
         #check h flag
         valid_seed=re.compile('[01]+$')
         seeds=seed.split(',')
@@ -147,9 +152,13 @@ def main(argv):
                 	usage()
                 	sys.exit(1)
 
+	#check that can run split-contigs
+	split_contigs_executable=which('split-contigs')
+	if not split_contigs_executable:	
+		print >> sys.stderr, "Cannot find split-contigs in PATH"
+		sys.exit(1)
 
 	#check for files already in the destination
-	#<dest-dir>/<prefix>-<ram-size>gb-*.fa
 	matching=[]
 	listing=os.listdir(dest_dir+"/")
 	r=re.compile('%s-%dgb-.+[.]fa$' % (prefix,ram_size))
@@ -161,12 +170,14 @@ def main(argv):
 		print >> sys.stderr, 'splitting already done in files %s' % matching
 		sys.exit(0)
 
-	#get non option parameters, aka genome files
+	#check genome_files
 	genome_files=args
 	if not genome_files:
 		print >> sys.stderr, "No genome files given..."
 		usage()
 		sys.exit(1)
+
+	#open genome files
 	#could use os.access but this could cause a security hole? by python docs
 	#just going to open since need to 'cat' together anyway
 	handles=[]
@@ -181,15 +192,9 @@ def main(argv):
 			sys.exit(1)
 	#all files are open for reading
 
-	#test if temp directory exists
-	if os.path.exists(tmp_dir):
-		for handle in handles:
-			handle.close()
-		print >> sys.stderr, "Temp directory %s exists!" % tmp_dir
-		usage()
-		sys.exit(1)
-	#make the directory
+	#make temp directory
 	os.makedirs(tmp_dir)
+
 	#make all.fa
 	tmp_filename=tmp_dir+'/all.fa'
 	tmp_file=open(tmp_filename,'w')
@@ -226,14 +231,7 @@ def main(argv):
 			seed_weights=",".join(seed_weights)
 	print seed_weights
 
-	#want to run split-contigs
-	split_contigs_executable=which('split-contigs')
-	if not split_contigs_executable:	
-		print >> sys.stderr, "Cannot find split-contigs in current directory"
-		#clean up and exit
-		os.remove(tmp_filename)
-		os.rmdir(tmp_dir)
-		sys.exit(1)
+	#run split-contigs
 	split_contigs_output_filename=tmp_dir+'/split_contigs_out'
 	split_contigs_output_handle=open(split_contigs_output_filename,'w')
 	command=('%s %s %d %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()

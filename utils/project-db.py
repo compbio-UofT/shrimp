@@ -55,7 +55,7 @@ Output:
 
 #need to fix this if going to run on windows
 rt=re.compile("/*.*[^/]+")
-def remove_tailing(s):
+def remove_trailing(s):
 	m=rt.match(s)
 	if m:
 		return m.group(0)
@@ -65,20 +65,18 @@ def remove_tailing(s):
 #http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
 #but hard to condense?
 def which(program):
-    def is_exe(fpath):
-        return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+	def is_exe(fpath):
+		return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+	
+	fpath, fname = os.path.split(program)
+	if is_exe("./"+program):
+		return "./"+program
+	for path in os.environ["PATH"].split(os.pathsep):
+		exe_file = os.path.join(path, program)
+		if is_exe(exe_file):
+			return exe_file
 
-    fpath, fname = os.path.split(program)
-    if fpath:
-        if is_exe(program):
-            return program
-    else:
-        for path in os.environ["PATH"].split(os.pathsep):
-            exe_file = os.path.join(path, program)
-            if is_exe(exe_file):
-                return exe_file
-
-    return None
+	return None
 
 
 def main(argv):
@@ -110,6 +108,7 @@ def main(argv):
 			script=True
 		elif o in ("-h","--h-flag"):
 			h_flag=True
+
 	#check that shrimp_mode is set
 	if shrimp_mode not in ("ls","cs"):
 		if len(shrimp_mode)>0:
@@ -134,7 +133,7 @@ def main(argv):
 			usage()
 			sys.exit(1)
 
-	#get non option parameters, aka genome files
+	#check genome files
 	genome_files=args
 	if not genome_files:
 		print >> sys.stderr, "No genome files given..."

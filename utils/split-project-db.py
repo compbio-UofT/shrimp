@@ -60,6 +60,31 @@ Output:
         This is the projection of the <i>-th piece.
 '''
 
+#need to fix this if going to run on windows
+rt=re.compile("/*.*[^/]+")
+def remove_trailing(s):
+        m=rt.match(s)
+        if m:   
+                return m.group(0)
+        return None
+
+#copied from 
+#http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
+#but hard to condense?
+def which(program):
+	def is_exe(fpath):
+		return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+	
+	fpath, fname = os.path.split(program)
+	if is_exe("./"+program):
+		return "./"+program
+	for path in os.environ["PATH"].split(os.pathsep):
+		exe_file = os.path.join(path, program)
+		if is_exe(exe_file):
+			return exe_file
+
+	return None
+
 def main(argv):
 	#Parse options
 	try:
@@ -76,7 +101,7 @@ def main(argv):
 	tmp_dir="/tmp/"+str(os.getpid())
 	seed=""
 	h_flag=False
-	shrimp_mode="ls"
+	shrimp_mode=""
 
 	split_db_args=[]
 	project_db_args=[]
@@ -96,7 +121,7 @@ def main(argv):
 			prefix=a
 			split_db_args+=[o,a]
 		elif o in ("-t","--tmp-dir"):
-			tmp_dir=remove_tailing(a)
+			tmp_dir=remove_trailing(a)
 			if not tmp_dir:
 				usage()
 				sys.exit(1)
@@ -112,6 +137,7 @@ def main(argv):
 		elif o in ("-m","--shrimp-mode"):
 			shrimp_mode=a
 			project_db_args+=[o,a]
+	#check ram size
 	if ram_size<0:
 		usage()
 		sys.exit(1)
@@ -120,9 +146,9 @@ def main(argv):
         #check that shrimp_mode is set
         if shrimp_mode not in ("ls","cs"):
                 if len(shrimp_mode)>0:
-                        print "%s is not a valid shrimp mode" % shrimp_mode
+                        print >> sys.stderr, "%s is not a valid shrimp mode" % shrimp_mode
                 else:
-                        print "Please specify a shrimp_mode"
+                        print >> sys.stderr, "Please specify a shrimp_mode"
                 usage()
                 sys.exit(1)
             
@@ -134,14 +160,20 @@ def main(argv):
        		for s in seeds:
                 	m=valid_seed.match(s)
                 	if not m:
-                        	print "Invalid seed %s" % s
+                        	print >> sys.stderr, "Invalid seed %s" % s
                         	sys.exit(1)
                 	mx=max(mx,len(s.replace('0','')))
         	if not h_flag and mx>14:
-                	print "For seeds of weight greater then 14, h-flag is required"
+                	print >> sys.stderr, "For seeds of weight greater then 14, h-flag is required"
                 	usage()
                 	sys.exit(1)
 
+	if which('gmapper-'+shrimp_mode)==None:
+		print >> sys.stderr, "Cannot find gmapper-" + shrimp_mode +" executable"
+		sys.exit(1)
+	if which('split-contigs')==None:
+		print >> sys.stderr, "Cannot find split-contigs executable"
+		sys.exit(1)
 
 	genome_files=args
 	output_filenames=split_db.main(split_db_args+genome_files)
