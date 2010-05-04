@@ -66,6 +66,7 @@ if [ -z "$PAIRED" ]; then
   echo "WARNING: --paired or --unpaired was not specified, trying to auto-detect"
 fi
 
+
 # make temporary directory
 if [ -d $TMP_DIR ]; then
   echo 1>&2 "error: temporary directory [$TMP_DIR] exists"
@@ -78,6 +79,7 @@ if [ ! -r "$1" ]; then
   echo 1>&2 "error: file [$1] unreadable"
   exit 1
 fi
+
 if [ ( head -n 50 $1 | cut -f 1 | grep -q '^>' ) ]; then
   FORMAT="shrimp"
   IGNORE="#"
