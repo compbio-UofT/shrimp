@@ -3,11 +3,21 @@
 import sys
 from utils import *
 
-if len(sys.argv) != 3:
-	print >> sys.stderr, "usage: %s [reads_per_file] [fasta_file]" % (sys.argv[0])
+if len(sys.argv) != 3 and len(sys.argv) != 4:
+	print >> sys.stderr, "usage: %s [--paired | -p] <reads_per_file|pairs_per_file> <fasta_file>" % (sys.argv[0])
 	sys.exit(1)
 
-READS_PER_FILE = int(sys.argv[1])
+if sys.argv[1] == '--paired' or sys.argv[1] == '-p':
+	mode = 'paired'
+	mod = 1
+else:
+	mode = 'unpaired'
+	mod = 0
+
+READS_PER_FILE = int(sys.argv[1+mod])
+
+if mode = 'paired':
+	READS_PER_FILE *= 2
 
 out = None
 readsdone = 0
@@ -20,7 +30,7 @@ elif sys.argv[2].lower().strip().endswith(".csfa"):
 elif sys.argv[2].lower().strip().endswith(".fa"):
 	suffix = "fa"
 
-fd = open_gz_or_ascii(sys.argv[2])
+fd = open_gz_or_ascii(sys.argv[2+mod])
 for line in fd:
 	if line.startswith("#"):
 		continue
