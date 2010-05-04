@@ -65,7 +65,6 @@ fi
 if [ -z "$PAIRED" ]; then
   echo "WARNING: --paired or --unpaired was not specified, trying to auto-detect"
 fi
-exit
 
 # make temporary directory
 if [ -d $TMP_DIR ]; then
