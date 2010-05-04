@@ -108,7 +108,7 @@ def main(argv):
 
 	for o,a in opts:
 		if o in ("-r","--ram-size"):
-			ram_size=int(a)
+			ram_size=a
 		elif o in ("-d","--dest-dir"):
 			dest_dir=remove_trailing(a)
 			if not dest_dir:
@@ -127,7 +127,7 @@ def main(argv):
 			h_flag=True
 
 	#check the ram size
-	if ram_size<0:
+	if float(ram_size)<0:
 		usage()
 		sys.exit(1)
 
@@ -168,7 +168,7 @@ def main(argv):
 		print >> sys.stderr, str(err)
 		sys.exit(1)
 	
-	r=re.compile('%s-%dgb-.+[.]fa$' % (prefix,ram_size))
+	r=re.compile('%s-%sgb-.+[.]fa$' % (prefix,ram_size))
 	for filename in listing:
 		if r.match(filename):
 			matching.append(filename)
@@ -241,7 +241,7 @@ def main(argv):
 	#run split-contigs
 	split_contigs_output_filename=tmp_dir+'/split_contigs_out'
 	split_contigs_output_handle=open(split_contigs_output_filename,'w')
-	command=('%s %s %d %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
+	command=('%s %s %s %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
 	split_contigs_process=subprocess.Popen(command,stdout=split_contigs_output_handle)
 	if split_contigs_process.wait()!=0:
 		print >> sys.stderr, "An error has occured."
@@ -249,7 +249,7 @@ def main(argv):
 	split_contigs_output_handle.close()
 
 	#extract the contigs	
-	output_prefix='%s/%s-%dgb-%sseeds-' % (dest_dir,prefix,ram_size,seed_weights.replace(",","_"))
+	output_prefix='%s/%s-%sgb-%sseeds-' % (dest_dir,prefix,ram_size,seed_weights.replace(",","_"))
 	ret=get_contigs(tmp_filename,split_contigs_output_filename,output_prefix)
 	
 	#clean up 

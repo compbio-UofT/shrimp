@@ -108,7 +108,7 @@ def main(argv):
 
 	for o,a in opts:
 		if o in ("-r","--ram-size"):
-			ram_size=int(a)
+			ram_size=a
 			split_db_args+=[o,a]
 		elif o in ("-d","--dest-dir"):
 			dest_dir=remove_trailing(a)
@@ -138,7 +138,7 @@ def main(argv):
 			shrimp_mode=a
 			project_db_args+=[o,a]
 	#check ram size
-	if ram_size<0:
+	if flost(ram_size)<0:
 		usage()
 		sys.exit(1)
 

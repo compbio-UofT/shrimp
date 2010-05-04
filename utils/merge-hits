@@ -80,7 +80,7 @@ if [ ! -r "$1" ]; then
   exit 1
 fi
 
-if [ ( head -n 50 $1 | cut -f 1 | grep -q '^>' ) ]; then
+if head -n 50 $1 | cut -f 1 | grep -q '^>'; then
   FORMAT="shrimp"
   IGNORE="#"
 else
@@ -91,14 +91,14 @@ echo 1>&2 "Detected format: $FORMAT"
 
 # if pairing is unspecified, detect it with script
 if [ -z "$PAIRED" ]; then
-  if [ head -n 10000 $1 | awk -v SUFFIX="\"$SUFFIX\"" test-unpaired-$FORMAT ]; then
+  if head -n 10000 $1 | awk -v SUFFIX="\"$SUFFIX\"" test-unpaired-$FORMAT; then
     PAIRED="no"
   else
     PAIRED="yes"
   fi
   echo 1>&2 "Detected pairing: $PAIRED"
 fi
-
+exit
 # write header from first file
 head -n 50 $1 \\
   | grep "^$IGNORE" \\
