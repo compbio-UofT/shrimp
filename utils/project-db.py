@@ -182,6 +182,7 @@ def main(argv):
 			command.append(fasta_filename)
 			#run the thing
 			if not script:
+				print >> sys.stderr, " ".join(command)
 				gmapper_process=subprocess.Popen(command)
 				if gmapper_process.wait()!=0:
 					print >> sys.stderr, "An error has occured"
