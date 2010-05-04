@@ -548,6 +548,7 @@ static bool save_genome_map_seed(const char *file,uint sn){
 
 	// genome_map
 	// TODO if memory usage to high change this
+	/*
 	uint32_t *map,*ptr;
 	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
 	ptr = map;
@@ -556,11 +557,15 @@ static bool save_genome_map_seed(const char *file,uint sn){
 		ptr += genomemap_len[sn][i];
 	}
 	xgzwrite(fp,map,sizeof(uint32_t)*total);
+	free(map);
+	*/
+
+	for (i = 0; i < capacity; i++) {
+	  xgzwrite(fp, (void *)genomemap[sn][i], genomemap_len[sn][i] * sizeof(uint32_t));
+	}
 
 	gzclose(fp);
-	free(map);
 	return true;
-
 }
 
 static bool load_genome_map_seed(const char *file){
@@ -681,6 +686,7 @@ static bool save_genome_map(const char *prefix) {
 	xgzwrite(fp,&total,sizeof(uint32_t));
 
 	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
+	/*
 	uint32_t *gen, *gen_rc, *gen_cs = NULL, *ptr1, *ptr2, *ptr3 = NULL;
 	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
 	ptr1 = gen;
@@ -711,65 +717,23 @@ static bool save_genome_map(const char *prefix) {
 	}
 	free(gen);
 	free(gen_rc);
+	*/
+
+	for (i = 0; i < num_contigs; i++) {
+	  xgzwrite(fp, (void *)genome_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+	}
+	for (i = 0; i < num_contigs; i++) {
+	  xgzwrite(fp, (void *)genome_contigs_rc[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  for (i = 0; i < num_contigs; i++) {
+	    xgzwrite(fp, (void *)genome_cs_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+	  }
+	  xgzwrite(fp, (void *)genome_initbp, num_contigs * sizeof(uint32_t));
+	}
 
 	gzclose(fp);
 	return true;
-	//	gzFile fp = gzopen(file, "wb0");
-	//	if (fp == NULL){
-	//		return false;
-	//	}
-	//
-	//	//write the header
-	//	//fprintf(stderr,"saving num_contgs: %u\n",num_contigs);
-	//	gzwrite(fp,&shrimp_mode,sizeof(shrimp_mode_t));
-	//	fprintf(stderr,"shrimp_mode:%u\n",shrimp_mode);
-	//	uint32_t h = (uint32_t)Hflag;
-	//	fprintf(stderr,"h:%u\n",h);
-	//	gzwrite(fp,&h,sizeof(uint32_t));
-	//	uint32_t i;
-	//	gzwrite(fp,&num_contigs,sizeof(uint32_t));
-	//	//fprintf(stderr,"saved num_contigs\n");
-	//	for (i = 0; i < num_contigs; i++) {
-	//		fprintf(stderr,"offset:%u\n",contig_offsets[i]);
-	//		gzwrite(fp,&contig_offsets[i],sizeof(uint32_t));
-	//		size_t len = strlen(contig_names[i]);
-	//		fprintf(stderr,"len:%u\n",len);
-	//		gzwrite(fp,&len,sizeof(size_t));
-	//		gzwrite(fp,contig_names[i],len +1);
-	//
-	//		gzwrite(fp,genome_len + i,sizeof(uint32_t));
-	//		gzwrite(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//		gzwrite(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//		if(shrimp_mode == MODE_COLOUR_SPACE){
-	//			gzwrite(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//			gzwrite(fp,genome_initbp+i,sizeof(uint32_t));
-	//		}
-	//	}
-	//	//fprintf(stderr,"saving seeds\n");
-	//	//write the seeds and genome_maps
-	//	gzwrite(fp,&n_seeds,sizeof(uint32_t));
-	//	for (i = 0; i < n_seeds; i++) {
-	//		gzwrite(fp,&seed[i], sizeof(seed_type));
-	//
-	//		//write the genome_map for this seed
-	//		uint32_t j;
-	//		//uint32_t p = power(4, seed[i].weight);
-	//		//fprintf(stderr,"saving index\n");
-	//		size_t capacity;
-	//		if(Hflag){
-	//			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
-	//		} else {
-	//			capacity = power(4, seed[i].weight);
-	//		}
-	//		gzwrite(fp,&capacity, sizeof(size_t));
-	//		for (j = 0; j < capacity; j++) {
-	//			uint32_t len = genomemap_len[i][j];
-	//			gzwrite(fp, &len, sizeof(uint32_t));
-	//			gzwrite(fp, genomemap[i][j], sizeof(uint32_t) * len);
-	//		}
-	//	}
-	//	gzclose(fp);
-	//	return true;
 }
 
 
