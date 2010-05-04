@@ -162,7 +162,12 @@ def main(argv):
 
 	#check for files already in the destination
 	matching=[]
-	listing=os.listdir(dest_dir+"/")
+	try:
+		listing=os.listdir(dest_dir+"/")
+	except OSError, err:
+		print >> sys.stderr, str(err)
+		sys.exit(1)
+	
 	r=re.compile('%s-%dgb-.+[.]fa$' % (prefix,ram_size))
 	for filename in listing:
 		if r.match(filename):

@@ -80,6 +80,9 @@ def which(program):
 
 	return None
 
+def basename(s):
+	s=remove_trailing(s)
+	return s.split(os.sep)[-1]
 
 def main(argv):
 	#Parse options
@@ -156,11 +159,18 @@ def main(argv):
 
 	#check for files already in the destination
 	matching=[]
-	listing=os.listdir(dest_dir+"/")
+	try:
+		listing=os.listdir(dest_dir+"/")
+	except OSError, err:
+		print >> sys.stderr, str(err)
+		sys.exit(1)
 	for fasta_filename in genome_files:
-		target_filename=".".join(fasta_filename.split('.')[:-1])+'-'+shrimp_mode+".genome"
-		if listing.__contains__(target_filename):
-			print >> sys.stderr, "Database already exists in file %s" % target_filename
+		if fasta_filename[-3:]!=".fa":
+			print >> sys.stderr, "Skipping file %s, does not have '.fa' extension" % fasta_filename
+			continue
+		target_filename=".".join(basename(fasta_filename).split('.')[:-1])+'-'+shrimp_mode
+		if listing.__contains__(target_filename+".genome"):
+			print >> sys.stderr, "Database already exists in file %s" % (target_filename+".genome")
 		elif not os.path.exists(fasta_filename):
 			print >> sys.stderr, '%s does not exist!' % fasta_filename
 			usage()
@@ -168,7 +178,7 @@ def main(argv):
 		else:
 			command=command_template[:]
 			command.append('-S')
-			command.append('%s/%s' % (dest_dir,".".join(fasta_filename.split('.')[:-1])+'-'+shrimp_mode))
+			command.append('%s/%s' % (dest_dir,target_filename))
 			command.append(fasta_filename)
 			#run the thing
 			if not script:

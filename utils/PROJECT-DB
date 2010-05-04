@@ -25,6 +25,9 @@ Parameters:
 	details. If absent, gmapper will not be given explicitly any seeds, so
 	it will run with its default set of seeds.
 
+--print-script
+	Only display commands that would be run. Do not actually run gmapper.
+
 --h-flag
 	This corresponds to giving gmapper the flag -H, telling it to use
 	hashing to index spaced kmers. For seeds of weight greater than 14, this
