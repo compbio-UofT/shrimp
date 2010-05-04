@@ -7,7 +7,7 @@ import re
 from get_contigs import get_contigs
 
 def usage():
-	print >> sys.stderr, '%s --ram-size ramsize file1.fa file2.fa ...' % sys.argv[0]
+	print >> sys.stderr, 'Usage: %s --ram-size ramsize file1.fa file2.fa ...' % sys.argv[0]
 	print >> sys.stderr, '''
 This script is used to split a given reference genome into a set of fasta files
 that fit into a target RAM size. gmapper can then be run independently on each

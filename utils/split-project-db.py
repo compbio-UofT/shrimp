@@ -8,7 +8,7 @@ split_db=__import__('split-db')
 project_db=__import__('project-db')
 
 def usage():
-	print '%s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
+	print 'Usage: %s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
 	print '''
 This script is used to split a given reference genome into a set of database
 files that fit into a target RAM size, then project the files into indexes that

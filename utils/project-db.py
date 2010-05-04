@@ -6,7 +6,7 @@ import getopt
 import re
 
 def usage():
-	print >> sys.stderr, '%s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
+	print >> sys.stderr, 'Usage: %s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
 	print >> sys.stderr, '''
 This script is used to split a given reference genome into a set of database
 files that fit into a target RAM size. gmapper can then be run independently on
