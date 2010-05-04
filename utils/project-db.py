@@ -143,7 +143,7 @@ def main(argv):
 		sys.exit(1)
 
 	#check gmapper in path
-	gmapper_executable="gmapper-"+shrimp_mode
+	gmapper_executable=which("gmapper-"+shrimp_mode)
 	if not which(gmapper_executable):	
 		print >> sys.stderr, "Cannot find %s executable" % gmapper_executable
 		sys.exit(1)
@@ -172,7 +172,6 @@ def main(argv):
 			command.append(fasta_filename)
 			#run the thing
 			if not script:
-				print command
 				gmapper_process=subprocess.Popen(command)
 				if gmapper_process.wait()!=0:
 					print >> sys.stderr, "An error has occured"
