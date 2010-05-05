@@ -2976,6 +2976,7 @@ void print_settings() {
 	    seed_to_string(i), seed[i].weight, seed[i].span);
   }
 
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Maximum Number of Outputs:", num_outputs);
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
 
   if (IS_ABSOLUTE(window_len)) {
