@@ -2377,6 +2377,7 @@ void print_genomemap_stats() {
   uint max;
 
   uint64_t histogram[100];
+  uint64_t cummulative_histogram[100];
   uint bucket_size;
   uint i, bucket;
 
@@ -2414,7 +2415,7 @@ void print_genomemap_stats() {
       histogram[i] = 0;
     }
 
-    bucket_size = ceil_div(max, 100);
+    bucket_size = ceil_div((max+1), 100); // values in [0..max]
     for (mapidx = 0; mapidx < capacity; mapidx++) {
       //if (genomemap_len[sn][mapidx] > list_cutoff)
       //continue;
@@ -2425,8 +2426,14 @@ void print_genomemap_stats() {
       histogram[bucket]++;
     }
 
+    cummulative_histogram[0] = histogram[0];
+    for (i = 1; i < 100; i++) {
+      cummulative_histogram[i] = histogram[i] + cummulative_histogram[i-1];
+    }
+
     for (i = 0; i < 100; i++) {
-      fprintf(stderr, "[%d-%d]: %lld\n", i*bucket_size, (i+1)*bucket_size, histogram[i]);
+      fprintf(stderr, "[%d-%d]: %llu (cummulative: %.4f%%)\n", i*bucket_size, (i+1)*bucket_size,
+	      (long long unsigned int)histogram[i], (((double)cummulative_histogram[i])/capacity)*100.0);
     }
 
   }
