@@ -594,8 +594,14 @@ static bool load_genome_map_seed(const char *file){
 	uint sn = n_seeds;
 	n_seeds++;
 	seed = (seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
-	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
-	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **)*n_seeds);
+	genomemap_len = (uint32_t **)xrealloc_c(genomemap_len,
+						sizeof(uint32_t *)*n_seeds,
+						sizeof(uint32_t *)*(n_seeds - 1),
+						&mem_genomemap);
+	genomemap = (uint32_t ***)xrealloc_c(genomemap,
+					     sizeof(uint32_t **)*n_seeds,
+					     sizeof(uint32_t **)*(n_seeds - 1),
+					     &mem_genomemap);
 	xgzread(fp,seed + sn,sizeof(seed_type));
 
 	if (seed[sn].span > max_seed_span)
@@ -617,15 +623,15 @@ static bool load_genome_map_seed(const char *file){
 	} else {
 		capacity = power(4, seed[sn].weight);
 	}
-	genomemap_len[sn] = (uint32_t*)xmalloc(sizeof(uint32_t)*capacity);
-	genomemap[sn] = (uint32_t **)xmalloc(sizeof(uint32_t *)*capacity);
+	genomemap_len[sn] = (uint32_t*)xmalloc_c(sizeof(uint32_t)*capacity, &mem_genomemap);
+	genomemap[sn] = (uint32_t **)xmalloc_c(sizeof(uint32_t *)*capacity, &mem_genomemap);
 	xgzread(fp,genomemap_len[sn],sizeof(uint32_t) * capacity);
 
 	// total
 	xgzread(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
 	// genome_map
 	uint32_t * map;
-	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+	map = (uint32_t *)xmalloc_c(sizeof(uint32_t)*total, &mem_genomemap);
 	gzread(fp,map,sizeof(uint32_t)*total);
 	uint32_t * ptr;
 	ptr = map;
@@ -1089,9 +1095,9 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
 
-      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
-	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
-      }
+      //if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
+      //idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
+      //}
 
       if ((!re->has_Ns || re->mapidx_pos[st][offset])
 	  && idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]
@@ -2387,8 +2393,8 @@ void print_genomemap_stats() {
     stat_init(&list_size_non0);
     max = 0;
     for (mapidx = 0; mapidx < capacity; mapidx++) {
-      if (genomemap_len[sn][mapidx] > list_cutoff)
-	continue;
+      //if (genomemap_len[sn][mapidx] > list_cutoff)
+      //continue;
 
       stat_add(&list_size, genomemap_len[sn][mapidx]);
       if (genomemap_len[sn][mapidx] > 0)
@@ -2410,8 +2416,8 @@ void print_genomemap_stats() {
 
     bucket_size = ceil_div(max, 100);
     for (mapidx = 0; mapidx < capacity; mapidx++) {
-      if (genomemap_len[sn][mapidx] > list_cutoff)
-	continue;
+      //if (genomemap_len[sn][mapidx] > list_cutoff)
+      //continue;
 
       bucket = genomemap_len[sn][mapidx] / bucket_size;
       if (bucket >= 100)
@@ -2560,28 +2566,38 @@ load_genome(char **files, int nfiles)
 		fasta_close(fasta);
 	}
 
-	// trim long genome lists
-	for (sn = 0; sn < n_seeds; sn++) {
-	  if(Hflag){
-	    capacity = power(4, HASH_TABLE_POWER);
-	  } else {
-	    capacity = power(4, seed[sn].weight);
-	  }
-
-	  uint32_t mapidx;
-	  for (mapidx = 0; mapidx < capacity; mapidx++) {
-	    if (genomemap_len[sn][mapidx] > list_cutoff) {
-	      free(genomemap[sn][mapidx]);
-	      genomemap[sn][mapidx] = NULL;
-	      genomemap_len[sn][mapidx] = 0;
-	    }
-	  }
-	}
-
 	fprintf(stderr,"Loaded Genome\n");
 
 	return (true);
 
+}
+
+/*
+ * Trim long genome lists
+ */
+static void
+trim_genome()
+{
+  uint sn, capacity;
+  uint32_t mapidx;
+
+  for (sn = 0; sn < n_seeds; sn++) {
+    if(Hflag) {
+      capacity = power(4, HASH_TABLE_POWER);
+    } else {
+      capacity = power(4, seed[sn].weight);
+    }
+
+    for (mapidx = 0; mapidx < capacity; mapidx++) {
+      if (genomemap_len[sn][mapidx] > list_cutoff) {
+	genomemap_len[sn][mapidx] = 0;
+	if (load_file == NULL) {
+	  free(genomemap[sn][mapidx]);
+	} // otherwise, this memory is block-allocated
+	genomemap[sn][mapidx] = NULL;
+      }
+    }
+  }
 }
 
 
@@ -3315,39 +3331,50 @@ int main(int argc, char **argv){
 	  init_seed_hash_mask();
 	}
 
-	if (save_file != NULL && load_file != NULL){
-	  fprintf(stderr,"error: -L and -S incompatible\n");
+	if (save_file != NULL && load_file != NULL && list_cutoff == DEF_LIST_CUTOFF){
+	  fprintf(stderr,"error: -L and -S allowed together only if list_cutoff is specified\n");
 	  exit(1);
 	}
 
-	if(load_file != NULL){
-	  if (argc == 0){
-	    fprintf(stderr,"error: read_file not specified\n");
-	    usage(progname,false);
+	if (load_file != NULL && save_file != NULL)
+	  { // args: none
+	    if (argc != 0) {
+	      fprintf(stderr, "error: when using both -L and -S, no extra files can be given\n");
+	      usage(progname, false);
+	    }
+	  } 
+	else if (load_file != NULL)
+	  { // args: reads file
+	    if (argc == 0) {
+	      fprintf(stderr,"error: read_file not specified\n");
+	      usage(progname, false);
+	    } else if (argc == 1) {
+	      reads_file    = argv[0];
+	    } else {
+	      fprintf(stderr,"error: too many arguments with -L\n");
+	      usage(progname, false);
+	    }
 	  }
-	  if (argc == 1){
+	else if (save_file != NULL)
+	  { // args: genome file(s)
+	    if (argc == 0){
+	      fprintf(stderr, "error: genome_file(s) not specified\n");
+	      usage(progname,false);
+	    }
+	    genome_files  = &argv[0];
+	    ngenome_files = argc;
+	  }
+	else
+	  { // args: reads file, genome file(s)
+	    if (argc < 2) {
+	      fprintf(stderr, "error: %sgenome_file(s) not specified\n",
+		      (argc == 0) ? "reads_file, " : "");
+	      usage(progname, false);
+	    }
 	    reads_file    = argv[0];
-	  } else {
-	    fprintf(stderr,"error: too many arguments with -L\n");
-	    usage(progname,false);
+	    genome_files  = &argv[1];
+	    ngenome_files = argc - 1;
 	  }
-	} else if (save_file != NULL){
-	  if (argc == 0){
-	    fprintf(stderr, "error: genome_file(s) not specified\n");
-	    usage(progname,false);
-	  }
-	  genome_files  = &argv[0];
-	  ngenome_files = argc;
-	} else {
-	  if (argc < 2) {
-	    fprintf(stderr, "error: %sgenome_file(s) not specified\n",
-		    (argc == 0) ? "reads_file, " : "");
-	    usage(progname, false);
-	  }
-	  reads_file    = argv[0];
-	  genome_files  = &argv[1];
-	  ngenome_files = argc - 1;
-	}
 
 	if (!Cflag && !Fflag) {
 	  Cflag = Fflag = true;
@@ -3362,7 +3389,7 @@ int main(int argc, char **argv){
 	  sw_vect_threshold = sw_full_threshold;
 	}
 
-	if (Eflag && Pflag){
+	if (Eflag && Pflag) {
 	  fprintf(stderr,"-E and -P are incompatable\n");
 	  exit(1);
 	}
@@ -3512,6 +3539,12 @@ int main(int argc, char **argv){
 			exit(1);
 		}
 	}
+
+	if (list_cutoff != DEF_LIST_CUTOFF) {
+	  fprintf(stderr, "Trimming genome map lists longer than %u\n", list_cutoff);
+	  trim_genome();
+	}
+
 	map_usecs += (gettimeinusecs() - before);
 
 	if (Yflag)
