@@ -98,11 +98,11 @@ if [ -z "$PAIRED" ]; then
   fi
   echo 1>&2 "Detected pairing: $PAIRED"
 fi
-exit
+
 # write header from first file
-head -n 50 $1 \\
-  | grep "^$IGNORE" \\
-  >$DEST_FILE
+head -n 50 $1 \
+  | grep "^$IGNORE" \
+  > $DEST_FILE
 
 while [ "$#" -gt 0 ]; do
   if [ ! -r "$1" ]; then
@@ -111,24 +111,24 @@ while [ "$#" -gt 0 ]; do
   fi
 
   if [ "$PAIRED" = "yes" ]; then
-    grep -v "^$IGNORE" $1 \\
-      | awk '{ first = $0; if (!getline) exit; printf "%s&&&&%s\n", first, $0; }' \\
-      | sort \\
-      >$TMP_DIR/$1.sort
+    grep -v "^$IGNORE" $1 \
+      | awk '{ first = $0; if (!getline) exit; printf "%s&&&&%s\n", first, $0; }' \
+      | sort \
+      > $TMP_DIR/$(basename $1).sort
   else
-    grep -v "^$IGNORE" $1 \\
-      | sort \\
-      >$TMP_DIR/$1.sort
+    grep -v "^$IGNORE" $1 \
+      | sort \
+      > $TMP_DIR/$(basename $1).sort
   fi
   shift
 done
 
 # merge into destination
 if [ "$PAIRED" = "yes" ]; then
-  sort -m $TMP_DIR/*.sort \\
-    | sed 's/&&&&/\n/' \\
-    >>$DEST_FILE
+  sort -m $TMP_DIR/*.sort \
+    | sed 's/&&&&/\n/' \
+    > $DEST_FILE
 else
-  sort -m $TMP_DIR/*.sort \\
-    >>$DEST_FILE
+  sort -m $TMP_DIR/*.sort \
+    > $DEST_FILE
 fi
