@@ -2786,6 +2786,7 @@ print_statistics()
 		    "Duplicate Paired Matches Pruned:",
 		    comma_integer(total_dup_paired_matches));
 
+	    /*
 	    fprintf(stderr, "\n");
 
 	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
@@ -2801,6 +2802,7 @@ print_statistics()
 	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
 		    "Duplicate Unpaired Matches Pruned:",
 		    comma_integer(total_dup_single_matches));
+	    */
 	  }
 
 	fprintf(stderr, "\n");
