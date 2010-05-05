@@ -1,1 +1,1 @@
-#define SHRIMP_VERSION_STRING	"2.0alpha"
+#define SHRIMP_VERSION_STRING	"2.0beta"
