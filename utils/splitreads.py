@@ -16,7 +16,7 @@ else:
 
 READS_PER_FILE = int(sys.argv[1+mod])
 
-if mode = 'paired':
+if mode == 'paired':
 	READS_PER_FILE *= 2
 
 out = None
