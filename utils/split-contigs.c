@@ -197,30 +197,33 @@ main(int argc, char *argv[]) {
 
   fprintf(stderr, "target chunks: %d\n", target_chunks);
 
-  fprintf(stderr, "rebalancing...\n");
-  long long unsigned try_len;
-  int try_chunks;
-  do {
-    for (j = 0; j < 10; j++) {
-      try_len = target_len - (target_len / 1000);
-      fprintf(stderr, "trying chunk size: %llu.. ", try_len);
-      try_chunks = greedy_fit(try_len);
-      if (try_chunks <= target_chunks) {
-	fprintf(stderr, "yes\n");
+  if (target_chunks > 1) {
+    fprintf(stderr, "rebalancing...\n");
+    long long unsigned try_len;
+    int try_chunks;
+    do {
+      try_len = target_len;
+      for (j = 0; j < 10; j++) {
+	try_len = try_len - (target_len / 1000);
+	fprintf(stderr, "trying chunk size: %llu.. ", try_len);
+	try_chunks = greedy_fit(try_len);
+	if (try_chunks <= target_chunks) {
+	  fprintf(stderr, "yes\n");
+	  break;
+	}
+	fprintf(stderr, "no\n");
+      }
+      if (j < 10) {
+	if (try_chunks < target_chunks) {
+	  target_chunks = try_chunks;
+	  fprintf(stderr, "target chunks: %d\n", target_chunks);
+	}
+	target_len = try_len;
+      } else {
 	break;
       }
-      fprintf(stderr, "no\n");
-    }
-    if (j < 10) {
-      if (try_chunks < target_chunks) {
-	target_chunks = try_chunks;
-	fprintf(stderr, "target chunks: %d\n", target_chunks);
-      }
-      target_len = try_len;
-    } else {
-      break;
-    }
-  } while (1);
+    } while (1);
+  }
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
   fprintf(stderr, "estimated memory usage per chunk: %.3f GB\n",
