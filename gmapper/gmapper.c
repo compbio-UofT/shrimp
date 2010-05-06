@@ -1662,7 +1662,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2,bool paired)
+hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool paired, bool first)
 {
   assert(re != NULL && rh != NULL);
   assert(rh->sfrp != NULL);
@@ -1715,20 +1715,16 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     }
     read = readtostr(read_bitstring,re->read_len,false,0);
     char *name;
-    bool first = false, second = false;
+    bool second = !first && paired;
     if (re_mp == NULL){
     	name = inp.read;
     } else {
-    	name = (char *)xmalloc(sizeof(char *)*strlen(inp.read)+1);
+    	int len = strlen(inp.read);
+    	name = (char *)xmalloc(sizeof(char *)*len+1);
     	strncpy(name,inp.read,strlen(inp.read)+1);
-    	char * end = strrchr(name,':');
-    	*end = '\0';
-    	end++;
-    	if (*end == '1'){
-    		first = true;
-    	} else {
-    		second = true;
-    	}
+		int i = 0;
+		for (i = 0; i < len && *(inp.read + i) == *(inp_mp.read + i); i++);
+		name[i] = '\0';
     }
 
     int ins_size =0;
@@ -1854,7 +1850,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
       re->final_matches++;
 
-      hit_output(re, rh, NULL, NULL, &output1, &output2,false);
+      hit_output(re, rh, NULL, NULL, &output1, &output2, false, false);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -1951,8 +1947,8 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 
       //re1->paired_final_matches++;
 
-      hit_output(re1, rh1, re2, rh2, &output1, &output2,true);
-      hit_output(re2, rh2, re1, rh1, &output3, &output4,true);
+      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,true);
+      hit_output(re2, rh2, re1, rh1, &output3, &output4,true,false);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
