@@ -2,7 +2,7 @@ import sys
 
 if len(sys.argv) < 3:
 	print >> sys.stderr, 'usage %s <readfile1> <readfile2> [...]' % (sys.argv[0])
-	exit(1)
+	sys.exit(1)
 
 mode = 'none'
 header = []

@@ -2,7 +2,7 @@ import sys
 
 if len(sys.argv) < 6:
 	print >> sys.stderr, 'usage %s <suffix 1> <suffix 2> <paired output file> <unpaired output file> <readfile1> <readfile2> [...]' % (sys.argv[0])
-	exit(1)
+	sys.exit(1)
 
 suffix1 = sys.argv[1]
 suffix2 = sys.argv[2]
