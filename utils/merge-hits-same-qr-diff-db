@@ -80,13 +80,19 @@ if [ ! -r "$1" ]; then
   exit 1
 fi
 
-if head -n 50 $1 | cut -f 1 | grep -q '^>'; then
+IGNORE=`head -1 $1 | cut -c 1`
+case "$IGNORE" in
+">" )
   FORMAT="shrimp"
-  IGNORE="#"
-else
+  ;;
+"@" )
   FORMAT="sam"
-  IGNORE="@"
-fi
+  ;;
+* )
+  echo 1>&2 "Unrecognized format in file [$1]"
+  exit 1
+  ;;
+esac
 echo 1>&2 "Detected format: $FORMAT"
 
 # if pairing is unspecified, detect it with script
@@ -99,15 +105,28 @@ if [ -z "$PAIRED" ]; then
   echo 1>&2 "Detected pairing: $PAIRED"
 fi
 
-# write header from first file
-head -n 50 $1 \
-  | grep "^$IGNORE" \
-  > $DEST_FILE
+# write header from first file --- THIS IS WRONG
+if [ "$FORMAT" = "shrimp" ]; then
+  head -1 $1 \
+    > $DEST_FILE
+else
+  head -1 $1 \
+    > $DEST_FILE
+  grep "^@PG" $1 \
+    | head -1 \
+    > $TMP_DIR/header_last_line
+fi
 
 while [ "$#" -gt 0 ]; do
   if [ ! -r "$1" ]; then
     echo 1>&2 "error: file [$1] unreadable"
     exit 1
+  fi
+
+  if [ "$FORMAT" = "sam" ]; then
+    awk '/^[^@]/ {exit} {print}' <$1 \
+      | grep "^@SQ" \
+      >> $DEST_FILE
   fi
 
   if [ "$PAIRED" = "yes" ]; then
@@ -123,12 +142,19 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
+if [ "$FORMAT" = "sam" ]; then
+  cat $TMP_DIR/header_last_line >> $DEST_FILE
+fi
+
 # merge into destination
 if [ "$PAIRED" = "yes" ]; then
   sort -m $TMP_DIR/*.sort \
     | sed 's/&&&&/\n/' \
-    > $DEST_FILE
+    >> $DEST_FILE
 else
   sort -m $TMP_DIR/*.sort \
-    > $DEST_FILE
+    >> $DEST_FILE
 fi
+
+# clean up
+rm -rf $TMP_DIR
