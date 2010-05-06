@@ -6,7 +6,7 @@ import getopt
 import re
 
 def usage(shrimp_folder):
-	print >> sys.stderr, 'Usage: %s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
+	print >> sys.stderr, 'Usage: %s --shrimp-mode [ls|cs] --ram-size <size> file1.fa file2.fa ...' % sys.argv[0]
         if os.path.exists(shrimp_folder):
 		try:
 			handle=open(shrimp_folder+'/utils/SPLIT-PROJECT-DB')
@@ -27,7 +27,7 @@ def main(argv):
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "r:d:p:t:s:hm:", ["ram-size=", "dest-dir=","prefix="\
-,"tmp-dir=","seed=","h-flag","shrimp-mode=","shrimp-folder="])
+,"tmp-dir=","seed=","h-flag","shrimp-mode=","shrimp-folder=","print-script"])
 	except getopt.GetoptError, err:
 		print str(err)
 		usage(shrimp_folder)
@@ -79,6 +79,8 @@ def main(argv):
 			shrimp_folder=a
 			project_db_args+=[o,a]
 			split_db_args+=[o,a]
+		elif o in ("--print-script"):
+			project_db_args+=[o,a]
 
         #get the shrimp folder
         if not os.path.exists(shrimp_folder):
