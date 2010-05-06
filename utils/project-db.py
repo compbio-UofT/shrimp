@@ -27,7 +27,7 @@ def basename(s):
 	return s.split(os.sep)[-1]
 
 def main(argv):
-	shrimp_folder=os.environ.get("SHRIMP_FOLDER")
+	shrimp_folder=os.environ.get("SHRIMP_FOLDER","")
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "d:m:s:hp",\

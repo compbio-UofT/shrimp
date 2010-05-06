@@ -23,7 +23,7 @@ def remove_trailing(s):
 	return s
 
 def main(argv):
-	shrimp_folder=os.environ.get("SHRIMP_FOLDER")
+	shrimp_folder=os.environ.get("SHRIMP_FOLDER","")
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "r:d:p:t:s:hm:", ["ram-size=", "dest-dir=","prefix="\

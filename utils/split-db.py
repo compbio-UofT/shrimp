@@ -40,7 +40,7 @@ def append_fasta_file(source_handle,destination_handle):
 	source_handle.close()
 
 def main(argv):
-	shrimp_folder=os.environ.get("SHRIMP_FOLDER")
+	shrimp_folder=os.environ.get("SHRIMP_FOLDER","")
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "r:d:p:t:s:h", ["ram-size=", "dest-dir=","prefix="\
