@@ -24,6 +24,7 @@
 
 char * contig_name[MAX_CONTIGS];
 int contig_size[MAX_CONTIGS];
+long long unsigned chunk_size[MAX_CONTIGS];
 
 int n_seeds = 4;
 int weight[20] = { 12, 12, 12, 12 };
@@ -31,8 +32,10 @@ int weight[20] = { 12, 12, 12, 12 };
 struct contig {
   char * name;
   unsigned int size;
-  int used;
+  int chunk;
 } contig[MAX_CONTIGS];
+
+int n_contigs;
 
 
 int cmp(const void *p1, const void *p2) {
@@ -40,23 +43,88 @@ int cmp(const void *p1, const void *p2) {
 }
 
 
+void read_contigs_from_fasta_file(char const * file_name) {
+  fasta_t fasta_file;
+  char * seq;
+
+  fasta_file = fasta_open(file_name, LETTER_SPACE);
+  if (fasta_file == NULL) {
+    fprintf(stderr, "error: could not open genome file [%s]\n", file_name);
+    exit(1);
+  }
+
+  fprintf(stderr, "scanning contigs...\n");
+  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
+    contig[n_contigs].size = strlen(seq);
+    fprintf(stderr, "%s %d\n", contig[n_contigs].name, contig[n_contigs].size);
+    free(seq);
+    n_contigs++;
+  }
+  if (n_contigs >= MAX_CONTIGS) {
+    fprintf(stderr, "error: too many contigs\n");
+    exit(1);
+  }
+
+  fasta_close(fasta_file);
+}
+
+void read_contig_list_from_stdin() {
+  char buff[1000];
+  while (n_contigs < MAX_CONTIGS && fscanf(stdin, "%s", buff) > 0) {
+    contig[n_contigs].name = strdup(buff);
+    fscanf(stdin, "%d", &contig[n_contigs].size);
+    n_contigs++;
+  }
+  if (n_contigs >= MAX_CONTIGS) {
+    fprintf(stderr, "error: too many contigs\n");
+    exit(1);
+  }
+}
+
+
+int greedy_fit(long long unsigned target_len) {
+  bool more = true;
+  int n_chunks = 0;
+  long long unsigned tmp;
+  int i;
+
+  for (i = 0; i < n_contigs; i++)
+    contig[i].chunk = -1;
+
+  while (more) {
+    more = false;
+
+    for (i = 0; i < n_contigs && contig[i].chunk >= 0; i++);
+    assert(i < n_contigs);
+
+    n_chunks++;
+    contig[i].chunk = n_chunks-1;
+    tmp = contig[i].size;
+
+    for ( ; i < n_contigs; i++) {
+      if (contig[i].chunk < 0) {
+	if (tmp + contig[i].size < target_len) {
+	  contig[i].chunk = n_chunks-1;
+	  tmp += contig[i].size;
+	} else {
+	  more = true;
+	}
+      }
+    }
+  }
+
+  return n_chunks;
+}
+
 int
 main(int argc, char *argv[]) {
-  fasta_t fasta_file;
   double target_size;
-  int n_contigs = 0;
-  char * seq, * c;
-  int i;
+  char * c;
+  int i, j;
   double index_size = 0.0;
 
   if (argc < 3) {
     fprintf(stderr, "Usage: %s <genome_file> <target_RAM_size_in_GB> [<seed_weights>]\n", argv[0]);
-    exit(1);
-  }
-
-  fasta_file = fasta_open(argv[1], LETTER_SPACE);
-  if (fasta_file == NULL) {
-    fprintf(stderr, "error: could not open genome file [%s]\n", argv[1]);
     exit(1);
   }
 
@@ -106,20 +174,10 @@ main(int argc, char *argv[]) {
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
 
-  fprintf(stderr, "scanning contigs...\n");
-  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
-    fprintf(stderr, "%s\n", contig[n_contigs].name);
-    contig[n_contigs].size = strlen(seq);
-    contig[n_contigs].used = 0;
-    free(seq);
-    n_contigs++;
-  }
-  if (n_contigs >= MAX_CONTIGS) {
-    fprintf(stderr, "error: too many contigs\n");
-    exit(1);
-  }
-
-  fasta_close(fasta_file);
+  if (strcmp(argv[1], "-"))
+    read_contigs_from_fasta_file(argv[1]);
+  else
+    read_contig_list_from_stdin();
 
   qsort(contig, n_contigs, sizeof(contig[0]), cmp);
 
@@ -134,36 +192,56 @@ main(int argc, char *argv[]) {
     exit(1);
   }
 
-  bool more = true;
-  int chunk = 0;
-  long long unsigned tmp;
+  int target_chunks;
+  target_chunks = greedy_fit(target_len);
 
-  while (more) {
-    more = false;
+  fprintf(stderr, "target chunks: %d\n", target_chunks);
 
-    for (i = 0; i < n_contigs && contig[i].used; i++);
-    if (i == n_contigs)
+  fprintf(stderr, "rebalancing...\n");
+  long long unsigned try_len;
+  int try_chunks;
+  do {
+    for (j = 0; j < 10; j++) {
+      try_len = target_len - (target_len / 1000);
+      fprintf(stderr, "trying chunk size: %llu.. ", try_len);
+      try_chunks = greedy_fit(try_len);
+      if (try_chunks <= target_chunks) {
+	fprintf(stderr, "yes\n");
+	break;
+      }
+      fprintf(stderr, "no\n");
+    }
+    if (j < 10) {
+      if (try_chunks < target_chunks) {
+	target_chunks = try_chunks;
+	fprintf(stderr, "target chunks: %d\n", target_chunks);
+      }
+      target_len = try_len;
+    } else {
       break;
+    }
+  } while (1);
 
-    chunk++;
-    fprintf(stdout, "chunk %d:\n", chunk);
-    fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
-    contig[i].used = 1;
-    tmp = contig[i].size;
+  fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
+  fprintf(stderr, "estimated memory usage per chunk: %.3f GB\n",
+	  (double)(target_len * sizeof(uint32_t) * n_seeds)/(1024.0 * 1024.0 * 1024.0) + index_size + 0.5);
+	  
 
-    for ( ; i < n_contigs; i++) {
-      if (!contig[i].used) {
-	if (tmp + contig[i].size < target_len) {
-	  fprintf(stdout, "%s\t%d\n", contig[i].name, contig[i].size);
-	  contig[i].used = 1;
-	  tmp += contig[i].size;
-	} else {
-	  more = true;
-	}
+  target_chunks = greedy_fit(target_len);
+  for (i = 0; i < target_chunks; i++) {
+    chunk_size[i] = 0;
+    fprintf(stdout, "chunk %d:\n", i+1);
+    for (j = 0; j < n_contigs; j++) {
+      if (contig[j].chunk == i) {
+	chunk_size[i] += contig[j].size;
+	fprintf(stdout, "%s\t%d\n", contig[j].name, contig[j].size);
       }
     }
   }
 
+  for (i = 0; i < target_chunks; i++) {
+    fprintf(stderr, "chunk %d: %llu\n", i+1, chunk_size[i]);
+  }
 
   return 0;
 }

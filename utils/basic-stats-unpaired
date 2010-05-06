@@ -1,0 +1,57 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+  echo "Use: $0 <output_file>"
+  exit 1
+fi
+
+if [ ! -r $1 ]; then
+  echo "error: cannot read file [$1]"
+  exit 1
+fi
+
+IGNORE=`head -1 $1 | cut -c 1`
+echo "Header line character: $IGNORE"
+
+grep -v "^@" $1 \
+  | cut -f 1,12 \
+  | sed 's/AS:i://' \
+  | awk '
+{
+  hits += 1;
+  if ($1 == prev) {
+    cnt += 1;
+    if ($2 == max) {
+      cnt_max += 1;
+    } else if ($2 > max) {
+      max = $2;
+      cnt_max = 1;
+    }
+  } else {
+    total_reads += 1;
+    if (cnt == 1) {
+      total_unique_hit += 1;
+    }
+    if (cnt_max == 1) {
+      total_unique_top_hit += 1;
+    }
+    prev = $1;
+    cnt = 1;
+    max = $2;
+    cnt_max = 1;
+  }
+}
+END {
+  if (cnt == 1) {
+    total_unique_hit += 1;
+  }
+  if (cnt_max == 1) {
+      total_unique_top_hit += 1;
+  }
+
+  printf "Total reads mapped: %d\n", total_reads;
+  printf "Reads with unique hit: %d\n", total_unique_hit;
+  printf "Reads with unique top hit: %d\n", total_unique_top_hit;
+  printf "Average hits per read mapped: %.2f\n", hits/total_reads;
+}'
+
