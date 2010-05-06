@@ -5,93 +5,36 @@ import os
 import getopt
 import re
 
-def usage():
+def usage(shrimp_folder):
 	print >> sys.stderr, 'Usage: %s --shrimp-mode [ls|cs] file1.fa file2.fa ...' % sys.argv[0]
-	print >> sys.stderr, '''
-This script is used to split a given reference genome into a set of database
-files that fit into a target RAM size. gmapper can then be run independently on
-each of the database files.
+	if os.path.exists(shrimp_folder):
+		try:
+			handle=open(shrimp_folder+'/utils/PROJECT-DB')
+			print >> sys.stderr, handle.read()
+			handle.close()
+		except IOError, err:
+			print >> sys.stderr, str(err)
+	else:
+		print >> sys.stderr, "Please set the SHRIMP_FOLDER environment variable, to your shrimp install folder"
 
-Parameters:
-
-<file1.fa> <file2.fa> ...
-        Input files in fasta format.
-
---dest-dir <dest-dir>
-        Destination directory where to place the database files. If not given,
-        files are placed in the current working directory.
-
---shrimp-mode <mode>
-        This is "ls" or "cs", for letter space or color space,
-        respectively. This is a required parameter.
-
---seed <seed0,seed1,...>
-        Comma-separated list of seeds that gmapper will use. This list is passed
-        on directly to gmapper as argument of parameter -s. See README for more
-        details. If absent, gmapper will not be given explicitly any seeds, so
-        it will run with its default set of seeds.
-
---h-flag
-        This corresponds to giving gmapper the flag -H, telling it to use
-        hashing to index spaced kmers. For seeds of weight greater than 14, this
-        is required. See README for more details.
-
-Notes:
-
-1) The gmapper calls issued by this script can be parallelized across machines.
-
-2) A single machine needs about (1.5)*<ram-size> to create an index to be used
-in a machine with <ram-size> RAM. Thus, to create an index for a 16GB machine,
-it is highly recommended to use a machine with 32GB of RAM in order to avoid the
-use of the swap.
-
-
-Output:
-
-<file>-<mode>.genome
-<file>-<mode>.seed.*
-        This is the projection of <file.fa>
-'''
-
-#need to fix this if going to run on windows
-rt=re.compile("/*.*[^/]+")
 def remove_trailing(s):
-	m=rt.match(s)
-	if m:
-		return m.group(0)
-	return None
-
-#copied from 
-#http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
-#but hard to condense?
-def which(program):
-	def is_exe(fpath):
-		return os.path.exists(fpath) and os.access(fpath, os.X_OK)
-	
-	fpath, fname = os.path.split(program)
-	if is_exe("./"+program):
-		return "./"+program
-	if is_exe("../bin/"+program):
-		return "../bin/"+program
-	for path in os.environ["PATH"].split(os.pathsep):
-		exe_file = os.path.join(path, program)
-		if is_exe(exe_file):
-			return exe_file
-
-	return None
+	while len(s)>0 and s[-1]==os.sep:
+		s=s[:-1]
+	return s
 
 def basename(s):
 	s=remove_trailing(s)
 	return s.split(os.sep)[-1]
 
 def main(argv):
+	shrimp_folder=os.environ.get("SHRIMP_FOLDER")
 	#Parse options
 	try:
 		opts, args = getopt.getopt(argv, "d:m:s:hp",\
-                  ["dest-dir=","shrimp-mode=","seed=","h-flag","print-script"])
+                  ["shrimp-folder=","dest-dir=","shrimp-mode=","seed=","h-flag","print-script"])
 	except getopt.GetoptError, err:
 		print >> sys.stderr, str(err)
-		usage()
+		usage(shrimp_folder)
 		sys.exit(1)
 	#default parameters
 	dest_dir="."
@@ -105,7 +48,7 @@ def main(argv):
 		elif o in ("-d","--dest-dir"):
 			dest_dir=remove_trailing(a)
 			if not dest_dir:
-				usage()
+				usage(shrimp_folder)
 				sys.exit(1)
 		elif o in ("-s","--seed"):
 			seed=a
@@ -113,6 +56,14 @@ def main(argv):
 			script=True
 		elif o in ("-h","--h-flag"):
 			h_flag=True
+		elif o in ("--shrimp-folder"):
+			shrimp_folder=a
+
+	#get the shrimp folder
+	if not os.path.exists(shrimp_folder):
+		usage(shrimp_folder)
+		sys.exit(1)
+	shrimp_folder=remove_trailing(shrimp_folder)
 
 	#check that shrimp_mode is set
 	if shrimp_mode not in ("ls","cs"):
@@ -120,7 +71,7 @@ def main(argv):
 			print >> sys.stderr, "%s is not a valid shrimp mode" % shrimp_mode
 		else:
 			print >> sys.stderr, "Please specify a shrimp-mode"
-		usage()
+		usage(shrimp_folder)
 		sys.exit(1)
 
 	#check h flag
@@ -135,20 +86,20 @@ def main(argv):
 			max_seed_length=max(max_seed_length,len(s.replace('0','')))
 		if not h_flag and max_seed_length>14:
 			print >> sys.stderr, "For seeds of weight greater then 14, h-flag is required"
-			usage()
+			usage(shrimp_folder)
 			sys.exit(1)
 
 	#check genome files
 	genome_files=args
 	if not genome_files:
 		print >> sys.stderr, "No genome files given..."
-		usage()
+		usage(shrimp_folder)
 		sys.exit(1)
 
 	#check gmapper in path
-	gmapper_executable=which("gmapper-"+shrimp_mode)
-	if not which(gmapper_executable):	
-		print >> sys.stderr, "Cannot find %s executable" % gmapper_executable
+	gmapper_executable=shrimp_folder+"/bin/gmapper-"+shrimp_mode
+	if not (os.path.exists(gmapper_executable) and os.access(gmapper_executable,os.X_OK)):
+		print >> sys.stderr, "Cannot find gmapper-"+shrimp_mode+" in %s" % gmapper_executable
 		sys.exit(1)
 	command_template=[gmapper_executable]
 	if seed!="":
@@ -173,7 +124,7 @@ def main(argv):
 			print >> sys.stderr, "Database already exists in file %s" % (target_filename+".genome")
 		elif not os.path.exists(fasta_filename):
 			print >> sys.stderr, '%s does not exist!' % fasta_filename
-			usage()
+			usage(shrimp_folder)
 			sys.exit(1)
 		else:
 			command=command_template[:]
