@@ -10,12 +10,37 @@ if [ ! -r $1 ]; then
   exit 1
 fi
 
-IGNORE=`head -1 $1 | cut -c 1`
-echo "Header line character: $IGNORE"
+if [ -z "$SHRIMP_FOLDER" ]; then
+  echo 1>&2 "warning: SHRIMP_FOLDER undefined; assuming ."
+  SHRIMP_FOLDER="."
+fi
 
-grep -v "^@" $1 \
-  | cut -f 1,12 \
-  | sed 's/AS:i://' \
+if [ ! -d "$SHRIMP_FOLDER/utils/" ]; then
+  echo 1>&2 "error: cannot find directory $SHRIMP_FOLDER/utils/"
+  exit 1
+fi
+
+COMMENT=`head -1 $1 | cut -c 1`
+case "$COMMENT" in
+"#" )
+  echo 1>&2 "Detected shrimp format"
+  FIELDS="1,9"
+  ERASE="BLAAAAAAAAAAAAAAAAAAAAAH"
+  ;;
+"@" )
+  echo 1>&2 "Detected SAM format"
+  FIELDS="1,12"
+  ERASE="AS:i:"
+  ;;
+* )
+  echo 1>&2 "error: unrecognized format"
+  exit 1
+  ;;
+esac
+
+$SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
+  | cut -f $FIELDS \
+  | sed "s/${ERASE}//" \
   | awk '
 {
   hits += 1;

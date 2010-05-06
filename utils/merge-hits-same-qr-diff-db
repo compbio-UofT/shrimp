@@ -2,7 +2,7 @@
 DEST_FILE=""
 PAIRED=""
 TMP_DIR="/tmp/$$"
-SUFFIX=""
+SUFFIX=':[^:]*$'
 PROGRAM_NAME=$0
 function usage {
   echo "Usage:" $0 --dest-file filename
@@ -36,6 +36,16 @@ Note:
         the correct setting.
 '
 }
+
+if [ -z "$SHRIMP_FOLDER" ]; then
+  echo 1>&2 "warning: SHRIMP_FOLDER undefined; assuming ."
+  SHRIMP_FOLDER="."
+fi
+
+if [ ! -d "$SHRIMP_FOLDER/utils/" ]; then
+  echo 1>&2 "error: cannot find directory $SHRIMP_FOLDER/utils/"
+  exit 1
+fi
 
 until [ -z "$1" ]; do
   case $1 in
@@ -82,7 +92,7 @@ fi
 
 IGNORE=`head -1 $1 | cut -c 1`
 case "$IGNORE" in
-">" )
+"#" )
   FORMAT="shrimp"
   ;;
 "@" )
@@ -97,7 +107,7 @@ echo 1>&2 "Detected format: $FORMAT"
 
 # if pairing is unspecified, detect it with script
 if [ -z "$PAIRED" ]; then
-  if head -n 10000 $1 | awk -v SUFFIX="\"$SUFFIX\"" test-unpaired-$FORMAT; then
+  if head -n 10000 $1 | awk -v SUFFIX=${SUFFIX} -f ${SHRIMP_FOLDER}/utils/test-unpaired-${FORMAT}.awk ; then
     PAIRED="no"
   else
     PAIRED="yes"
@@ -105,51 +115,34 @@ if [ -z "$PAIRED" ]; then
   echo 1>&2 "Detected pairing: $PAIRED"
 fi
 
-# write header from first file --- THIS IS WRONG
-if [ "$FORMAT" = "shrimp" ]; then
-  head -1 $1 \
-    > $DEST_FILE
-else
-  head -1 $1 \
-    > $DEST_FILE
-  grep "^@PG" $1 \
-    | head -1 \
-    > $TMP_DIR/header_last_line
-fi
+# write headers
+$SHRIMP_FOLDER/utils/mappings-merge-headers-same-qr-diff-db "$@" 2>/dev/null \
+  > $DEST_FILE
 
+# extract individual bodies and sort them
 while [ "$#" -gt 0 ]; do
   if [ ! -r "$1" ]; then
     echo 1>&2 "error: file [$1] unreadable"
     exit 1
   fi
 
-  if [ "$FORMAT" = "sam" ]; then
-    awk '/^[^@]/ {exit} {print}' <$1 \
-      | grep "^@SQ" \
-      >> $DEST_FILE
-  fi
-
   if [ "$PAIRED" = "yes" ]; then
-    grep -v "^$IGNORE" $1 \
-      | awk '{ first = $0; if (!getline) exit; printf "%s&&&&%s\n", first, $0; }' \
+    $SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
+      | $SHRIMP_FOLDER/utils/mappings-collapse-pairs - 2>/dev/null \
       | sort \
       > $TMP_DIR/$(basename $1).sort
   else
-    grep -v "^$IGNORE" $1 \
+    $SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
       | sort \
       > $TMP_DIR/$(basename $1).sort
   fi
   shift
 done
 
-if [ "$FORMAT" = "sam" ]; then
-  cat $TMP_DIR/header_last_line >> $DEST_FILE
-fi
-
 # merge into destination
 if [ "$PAIRED" = "yes" ]; then
   sort -m $TMP_DIR/*.sort \
-    | sed 's/&&&&/\n/' \
+    | $SHRIMP_FOLDER/utils/mappings-expand-pairs - 2>/dev/null \
     >> $DEST_FILE
 else
   sort -m $TMP_DIR/*.sort \

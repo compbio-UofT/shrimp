@@ -1,0 +1,23 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+  echo 1>&2 "Use: `basename $0` <mappings>"
+  echo 1>&2 "Synopsis: collapse consecutive lines on a single line"
+  exit 1
+fi
+
+if [ "$1" != "-" -a ! -r "$1" ]; then
+  echo 1>&2 "error: cannot read file [$1]"
+  exit 1
+fi
+
+if [ -z "$SEPARATOR"]; then
+  SEPARATOR="###SEPARATOR###"
+fi
+echo 1>&2 "Using separator: \"$SEPARATOR\""
+
+if [ "$1" = "-" ]; then
+  exec awk '{ first=$0; if (!getline) exit; printf "%s'${SEPARATOR}'%s\n", first, $0; }'
+else
+  exec awk '{ first=$0; if (!getline) exit; printf "%s'${SEPARATOR}'%s\n", first, $0; }' <$1
+fi
