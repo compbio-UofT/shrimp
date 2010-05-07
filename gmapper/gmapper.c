@@ -1700,7 +1700,9 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 
     if(inp.flags & INPUT_FLAG_IS_REVCMPL){
     	char * cigar_reverse = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+    	*cigar_reverse = '\0';
     	char * tmp = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+    	*tmp = '\0';
     	//char * tmp2 = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
     	char * ptr = cigar;
     	char * last = tmp;
