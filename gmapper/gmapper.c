@@ -1698,6 +1698,28 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	int first_bp = 0;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
 
+    if(inp.flags & INPUT_FLAG_IS_REVCMPL){
+    	char * cigar_reverse = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+    	char * tmp = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+    	//char * tmp2 = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+    	char * ptr = cigar;
+    	char * last = tmp;
+    	for (ptr = cigar; *ptr != '\0'; ptr++){
+    		*last = *ptr;
+    		last ++;
+    		*last = '\0';
+    		if (!(*ptr <= '9' && *ptr >= '0')){
+    			strcat(tmp,cigar_reverse);
+    			strcpy(cigar_reverse,tmp);
+    			last = tmp;
+    		}
+    	}
+    	free(cigar);
+    	cigar = cigar_reverse;
+    	free(tmp);
+
+    }
+
 	read_bitstring = re->read[rh->gen_st];
 
     if (shrimp_mode == COLOUR_SPACE){
