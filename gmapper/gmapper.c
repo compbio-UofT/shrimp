@@ -1724,6 +1724,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     	strncpy(name,inp.read,strlen(inp.read)+1);
 		int i = 0;
 		for (i = 0; i < len && *(inp.read + i) == *(inp_mp.read + i); i++);
+		i--;
 		name[i] = '\0';
     }
 
