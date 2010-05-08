@@ -1714,6 +1714,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     			strcat(tmp,cigar_reverse);
     			strcpy(cigar_reverse,tmp);
     			last = tmp;
+    			*tmp = '\0';
     		}
     	}
     	free(cigar);
