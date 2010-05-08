@@ -75,6 +75,7 @@ END {
   }
 
   printf "Total reads mapped: %d\n", total_reads;
+  printf "Total hits: %d\n", hits;
   printf "Reads with unique hit: %d\n", total_unique_hit;
   printf "Reads with unique top hit: %d\n", total_unique_top_hit;
   printf "Average hits per read mapped: %.2f\n", hits/total_reads;

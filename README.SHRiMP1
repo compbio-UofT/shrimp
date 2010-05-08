@@ -1,12 +1,16 @@
-README for SHRiMP2: SHort Read Mapping Package, version 2.0
+$Id: README,v 1.46 2009/06/30 18:15:09 rumble Exp $
+
+README for SHRiMP: SHort Read Mapping Package version 1.2.1
 http://compbio.cs.toronto.edu/shrimp
 
-This document describes  the programs of which  SHRiMP2  is comprised, including
-their use, output  formats, and various parameters.  The algorithms employed are
-also    briefly  described. SHRiMP2 builds  on,    and significantly extends the
-original SHRiMP package, henceforth referred to as SHRiMP1.
+This document describes the programs of which SHRiMP is comprised, including
+their use, output formats, and various parameters. The algorithms employed are
+also briefly described. For more details, see the following publication:
+    Rumble SM, Lacroute P, Dalca AV, Fiume M, Sidow A, et al.
+    (2009) SHRiMP: Accurate Mapping of Short Color-space Reads.
+    PLoS Comput Biol 5(5): e1000386. doi:10.1371/journal.pcbi.1000386
 
-SHRiMP1 was originally developed by:
+SHRiMP is brought to you by:
 	Stephen M. Rumble
 	Michael Brudno
 	Phil Lacroute
@@ -14,147 +18,41 @@ SHRiMP1 was originally developed by:
 	Marc Fiume
 	Adrian Dalca
 
-SHRiMP2 is brought to you by:
-	Matei David
-	Michael Brudno
-	Daniel Lister
-	Michael Dzamba
-
-For details on the original SHRiMP1 package, see the following publication:
-    Rumble SM, Lacroute P, Dalca AV, Fiume M, Sidow A, et al.
-    (2009) SHRiMP: Accurate Mapping of Short Color-space Reads.
-    PLoS Comput Biol 5(5): e1000386. doi:10.1371/journal.pcbi.1000386
-
 The authors may be contacted at shrimp at cs dot toronto dot edu.
-
 
 --------------------------------------------------------------------------------
 Table of Contents
 --------------------------------------------------------------------------------
-  1. Overview
-
-  2. Minimum Requirements
-     2.1 RAM Requirement
-     2.2 Other Requirements
-
-  3. Sample Usage Scenarios
-     3.1 Installing SHRiMP2
-     3.2 Compiling SHRiMP2 from source
-     3.3 Mapping against a genome whose projection DOES fit in RAM
-     3.4 Mapping against a genome whose projection DOES NOT fit in RAM
-     3.5
-
-  4. Parameters
-
-  5. Algorithms
-
-  6. Comparison to SHRiMP1
-     6.1 Algorithms
-     6.2 Tools
-
-  7. SHRiMP Statistics
-  8. Mate Pairs
-  9. Contact
- 10. Acknowledgements
+  1.   Overview
+  2.   Quick Start
+  3.   Usage
+  4.   Program Parameters
+  5.   Output Format
+  6.   SHRiMP Algorithms
+  7.   SHRiMP Statistics
+  8.   Mate Pairs
+  9.   Contact
+  10.  Acknowledgements
 
 
 --------------------------------------------------------------------------------
 1. Overview
 --------------------------------------------------------------------------------
 
-SHRiMP2 is a  software package for  mapping reads from a  donor genome against a
-target (refernce) genome.  SHRiMP2  was primarily developed  to work  with short
-reads produced by  Next Generation Sequencing (NGS)  machines. The main features
-of SHRiMP2 include:
+SHRiMP is a software package for aligning genomic reads against a target genome.
+It was primarily developed with the multitudinous short reads of Next Generation
+Sequencing (NGS) machines in mind. It allows for rapid mapping, accurate
+alignment, and p-value computation for Illumina/Solexa as well as Applied
+Biosystems' SOLiD colourspace genomic representation. SHRiMP is a suite of
+several programs, which, employed in succession, search for appropriate
+alignments, analyse alignment statistics, and print out visual alignments for
+further study.
 
-  - Fasta input format;
-
-  - SAM output format;
-
-  - Support for both  letter space (Illumina/Solexa) and colour space (AB SOLiD)
-    reads;
-
-  - Paired mapping mode, using mate-pair/pair-end information;
-
-  - Parallel  computation,  fully utilizing  the   power of modern shared-memory
-    multi-core architectures.
-
-SHRiMP2 uses two techniques to match reads to a genome: we  first use the q-gram
-filtering  technique, utilizing  multiple spaced    seeds, to rapidly   identify
-candidate  mapping locations for each  read.  Subsequently,  these locations are
-thoroughly  investigated by a   vectored implementation of  the standard dynamic
-programming  (Smith-Waterman)    string matching algorithm,   allowing  for  the
-accurate   identification  of  mismatches  (SNPs), micro-indels,  and crossovers
-(colour space sequencing errors.)
-
-SHRiMP2 primarily targets sensitivity, but it has come a long way to achieve it
-at a reasonable speed. To illustrate its performace:
-
-  Sensitivity:  SHRiMP2 achieves ???  precision    and ??? recall  when  mapping
-  simulated  colour space reads of 50  base pairs (bp) each  containing 1 SNP, 1
-  indel of size up to 5bp, and 4% per-base error rate.
-
-  Speed: SHRiMP2  on a single  3.0GHz core with 16GB of  RAM can map 50bp colour
-  space reads against  the reference human genome (hg18)  at the rate of 160,000
-  reads per hour, and twice as fast if using  mate-pair/pair-end data. This rate
-  is fully core-parallelizable, in the sense that a  cluster of 8 machines, each
-  with 2 quad-core CPUs and 16GB of RAM, will map 8x2x4=64 times faster. This is
-  about 10 million  paired reads per hour.  So,  180 million 50bp  paired reads,
-  equivalent  to a 3x  coverage of hg18, would  take about 18 hours.  (These are
-  all rough estimates.)
-
-
------------------------
-2. Minimum Requirements
------------------------
-
-2.1 RAM Requirement
--------------------
-
-SHRiMP2 is designed to fully utilize physical  random-access memory (RAM). While
-it is certainly possible to run it on swap (disk-mapped) memory, the performance
-cost of doing that is rather prohibitive.
-
-  RAM Requirement:  To map against a set  of contigs of  total length L (in bp),
-  using K spaced seeds, SHRiMP2 needs a minimum of L x K x 4 bytes of RAM.
-
-E.g., with the  default  settings (K=4  seeds),  to map  against the  full  hg18
-(L=3*10^9 bp), SHRiMP2 needs 3*10^9 x 4 x 4 = 48GB of RAM.
-
-To make it accessible to machines with  smaller amounts of RAM, SHRiMP2 provides
-a  mechanism to split a genome   into several chunks,   and each chunk induces a
-small overhead. E.g., in  our tests,  we split  hg18  into 4 chunks, each  using
-about 13GB of RAM, which can fit comfortably on a machine with 16GB of RAM.
-
-Currently, SHRiMP2  does not  split  individual contigs. (However, that  can  be
-achieved by hand, possibly at the cost of losing  some mappings in the region of
-the break point.) As  a result, the minimum   amount of RAM required equals  the
-amount needed to index the  largest contig. E.g., in the  case of hg18, chr1 has
-about 260,000bp, and the amount of RAM required to index  it with K spaced seeds
-is K x 1.04GB. (For a  cluster of nodes with 4GB  of RAM, we recommend using K=3
-seeds rather than the default 4.)
-
-
-2.2 Other Requirements
-----------------------
-
-SHRiMP2   uses     SSE2 ("vector")  machine instructions    to   achieve  a fast
-implementation of  the   standard dynamic programming   (Smith-Waterman)  string
-matching algorithm. E.g., it will not work on a non-x86/x86_64 architecture.
-
-SHRiMP2 uses the OpenMP API to achieve multi-threaded operation.
-
-
-
-mind. It allows for rapid mapping, accurate alignment, and p-value computation
-for Illumina/Solexa as well as Applied Biosystems' SOLiD colourspace genomic
-representation. SHRiMP is a suite of several programs, which, employed in
-succession, search for appropriate alignments, analyse alignment statistics, and
-print out visual alignments for further study.
-
-
-
-We also include in the SHRiMP package tools to analyze the
+SHRiMP uses two techniques to rapidly match reads to a genome: we use an
+effective implementation of the q-gram filtering technique (utilizing spaced
+seeds) to rapidly identify potentially homologous regions, and a vectored
+Smith-Waterman implementation to speed up the accurate alignment of these
+regions to reads. We also include in the SHRiMP package tools to analyze the
 resultant alignments, including programs that compute for every alignment the
 probability that the match would occur by chance (in a genome with iid
 nucleotides), a prettyprint tool that can help visualize the alignments for
@@ -166,254 +64,14 @@ methods we use to compute p-values are layed out in Sections 6 and 7, respective
 
 
 --------------------------------------------------------------------------------
-3. Sample Usage Scenarios
+2. Quick Start
 --------------------------------------------------------------------------------
 
-3.1 Installing SHRiMP2
-----------------------
+  This section provides a very brief and straightforwrd introduction to using
+  SHRiMP. For more details, see Sections 3 and 4.
 
-Assume we downloaded the linux binary package in
-./SHRiMP_2_0.lx26.x86_64.tar.gz
-
-  $ tar xvzf SHRiMP_2_0.lx26.x86_64.tar.gz
-  $ cd SHRiMP_2_0
-  $ file bin/gmapper
-  bin/gmapper: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV), for
-  GNU/Linux 2.6.9, statically linked, for GNU/Linux 2.6.9, not stripped
-  $ export SHRIMP_FOLDER=$PWD
-
-Done! At this point the binaries are in bin/, and the various scripts are in
-utils/.
-
-
-3.2 Compiling SHRiMP2 from source
----------------------------------
-
-Assume we downloaded the source package in ./SHRiMP_2_0.src.tar.gz
-
-  $ tar xvzf SHRiMP_2_0.src.tar.gz
-  $ cd SHRiMP_2_0
-  $ make
-  [...warnings, hopefully no errors...]
-  $ ls bin/gmapper*
-  bin/gmapper bin/gmapper-cs bin/gmapper-ls
-  $ export SHRIMP_FOLDER=$PWD
-
-
-3.3 Mapping against a genome whose projection DOES fit in RAM
--------------------------------------------------------------
-
-Assume we have:
-./ciona.fa - the Ciona Savignyi genome (175*10^6 bp)
-./reads.5m.50bp.cs.fa - 5 million 50bp colour space reads
-
-We look at the genome and the reads:
-
-  $ ls -lh ciona.fa
-  -rw-r--r-- 1 username 173M May  6 14:23 ciona.fa
-  $ head -n 4 ciona.fa
-  >reftig_0
-  ACCACACATCTGGCGTTGGTGCAACTACCACAACATCTGGCGTTCGTGCA
-  ACCACCACAacatctggtcctggtgcaactaccacaacatctggtcctgg
-  tgcaaccaccacaacatctggtgctggtgcaaccaccacaacatctggtg
-  $ head -n 4 reads.5m.50bp.cs.fa
-  >469_26_42_F3
-  T121133100312321122210031200212212233
-  >469_26_379_F3
-  T312022230033100001303023233122232120
-
-Assume we have 2 machines, each with 4 cores and 8GB of RAM. We check memory
-requirements: 173M x 4 x 4 = 2.77GB. This is way below the available RAM, so
-there are no issues fitting the genome in memory. However, we still want to use
-both available machines, so we split the reads in two sets.
-
-  $ grep '^>' reads.5m.50bp.cs.fa | wc -l
-  5000000
-  $ $SHRIMP_FOLDER/utils/splitreads.py 2500000 reads.5m.50bp.cs.fa
-  $ ls *_to_*
-  0_to_2499999.csfasta 2500000_to_4999999.csfasta
-  $ grep '^>' 0_to_2499999.csfasta | wc -l
-  2500000
-
-This reads are now in the two files above. We assume the directory with the
-reads as well as the directory containing SHRiMP2 are shared across the
-machines. We map the reads with the following commands
-
-  <machine1>$ $SHRIMP_FOLDER/bin/gmapper-cs 0_to_2499999.csfasta ciona.fa \
-  -N 4 -o 5 -h 80% >map.0_to_2499999.out 2>map.0_to_2499999.log
-
-  <machine2>$ $SHRIMP_FOLDER/bin/gmapper-cs 2500000_to_4999999.csfasta ciona.fa \
-  -N 4 -o 5 -h 80% >map.2500000_to_4999999.out 2>map.2500000_to_4999999.log
-
-The options used above have the following meaning:
-  -N 4 : Use 4 threads of control, corresponding to the number of cores
-	 available on each machine.
-  -o 5 : Print top 5 scoring hits for each read.
-
-  -h 80% : Set the threshold score for a hit to 80% of the maximum possible
-	   score. For reads of 50bp and the default match score of 10, the
-	   maximum score is 500, and the threshold is set to 400.
-
-Eventually, the two mapping jobs complete. We merge the mappings into one file
-with:
-
-  $ $SHRIMP_FOLDER/utils/merge-hits-diff-qr-same-db.py map.0_to_2499999.out \
-  map.2500000_to_4999999.out >map.out
-
-Above, the merging script we used corresponds to "different query set" (2
-disjoint sets of reads), "same database" (the full ciona genome).
-
-
-3.4 Mapping against a genome whose projection DOES NOT fit in RAM
------------------------------------------------------------------
-
-Assume we have:
-./hg18.fa - fasta file containing all contigs of the reference human genome
-./reads.500kx2.36bp.ls.fa - 1 million 36bp paired letter space reads
-
-Assume we know that the reads in each pair come from opposite strands of the
-genome, pointing "inwards" (towards each other), with an insert of average
-length 200 and standard deviation 10.
-
-Assume we have a single machine with 2 quad-core CPUs and 16GB of RAM.
-
-We look at the genome and the reads:
-
-  $ ls -lh hg18.fa
-  -rw-r--r-- 1 username 3.0G May  6 14:23 hg18.fa
-  $ head -n 8 reads.500kx2.36bp.ls.fa
-  >071214_EAS56_0061:1:1:882:575:1
-  GAAATTGTACACATCACACACCTTTTTGTCTTTCTT
-  >071214_EAS56_0061:1:1:882:575:2
-  TGCTAGATAATGATTTGCACATTTTTAATTGGTAGA
-  >071214_EAS56_0061:1:1:781:662:1
-  GAAGTGATTACATTAAGCTGTACATATGCAGCATTC
-  >071214_EAS56_0061:1:1:781:662:2
-  AAATATGTTGATTTTTCAGTGTTTTTAAAGTAAAAT
-
-We compute the memory requirements for mapping against hg18 using the default 4
-seeds: 3.0G x 4 x 4 = 48GB of RAM. Our machine only has 16GB of RAM. We split
-the genome with the following utility:
-
-  $ $SHRIMP_FOLDER/utils/split-db.py --ram-size 14 --prefix hg18 hg18.fa
-  [...]
-  $ ls *.fa
-  hg18-14gb-12_12_12_12seeds-1of4.fa  hg18-14gb-12_12_12_12seeds-3of4.fa
-  hg18-14gb-12_12_12_12seeds-2of4.fa  hg18-14gb-12_12_12_12seeds-4of4.fa
-
-Above, we decided to give the gmapper process only 14GB of RAM (the remaining
-2GB are presumable used by the operating system.) The script split hg18 into 4
-chunks, each containing several contigs, that will each fit in 14GB of RAM.
-
-At this point, we realize we might be mapping letter space reads against hg18 in
-the future, so we decide to create projections of the individual genome pieces,
-so that we avoid having to re-project them every time we start a mapping job. To
-achieve this, we run:
-
-  $ $SHRIMP_FOLDER/utils/project-db.py --shrimp-mode ls hg18-14gb-*.fa
-  [...]
-  $ ls hg18-14gb-*-ls.*
-  hg18-14gb-12_12_12_12seeds-1of4-ls.genome
-  hg18-14gb-12_12_12_12seeds-1of4-ls.seed.0
-  hg18-14gb-12_12_12_12seeds-1of4-ls.seed.1
-  hg18-14gb-12_12_12_12seeds-1of4-ls.seed.2
-  hg18-14gb-12_12_12_12seeds-1of4-ls.seed.3
-  hg18-14gb-12_12_12_12seeds-2of4-ls.genome
-  hg18-14gb-12_12_12_12seeds-2of4-ls.seed.0
-  hg18-14gb-12_12_12_12seeds-2of4-ls.seed.1
-  hg18-14gb-12_12_12_12seeds-2of4-ls.seed.2
-  hg18-14gb-12_12_12_12seeds-2of4-ls.seed.3
-  hg18-14gb-12_12_12_12seeds-3of4-ls.genome
-  hg18-14gb-12_12_12_12seeds-3of4-ls.seed.0
-  hg18-14gb-12_12_12_12seeds-3of4-ls.seed.1
-  hg18-14gb-12_12_12_12seeds-3of4-ls.seed.2
-  hg18-14gb-12_12_12_12seeds-3of4-ls.seed.3
-  hg18-14gb-12_12_12_12seeds-4of4-ls.genome
-  hg18-14gb-12_12_12_12seeds-4of4-ls.seed.0
-  hg18-14gb-12_12_12_12seeds-4of4-ls.seed.1
-  hg18-14gb-12_12_12_12seeds-4of4-ls.seed.2
-  hg18-14gb-12_12_12_12seeds-4of4-ls.seed.3
-
-Since we have a single machine, we run the mapping process sequentially against
-each of the chunks.
-
-  $ for i in 1 2 3 4; do \
-      $SHRIMP_FOLDER/bin/gmapper-ls -L hg18-14gb-12_12_12_12seeds-${i}of4-ls \
-      reads.500kx2.36bp.ls.fa \
-      -N 8 -p opp-in -I 50,500 -m 20 -i -25 -g -40 -e -10 -E \
-      >map.db${i}of4.sam 2>map.db${i}of4.log
-    done
-  [...]
-  $ ls map.db*.sam
-  map.db1of4.sam map.db2of4.sam map.db3of4.sam map.db4of4.sam
-
-The options used above have the following meaning:
-  -L hg18-14gb-12_12_12_12seeds-${i}of4-ls : Load the projection of the i-th
-    chunk of the genome. This is in the 5 files with this prefix, and ending in
-    .genome and .seed[1-4]
-  -N 8 : Use 8 threads of control, fully utilizing 2 quad-core CPUs.
-  -p opp-in : Enabled paired mode, where the two reads in each pair are on
-    "opp"-osite starnds, pointing "in"-wards.
-  -I 50,500 : Set minimum and maximum allowed insert size.
-  -m 20 -i -25 -g -40 -e -10 : Set specific Smith-Waterman scores for match,
-    mismatch, gap open and gap extend.
-  -E : Enable SAM output.
-
-After the mapping jobs complete, we merge the results with:
-
-  $ $SHRIMP_FOLDER/utils/merge-hits-same-qr-diff-db --paired \
-  --dest-file map.sam map.db?of4.sam
-
-Above, the merging script we used corresponds to "same query set" (same reads)
-and "different databases" (disjoint chunks of hg18).
-
-NOTE: For an example in which we split both the reads and the genome, combining
-examples 3.3 and 3.4, see $SHRIMP_FOLDER/SPLITTING_AND_MERGING.
-
-
-3.5 Mapping cDNA reads against a miRNA database
------------------------------------------------
-
-Assume we have:
-./hsa.miRNA.cDNA.fa - database of mature miRNA sequences in human (as cDNA)
-./reads.1m.cDNA.50bp.csfasta - 1 million 50bp colour space cDNA reads
-
-We project the database with:
-
-  $ $SHRIMP_FOLDER/utils/project-db.py --seed 00111111001111111100,\
-  00111111110011111100,00111111111100111100,00111111111111001100,\
-  00111111111111110000 --h-flag --shrimp-mode cs hsa.miRNA.cDNA.fa
-  $ ls hsa.miRNA.cDNA-ls.*
-  hsa.miRNA.cDNA-ls.genome  hsa.miRNA.cDNA-ls.seed.1  hsa.miRNA.cDNA-ls.seed.3
-  hsa.miRNA.cDNA-ls.seed.0  hsa.miRNA.cDNA-ls.seed.2  hsa.miRNA.cDNA-ls.seed.4
-
-Here, we used 5 seeds of weight 14 and span 20 which allow for 2 initial
-mismatches (the leading 00), followed by a match of length 7bp (the 6 following
-1s), followed by another match of various forms.
-
-Note: The seeds are applied to the colour space translations of both the
-database and the reads. Hence, a string of 6 consecutive 1s corresponds to 6
-consecutive matching colours, which are in particular generated by a string of 7
-consecutive matching letters.
-
-We map the reads with:
-
-  $ $SHRIMP_FOLDER/bin/gmapper-cs -L hsa.miRNA.cDNA-ls \
-  reads.1m.cDNA.50bp.csfasta \
-  -N 8 -n 1 -U -o 2 -F -v 50% -h 50% -P \
-  >map.out 2>map.log
-
-The options used above have the following meaning:
-  -L hsa.miRNA.cDNA-ls : Load genome projection.
-  -N 8 : Use 8 threads of control.
-  -n 1 : Require a single space seed match to investigate region.
-  -U : Perform ungapped alignment.
-  -o 2 : Print 2 top hits per read.
-  -F : Only process the forward strand.
-  -v 50% : Set the vector SW score threshold to 50% of the maximum. This pretty
-    much disables the score
-
-
+  2.1 Aligning reads
+  ---
     Use bin/rmapper-foo to align reads, where 'foo' is either 'ls', 'cs', or
     'hs' for letter-space (454, Illumina/Solexa), colour-space (AB SOLiD), and
     Helicos-space (Helicos HeliScope SMS 2-pass reads), respectively.

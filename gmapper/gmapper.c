@@ -3281,6 +3281,9 @@ int main(int argc, char **argv){
 		  break;
 		case 'U':
 		  gapless_sw = true;
+		  anchor_width = 0;
+		  a_gap_open_score = -255;
+		  b_gap_open_score = -255;
 		  break;
 		case 'p':
 		  if (!strcmp(optarg, "none")) {
@@ -3565,6 +3568,12 @@ int main(int argc, char **argv){
 				c = strtok(NULL, ",");
 			} while (c != NULL);
 		}
+
+		if (Hflag) {
+		  kmer_to_mapidx = kmer_to_mapidx_hash;
+		  init_seed_hash_mask();
+		}
+
 		print_settings();
 	} else {
 		if (!load_genome(genome_files,ngenome_files)){
