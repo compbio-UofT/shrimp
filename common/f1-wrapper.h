@@ -41,12 +41,19 @@ f1_setup(int _dblen, int _qrlen,
   f1_hash_tag = 0;
   f1_window_cache = (struct f1_window_cache_entry *)xcalloc(f1_window_cache_size * sizeof(f1_window_cache[0]));
 
-  if (!gapless_sw)
+  if (gapless_sw && shrimp_mode == MODE_LETTER_SPACE)
+    return sw_gapless_setup(_match, _mismatch, reset_stats)
+      || sw_vector_setup(_dblen, _qrlen,
+			   _a_gap_open, _a_gap_ext, _b_gap_open, _b_gap_ext, _match, _mismatch,
+			   _use_colours, reset_stats);
+
+  else if (gapless_sw) // and colour space
+    return sw_gapless_setup(_match, _mismatch, reset_stats);
+
+  else // gapped alignment
     return sw_vector_setup(_dblen, _qrlen,
 			   _a_gap_open, _a_gap_ext, _b_gap_open, _b_gap_ext, _match, _mismatch,
 			   _use_colours, reset_stats);
-  else
-    return sw_gapless_setup(_match, _mismatch, reset_stats);
 }
 
 

@@ -29,7 +29,7 @@ bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
 	$(LN) -sf gmapper bin/gmapper-ls
 
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
-    common/debug.h
+    common/debug.h common/f1-wrapper.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

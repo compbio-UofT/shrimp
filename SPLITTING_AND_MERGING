@@ -35,16 +35,18 @@ files as db-1of2.fa and db-2of2.fa.
 Projecting the Genome
 ---------------------
 
-This step is optional but recommended. This provides significant savings if we
+This step is  optional but recommended.  This provides significant savings if we
 ever run gmapper against the individual pieces db-[12]of2.fa more than once. For
-instance, this will be the case if we decide to split the reads. To project the
-genome pieces, we run:
+instance, this will be the case if we decide to split the reads. If the reads we
+have are in color space, we project the genome pieces with:
 
 $ project-db db-*of2.fa --shrimp-mode cs
 
 This creates files of the form db-[12]of2-cs.genome and
 db-[12]of2-cs.seed.[0-3]. We refer to them by their prefix, as db-1of2-cs and
 db-2of2-cs.
+
+Note: If the reads are in letter space, use "ls".
 
 Note: Splitting and projecting the genome can be accomplished at the same time
 by running:
@@ -60,10 +62,7 @@ cluster. If we have a cluster of N nodes and the genome was split into Y pieces,
 we would want to split the reads into N/Y pieces. In our example, say N=4 and
 Y=2, so we split the reads into 2 pieces, qr-1of2.fa and qr-2of2.fa.
 
-We do not currently have a script to achieve this, as it is very simple.
-
-CAUTION: When dealing with paired reads, make sure the splitting point does not
-break a read pair.
+To split reads, use the splitreads.py script.
 
 
 Run the Mapping Jobs

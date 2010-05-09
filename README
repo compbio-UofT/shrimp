@@ -1022,8 +1022,8 @@ can be done as follows:
 
   - Split and project the genome untrimmed.
 
-  - Run gmapper with the -Y parameter to see a list length histogram with:
-    $ gmapper-ls -L genome -Y /dev/null >/dev/null
+  - Run gmapper with the -Y -V  parameters  to see a list length histogram with:
+    $ gmapper-ls -L genome -Y -V /dev/null >/dev/null
 
   - Based on histogram above, find a candidate value for list_cutoff, e.g.,
   8000;

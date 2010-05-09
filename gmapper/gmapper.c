@@ -1644,6 +1644,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     rh->score_vector = sw_vector(gen, rh->g_off, rh->w_len,
 				 re->read[rh->st], re->read_len,
 				 NULL, -1, genome_is_rna);
+
     if (rh->score_vector >= thresh) {
       sw_full_ls(gen, rh->g_off, rh->w_len,
 		 re->read[rh->st], re->read_len,
