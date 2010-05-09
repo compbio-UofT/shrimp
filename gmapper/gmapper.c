@@ -76,6 +76,7 @@ static int Dflag = false;			/* print statistics for each thread */
 static int Eflag = false;			/* output sam format */
 static int Xflag = false;			/* print insert histogram */
 static int Yflag = false;			/* print genome projection histogram */
+static int Vflag = true;			/* automatic genome index trimming */
 
 /* Mate Pairs */
 static int	pair_mode		= DEF_PAIR_MODE;
@@ -1095,9 +1096,9 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
 
-      //if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
-      //idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
-      //}
+      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
+	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
+      }
 
       if ((!re->has_Ns || re->mapidx_pos[st][offset])
 	  && idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]
@@ -2416,8 +2417,10 @@ void print_genomemap_stats() {
     stat_init(&list_size_non0);
     max = 0;
     for (mapidx = 0; mapidx < capacity; mapidx++) {
-      //if (genomemap_len[sn][mapidx] > list_cutoff)
-      //continue;
+      if (genomemap_len[sn][mapidx] > list_cutoff) {
+	stat_add(&list_size, 0);
+	continue;
+      }
 
       stat_add(&list_size, genomemap_len[sn][mapidx]);
       if (genomemap_len[sn][mapidx] > 0)
@@ -2439,12 +2442,13 @@ void print_genomemap_stats() {
 
     bucket_size = ceil_div((max+1), 100); // values in [0..max]
     for (mapidx = 0; mapidx < capacity; mapidx++) {
-      //if (genomemap_len[sn][mapidx] > list_cutoff)
-      //continue;
-
-      bucket = genomemap_len[sn][mapidx] / bucket_size;
-      if (bucket >= 100)
-	bucket = 99;
+      if (genomemap_len[sn][mapidx] > list_cutoff) {
+	bucket = 0;
+      } else {
+	bucket = genomemap_len[sn][mapidx] / bucket_size;
+	if (bucket >= 100)
+	  bucket = 99;
+      }
       histogram[bucket]++;
     }
 
@@ -2978,6 +2982,8 @@ void usage(char *progname,bool full_usage){
 	  "    -H    Hash Spaced Kmers in Genome Projection        (default: disabled)\n");
   fprintf(stderr,
 	  "    -D    Individual Thread Statistics                  (default: disabled)\n");
+  fprintf(stderr,
+	  "    -V    Disable Automatic Genome Index Trimming       (default: enabled)\n");
   }
   fprintf(stderr,
 	  "    -?    Full List of Parameters and Options\n");
@@ -3101,10 +3107,10 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUXYZx:v:";
+		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUVXYZx:v:";
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUXYZ";
+		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUVXYZ";
 		break;
 	case MODE_HELICOS_SPACE:
 		fprintf(stderr,"Helicose currently unsuported\n");
@@ -3277,13 +3283,14 @@ int main(int argc, char **argv){
 			usage(progname, true);
 			break;
 		case 'Z':
-		  hash_filter_calls = !hash_filter_calls;
+		  hash_filter_calls = false;
 		  break;
 		case 'U':
 		  gapless_sw = true;
 		  anchor_width = 0;
 		  a_gap_open_score = -255;
 		  b_gap_open_score = -255;
+		  hash_filter_calls = false;
 		  break;
 		case 'p':
 		  if (!strcmp(optarg, "none")) {
@@ -3329,6 +3336,9 @@ int main(int argc, char **argv){
 		    fprintf(stderr, "error: invalid list cutoff (%s)\n", optarg);
 		    exit(1);
 		  }
+		  break;
+		case 'V':
+		  Vflag = false;
 		  break;
 		default:
 			usage(progname, false);
@@ -3581,22 +3591,53 @@ int main(int argc, char **argv){
 		}
 	}
 
-	if (list_cutoff != DEF_LIST_CUTOFF) {
-	  fprintf(stderr, "Trimming genome map lists longer than %u\n", list_cutoff);
-	  trim_genome();
-	}
-
 	map_usecs += (gettimeinusecs() - before);
+
+	//
+	// Automatic genome index trimming
+	//
+	if (Vflag && save_file == NULL && list_cutoff == DEF_LIST_CUTOFF) {
+	  // this will be a mapping job; enable automatic trimming
+	  uint i, sn;
+	  long long unsigned int total_genome_len = 0;
+	  uint max_seed_weight = 0;
+
+	  for (i = 0; i < num_contigs; i++) {
+	    total_genome_len += (long long unsigned int)genome_len[i];
+	  }
+
+	  if (Hflag) {
+	    max_seed_weight = HASH_TABLE_POWER;
+	  } else {
+	    for (sn = 0; sn < n_seeds; sn++) {
+	      if (seed[sn].weight > max_seed_weight) {
+		max_seed_weight = seed[sn].weight;
+	      }
+	    }
+	  }
+
+	  // cutoff := max (1000, 100*(total_genome_len/4^max_seed_weight))
+	  list_cutoff = 1000;
+	  if ((uint)((100llu * total_genome_len)/power(4, max_seed_weight)) > list_cutoff) {
+	    list_cutoff = (uint)((100llu * total_genome_len)/power(4, max_seed_weight));
+	  }
+	  fprintf(stderr, "Automatically trimming genome index lists longer than: %u\n", list_cutoff);
+	}
 
 	if (Yflag)
 	  print_genomemap_stats();
 
-	if (save_file != NULL){
-		fprintf(stderr,"Saving genome map to %s\n",save_file);
-		if(save_genome_map(save_file)){
-			exit(0);
-		}
-		exit(1);
+	if (save_file != NULL) {
+	  if (list_cutoff != DEF_LIST_CUTOFF) {
+	    fprintf(stderr, "Trimming genome map lists longer than %u\n", list_cutoff);
+	    trim_genome();
+	  }
+
+	  fprintf(stderr,"Saving genome map to %s\n",save_file);
+	  if(save_genome_map(save_file)){
+	    exit(0);
+	  }
+	  exit(1);
 	}
 
 	//TODO setup need max window and max read len

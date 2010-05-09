@@ -69,7 +69,6 @@ bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
     common/util.o common/anchors.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-cs
-	$(LN) -sf prettyprint bin/prettyprint-hs
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
 prettyprint/prettyprint.o: prettyprint/prettyprint.c
@@ -94,7 +93,6 @@ bin/mergehits: mergehits/mergehits.o common/fasta.o common/dynhash.o \
     common/input.o common/output.o common/util.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf mergehits bin/mergehits-cs
-	$(LN) -sf mergehits bin/mergehits-hs
 	$(LN) -sf mergehits bin/mergehits-ls
 
 mergehits/mergehits.o: mergehits/mergehits.c
