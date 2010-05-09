@@ -33,14 +33,8 @@ Parameters:
 	hashing to index spaced kmers. For seeds of weight greater than 14, this
 	is required. See README for more details.
 
-Notes:
 
-1) The gmapper calls issued by this script can be parallelized across machines.
-
-2) A single machine needs about (1.5)*<ram-size> to create an index to be used
-in a machine with <ram-size> RAM. Thus, to create an index for a 16GB machine,
-it is highly recommended to use a machine with 32GB of RAM in order to avoid the
-use of the swap.
+Note: The gmapper calls issued by this script can be parallelized across machines.
 
 
 Output:

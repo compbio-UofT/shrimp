@@ -1,9 +1,34 @@
-$Id: HISTORY,v 1.17 2009/06/30 18:16:48 rumble Exp $
+2.0: May 9, 2010
+	- New distribution, with drastic design changes.
+	- Native support for SAM format.
+
+1.3.2: January 28, 2010
+	- Added option -ungapped, which replaces SW vector filter by a gapless
+	  alignment filter. This filter still catches mismatches (e.g., SNPs)
+	  and colourspace crossovers.
+	- Fixed bug which would cause spaced seeds to be applied in reverse
+	  when not using -H.
+	- Fixed bug which would cause undesirable effects (including failed
+	  assertions when omitting -DNDEBUG) when colour space crossover score
+	  would be set very low (e.g., to prevent rmapper from calling any
+	  crossovers).
+	- Added -M mirna mode, which loads some parameters suitable for
+	  searching mirna databses. See README. (Thanks Alessandro Guffanti)
+
+1.3.1: November 23, 2009
+	- Fixed bug which caused allocation of 8 bytes per int even on systems
+	  where sizeof(int)=4. This should reduce the virtual memory usage, but
+	  not the resident size (on a regular kernel).
+	- Fixed generation of kmers at the beginning of a contig. This should
+	  increase sensitivity when using small database sequences (e.g.,
+	  miRNA).
 
 1.3: September 28, 2009
 	- Proper support for multiple seeds. We now have one readmap per seed,
 	  and we keep track of which seed every kmer originates from.
 	- Seeds can now have different spans and weights.
+	- Parameter -s now accepts: a single seed, or a comma-separated list of
+	  seeds, or "w<weight>" for loading default seeds of weight <weight>.
 	- New meaning for "window length" (-w) parameter. Now, this value
 	  controls the size of the genome window against which a read is
 	  matched. Default is 135% of the read length. To trigger an SW filter
@@ -30,7 +55,11 @@ $Id: HISTORY,v 1.17 2009/06/30 18:16:48 rumble Exp $
 	- Changed default parameters to 4 seeds of weight 12 and n=4 matches per
 	  window. This should be significantly faster than the previous
  	  defaults, which used 1 seed of weight 8 and n=2 matches per window.
-	- New default matching scores, optimized for human.
+
+1.2.2: ?, 2009
+	- Fix unknown base ('N') handling in shrimp_var (Stéphane Audic).
+	- Added a SHRiMP to SAM output converter (Nils Homer).
+	- Added a Probcalc to WIG output converter (Elizabeth Chun). 
 
 1.2.1: June 30, 2009
 	- Fix a few Sun Studio Compiler portability bugs. 

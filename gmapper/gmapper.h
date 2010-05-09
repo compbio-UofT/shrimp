@@ -40,7 +40,7 @@ static bool const pair_reverse[5][2] =
 #define DEF_MAX_INSERT_SIZE	2000
 
 #define DEF_WINDOW_LEN		140.0
-#define DEF_WINDOW_OVERLAP	80.0
+#define DEF_WINDOW_OVERLAP	20.0
 #define DEF_NUM_MATCHES		2
 #define DEF_NUM_OUTPUTS		10
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */

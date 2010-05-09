@@ -1395,7 +1395,8 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, uint st) {
     // check window overlap
     if (j >= 0
 	&& re->hits[st][i].cn == re->hits[st][j].cn
-	&& re->hits[st][i].g_off <= re->hits[st][j].g_off + (uint)abs_or_pct(window_overlap, re->window_len)) {
+	&& re->hits[st][i].g_off <= re->hits[st][j].g_off + re->window_len
+	  - (int)abs_or_pct(window_overlap, re->window_len)) {
       re->hits[st][i].score_vector = 0;
       continue;
     }
@@ -2901,26 +2902,26 @@ void usage(char *progname,bool full_usage){
 
   fprintf(stderr, "\n");
   fprintf(stderr,
-	  "    -m    S-W Match Score                         (default: %d)\n",
+	  "    -m    SW Match Score                          (default: %d)\n",
 	  DEF_MATCH_VALUE);
   fprintf(stderr,
-	  "    -i    S-W Mismatch Score                      (default: %d)\n",
+	  "    -i    SW Mismatch Score                       (default: %d)\n",
 	  DEF_MISMATCH_VALUE);
   fprintf(stderr,
-	  "    -g    S-W Gap Open Score (Reference)          (default: %d)\n",
+	  "    -g    SW Gap Open Score (Reference)           (default: %d)\n",
 	  DEF_A_GAP_OPEN);
   fprintf(stderr,
-	  "    -q    S-W Gap Open Score (Query)              (default: %d)\n",
+	  "    -q    SW Gap Open Score (Query)               (default: %d)\n",
 	  DEF_B_GAP_OPEN);
   fprintf(stderr,
-	  "    -e    S-W Gap Extend Score (Reference)        (default: %d)\n",
+	  "    -e    SW Gap Extend Score (Reference)         (default: %d)\n",
 	  DEF_A_GAP_EXTEND);
   fprintf(stderr,
-	  "    -f    S-W Gap Extend Score (Query)            (default: %d)\n",
+	  "    -f    SW Gap Extend Score (Query)             (default: %d)\n",
 	  DEF_B_GAP_EXTEND);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-	  "    -x    S-W Crossover Score                     (default: %d)\n",
+	  "    -x    SW Crossover Score                      (default: %d)\n",
 	  DEF_XOVER_PENALTY);
   }
   fprintf(stderr,
@@ -2928,11 +2929,11 @@ void usage(char *progname,bool full_usage){
 	  DEF_WINDOW_GEN_THRESHOLD);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-	  "    -v    S-W Vector Hit Threshold                (default: %.02f%%)\n",
+	  "    -v    SW Vector Hit Threshold                 (default: %.02f%%)\n",
 	  DEF_SW_VECT_THRESHOLD);
   }
   fprintf(stderr,
-	  "    -h    S-W Full Hit Threshold                  (default: %.02f%%)\n",
+	  "    -h    SW Full Hit Threshold                   (default: %.02f%%)\n",
 	  DEF_SW_FULL_THRESHOLD);
 
   fprintf(stderr, "\n");
@@ -2948,7 +2949,7 @@ void usage(char *progname,bool full_usage){
 
   fprintf(stderr, "\n");
   fprintf(stderr,
-	  "    -p    Pair-end Mode                           (default: %s)\n",
+	  "    -p    Paired Mode                             (default: %s)\n",
 	  pair_mode_string[pair_mode]);
   fprintf(stderr,
 	  "    -I    Min and Max Insert Size                 (default: %d,%d)\n",
@@ -3004,30 +3005,30 @@ void print_settings() {
 	    seed_to_string(i), seed[i].weight, seed[i].span);
   }
 
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Maximum Number of Outputs:", num_outputs);
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Matches per Window:", num_matches);
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of Outputs per Read:", num_outputs);
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Generation Mode:", num_matches);
 
   if (IS_ABSOLUTE(window_len)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Length:", (uint)-window_len);
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Length:", (uint)-window_len);
   } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Length:", window_len);
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Window Length:", window_len);
   }
 
   if (IS_ABSOLUTE(window_overlap)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab, "Seed Window Overlap Length:", (uint)-window_overlap);
+    fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Overlap Length:", (uint)-window_overlap);
   } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Seed Window Overlap Length:", window_overlap);
+    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Window Overlap Length:", window_overlap);
   }
 
   fprintf(stderr, "\n");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Match Score:", match_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Mismatch Score:", mismatch_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Ref):", a_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Open Score (Qry):", b_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Ref):", a_gap_extend_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Gap Extend Score (Qry):", b_gap_extend_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Mismatch Score:", mismatch_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Ref):", a_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Qry):", b_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Ref):", a_gap_extend_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Qry):", b_gap_extend_score);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-    fprintf(stderr, "%s%-40s%d\n", my_tab, "S-W Crossover Score:", crossover_score);
+    fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Crossover Score:", crossover_score);
   }
 
   fprintf(stderr, "\n");
@@ -3041,24 +3042,24 @@ void print_settings() {
   }
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     if (IS_ABSOLUTE(sw_vect_threshold)) {
-      fprintf(stderr, "%s%-40s%u\n", my_tab, "S-W Vector Hit Threshold:", (uint)-sw_vect_threshold);
+      fprintf(stderr, "%s%-40s%u\n", my_tab, "SW Vector Hit Threshold:", (uint)-sw_vect_threshold);
     } else {
-      fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "S-W Vector Hit Threshold:", sw_vect_threshold);
+      fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "SW Vector Hit Threshold:", sw_vect_threshold);
     }
   }
   if (IS_ABSOLUTE(sw_full_threshold)) {
     fprintf(stderr, "%s%-40s%u\n", my_tab,
-	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    shrimp_mode == MODE_COLOUR_SPACE? "SW Full Hit Threshold:" : "SW Hit Threshold",
 	    (uint)-sw_full_threshold);
   } else {
     fprintf(stderr, "%s%-40s%.02f%%\n", my_tab,
-	    shrimp_mode == MODE_COLOUR_SPACE? "S-W Full Hit Threshold:" : "S-W Hit Threshold",
+	    shrimp_mode == MODE_COLOUR_SPACE? "SW Full Hit Threshold:" : "SW Hit Threshold",
 	    sw_full_threshold);
   }
 
   fprintf(stderr, "\n");
 
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Pair mode:", pair_mode_string[pair_mode]);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Paired mode:", pair_mode_string[pair_mode]);
   if (pair_mode != PAIR_NONE) {
     fprintf(stderr, "%s%-40smin:%d max:%d\n", my_tab, "Insert sizes:", min_insert_size, max_insert_size);
     if (Xflag) {
@@ -3074,7 +3075,9 @@ void print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
+  if (list_cutoff < DEF_LIST_CUTOFF) {
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
+  }
 
 }
 
@@ -3454,6 +3457,11 @@ int main(int argc, char **argv){
 	if (!IS_ABSOLUTE(window_len) && window_len < 100.0) {
 	  fprintf(stderr, "error: window length < 100%% of read length\n");
 	  exit(1);
+	}
+
+	if (!IS_ABSOLUTE(window_overlap) && window_overlap > 100.0) {
+	  fprintf(stderr, "warning: window overlap length > 100%% of window_length; resetting to 100%%\n");
+	  window_overlap = 100.0;
 	}
 
 	if (num_matches < 1) {

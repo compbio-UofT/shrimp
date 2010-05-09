@@ -46,10 +46,6 @@ This creates files of the form db-[12]of2-cs.genome and
 db-[12]of2-cs.seed.[0-3]. We refer to them by their prefix, as db-1of2-cs and
 db-2of2-cs.
 
-CAUTION: Projecting a genome requires more RAM than the target RAM size (say, by
-a factor of 1.5). So in our example, to avoid the use of swap, it is recommended
-to run the projection step on a machine with at least 23GB of RAM.
-
 Note: Splitting and projecting the genome can be accomplished at the same time
 by running:
 
