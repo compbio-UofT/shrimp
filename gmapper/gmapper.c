@@ -1658,8 +1658,48 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   rh->score_full = rh->sfrp->score;
   rh->pct_score_full = (100 * rh->score_full)/rh->score_max;
 }
-
-
+//TODO move this to utils
+void reverse(char* s, char* t) {
+       int l=strlen(s);
+       int i;
+       for (i=0; i<l; i++) {
+               switch (s[i]) {
+                       case 'A':
+                               t[l-i-1]='T';
+                               break;
+                       case 'a':
+                               t[l-i-1]='t';
+                               break;
+                       case 'C':
+                               t[l-i-1]='G';
+                               break;
+                       case 'c':
+                               t[l-i-1]='g';
+                               break;
+                       case 'G':
+                               t[l-i-1]='C';
+                               break;
+                       case 'g':
+                               t[l-i-1]='c';
+                               break;
+                       case 'T':
+                               t[l-i-1]='A';
+                               break;
+                       case 't':
+                               t[l-i-1]='a';
+                               break;
+                       case '-':
+                               t[l-i-1]='-';
+                               break;
+                       default:
+                               fprintf(stderr,"There has been a error in getting reverse complement of %s\n",s);
+                               exit(1);
+               }
+       }
+       t[l]='\0';
+       //printf("%s vs %s\n", s , t);
+       strcpy(s,t);
+}
 /*
  * Print given hit.
  *
@@ -1683,12 +1723,14 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     struct format_spec *fsp;
     char * output = output_format_line(Rflag);
     fsp = format_get_from_string(output);
+    //fprintf(stdout,"5\n");
     free(output);
 
     struct input inp, inp_mp;
     memset(&inp, 0, sizeof(inp));
     input_parse_string(*output1,fsp,&inp);
     if(re_mp != NULL){
+    	//fprintf(stdout,"4\n");
     	free(*output1);
 		*output1 = output_normal(re_mp->name, contig_names[rh_mp->cn], rh_mp->sfrp,
     			   genome_len[rh_mp->cn], shrimp_mode == MODE_COLOUR_SPACE, re_mp->read[rh_mp->st],
@@ -1700,6 +1742,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     cigar = (char *)xmalloc(sizeof(char)*200);
 	int first_bp = 0;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
+
+    int contigstart = inp.genome_start + 1;
 
     if(inp.flags & INPUT_FLAG_IS_REVCMPL){
     	char * cigar_reverse = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
@@ -1720,15 +1764,17 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     			*tmp = '\0';
     		}
     	}
+    	//fprintf(stdout,"3\n");
     	free(cigar);
     	cigar = cigar_reverse;
+    	//fprintf(stdout,"2\n");
     	free(tmp);
-
     }
+    
 
 	read_bitstring = re->read[rh->gen_st];
 
-    if (shrimp_mode == COLOUR_SPACE){
+    /*if (shrimp_mode == COLOUR_SPACE){
 		first_bp = re->initbp[rh->gen_st];
     	uint index;
     	read_ls_bitstring = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(re->read_len + 1));
@@ -1740,8 +1786,39 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     	bitfield_append(read_ls_bitstring, index, current_bp);
     } else {
     	read_ls_bitstring = read_bitstring;
+    }*/
+    if(shrimp_mode == COLOUR_SPACE){
+    	first_bp = re->initbp[rh->gen_st];
+    	char * tmp_read = rh->sfrp->qralign;
+    	int len = strlen(tmp_read);
+    	read = (char *)xmalloc(sizeof(char)*len+1);
+    	int i;
+    	int j = 0;
+    	for (i = 0; i < len;i++){
+    		if(tmp_read[i] != '-'){
+    			read[j] = tmp_read[i];
+    			j++;
+    		}
+    	}
+    	read[j] = '\0';
+    	
+    	tmp_read = (char *)xmalloc(sizeof(char)*len+1);
+    	if (inp.flags & INPUT_FLAG_IS_REVCMPL){
+    		reverse(read,tmp_read);
+    	}
+    	
+    	//fprintf(stdout,"1\n");
+    	free(tmp_read); 
+    	
+    	len = strlen(cigar);
+    	for (i = 0; i < len; i++){
+    		if (cigar[i] == 'S'){
+    			cigar[i] = 'H';
+    		}
+    	}
+	} else {
+		read = readtostr(read_bitstring,re->read_len,false,0);
     }
-    read = readtostr(read_bitstring,re->read_len,false,0);
     char *name;
     bool second = !first && paired;
     if (re_mp == NULL){
@@ -1784,7 +1861,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	    name,
 	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((paired) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
 	    inp.genome,
-	    inp.genome_start + 1,
+	    contigstart,
 	    255,
 	    cigar,
 	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
@@ -1794,8 +1871,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	    "*",
 	    inp.score);
     if (shrimp_mode == COLOUR_SPACE){
-    	sprintf(extra,"\tCS:Z:%s",readtostr(read_bitstring,re->read_len,true,first_bp));
-    	free(read_ls_bitstring);
+    	sprintf(extra,"\tCS:Z:%s\tEX:Z:%s",readtostr(read_bitstring,re->read_len,true,first_bp),rh->sfrp->qralign);
+    	//free(read_ls_bitstring);
     }
     if(re_mp != NULL){
     	free(name);
