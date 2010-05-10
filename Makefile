@@ -9,7 +9,7 @@ LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++
 LN=ln
 
-all: bin/gmapper bin/probcalc bin/prettyprint bin/mergehits bin/probcalc_mp \
+all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
     bin/shrimp_var bin/shrimp2sam utils/split-contigs
 
 #
@@ -87,18 +87,6 @@ shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
-# mergehits
-#
-bin/mergehits: mergehits/mergehits.o common/fasta.o common/dynhash.o \
-    common/input.o common/output.o common/util.o
-	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
-	$(LN) -sf mergehits bin/mergehits-cs
-	$(LN) -sf mergehits bin/mergehits-ls
-
-mergehits/mergehits.o: mergehits/mergehits.c
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-#
 # bin/split-contigs
 #
 utils/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
@@ -159,7 +147,7 @@ common/bitmap.o: common/bitmap.c common/bitmap.h
 #
 clean:
 	rm -f bin/colourise bin/probcalc bin/gmapper* \
-	    bin/prettyprint* bin/mergehits* bin/probcalc_mp bin/shrimp_var \
+	    bin/prettyprint* bin/probcalc_mp bin/shrimp_var \
 	    bin/shrimp2sam utils/split-contigs
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f

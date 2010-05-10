@@ -2,8 +2,6 @@ Program			Function
 -------			--------
 gmapper-cs		colourspace mapper
 gmapper-ls		letterspace mapper
-mergehits-cs		merge all hits into one line per read (colour space)
-mergehits-ls		merge all hits into one line per read (letter space)
 prettyprint-cs		pretty print alignments from rmapper/probcalc (c. space)
 prettyprint-ls		pretty print alignments from rmapper/probcalc (l. space)
 probcalc		parse rmapper output (non-pretty-printed output)
