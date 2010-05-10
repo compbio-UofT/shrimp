@@ -1570,9 +1570,9 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 		     : (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2);
 	  tmp.rest.hit[0] = &re1->hits[st1][i];
 	  tmp.rest.hit[1] = &re2->hits[st2][j];
-	  tmp.rest.insert_size = (st1 == 0?
-				  re2->hits[st2][j].g_off - (re1->hits[st1][i].g_off + re1->hits[st1][i].w_len) :
-				  re1->hits[st1][i].g_off - (re2->hits[st2][j].g_off + re2->hits[st2][j].w_len));
+	  tmp.rest.insert_size = (int)(st1 == 0?
+				       (int64_t)re2->hits[st2][j].g_off - ((int64_t)re1->hits[st1][i].g_off + (int64_t)re1->hits[st1][i].w_len) :
+				       (int64_t)re1->hits[st1][i].g_off - ((int64_t)re2->hits[st2][j].g_off + (int64_t)re2->hits[st2][j].w_len));
 
 	  if (h->load < h->capacity)
 	    heap_paired_insert(h, &tmp);
@@ -3318,13 +3318,13 @@ int main(int argc, char **argv){
 		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
 		    exit(1);
 		  }
-		  min_insert_size = (uint)atoi(c);
+		  min_insert_size = atoi(c);
 		  c = strtok(NULL, ",");
 		  if (c == NULL) {
 		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
 		    exit(1);
 		  }
-		  max_insert_size = (uint)atoi(c);
+		  max_insert_size = atoi(c);
 		  if (min_insert_size > max_insert_size) {
 		    fprintf(stderr, "error: invalid insert sizes (min:%d,max:%d)\n",
 			    min_insert_size, max_insert_size);
