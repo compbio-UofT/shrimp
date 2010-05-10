@@ -98,6 +98,31 @@ load_output_file(char *file)
 		cigar = (char *)xmalloc(sizeof(char)*200);
 		edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
 
+		if(inp.flags & INPUT_FLAG_IS_REVCMPL){
+		    	char * cigar_reverse = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+		    	*cigar_reverse = '\0';
+		    	char * tmp = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+		    	*tmp = '\0';
+		    	//char * tmp2 = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
+		    	char * ptr = cigar;
+		    	char * last = tmp;
+		    	for (ptr = cigar; *ptr != '\0'; ptr++){
+		    		*last = *ptr;
+		    		last ++;
+		    		*last = '\0';
+		    		if (!(*ptr <= '9' && *ptr >= '0')){
+		    			strcat(tmp,cigar_reverse);
+		    			strcpy(cigar_reverse,tmp);
+		    			last = tmp;
+		    			*tmp = '\0';
+		    		}
+		    	}
+		    	free(cigar);
+		    	cigar = cigar_reverse;
+		    	free(tmp);
+
+		    }
+
 		fprintf(stdout,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i\n",
 				inp.read,
 				((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 :0),
