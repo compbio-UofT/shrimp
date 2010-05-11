@@ -1871,7 +1871,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	    "*",
 	    inp.score);
     if (shrimp_mode == COLOUR_SPACE){
-    	sprintf(extra,"\tCS:Z:%s\tEX:Z:%s",readtostr(read_bitstring,re->read_len,true,first_bp),rh->sfrp->qralign);
+    	sprintf(extra,"\tCS:Z:%s\tEX:Z:%s",readtostr(re->read[0],re->read_len,true,first_bp),rh->sfrp->qralign);
     	//free(read_ls_bitstring);
     }
     if(re_mp != NULL){
