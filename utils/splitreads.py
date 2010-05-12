@@ -1,3 +1,4 @@
+#!/usr/bin/python
 #	$Id: splitreads.py,v 1.3 2009/03/06 18:58:49 rumble Exp $
 
 import sys
