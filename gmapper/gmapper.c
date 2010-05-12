@@ -1738,7 +1738,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		input_parse_string(*output1,fsp,&inp_mp);
     }
     char * cigar, *read;
-    uint32_t * read_bitstring, *read_ls_bitstring;
+    uint32_t * read_bitstring; //, *read_ls_bitstring;
     cigar = (char *)xmalloc(sizeof(char)*200);
 	int first_bp = 0;
     edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
