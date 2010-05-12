@@ -103,13 +103,13 @@ at a reasonable speed. To illustrate its performace:
   simulated  colour space reads of 50  base pairs (bp)  each containing 1 SNP, 1
   indel of size up to 5bp, and 4% per-base error rate.
 
-  Speed: SHRiMP2 on a single  3.0GHz core with  16GB of RAM  can map 50bp colour
+  Speed: SHRiMP2 on a single  3.0GHz core with  16GB of RAM  can map 36bp colour
   space reads against the reference  human genome (hg18) at  the rate of 160,000
   reads per hour, and twice as fast  if using mate-pair/pair-end data. This rate
   is fully core-parallelizable, in the sense that a cluster  of 4 machines, each
   with 2 quad-core CPUs and 16GB of RAM, will map 4x2x4=32 times faster. This is
-  about 10 million  paired reads per hour.  So,  180 million  50bp paired reads,
-  equivalent  to a 3x coverage of  hg18, would  take  about 18  hours.  Prior to
+  about 10 million  paired reads per hour.  So,  250 million  36bp paired reads,
+  equivalent  to a 3x coverage of  hg18, would  take  about 30  hours.  Prior to
   mapping, indexing the projection of hg18 into 4 pieces  that would each fit in
   16GB   RAM can be  done by   in 2 hours  by   running 4 different  machines in
   parallel.  (These are all rough estimates.)
