@@ -9,7 +9,7 @@ def usage():
 	print >> sys.stderr, '''extract-subsequence
 ----------
 
-This script is used to extarct part of a fasta sequence from a file.
+This script is used to extract part of a fasta sequence from a file.
 
 
 Parameters:
