@@ -1833,27 +1833,53 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		name[i] = '\0';
     }
 
-    int ins_size =0;
-    if (re_mp != NULL){
-    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
-    		ins_size = inp_mp.genome_start - inp.genome_start;
-    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
-    		bool point_in = false;
-    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
-    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
-    			point_in = true;
-    		}
-    		if (point_in && first){
-    			ins_size = inp_mp.genome_end - inp.genome_start;
-    		} else if(point_in && second){
-    			ins_size = inp_mp.genome_start - inp.genome_end;
-    		} else if(!point_in && first){
-    			ins_size = inp_mp.genome_start - inp.genome_end;
-    		} else if(!point_in && second){
-    			ins_size = inp_mp.genome_end - inp.genome_start;
-    		}
+//    int ins_size =0;
+//    if (re_mp != NULL){
+//    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
+//    		ins_size = inp_mp.genome_start - inp.genome_start;
+//    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
+//    		bool point_in = false;
+//    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
+//    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
+//    			point_in = true;
+//    		}
+//    		if (point_in && first){
+//    			ins_size = inp_mp.genome_end - inp.genome_start;
+//    		} else if(point_in && second){
+//    			ins_size = inp_mp.genome_start - inp.genome_end;
+//    		} else if(!point_in && first){
+//    			ins_size = inp_mp.genome_start - inp.genome_end;
+//    		} else if(!point_in && second){
+//    			ins_size = inp_mp.genome_end - inp.genome_start;
+//    		}
+//    	}
+//    }
+    int fivep = 0;
+    int fivep_mp = 0;
+    if ( pair_mode == PAIR_COL_FW){
+    	fivep = inp.genome_start;
+    	fivep_mp = inp_mp.genome_start;
+    } else if (pair_mode == PAIR_COL_BW ){
+    	fivep = inp.genome_end;
+    	fivep_mp = inp_mp.genome_end;
+    } else if (pair_mode == PAIR_OPP_IN){
+    	if (first){
+    		fivep = inp.genome_start;
+    		fivep_mp = inp.genome_end;
+    	} else {
+    		fivep = inp.genome_end;
+    		fivep_mp = inp.genome_start;
+    	}
+    } else if (pair_mode == PAIR_OPP_OUT){
+    	if (first){
+    		fivep = inp.genome_end;
+    		fivep_mp = inp.genome_start;
+    	} else {
+    		fivep = inp.genome_start;
+    		fivep_mp = inp.genome_end;
     	}
     }
+    int ins_size = fivep_mp - fivep;
 
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
