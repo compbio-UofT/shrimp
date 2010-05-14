@@ -1857,13 +1857,17 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     int fivep = 0;
     int fivep_mp = 0;
     if (inp.flags & INPUT_FLAG_IS_REVCMPL){
+    	fprintf(stderr,"1");
     	fivep = inp.genome_end;
     } else {
+    	fprintf(stderr,"2");
     	fivep = inp.genome_start;
     }
     if (inp_mp.flags & INPUT_FLAG_IS_REVCMPL){
+    	fprintf(stderr,"3");
     	fivep_mp = inp_mp.genome_end;
     } else {
+    	fprintf(stderr,"4");
     	fivep_mp = inp_mp.genome_start;
     }
 //    if ( pair_mode == PAIR_COL_FW){
