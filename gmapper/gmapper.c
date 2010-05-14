@@ -1865,18 +1865,18 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     } else if (pair_mode == PAIR_OPP_IN){
     	if (first){
     		fivep = inp.genome_start;
-    		fivep_mp = inp.genome_end;
+    		fivep_mp = inp_mp.genome_end;
     	} else {
     		fivep = inp.genome_end;
-    		fivep_mp = inp.genome_start;
+    		fivep_mp = inp_mp.genome_start;
     	}
     } else if (pair_mode == PAIR_OPP_OUT){
     	if (first){
     		fivep = inp.genome_end;
-    		fivep_mp = inp.genome_start;
+    		fivep_mp = inp_mp.genome_start;
     	} else {
     		fivep = inp.genome_start;
-    		fivep_mp = inp.genome_end;
+    		fivep_mp = inp_mp.genome_end;
     	}
     }
     int ins_size = fivep_mp - fivep;
