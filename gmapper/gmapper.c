@@ -1547,82 +1547,27 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		name[i] = '\0';
     }
 
-//    int ins_size =0;
-//    if (re_mp != NULL){
-//    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
-//    		ins_size = inp_mp.genome_start - inp.genome_start;
-//    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
-//    		bool point_in = false;
-//    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
-//    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
-//    			point_in = true;
-//    		}
-//    		if (point_in && first){
-//    			ins_size = inp_mp.genome_end - inp.genome_start;
-//    		} else if(point_in && second){
-//    			ins_size = inp_mp.genome_start - inp.genome_end;
-//    		} else if(!point_in && first){
-//    			ins_size = inp_mp.genome_start - inp.genome_end;
-//    		} else if(!point_in && second){
-//    			ins_size = inp_mp.genome_end - inp.genome_start;
-//    		}
-//    	}
-//    }
-    int fivep = 0;
-    int fivep_mp = 0;
-    if (inp.flags & INPUT_FLAG_IS_REVCMPL){
-    	fprintf(stderr,"1");
-    	fivep = inp.genome_end;
-    } else {
-    	fprintf(stderr,"2");
-    	fivep = inp.genome_start;
+    int ins_size =0;
+    if (re_mp != NULL){
+    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
+    		ins_size = inp_mp.genome_start - inp.genome_start;
+    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
+    		bool point_in = false;
+    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
+    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
+    			point_in = true;
+    		}
+    		if (point_in && first){
+    			ins_size = inp_mp.genome_end - inp.genome_start;
+    		} else if(point_in && second){
+    			ins_size = inp_mp.genome_start - inp.genome_end;
+    		} else if(!point_in && first){
+    			ins_size = inp_mp.genome_start - inp.genome_end;
+    		} else if(!point_in && second){
+    			ins_size = inp_mp.genome_end - inp.genome_start;
+    		}
+    	}
     }
-    if (inp_mp.flags & INPUT_FLAG_IS_REVCMPL){
-    	fprintf(stderr,"3");
-    	fivep_mp = inp_mp.genome_end;
-    } else {
-    	fprintf(stderr,"4");
-    	fivep_mp = inp_mp.genome_start;
-    }
-//    if ( pair_mode == PAIR_COL_FW){
-//    	if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-//    		fivep = inp.genome_end;
-//    		fivep_mp = inp_mp.genome_end;
-//    	} else {
-//    		fivep = inp.genome_start;
-//    		fivep_mp = inp_mp.genome_start;
-//    	}
-//    } else if (pair_mode == PAIR_COL_BW ){
-//    	if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-//    		fivep = inp.genome_end;
-//    		fivep_mp = inp_mp.genome_end;
-//    	} else {
-//    		fivep = inp.genome_end;
-//    		fivep_mp = inp_mp.genome_end;
-//    	}
-//    } else if (pair_mode == PAIR_OPP_IN){
-//    	if (first){
-//    		if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-//    			fivep = inp.genome_end;
-//    			fivep_mp = inp_mp.genome_start;
-//    		} else {
-//    			fivep = inp.genome_start;
-//    			fivep_mp = inp_mp.genome_end;
-//    		}
-//    	} else {
-//    		fivep = inp.genome_end;
-//    		fivep_mp = inp_mp.genome_start;
-//    	}
-//    } else if (pair_mode == PAIR_OPP_OUT){
-//    	if (first){
-//    		fivep = inp.genome_end;
-//    		fivep_mp = inp_mp.genome_start;
-//    	} else {
-//    		fivep = inp.genome_start;
-//    		fivep_mp = inp_mp.genome_end;
-//    	}
-//    }
-    int ins_size = fivep_mp - fivep;
 
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
@@ -2017,7 +1962,7 @@ read_reverse(struct read_entry * re) {
   re->read[0] = re->read[1];
   re->read[1] = tmp1;
   
-  int8_t tmp2 = re->initbp[0];
+  int tmp2 = re->initbp[0];
   re->initbp[0] = re->initbp[1];
   re->initbp[1] = tmp2;
 
@@ -2181,7 +2126,7 @@ launch_scan_threads(const char *file){
 	  re_buffer[i].min_kmer_pos = 1;
 	  re_buffer[i].initbp[0] = fasta_get_initial_base(fasta,re_buffer[i].seq);
 	  re_buffer[i].initbp[1] = re_buffer[i].initbp[0];
-	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], re_buffer[i].initbp[0], re_buffer[i].initbp[1],
+	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0], (int8_t)re_buffer[i].initbp[1],
 							    re_buffer[i].read_len, re_buffer[i].is_rna);
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
@@ -2240,8 +2185,8 @@ void print_genomemap_stats() {
 
   uint64_t histogram[100];
   uint64_t cummulative_histogram[100];
-  uint bucket_size;
-  uint i, bucket;
+  int bucket_size;
+  int i, bucket;
 
 
   fprintf(stderr, "Genome Map stats:\n");
@@ -2269,7 +2214,7 @@ void print_genomemap_stats() {
 	max = genomemap_len[sn][mapidx];
     }
 
-    fprintf(stderr, "sn:%u weight:%u total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f) max:%u\n",
+    fprintf(stderr, "sn:%d weight:%d total_kmers:%llu lists:%llu (non-zero:%llu) list_sz_avg:%.2f (%.2f) list_sz_stddev:%.2f (%.2f) max:%u\n",
 	    sn, seed[sn].weight, (long long unsigned int)stat_get_sum(&list_size),
 	    (long long unsigned int)capacity, (long long unsigned int)stat_get_count(&list_size_non0),
 	    stat_get_mean(&list_size), stat_get_mean(&list_size_non0),
