@@ -1442,14 +1442,21 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 
     struct input inp, inp_mp;
     memset(&inp, 0, sizeof(inp));
+    memset(&inp_mp, 0, sizeof(inp_mp));
+    //fprintf(stdout,*output1);
+    //fprintf(stdout,"\n");
     input_parse_string(*output1,fsp,&inp);
+    //fprintf(stdout,"%d\n",inp.flags);
     if(re_mp != NULL){
     	//fprintf(stdout,"4\n");
     	free(*output1);
 		*output1 = output_normal(re_mp->name, contig_names[rh_mp->cn], rh_mp->sfrp,
     			   genome_len[rh_mp->cn], shrimp_mode == MODE_COLOUR_SPACE, re_mp->read[rh_mp->st],
     			   re_mp->read_len, re_mp->initbp[rh_mp->st], rh_mp->gen_st, Rflag);
+		//fprintf(stdout,*output1);
+		//fprintf(stdout,"\n");
 		input_parse_string(*output1,fsp,&inp_mp);
+		//fprintf(stdout,"%d\n",inp_mp.flags);
     }
     char * cigar, *read;
     uint32_t * read_bitstring; //, *read_ls_bitstring;
@@ -1547,27 +1554,24 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		name[i] = '\0';
     }
 
-    int ins_size =0;
-    if (re_mp != NULL){
-    	if (pair_mode == PAIR_COL_FW || pair_mode == PAIR_COL_BW){
-    		ins_size = inp_mp.genome_start - inp.genome_start;
-    	} else if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_OPP_OUT) {
-    		bool point_in = false;
-    		if (( pair_mode == PAIR_OPP_IN && !((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))
-    				|| (pair_mode == PAIR_OPP_OUT && ((inp.flags & INPUT_FLAG_IS_REVCMPL) && first))){
-    			point_in = true;
-    		}
-    		if (point_in && first){
-    			ins_size = inp_mp.genome_end - inp.genome_start;
-    		} else if(point_in && second){
-    			ins_size = inp_mp.genome_start - inp.genome_end;
-    		} else if(!point_in && first){
-    			ins_size = inp_mp.genome_start - inp.genome_end;
-    		} else if(!point_in && second){
-    			ins_size = inp_mp.genome_end - inp.genome_start;
-    		}
-    	}
+    int fivep = 0;
+    int fivep_mp = 0;
+    if (inp.flags & INPUT_FLAG_IS_REVCMPL){
+    	//fprintf(stdout,"1\n");
+    	fivep = inp.genome_end + 1;
+    } else {
+    	//fprintf(stdout,"2\n");
+    	fivep = inp.genome_start;
     }
+
+    if (inp_mp.flags & INPUT_FLAG_IS_REVCMPL){
+    	//fprintf(stdout,"3\n");
+    	fivep_mp = inp_mp.genome_end + 1;
+    } else {
+    	//fprintf(stdout,"4\n");
+    	fivep_mp = inp_mp.genome_start;
+    }
+    int ins_size = fivep_mp - fivep;
 
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
@@ -1594,6 +1598,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     free(read);
     free(cigar);
     format_free(fsp);
+    //input_free(&inp);
+    //input_free(&inp_mp);
   }
 }
 
