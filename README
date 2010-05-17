@@ -812,6 +812,17 @@ Filter 1: Window Generation
     (in unpaired mode  this happens with "-n  1"; in paired  mode with "-n 2" or
     "-n 3"), or when performing ungapped alignment ("-U").
 
+    Note on 454 reads
+    -----------------
+
+    Currently, gmapper constructs the estimation is this step based on at most a
+    single indel. This is appropriate for read lengths less than 100. For longer
+    reads,  which might contain  more indels,  you might  want to  significantly
+    lower this threshold, and use an absolute value. For example, to allow a CMW
+    to pass this filter based on two spaced kmer matches  of total length 50 and
+    one indel (with the default  scores), you should use  "-r 453". (We get  453
+    from 50 matches: +500, 1 gap open: -40, 1 gap extend: -7.)
+
 
 Filter 2: Vector SW/Ungapped Alignment
 --------------------------------------
