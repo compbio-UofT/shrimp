@@ -75,7 +75,7 @@ init_cell(int idx) {
 
 static int
 full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret, bool revcmpl,
-	struct anchor * anchors, uint anchors_cnt)
+	struct anchor * anchors, int anchors_cnt)
 {
   int i, j;
   //int sw_band, ne_band;
@@ -93,8 +93,8 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
   b_ge = b_gap_ext;
 
   if (anchors != NULL && anchor_width >= 0) {
-    join_anchors(anchors, anchors_cnt, &rectangle);
-    widen_anchor(&rectangle, (uint)anchor_width);
+    anchor_join(anchors, anchors_cnt, &rectangle);
+    anchor_widen(&rectangle, anchor_width);
   } else {
     struct anchor tmp_anchors[2];
 
@@ -102,15 +102,13 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
     tmp_anchors[0].y = (lenb * match - threshscore) / match;
     tmp_anchors[0].length = 1;
     tmp_anchors[0].width = 1;
-    tmp_anchors[0].more_than_once = 0;
 
     tmp_anchors[1].x = lena-1;
     tmp_anchors[1].y = lenb-1-tmp_anchors[0].y;
     tmp_anchors[1].length = 1;
     tmp_anchors[1].width = 1;
-    tmp_anchors[1].more_than_once = 0;
 
-    join_anchors(tmp_anchors, 2, &rectangle);
+    anchor_join(tmp_anchors, 2, &rectangle);
   }
 
   for (j = 0; j < lena + 1; j++) {
@@ -146,7 +144,7 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
      */
     int x_min, x_max;
 
-    get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
+    anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     //if (x_min > 0) {
     init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
     //}
@@ -287,7 +285,7 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
    if (i+1 < lenb) {
       int next_x_min, next_x_max;
 
-      get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
+      anchor_get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
       for (j = x_max + 1; j <= next_x_max; j++) {
 	init_cell((i + 1) * (lena + 1) + (j + 1));
       }
@@ -528,10 +526,10 @@ sw_full_ls_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 void
 sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     int threshscore, int maxscore, struct sw_full_results *sfr, bool revcmpl,
-    struct anchor * anchors, uint anchors_cnt)
+    struct anchor * anchors, int anchors_cnt)
 {
 	struct sw_full_results scratch;
-	uint64_t before;
+	llint before;
 	int i, j, k;
 
 	before = rdtsc();

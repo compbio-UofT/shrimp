@@ -136,7 +136,7 @@ common/sw-gapless.o: common/sw-gapless.c common/sw-gapless.h common/util.h
 common/util.o: common/util.c common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-common/anchors.o: common/anchors.c common/anchors.h
+common/anchors.o: common/anchors.c common/anchors.h common/util.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/bitmap.o: common/bitmap.c common/bitmap.h

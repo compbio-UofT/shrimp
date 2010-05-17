@@ -56,6 +56,8 @@ struct _strbuf_t {
 };
 typedef struct _strbuf_t * strbuf_t;
 
+typedef long long int llint;
+
 void		set_mode_from_argv(char **);
 const char     *get_mode_string(void);
 uint64_t	gettimeinusecs(void);
@@ -220,6 +222,29 @@ hash_genome_window(uint32_t * genome, uint goff, uint glen) {
 
   return key;
 }
+
+/* compute base^power */
+static inline size_t
+power(size_t base, size_t exp)
+{
+  size_t result = 1;
+
+  while (exp > 0) {
+    if ((exp % 2) == 1)
+      result *= base;
+    base *= base;
+    exp /= 2;
+  }
+
+  return result;
+}
+
+/* compute 4^power */
+static inline llint
+power4(int exp) {
+  return (llint)1 << (2 * exp);
+}
+
 
 void
 edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res);

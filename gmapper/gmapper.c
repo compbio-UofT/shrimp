@@ -11,10 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
-#include <omp.h>
-
-#include <xmmintrin.h>	// for _mm_prefetch
-
+#include <omp.h>	// OMP multithreading
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -24,7 +21,6 @@
 #include "../common/util.h"
 #include "../gmapper/gmapper.h"
 #include "../common/version.h"
-
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
 #include "../common/sw-full-ls.h"
@@ -40,9 +36,9 @@ DEF_HEAP(uint, struct read_hit_pair_holder, paired)
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
-static uint	num_matches		= DEF_NUM_MATCHES;
-static uint	num_outputs		= DEF_NUM_OUTPUTS;
-static uint	num_tmp_outputs		= 20 + num_outputs;
+static int	num_matches		= DEF_NUM_MATCHES;
+static int	num_outputs		= DEF_NUM_OUTPUTS;
+static int	num_tmp_outputs		= 20 + num_outputs;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
@@ -66,46 +62,41 @@ static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Flags */
-static int Cflag = false;			/* do complement only */
-static int Fflag = false;			/* do positive (forward) only */
-static int Hflag = false;			/* use hash table, not lookup */
-static int Pflag = false;			/* pretty print results */
-static int Rflag = false;			/* add read sequence to output*/
-static int Tflag = false;			/* reverse sw full tie breaks */
-static int Dflag = false;			/* print statistics for each thread */
-static int Eflag = false;			/* output sam format */
-static int Xflag = false;			/* print insert histogram */
-static int Yflag = false;			/* print genome projection histogram */
-static int Vflag = true;			/* automatic genome index trimming */
+static bool Cflag = false;			/* do complement only */
+static bool Fflag = false;			/* do positive (forward) only */
+static bool Hflag = false;			/* use hash table, not lookup */
+static bool Pflag = false;			/* pretty print results */
+static bool Rflag = false;			/* add read sequence to output*/
+static bool Tflag = false;			/* reverse sw full tie breaks */
+static bool Dflag = false;			/* print statistics for each thread */
+static bool Eflag = false;			/* output sam format */
+static bool Xflag = false;			/* print insert histogram */
+static bool Yflag = false;			/* print genome projection histogram */
+static bool Vflag = true;			/* automatic genome index trimming */
 
 /* Mate Pairs */
 static int	pair_mode		= DEF_PAIR_MODE;
 static int	min_insert_size		= DEF_MIN_INSERT_SIZE;
 static int	max_insert_size		= DEF_MAX_INSERT_SIZE;
-static uint64_t	insert_histogram[100];
+static llint	insert_histogram[100];
 static int	insert_histogram_bucket_size = 1;
 
 /* Statistics */
-static uint64_t nreads;
-
-static uint64_t total_reads_matched;
-static uint64_t total_pairs_matched;
-
-static uint64_t total_single_matches;
-static uint64_t total_paired_matches;
-
-static uint64_t	total_dup_single_matches;			/* number of duplicate hits */
-static uint64_t total_dup_paired_matches;
-
-
-static uint64_t total_work_usecs;
-static uint64_t map_usecs;
+static llint	nreads;
+static llint	total_reads_matched;
+static llint	total_pairs_matched;
+static llint	total_single_matches;
+static llint	total_paired_matches;
+static llint	total_dup_single_matches;			/* number of duplicate hits */
+static llint	total_dup_paired_matches;
+static llint	total_work_usecs;
+static llint	map_usecs;
 
 static count_t mem_genomemap;
 
 /* files to use when saving and loading genome maps */
-char *save_file = NULL;
-char *load_file = NULL;
+char *		save_file = NULL;
+char *		load_file = NULL;
 
 /* Kmer to genome index */
 static uint32_t ***genomemap;
@@ -114,80 +105,65 @@ static uint32_t **genomemap_len;
 /* offset info for genome contigs */
 static uint32_t *contig_offsets;
 static char **contig_names = NULL;
-static uint32_t num_contigs;
+static int	num_contigs;
 
 /* Genomic sequence, stored in 32-bit words, first is in the LSB */
 static uint32_t **genome_contigs;			/* genome -- always in letter */
 static uint32_t **genome_contigs_rc;			/* reverse complemets */
 static uint32_t **genome_cs_contigs;
-static uint32_t  *genome_initbp;
+static int *	genome_initbp;
 static uint32_t	 *genome_len;
 
 static bool      genome_is_rna = false;		/* is genome RNA (has uracil)?*/
 
 /* constants for thread control */
-static uint num_threads = DEF_NUM_THREADS;
-static uint chunk_size = DEF_CHUNK_SIZE;
+static int	num_threads = DEF_NUM_THREADS;
+static int	chunk_size = DEF_CHUNK_SIZE;
 
-static uint64_t scan_ticks[50];
-static uint64_t wait_ticks[50];
+static llint	scan_ticks[50];
+static llint	wait_ticks[50];
+
 
 /* kmer_to_mapidx function */
-static uint32_t (*kmer_to_mapidx)(uint32_t *, u_int) = NULL;
+static uint32_t (*kmer_to_mapidx)(uint32_t *, int) = NULL;
 
 
 /* seed management */
+int			n_seeds = 0;
 struct seed_type *	seed = NULL;
 uint32_t * *		seed_hash_mask = NULL;
-uint			max_seed_span = 0;
-uint			min_seed_span = MAX_SEED_SPAN;
-uint32_t		n_seeds = 0;
-uint			avg_seed_span = 0;
-
-static size_t
-power(size_t base, size_t exp)
-{
-	size_t result = 1;
-
-	while (exp > 0) {
-		if ((exp % 2) == 1)
-			result *= base;
-		base *= base;
-		exp /= 2;
-	}
-
-	return (result);
-}
+int			max_seed_span = 0;
+int			min_seed_span = MAX_SEED_SPAN;
+int			avg_seed_span = 0;
 
 
 /* pulled off the web; this may or may not be any good */
 static uint32_t
 hash(uint32_t a)
 {
-	a = (a+0x7ed55d16) + (a<<12);
-	a = (a^0xc761c23c) ^ (a>>19);
-	a = (a+0x165667b1) + (a<<5);
-	a = (a+0xd3a2646c) ^ (a<<9);
-	a = (a+0xfd7046c5) + (a<<3);
-	a = (a^0xb55a4f09) ^ (a>>16);
-	return (a);
+  a = (a+0x7ed55d16) + (a<<12);
+  a = (a^0xc761c23c) ^ (a>>19);
+  a = (a+0x165667b1) + (a<<5);
+  a = (a+0xd3a2646c) ^ (a<<9);
+  a = (a+0xfd7046c5) + (a<<3);
+  a = (a^0xb55a4f09) ^ (a>>16);
+  return a;
 }
 
 /* hash-based version or kmer -> map index function for larger seeds */
 uint32_t
-kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
+kmer_to_mapidx_hash(uint32_t *kmerWindow, int sn)
 {
-	static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
+  static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
+  uint32_t mapidx = 0;
+  int i;
 
-	uint32_t mapidx = 0;
-	uint i;
+  assert(seed_hash_mask != NULL);
 
-	assert(seed_hash_mask != NULL);
+  for (i = 0; i < BPTO32BW(max_seed_span); i++)
+    mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
 
-	for (i = 0; i < BPTO32BW(max_seed_span); i++)
-		mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
-
-	return mapidx & maxidx;
+  return mapidx & maxidx;
 }
 
 /*
@@ -201,722 +177,481 @@ kmer_to_mapidx_hash(uint32_t *kmerWindow, u_int sn)
  *      This won't affect sensitivity, but may cause extra S-W calls.
  */
 uint32_t
-kmer_to_mapidx_orig(uint32_t *kmerWindow, u_int sn)
+kmer_to_mapidx_orig(uint32_t *kmerWindow, int sn)
 {
-	bitmap_type a = seed[sn].mask[0];
-	uint32_t mapidx = 0;
-	int i = 0;
+  bitmap_type a = seed[sn].mask[0];
+  uint32_t mapidx = 0;
+  int i = 0;
 
-	do {
-		if ((a & 0x1) == 0x1) {
-			mapidx <<= 2;
-			mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
-		}
-		a >>= 1;
-		i++;
+  do {
+    if ((a & 0x1) == 0x1) {
+      mapidx <<= 2;
+      mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
+    }
+    a >>= 1;
+    i++;
+  } while (a != 0x0);
 
-	} while (a != 0x0);
+  assert(mapidx < power(4, seed[sn].weight));
 
-	assert(mapidx < power(4, seed[sn].weight));
-
-	return mapidx;
+  return mapidx;
 }
 
+
+/* Seed management */
 static bool
-add_spaced_seed(const char *seedStr)
+add_spaced_seed(char const * seed_string)
 {
-	uint i;
+  int i;
 
-	seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
-	seed[n_seeds].mask[0] = 0x0;
-	seed[n_seeds].span = strlen(seedStr);
-	seed[n_seeds].weight = strchrcnt(seedStr, '1');
+  seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
+  seed[n_seeds].mask[0] = 0x0;
+  seed[n_seeds].span = strlen(seed_string);
+  seed[n_seeds].weight = strchrcnt(seed_string, '1');
 
-	if (seed[n_seeds].span < 1
-			|| seed[n_seeds].span > MAX_SEED_SPAN
-			|| seed[n_seeds].weight < 1
-			|| strchrcnt(seedStr, '0') != seed[n_seeds].span - seed[n_seeds].weight)
-		return false;
+  if (seed[n_seeds].span < 1
+      || seed[n_seeds].span > MAX_SEED_SPAN
+      || seed[n_seeds].weight < 1
+      || (int)strchrcnt(seed_string, '0') != seed[n_seeds].span - seed[n_seeds].weight)
+    return false;
 
-	for (i = 0; i < seed[n_seeds].span; i++)
-		bitmap_prepend(seed[n_seeds].mask, 1, (seedStr[i] == '1' ? 1 : 0));
+  for (i = 0; i < seed[n_seeds].span; i++)
+    bitmap_prepend(seed[n_seeds].mask, 1, (seed_string[i] == '1' ? 1 : 0));
 
-	if (seed[n_seeds].span > max_seed_span)
-		max_seed_span = seed[n_seeds].span;
+  max_seed_span = MAX(max_seed_span, seed[n_seeds].span);
+  min_seed_span = MIN(min_seed_span, seed[n_seeds].span);
 
-	if (seed[n_seeds].span < min_seed_span)
-		min_seed_span = seed[n_seeds].span;
+  n_seeds++;
 
-	n_seeds++;
+  avg_seed_span = 0;
+  for(i =0; i < n_seeds;i++){
+    avg_seed_span += seed[i].span;
+  }
+  avg_seed_span = avg_seed_span/n_seeds;
 
-	avg_seed_span = 0;
-	for(i =0; i < n_seeds;i++){
-		avg_seed_span += seed[i].span;
-	}
-	avg_seed_span = avg_seed_span/n_seeds;
-
-	return true;
+  return true;
 }
-
 
 static void
 load_default_seeds() {
-	int i;
+  int i;
 
-	n_seeds = 0;
-	switch(shrimp_mode) {
-	case MODE_COLOUR_SPACE:
-		for (i = 0; i < default_spaced_seeds_cs_cnt; i++)
-			add_spaced_seed(default_spaced_seeds_cs[i]);
-		break;
-	case MODE_LETTER_SPACE:
-		for (i = 0; i < default_spaced_seeds_ls_cnt; i++)
-			add_spaced_seed(default_spaced_seeds_ls[i]);
-		break;
-	case MODE_HELICOS_SPACE:
-	  fprintf(stderr, "error: helicos mode not implemented\n");
-	  exit(1);
-	  break;
-	}
+  n_seeds = 0;
+  switch(shrimp_mode) {
+  case MODE_COLOUR_SPACE:
+    for (i = 0; i < default_spaced_seeds_cs_cnt; i++)
+      add_spaced_seed(default_spaced_seeds_cs[i]);
+    break;
+  case MODE_LETTER_SPACE:
+    for (i = 0; i < default_spaced_seeds_ls_cnt; i++)
+      add_spaced_seed(default_spaced_seeds_ls[i]);
+    break;
+  case MODE_HELICOS_SPACE:
+    fprintf(stderr, "error: helicos mode not implemented\n");
+    exit(1);
+    break;
+  }
 }
-
 
 static void
 init_seed_hash_mask(void)
 {
-	uint sn;
-	int i;
+  int i, sn;
 
-	seed_hash_mask = (uint32_t **)xmalloc(sizeof(seed_hash_mask[0])*n_seeds);
-	for (sn = 0; sn < n_seeds; sn++) {
-		seed_hash_mask[sn] = (uint32_t *)xcalloc(sizeof(seed_hash_mask[sn][0])*BPTO32BW(max_seed_span));
+  seed_hash_mask = (uint32_t **)xmalloc(sizeof(seed_hash_mask[0]) * n_seeds);
+  for (sn = 0; sn < n_seeds; sn++) {
+    seed_hash_mask[sn] = (uint32_t *)xcalloc(sizeof(seed_hash_mask[sn][0]) * BPTO32BW(max_seed_span));
 
-		for (i = seed[sn].span - 1; i >= 0; i--)
-			bitfield_prepend(seed_hash_mask[sn], max_seed_span,
-					bitmap_extract(seed[sn].mask, 1, i) == 1? 0xf : 0x0);
-	}
+    for (i = seed[sn].span - 1; i >= 0; i--)
+      bitfield_prepend(seed_hash_mask[sn], max_seed_span,
+		       bitmap_extract(seed[sn].mask, 1, i) == 1? 0xf : 0x0);
+  }
 }
-
 
 static char *
-seed_to_string(uint sn)
+seed_to_string(int sn)
 {
-	static char buffer[100];
-	bitmap_type tmp;
-	int i;
+  static char buffer[100];
+  bitmap_type tmp;
+  int i;
 
-	assert(sn < n_seeds);
+  buffer[seed[sn].span] = 0;
+  for (i = seed[sn].span - 1, tmp = seed[sn].mask[0];
+       i >= 0;
+       i--, tmp >>= 1) {
+    if (bitmap_extract(&tmp, 1, 0) == 1)
+      buffer[i] = '1';
+    else
+      buffer[i] = '0';
+  }
 
-	buffer[seed[sn].span] = 0;
-	for (i = seed[sn].span - 1, tmp = seed[sn].mask[0];
-			i >= 0;
-			i--, tmp >>= 1) {
-		if (bitmap_extract(&tmp, 1, 0) == 1)
-			buffer[i] = '1';
-		else
-			buffer[i] = '0';
-	}
-
-	return buffer;
-}
-
-
-/* If x is negative, return its absolute value; else return base*x% */
-static inline double
-abs_or_pct(double x, double base) {
-	if (IS_ABSOLUTE(x))
-		return -x;
-	else
-		return base * (x / 100.0);
-}
-
-/* get contig number from absolute index */
-static inline void
-get_contig_num(uint idx, uint * cn) {
-	*cn = 0;
-	while (*cn < num_contigs - 1
-			&& idx >= contig_offsets[*cn + 1])
-		(*cn)++;
-
-	assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
-}
-
-/* percolate down in our min-heap */
-static void
-reheap(struct re_score *scores, uint node)
-{
-	struct re_score tmp;
-	uint left, right, max;
-
-	assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
-
-	left  = node * 2;
-	right = left + 1;
-	max   = node;
-
-	if (left <= scores[0].heap_elems &&
-			scores[left].score < scores[node].score)
-		max = left;
-
-	if (right <= scores[0].heap_elems &&
-			scores[right].score < scores[max].score)
-		max = right;
-
-	if (max != node) {
-		tmp = scores[node];
-		scores[node] = scores[max];
-		scores[max] = tmp;
-		reheap(scores, max);
-	}
+  return buffer;
 }
 
 static bool
 valid_spaced_seeds()
 {
-	uint sn;
+  int sn;
 
-	for (sn = 0; sn < n_seeds; sn++) {
-		if (seed[sn].weight > MAX_SEED_WEIGHT && !Hflag)
-			return false;
+  for (sn = 0; sn < n_seeds; sn++) {
+    if (!Hflag && seed[sn].weight > MAX_SEED_WEIGHT)
+      return false;
 
-		if (Hflag && (seed[sn].span > MAX_HASH_SEED_SPAN ||
-				seed[sn].weight > MAX_HASH_SEED_WEIGHT))
-			return false;
-	}
+    if (Hflag && (seed[sn].span > MAX_HASH_SEED_SPAN ||
+		  seed[sn].weight > MAX_HASH_SEED_WEIGHT))
+      return false;
+  }
 
-	return true;
+  return true;
 }
 
 
-/* percolate up in our min-heap */
-static void
-percolate_up(struct re_score *scores, uint node)
-{
-	struct re_score tmp;
-	int parent;
+/* get contig number from absolute index */
+static inline void
+get_contig_num(uint32_t idx, int * cn) {
+  *cn = 0;
+  while (*cn < num_contigs - 1
+	 && idx >= contig_offsets[*cn + 1])
+    (*cn)++;
 
-	assert(node >= 1 && node <= (uint)scores[0].heap_capacity);
-
-	if (node == 1)
-		return;
-
-	parent = node / 2;
-
-	if (scores[parent].score > scores[node].score) {
-		tmp = scores[node];
-		scores[node] = scores[parent];
-		scores[parent] = tmp;
-		percolate_up(scores, parent);
-	}
+  assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
 
 
 /*
-static int
-score_cmp(const void *arg1, const void *arg2)
-{
-	const struct re_score *one = (const struct re_score *)arg1;
-	const struct re_score *two = (const struct re_score *)arg2;
+ * Loading and saving the genome projection.
+ */
 
-	//assert(one->revcmpl == two->revcmpl);
+static bool save_genome_map_seed(const char *file, int sn) {
+  gzFile fp = gzopen(file, "wb");
+  if (fp == NULL){
+    return false;
+  }
 
-	if (one->score > two->score)
-		return (-1);
-	if (one->score < two->score)
-		return (1);
+  // shrimp_mode
+  uint32_t m;
+  m = (uint32_t)shrimp_mode;
+  xgzwrite(fp, &m, sizeof(uint32_t));
 
-	if (one->sfrp->genome_start > two->sfrp->genome_start)
-		return (1);
-	if (one->sfrp->genome_start < two->sfrp->genome_start)
-		return (-1);
+  // Hflag
+  uint32_t h = (uint32_t)Hflag;
+  xgzwrite(fp, &h, sizeof(uint32_t));
 
-	if (one->sfrp->matches > two->sfrp->matches)
-		return (-1);
-	if (one->sfrp->matches < two->sfrp->matches)
-		return (1);
+  // Seed
+  xgzwrite(fp, &seed[sn], sizeof(seed_type));
 
-	return (0);
-}
-*/
+  // genomemap_len
+  uint32_t capacity;
+  if (Hflag) {
+    capacity = (uint32_t)power4(HASH_TABLE_POWER);
+  } else {
+    capacity = (uint32_t)power4(seed[sn].weight);
+  }
+  xgzwrite(fp, genomemap_len[sn], sizeof(genomemap_len[0][0]) * capacity);
 
-void print_info(){
-	fprintf(stderr,"num_contigs = %u\n",num_contigs);
-	uint i;
-	for (i = 0; i < num_contigs; i++){
-		fprintf(stderr,"contig %u: name=%s offset = %u\n",i,contig_names[i],contig_offsets[i]);
-	}
-	fprintf(stderr,"n_seeds = %u\n",n_seeds);
-	for (i=0; i < n_seeds;i++){
-		fprintf(stderr,"seed %u: %s\n",i,seed_to_string(i));
-	}
-#ifdef DEBUGGING
-	for(i=0; i < n_seeds;i++){
-		fprintf(stderr,"map for seed %u\n",i);
-		uint j;
-		for(j = 0; j< power(4, seed[i].weight);j++){
-			//fprintf(stderr,"%u\n",genomemap_len[i][j]);
-			if(genomemap_len[i][j] != 0){
-				fprintf(stderr,"entry at %u\n",j);
-				uint k;
-				for(k=0;k<genomemap_len[i][j];k++){
-					fprintf(stderr,"%u, ",genomemap[i][j][k]);
-				}
-				fprintf(stderr,"\n");
-			}
+  // total
+  uint32_t total = 0;
+  uint32_t j;
+  for (j = 0; j < capacity; j++){
+    total += genomemap_len[sn][j];
+  }
+  xgzwrite(fp, &total, sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
 
-		}
-	}
-#endif
+  // genome_map
+  // TODO if memory usage to high change this
+  /*
+    uint32_t *map,*ptr;
+    map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+    ptr = map;
+    for (i = 0;i<capacity;i++){
+    memcpy(ptr,genomemap[sn][i],sizeof(uint32_t)*genomemap_len[sn][i]);
+    ptr += genomemap_len[sn][i];
+    }
+    xgzwrite(fp,map,sizeof(uint32_t)*total);
+    free(map);
+  */
 
-}
+  for (j = 0; j < capacity; j++) {
+    xgzwrite(fp, (void *)genomemap[sn][j], sizeof(genomemap[0][0][0]) * genomemap_len[sn][j]);
+  }
 
-
-#ifdef DEBUGGING
-static void print_everything(){
-	uint sn;
-	fprintf(stderr,"----------------------------------------\n");
-	fprintf(stderr,"%s\n",get_mode_string());
-	for (sn = 0; sn < n_seeds; sn++){
-		fprintf(stderr,"seed %u: %s (%u/%u)\n",sn,seed_to_string(sn),seed[sn].weight,seed[sn].span);
-		uint capacity;
-		if(Hflag){
-			capacity = power(4, HASH_TABLE_POWER);
-		} else {
-			capacity = power(4, seed[sn].weight);
-		}
-		uint mapidx;
-		for(mapidx = 0; mapidx < capacity; mapidx ++){
-			fprintf(stderr,"genomemap_len[%u][%u] = %u\n",sn,mapidx,genomemap_len[sn][mapidx]);
-			uint j;
-			for(j = 0; j < genomemap_len[sn][mapidx]; j++){
-				fprintf(stderr,"%u ",genomemap[sn][mapidx][j]);
-			}
-			fprintf(stderr,"\n");
-		}
-	}
-	fprintf(stderr,"----------------------------------------\n");
-	fprintf(stderr,"is rna? %s\n",genome_is_rna ? "yes":"no");
-	uint c;
-	for(c = 0; c < num_contigs; c++){
-		fprintf(stderr,"%s\n",contig_names[c]);
-		fprintf(stderr,"offset = %u, len = %u\n",contig_offsets[c],genome_len[c]);
-		uint j;
-		for(j = 0; j < genome_len[c];j++){
-			fprintf(stderr,"%c",base_translate(EXTRACT(genome_contigs[c],j),false));
-		}
-		fprintf(stderr,"\n");
-		for(j = 0; j < genome_len[c];j++){
-			fprintf(stderr,"%c",base_translate(EXTRACT(genome_contigs_rc[c],j),false));
-		}
-		fprintf(stderr,"\n");
-	}
-	fprintf(stderr,"----------------------------------------\n");
-}
-#endif
-
-
-static bool save_genome_map_seed(const char *file,uint sn){
-	uint32_t total = 0;
-	uint32_t i;
-
-	gzFile fp = gzopen(file, "wb");
-	if (fp == NULL){
-		return false;
-	}
-	// shrimp_mode
-	uint32_t m;
-	m = (uint32_t)(shrimp_mode);
-	xgzwrite(fp,&m,sizeof(uint32_t));
-	// Hflag
-	uint32_t h = (uint32_t)Hflag;
-	xgzwrite(fp,&h,sizeof(uint32_t));
-	// Seed
-	xgzwrite(fp,&seed[sn], sizeof(seed_type));
-	// genomemap_len
-	size_t capacity;
-	if(Hflag){
-		capacity = power(4, HASH_TABLE_POWER);
-	} else {
-		capacity = power(4, seed[sn].weight);
-	}
-	xgzwrite(fp,genomemap_len[sn],sizeof(uint32_t) * capacity);
-
-	//total
-	for (i = 0; i < capacity;i++){
-		total += genomemap_len[sn][i];
-	}
-	xgzwrite(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
-
-	// genome_map
-	// TODO if memory usage to high change this
-	/*
-	uint32_t *map,*ptr;
-	map = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-	ptr = map;
-	for (i = 0;i<capacity;i++){
-		memcpy(ptr,genomemap[sn][i],sizeof(uint32_t)*genomemap_len[sn][i]);
-		ptr += genomemap_len[sn][i];
-	}
-	xgzwrite(fp,map,sizeof(uint32_t)*total);
-	free(map);
-	*/
-
-	for (i = 0; i < capacity; i++) {
-	  xgzwrite(fp, (void *)genomemap[sn][i], genomemap_len[sn][i] * sizeof(uint32_t));
-	}
-
-	gzclose(fp);
-	return true;
+  gzclose(fp);
+  return true;
 }
 
 static bool load_genome_map_seed(const char *file){
-	uint32_t i;
-	uint32_t total;
+  int i;
+  uint32_t j;
+  uint32_t total;
 
-	gzFile fp = gzopen(file, "rb");
-	if (fp == NULL){
-		fprintf(stderr,"Could not open file [%s]\n",file);
-		return false;
-	}
+  gzFile fp = gzopen(file, "rb");
+  if (fp == NULL){
+    fprintf(stderr,"Could not open file [%s]\n",file);
+    return false;
+  }
 
-	// shrimp_mode
-	uint32_t m;
-	xgzread(fp,&m,sizeof(uint32_t));
-	if(m != (uint32_t)shrimp_mode){
-		fprintf(stderr,"Shrimp mode in file %s does not match\n",file);
-	}
-	// Hflag
-	uint32_t h;
-	xgzread(fp,&h,sizeof(uint32_t));
-	if (h != (uint32_t)Hflag){
-		fprintf(stderr,"Hash settings do not match in file %s\n",file);
-	}
-	// Seed
-	uint sn = n_seeds;
-	n_seeds++;
-	seed = (seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
-	genomemap_len = (uint32_t **)xrealloc_c(genomemap_len,
-						sizeof(uint32_t *)*n_seeds,
-						sizeof(uint32_t *)*(n_seeds - 1),
-						&mem_genomemap);
-	genomemap = (uint32_t ***)xrealloc_c(genomemap,
-					     sizeof(uint32_t **)*n_seeds,
-					     sizeof(uint32_t **)*(n_seeds - 1),
-					     &mem_genomemap);
-	xgzread(fp,seed + sn,sizeof(seed_type));
+  // shrimp_mode
+  uint32_t m;
+  xgzread(fp, &m, sizeof(uint32_t));
+  if(m != (uint32_t)shrimp_mode) {
+    fprintf(stderr,"Shrimp mode in file %s does not match\n",file);
+  }
 
-	if (seed[sn].span > max_seed_span)
-		max_seed_span = seed[sn].span;
+  // Hflag
+  uint32_t h;
+  xgzread(fp, &h, sizeof(uint32_t));
+  if (h != (uint32_t)Hflag){
+    fprintf(stderr,"Hash settings do not match in file %s\n",file);
+  }
 
-	if (seed[sn].span < min_seed_span)
-		min_seed_span = seed[sn].span;
+  // Seed
+  int sn = n_seeds;
+  n_seeds++;
+  seed = (seed_type *)xrealloc(seed, sizeof(seed_type) * n_seeds);
+  genomemap_len = (uint32_t **)xrealloc_c(genomemap_len,
+					  sizeof(genomemap_len[0]) * n_seeds,
+					  sizeof(genomemap_len[0]) * (n_seeds - 1),
+					  &mem_genomemap);
+  genomemap = (uint32_t ***)xrealloc_c(genomemap,
+				       sizeof(genomemap[0]) * n_seeds,
+				       sizeof(genomemap[0]) * (n_seeds - 1),
+				       &mem_genomemap);
+  xgzread(fp,seed + sn,sizeof(seed_type));
 
-	avg_seed_span = 0;
-	for(i =0; i < n_seeds;i++){
-		avg_seed_span += seed[i].span;
-	}
-	avg_seed_span = avg_seed_span/n_seeds;
+  max_seed_span = MAX(max_seed_span, seed[sn].span);
+  min_seed_span = MIN(min_seed_span, seed[sn].span);
 
-	// genomemap_len
-	size_t capacity;
-	if(Hflag){
-		capacity = power(4, HASH_TABLE_POWER);
-	} else {
-		capacity = power(4, seed[sn].weight);
-	}
-	genomemap_len[sn] = (uint32_t*)xmalloc_c(sizeof(uint32_t)*capacity, &mem_genomemap);
-	genomemap[sn] = (uint32_t **)xmalloc_c(sizeof(uint32_t *)*capacity, &mem_genomemap);
-	xgzread(fp,genomemap_len[sn],sizeof(uint32_t) * capacity);
+  avg_seed_span = 0;
+  for(i = 0; i < n_seeds; i++) {
+    avg_seed_span += seed[i].span;
+  }
+  avg_seed_span = avg_seed_span/n_seeds;
 
-	// total
-	xgzread(fp,&total,sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
-	// genome_map
-	uint32_t * map;
-	map = (uint32_t *)xmalloc_c(sizeof(uint32_t)*total, &mem_genomemap);
-	gzread(fp,map,sizeof(uint32_t)*total);
-	uint32_t * ptr;
-	ptr = map;
+  // genomemap_len
+  uint32_t capacity;
+  if(Hflag) {
+    capacity = (uint32_t)power4(HASH_TABLE_POWER);
+  } else {
+    capacity = (uint32_t)power4(seed[sn].weight);
+  }
+  genomemap_len[sn] = (uint32_t *)xmalloc_c(sizeof(genomemap_len[0][0]) * capacity, &mem_genomemap);
+  genomemap[sn] = (uint32_t **)xmalloc_c(sizeof(genomemap[0][0]) * capacity, &mem_genomemap);
+  xgzread(fp, genomemap_len[sn], sizeof(uint32_t) * capacity);
 
-	for (i = 0; i < capacity;i++){
-		genomemap[sn][i] = ptr;
-		ptr += genomemap_len[sn][i];
-	}
+  // total
+  xgzread(fp, &total, sizeof(uint32_t)); //TODO do not need to write this but makes things simpler
 
-	gzclose(fp);
-	return true;
+  // genome_map
+  uint32_t * map;
+  map = (uint32_t *)xmalloc_c(sizeof(uint32_t) * total, &mem_genomemap);
+  gzread(fp,map,sizeof(uint32_t) * total);
+  uint32_t * ptr;
+  ptr = map;
+
+  for (j = 0; j < capacity; j++) {
+    genomemap[sn][j] = ptr;
+    ptr += genomemap_len[sn][j];
+  }
+
+  gzclose(fp);
+  return true;
 }
 
 static bool save_genome_map(const char *prefix) {
-	char *name;
-	name = (char *)xmalloc(strlen(prefix)+n_seeds+10);
-	uint sn;
-	for(sn = 0;sn < n_seeds;sn++){
-		sprintf(name,"%s.seed.%u",prefix,sn);
-		save_genome_map_seed(name,sn);
-	}
+  char * name;
+  name = (char *)xmalloc(strlen(prefix) + n_seeds + 10);
 
-	sprintf(name,"%s.genome",prefix);
-	gzFile fp = gzopen(name, "wb");
-	if (fp == NULL){
-		return false;
-	}
+  int sn;
+  for(sn = 0; sn < n_seeds; sn++) {
+    sprintf(name,"%s.seed.%d", prefix, sn);
+    save_genome_map_seed(name, sn);
+  }
 
-	//shrimp mode
-	uint32_t m;
-	m = (uint32_t)(shrimp_mode);
-	xgzwrite(fp,&m,sizeof(uint32_t));
+  sprintf(name, "%s.genome", prefix);
+  gzFile fp = gzopen(name, "wb");
+  if (fp == NULL){
+    return false;
+  }
 
-	//Hflag
-	uint32_t h = (uint32_t)Hflag;
-	xgzwrite(fp,&h,sizeof(uint32_t));
+  //shrimp mode
+  uint32_t m;
+  m = (uint32_t)(shrimp_mode);
+  xgzwrite(fp,&m,sizeof(uint32_t));
 
-	// num contigs
-	xgzwrite(fp,&num_contigs,sizeof(uint32_t));
+  //Hflag
+  uint32_t h = (uint32_t)Hflag;
+  xgzwrite(fp,&h,sizeof(uint32_t));
 
-	// genome_len
-	xgzwrite(fp,genome_len,sizeof(uint32_t)*num_contigs);
+  // num contigs
+  xgzwrite(fp,&num_contigs,sizeof(uint32_t));
 
-	// contig_offsets
-	xgzwrite(fp,contig_offsets,sizeof(uint32_t)*num_contigs);
+  // genome_len
+  xgzwrite(fp,genome_len,sizeof(uint32_t)*num_contigs);
 
-	//names / total
+  // contig_offsets
+  xgzwrite(fp,contig_offsets,sizeof(uint32_t)*num_contigs);
 
-	uint i;
-	uint32_t total = 0;
-	for(i = 0; i < num_contigs; i++){
-		uint32_t len = (uint32_t)strlen(contig_names[i]);
-		xgzwrite(fp,&len,sizeof(uint32_t));
-		xgzwrite(fp,contig_names[i],len +1);
-		total += BPTO32BW(genome_len[i]);
-	}
+  //names / total
+  int i;
+  uint32_t total = 0;
+  for(i = 0; i < num_contigs; i++){
+    uint32_t len = (uint32_t)strlen(contig_names[i]);
+    xgzwrite(fp, &len, sizeof(uint32_t));
+    xgzwrite(fp, contig_names[i], len + 1);
+    total += BPTO32BW(genome_len[i]);
+  }
+  xgzwrite(fp,&total,sizeof(uint32_t));
 
-	xgzwrite(fp,&total,sizeof(uint32_t));
+  //genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
+  /*
+    uint32_t *gen, *gen_rc, *gen_cs = NULL, *ptr1, *ptr2, *ptr3 = NULL;
+    gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+    ptr1 = gen;
+    gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+    ptr2 = gen_rc;
+    if(shrimp_mode == MODE_COLOUR_SPACE){
+    gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
+    ptr3 = gen_cs;
+    }
 
-	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
-	/*
-	uint32_t *gen, *gen_rc, *gen_cs = NULL, *ptr1, *ptr2, *ptr3 = NULL;
-	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-	ptr1 = gen;
-	gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-	ptr2 = gen_rc;
-	if(shrimp_mode == MODE_COLOUR_SPACE){
-		gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-		ptr3 = gen_cs;
-	}
+    for(i = 0; i < num_contigs; i++){
+    memcpy(ptr1,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+    ptr1 += BPTO32BW(genome_len[i]);
+    memcpy(ptr2,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+    ptr2 += BPTO32BW(genome_len[i]);
+    if (shrimp_mode == MODE_COLOUR_SPACE){
+    memcpy(ptr3,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
+    ptr3 += BPTO32BW(genome_len[i]);
+    }
+    }
 
-	for(i = 0; i < num_contigs; i++){
-		memcpy(ptr1,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		ptr1 += BPTO32BW(genome_len[i]);
-		memcpy(ptr2,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-		ptr2 += BPTO32BW(genome_len[i]);
-		if (shrimp_mode == MODE_COLOUR_SPACE){
-			memcpy(ptr3,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-			ptr3 += BPTO32BW(genome_len[i]);
-		}
-	}
+    xgzwrite(fp,gen,sizeof(uint32_t)*total);
+    xgzwrite(fp,gen_rc,sizeof(uint32_t)*total);
+    if(shrimp_mode == MODE_COLOUR_SPACE){
+    xgzwrite(fp,gen_cs,sizeof(uint32_t)*total);
+    xgzwrite(fp,genome_initbp,sizeof(uint32_t)*num_contigs);
+    free(gen_cs);
+    }
+    free(gen);
+    free(gen_rc);
+  */
 
-	xgzwrite(fp,gen,sizeof(uint32_t)*total);
-	xgzwrite(fp,gen_rc,sizeof(uint32_t)*total);
-	if(shrimp_mode == MODE_COLOUR_SPACE){
-		xgzwrite(fp,gen_cs,sizeof(uint32_t)*total);
-		xgzwrite(fp,genome_initbp,sizeof(uint32_t)*num_contigs);
-		free(gen_cs);
-	}
-	free(gen);
-	free(gen_rc);
-	*/
+  for (i = 0; i < num_contigs; i++) {
+    xgzwrite(fp, (void *)genome_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+  }
+  for (i = 0; i < num_contigs; i++) {
+    xgzwrite(fp, (void *)genome_contigs_rc[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+  }
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    for (i = 0; i < num_contigs; i++) {
+      xgzwrite(fp, (void *)genome_cs_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
+    }
+    xgzwrite(fp, (void *)genome_initbp, num_contigs * sizeof(uint32_t));
+  }
 
-	for (i = 0; i < num_contigs; i++) {
-	  xgzwrite(fp, (void *)genome_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
-	}
-	for (i = 0; i < num_contigs; i++) {
-	  xgzwrite(fp, (void *)genome_contigs_rc[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
-	}
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-	  for (i = 0; i < num_contigs; i++) {
-	    xgzwrite(fp, (void *)genome_cs_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
-	  }
-	  xgzwrite(fp, (void *)genome_initbp, num_contigs * sizeof(uint32_t));
-	}
-
-	gzclose(fp);
-	return true;
+  gzclose(fp);
+  return true;
 }
 
 
 static bool load_genome_map(const char *file){
-	gzFile fp = gzopen(file,"rb");
-	if (fp == NULL){
-		return false;
-	}
+  int i;
 
-	//shrimp mode
-	uint32_t m;
-	xgzread(fp,&m,sizeof(uint32_t));
-	if (shrimp_mode != (shrimp_mode_t)m) {
-	  fprintf(stderr, "error: shrimp mode does not match genome file (%s)\n", file);
-	  exit(1);
-	}
+  gzFile fp = gzopen(file, "rb");
+  if (fp == NULL){
+    return false;
+  }
 
-	//Hflag
-	uint32_t h;
-	xgzread(fp,&h,sizeof(uint32_t));
-	Hflag = h;
+  //shrimp mode
+  uint32_t m;
+  xgzread(fp, &m, sizeof(uint32_t));
+  if (shrimp_mode != (shrimp_mode_t)m) {
+    fprintf(stderr, "error: shrimp mode does not match genome file (%s)\n", file);
+    exit(1);
+  }
 
-	// num_contigs
-	xgzread(fp,&num_contigs,sizeof(uint32_t));
+  //Hflag
+  uint32_t h;
+  xgzread(fp, &h, sizeof(uint32_t));
+  Hflag = h;
 
-	genome_len = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
-	contig_offsets = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
-	contig_names = (char **)xmalloc(sizeof(char *)*num_contigs);
+  // num_contigs
+  xgzread(fp, &num_contigs, sizeof(uint32_t));
 
-	genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
-	genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
-	if(shrimp_mode == MODE_COLOUR_SPACE){
-		genome_cs_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *)*num_contigs);
-		genome_initbp = (uint32_t *)xmalloc(sizeof(uint32_t)*num_contigs);
-	}
+  genome_len = (uint32_t *)xmalloc(sizeof(uint32_t) * num_contigs);
+  contig_offsets = (uint32_t *)xmalloc(sizeof(uint32_t) * num_contigs);
+  contig_names = (char **)xmalloc(sizeof(char *) * num_contigs);
 
-	//genome_len
-	xgzread(fp,genome_len,sizeof(uint32_t)*num_contigs);
-	uint i;
+  genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *) * num_contigs);
+  genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t *) * num_contigs);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    genome_cs_contigs = (uint32_t **)xmalloc(sizeof(genome_cs_contigs[0]) * num_contigs);
+    genome_initbp = (int *)xmalloc(sizeof(genome_initbp[0]) * num_contigs);
+  }
 
-	// contig_offfsets
-	xgzread(fp,contig_offsets,sizeof(uint32_t)*num_contigs);
+  //genome_len
+  xgzread(fp, genome_len, sizeof(uint32_t) * num_contigs);
 
-	// names / total
+  // contig_offfsets
+  xgzread(fp, contig_offsets, sizeof(uint32_t) * num_contigs);
 
-	for(i = 0; i < num_contigs; i++){
-		uint32_t len;
-		xgzread(fp,&len,sizeof(uint32_t));
+  // names / total
+  for (i = 0; i < num_contigs; i++) {
+    uint32_t len;
+    xgzread(fp, &len,sizeof(uint32_t));
+    contig_names[i] = (char *)xmalloc(sizeof(char) * (len + 1));
+    xgzread(fp, contig_names[i], len + 1);
+  }
 
-		contig_names[i] = (char *)xmalloc(sizeof(char)*(len+1));
-		xgzread(fp,contig_names[i],len+1);
-	}
+  uint32_t total;
+  xgzread(fp, &total, sizeof(uint32_t));
 
-	uint32_t total;
-	xgzread(fp,&total,sizeof(uint32_t));
+  //genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
+  uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3 = NULL;
+  gen = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
+  xgzread(fp, gen, sizeof(uint32_t) * total);
+  ptr1 = gen;
+  gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
+  xgzread(fp, gen_rc, sizeof(uint32_t) * total);
+  ptr2 = gen_rc;
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
+    xgzread(fp, gen_cs, sizeof(uint32_t) * total);
+    ptr3 = gen_cs;
+    xgzread(fp, genome_initbp, sizeof(uint32_t) * num_contigs);
+  }
+  for (i = 0; i < num_contigs; i++) {
+    genome_contigs[i] = ptr1;
+    ptr1 += BPTO32BW(genome_len[i]);
+    genome_contigs_rc[i] = ptr2;
+    ptr2 += BPTO32BW(genome_len[i]);
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      genome_cs_contigs[i] = ptr3;
+      ptr3 += BPTO32BW(genome_len[i]);
+    }
+  }
 
-	//genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
-	uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3 = NULL;
-	gen = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-	xgzread(fp,gen,sizeof(uint32_t)*total);
-	ptr1 = gen;
-	gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-	xgzread(fp,gen_rc,sizeof(uint32_t)*total);
-	ptr2 = gen_rc;
-	if(shrimp_mode == MODE_COLOUR_SPACE){
-		gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t)*total);
-		xgzread(fp,gen_cs,sizeof(uint32_t)*total);
-		ptr3 = gen_cs;
-		xgzread(fp,genome_initbp,sizeof(uint32_t)*num_contigs);
-	}
-	for(i = 0; i < num_contigs; i++){
-		genome_contigs[i] = ptr1;
-		ptr1 += BPTO32BW(genome_len[i]);
-		genome_contigs_rc[i] = ptr2;
-		ptr2 += BPTO32BW(genome_len[i]);
-		if(shrimp_mode == MODE_COLOUR_SPACE){
-			genome_cs_contigs[i] = ptr3;
-			ptr3 += BPTO32BW(genome_len[i]);
-		}
-	}
-	gzclose(fp);
-	return true;
-	//	gzFile fp = gzopen(file,"rb");
-	//	if (fp == NULL){
-	//		return false;
-	//	}
-	//
-	//	uint32_t i;
-	//	gzread(fp,&shrimp_mode,sizeof(shrimp_mode_t)); //TODO make sure no conflict
-	//	uint32_t f;
-	//	gzread(fp,&f,sizeof(uint32_t));
-	//	Hflag = f;
-	//	gzread(fp,&num_contigs,sizeof(uint32_t));
-	//	//fprintf(stderr,"num_contigs = %u\n",num_contigs);
-	//
-	//	contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
-	//	contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
-	//
-	//	genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
-	//	genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
-	//	genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
-	//	if(shrimp_mode == MODE_COLOUR_SPACE){
-	//		genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
-	//		genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t)*num_contigs);
-	//	}
-	//
-	//	for (i = 0; i < num_contigs; i++){
-	//		gzread(fp,&contig_offsets[i],sizeof(uint32_t));
-	//
-	//		uint32_t len;
-	//		gzread(fp,&len,sizeof(uint32_t));
-	//		contig_names[i] = (char *)xrealloc(contig_names[i],sizeof(char)*len);
-	//		gzread(fp,contig_names[i],len+1);
-	//
-	//		gzread(fp,genome_len + i,sizeof(uint32_t));
-	//
-	//		genome_contigs[i] = (uint32_t *)xrealloc(genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//		gzread(fp,genome_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//
-	//		genome_contigs_rc[i] = (uint32_t *)xrealloc(genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//		gzread(fp,genome_contigs_rc[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//
-	//		if(shrimp_mode == MODE_COLOUR_SPACE){
-	//			genome_cs_contigs[i] = (uint32_t *)xrealloc(genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//			gzread(fp,genome_cs_contigs[i],sizeof(uint32_t)*BPTO32BW(genome_len[i]));
-	//			gzread(fp,genome_initbp+i,sizeof(uint32_t));
-	//		}
-	//	}
-	//	gzread(fp,&n_seeds,sizeof(uint32_t));
-	//	//fprintf(stderr,"n_seeds = %u\n",n_seeds);
-	//	seed =(seed_type *)xrealloc(seed,sizeof(seed_type)*n_seeds);
-	//	genomemap_len = (uint32_t **)xrealloc(genomemap_len,sizeof(uint32_t *)*n_seeds);
-	//	genomemap = (uint32_t ***)xrealloc(genomemap,sizeof(uint32_t **) * n_seeds);
-	//	for (i = 0; i < n_seeds; i++){
-	//		gzread(fp,&seed[i], sizeof(seed_type));
-	//		//fprintf(stderr,"seed %u: span=%u\n",i,seed[i].span);
-	//		uint32_t j;
-	//		size_t capacity;
-	//		if(Hflag){
-	//			capacity = sizeof(uint32_t *) * power(4, HASH_TABLE_POWER);
-	//		} else {
-	//			capacity = power(4, seed[i].weight);
-	//		}
-	//		gzread(fp,&capacity,sizeof(size_t));
-	//		genomemap_len[i] = (uint32_t *)xrealloc(genomemap_len[i],sizeof(uint32_t)*capacity);
-	//		genomemap[i] = (uint32_t **)xrealloc(genomemap[i],sizeof(uint32_t *)*capacity);
-	//		for (j = 0; j < capacity; j++){
-	//			gzread(fp,&genomemap_len[i][j],sizeof(uint32_t));
-	//			genomemap[i][j] = (uint32_t *)xrealloc(genomemap[i][j],
-	//					sizeof(uint32_t)*genomemap_len[i][j]);
-	//			gzread(fp,genomemap[i][j],sizeof(uint32_t) * genomemap_len[i][j]);
-	//		}
-	//	}
-	//	gzclose(fp);
-	//	return true;
+  gzclose(fp);
+  return true;
 }
 
 
+/*
+ * Mapping routines
+ */
 static void
-read_get_mapidxs_per_strand(struct read_entry * re, uint st) {
-  uint sn, i, load, base, r_idx;
-  uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+read_get_mapidxs_per_strand(struct read_entry * re, int st) {
+  int i, sn, load, base, r_idx;
+  uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0]) * BPTO32BW(max_seed_span));
 
   re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
-  if (re->has_Ns) {
-    re->mapidx_pos[st] = (bool *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx_pos[0][0]));
-  }
 
-  for (load = 0, i = 0; i < re->read_len; i++) {
+  load = 0;
+  for (i = 0; i < re->read_len; i++) {
     base = EXTRACT(re->read[st], i);
     bitfield_prepend(kmerWindow, max_seed_span, base);
 
-    //skip past any Ns or Xs
-    if (re->has_Ns && (base == BASE_N || base == BASE_X))
-      load = 0;
-    else if (load < max_seed_span)
+    if (load < max_seed_span)
       load++;
 
     for (sn = 0; sn < n_seeds; sn++) {
@@ -924,15 +659,7 @@ read_get_mapidxs_per_strand(struct read_entry * re, uint st) {
 	continue;
 
       r_idx = i - seed[sn].span + 1;
-      if (re->has_Ns && load < seed[sn].span) {
-	re->mapidx_pos[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = false;
-	continue;
-      }
-
       re->mapidx[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = kmer_to_mapidx(kmerWindow, sn);
-      if (re->has_Ns) {
-	re->mapidx_pos[st][sn*re->max_n_kmers + (r_idx - re->min_kmer_pos)] = true;
-      }
     }
   }
 
@@ -951,21 +678,9 @@ read_get_mapidxs(struct read_entry * re) {
 
 
 static int
-uw_anchor_cmp(void const * p1, void const * p2)
+bin_search(uint32_t * array, int l, int r, uint32_t value)
 {
-  if (((struct uw_anchor *)p1)->x < ((struct uw_anchor *)p2)->x)
-    return -1;
-  else if (((struct uw_anchor *)p1)->x > ((struct uw_anchor *)p2)->x)
-    return 1;
-  else
-    return 0;
-}
-
-
-static uint
-bin_search(uint32_t * array, uint l, uint r, uint32_t value)
-{
-  uint m;
+  int m;
   while (l + 1 < r) {
     m = (l + r - 1)/2;
     if (array[m] < value)
@@ -981,10 +696,10 @@ bin_search(uint32_t * array, uint l, uint r, uint32_t value)
 
 
 static void
-read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) {
-  uint i, j, k, sn, offset;
-  uint g_start, g_end;
-  uint idx_start, idx_end;
+read_get_restricted_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
+  int i, j, offset, sn;
+  llint g_start, g_end;
+  int idx_start, idx_end, k;
   uint32_t mapidx;
   int anchor_cache[re->read_len];
   uint diag;
@@ -1001,23 +716,23 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool
     if (re->ranges[j].st != st)
       continue;
 
-    g_start = contig_offsets[re->ranges[j].cn] + re->ranges[j].g_start;
-    g_end = contig_offsets[re->ranges[j].cn] + re->ranges[j].g_end;
+    g_start = (llint)contig_offsets[re->ranges[j].cn] + re->ranges[j].g_start;
+    g_end = (llint)contig_offsets[re->ranges[j].cn] + re->ranges[j].g_end;
 
     for (sn = 0; sn < n_seeds; sn++) {
       for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
 	offset = sn*re->max_n_kmers + i;
 	mapidx = re->mapidx[st][offset];
 
-	idx_start = bin_search(genomemap[sn][mapidx], 0, genomemap_len[sn][mapidx], g_start);
-	idx_end = bin_search(genomemap[sn][mapidx], idx_start, genomemap_len[sn][mapidx], g_end + 1);
+	idx_start = bin_search(genomemap[sn][mapidx], 0, (int)genomemap_len[sn][mapidx], g_start);
+	idx_end = bin_search(genomemap[sn][mapidx], idx_start, (int)genomemap_len[sn][mapidx], g_end + 1);
 
 	if (idx_start >= idx_end)
 	  continue;
 
-	re->anchors[st] = (struct uw_anchor *)xrealloc(re->anchors[st],
-						       (re->n_anchors[st] + (idx_end - idx_start))
-						       * sizeof(re->anchors[0][0]));
+	re->anchors[st] = (struct anchor *)xrealloc(re->anchors[st],
+						    sizeof(re->anchors[0][0])
+						    * (re->n_anchors[st] + (idx_end - idx_start)));
 	for (k = 0; idx_start + k < idx_end; k++) {
 	  re->anchors[st][re->n_anchors[st] + k].cn = re->ranges[j].cn;
 	  re->anchors[st][re->n_anchors[st] + k].x =
@@ -1026,12 +741,12 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool
 	  re->anchors[st][re->n_anchors[st] + k].length = seed[sn].span;
 	  re->anchors[st][re->n_anchors[st] + k].weight = 1;
 	}
-	re->n_anchors[st] += idx_end - idx_start;
+	re->n_anchors[st] += (int)(idx_end - idx_start);
       }
     }
   }
 
-  qsort(re->anchors[st], re->n_anchors[st], sizeof(re->anchors[0][0]), uw_anchor_cmp);
+  qsort(re->anchors[st], re->n_anchors[st], sizeof(re->anchors[0][0]), anchor_uw_cmp);
 
   if (collapse) {
     for (i = 0; i < re->read_len; i++)
@@ -1043,8 +758,8 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool
       l = anchor_cache[diag];
       if (l >= 0
 	  && re->anchors[st][l].cn == re->anchors[st][k].cn
-	  && uw_anchors_intersect(&re->anchors[st][l], &re->anchors[st][k])) {
-	uw_anchors_join(&re->anchors[st][l], &re->anchors[st][k]);
+	  && anchor_uw_intersect(&re->anchors[st][l], &re->anchors[st][k])) {
+	anchor_uw_join(&re->anchors[st][l], &re->anchors[st][k]);
       } else {
 	anchor_cache[diag] = k;
 	k++;
@@ -1056,9 +771,10 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, uint st, bool
 
 
 static void
-read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) {
+read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
   uint list_sz;
-  uint i, sn, offset;
+  uint offset;
+  int i, sn;
   struct heap_uu h;
   uint * idx;
   struct heap_uu_elem tmp;
@@ -1076,14 +792,12 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
-      if (!re->has_Ns || re->mapidx_pos[st][offset]) {
-	list_sz += genomemap_len[sn][re->mapidx[st][offset]];
-      }
+      list_sz += genomemap_len[sn][re->mapidx[st][offset]];
     }
   }
 
   // init anchor list
-  re->anchors[st] = (struct uw_anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+  re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
 
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
@@ -1100,9 +814,7 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
 	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
       }
 
-      if ((!re->has_Ns || re->mapidx_pos[st][offset])
-	  && idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]
-	  ) {
+      if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
 	tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
 	tmp.rest = offset;
 	heap_uu_insert(&h, &tmp);
@@ -1122,6 +834,7 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
     re->anchors[st][re->n_anchors[st]].x = tmp.key;
     re->anchors[st][re->n_anchors[st]].y = re->min_kmer_pos + i;
     re->anchors[st][re->n_anchors[st]].length = seed[sn].span;
+    re->anchors[st][re->n_anchors[st]].width = 1;
     re->anchors[st][re->n_anchors[st]].weight = 1;
     get_contig_num(re->anchors[st][re->n_anchors[st]].x, &re->anchors[st][re->n_anchors[st]].cn);
     re->n_anchors[st]++;
@@ -1133,8 +846,8 @@ read_get_anchor_list_per_strand(struct read_entry * re, uint st, bool collapse) 
 
       if (j >= 0
 	  && re->anchors[st][j].cn == re->anchors[st][re->n_anchors[st]-1].cn
-	  && uw_anchors_intersect(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
-	uw_anchors_join(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1]);
+	  && anchor_uw_intersect(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
+	anchor_uw_join(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1]);
 	re->n_anchors[st]--;
       } else {
 	anchor_cache[diag] = re->n_anchors[st]-1;
@@ -1195,7 +908,7 @@ read_get_anchor_list(struct read_entry * re, bool collapse) {
   || defined (DEBUG_HIT_LIST_PASS1) || defined (DEBUG_HIT_LIST_PAIRED_HITS)
 static void
 dump_hit(struct read_hit * hit) {
-  fprintf(stderr, "(cn:%u,st:%u,gen_st:%u,g_off:%u,w_len:%u,scores:(%d,%d,%d),matches:%u,pair_min:%d,pair_max:%d,anchor:(%d,%d,%u,%u))\n",
+  fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(%d,%d,%d),matches:%d,pair_min:%d,pair_max:%d,anchor:(%lld,%lld,%d,%d))\n",
 	  hit->cn, hit->st, hit->gen_st, hit->g_off, hit->w_len,
 	  hit->score_window_gen, hit->score_vector, hit->score_full,
 	  hit->matches, hit->pair_min, hit->pair_max,
@@ -1207,7 +920,7 @@ dump_hit(struct read_hit * hit) {
 #if defined (DEBUG_HIT_LIST_CREATION) || defined (DEBUG_HIT_LIST_PAIR_UP) \
   || defined (DEBUG_HIT_LIST_PASS1)
 static void
-dump_hit_list(struct read_entry * re, uint st, bool only_paired, bool only_after_vector)
+dump_hit_list(struct read_entry * re, int st, bool only_paired, bool only_after_vector)
 {
   int i;
   for (i = 0; i < (int)re->n_hits[st]; i++) {
@@ -1223,13 +936,12 @@ dump_hit_list(struct read_entry * re, uint st, bool only_paired, bool only_after
 
 
 static void
-read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
-  uint cn, i, max_idx;
-  uint32_t goff, w_len, gstart, gend;
+read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
+  llint goff, gstart, gend;
   int max_score, tmp_score = 0;
-  int j;
+  int i, j, cn, max_idx;
+  int w_len;
   int short_len = 0, long_len = 0;
-  uint x_len;
   struct anchor a[3];
 
   re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
@@ -1241,8 +953,8 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
 
     // w_len
     w_len = re->window_len;
-    if (w_len > genome_len[cn])
-      w_len = genome_len[cn];
+    if ((uint32_t)w_len > genome_len[cn])
+      w_len = (int)genome_len[cn];
 
     // set gstart and gend
     gend = (re->anchors[st][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[st][i].y;
@@ -1268,23 +980,23 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
       if (match_mode > 1 && re->anchors[st][i].weight == 1)
 	max_score = 0;
 
-      for (j = (int)i - 1;
+      for (j = i - 1;
 	   j >= 0
-	     && re->anchors[st][j].x >= contig_offsets[cn] + gstart;
+	     && re->anchors[st][j].x >= (llint)contig_offsets[cn] + gstart;
 	   j--) {
 	if (re->anchors[st][j].y >= re->anchors[st][i].y)
 	  continue;
 
-	if ((int64_t)(re->anchors[st][i].x - contig_offsets[cn]) - (int64_t)re->anchors[st][i].y
-	    > (int64_t)(re->anchors[st][j].x - contig_offsets[cn]) - (int64_t)re->anchors[st][j].y)
+	if (re->anchors[st][i].x - (llint)contig_offsets[cn] - re->anchors[st][i].y
+	    > re->anchors[st][j].x - (llint)contig_offsets[cn] - re->anchors[st][j].y)
 	  { // deletion in read
-	    short_len = (re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
-	    long_len = (re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
+	    short_len = (int)(re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
+	    long_len = (int)(re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
 	  }
 	else
 	  { // insertion in read
-	    short_len = (re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
-	    long_len = (re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
+	    short_len = (int)(re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
+	    long_len = (int)(re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
 	  }
 
 	if (long_len > short_len)
@@ -1306,7 +1018,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
 					(re->read_len < w_len ? re->read_len : w_len) * match_score))
       {
 	// set goff
-	x_len = (re->anchors[st][i].x - re->anchors[st][max_idx].x) + re->anchors[st][i].length;
+	int x_len = (int)(re->anchors[st][i].x - re->anchors[st][max_idx].x) + re->anchors[st][i].length;
 
 	if ((re->window_len - x_len)/2 < re->anchors[st][max_idx].x - contig_offsets[cn])
 	  goff = (re->anchors[st][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
@@ -1318,11 +1030,14 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
 
 	// compute anchor
 	if (max_idx < i) {
-	  uw_anchor_to_anchor(&re->anchors[st][i], &a[0], contig_offsets[cn] + goff);
-	  uw_anchor_to_anchor(&re->anchors[st][max_idx], &a[1], contig_offsets[cn] + goff);
-	  join_anchors(a, 2, &a[2]);
+	  a[0] = re->anchors[st][i];
+	  anchor_to_relative(&a[0], contig_offsets[cn] + goff);
+	  a[1] = re->anchors[st][max_idx];
+	  anchor_to_relative(&a[1], contig_offsets[cn] + goff);
+	  anchor_join(a, 2, &a[2]);
 	} else {
-	  uw_anchor_to_anchor(&re->anchors[st][i], &a[2], contig_offsets[cn] + goff);
+	  a[2] = re->anchors[st][i];
+	  anchor_to_relative(&a[2], contig_offsets[cn] + goff);
 	}
 
 	// add hit
@@ -1352,10 +1067,10 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, uint st) {
 	   && re->hits[st][j-1].cn == re->hits[st][i].cn
 	   && re->hits[st][j-1].g_off > re->hits[st][i].g_off)
       j--;
-    if (j < (int)i) { // shift elements at indexes j..i-1 higher
+    if (j < i) { // shift elements at indexes j..i-1 higher
       struct read_hit tmp = re->hits[st][i];
       int k;
-      for (k = (int)i-1; k >= j; k--)
+      for (k = i - 1; k >= j; k--)
 	re->hits[st][k+1] = re->hits[st][k];
       re->hits[st][j] = tmp;
     }
@@ -1381,9 +1096,8 @@ read_get_hit_list(struct read_entry * re, int match_mode) {
 
 
 static void
-read_pass1_per_strand(struct read_entry * re, bool only_paired, uint st) {
-  uint i;
-  int j;
+read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
+  int i, j;
 
   f1_hash_tag++;
   j = -1; // last good hit
@@ -1442,7 +1156,7 @@ read_pass1(struct read_entry * re, bool only_paired) {
 
 static void
 readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
-  uint st1, st2, i, j, k, l;
+  int st1, st2, i, j, k, l;
   int64_t delta_min, delta_max; // add to re1->g_off
 
   for (st1 = 0; st1 < 2; st1++) {
@@ -1504,7 +1218,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 static void
 read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
 {
-  uint st, i;
+  int st, i;
   heap_unpaired_elem tmp;
 
   assert(re != NULL && h != NULL);
@@ -1539,7 +1253,7 @@ read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
 static void
 readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struct heap_paired * h)
 {
-  uint st1, st2, i, j;
+  int st1, st2, i, j;
   heap_paired_elem tmp;
 
   assert(re1 != NULL && re2 != NULL && h != NULL);
@@ -1552,7 +1266,7 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
       if (re1->hits[st1][i].pair_min < 0)
 	continue;
 
-      for (j = re1->hits[st1][i].pair_min; (int)j <= re1->hits[st1][i].pair_max; j++) {
+      for (j = re1->hits[st1][i].pair_min; j <= re1->hits[st1][i].pair_max; j++) {
 	if (num_matches == 3 // require at least two matches on one of the feet
 	    && re1->hits[st1][i].matches == 1
 	    && re2->hits[st2][j].matches == 1)
@@ -1571,8 +1285,8 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 	  tmp.rest.hit[0] = &re1->hits[st1][i];
 	  tmp.rest.hit[1] = &re2->hits[st2][j];
 	  tmp.rest.insert_size = (int)(st1 == 0?
-				       (int64_t)re2->hits[st2][j].g_off - ((int64_t)re1->hits[st1][i].g_off + (int64_t)re1->hits[st1][i].w_len) :
-				       (int64_t)re1->hits[st1][i].g_off - ((int64_t)re2->hits[st2][j].g_off + (int64_t)re2->hits[st2][j].w_len));
+				       re2->hits[st2][j].g_off - (re1->hits[st1][i].g_off + re1->hits[st1][i].w_len) :
+				       re1->hits[st1][i].g_off - (re2->hits[st2][j].g_off + re2->hits[st2][j].w_len));
 
 	  if (h->load < h->capacity)
 	    heap_paired_insert(h, &tmp);
@@ -1596,7 +1310,7 @@ reverse_hit(struct read_entry * re, struct read_hit * rh)
   assert(re != NULL && rh != NULL);
 
   rh->g_off = genome_len[rh->cn] - rh->g_off - rh->w_len;
-  reverse_anchor(&rh->anchor, rh->w_len, re->read_len);
+  anchor_reverse(&rh->anchor, rh->w_len, re->read_len);
   rh->gen_st = 1 - rh->gen_st;
   rh->st = 1 - rh->st;
 }
@@ -1625,7 +1339,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
 
 #ifdef DEBUG_SW_FULL_CALLS
-  fprintf(stderr, "SW full call: (name:[%s],cn:%u,st:%u,gen_st:%u,g_off:%u,w_len:%u,anchor:(%d,%d,%u,%u))\n",
+  fprintf(stderr, "SW full call: (name:[%s],cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,anchor:(%lld,%lld,%d,%d))\n",
 	  re->name, rh->cn, rh->st, rh->gen_st, rh->g_off, rh->w_len,
 	  rh->anchor.x, rh->anchor.y, rh->anchor.length, rh->anchor.width);
 #endif
@@ -1962,13 +1676,13 @@ hit_free_sfrp(struct read_hit * rh)
  */
 static void
 read_pass2(struct read_entry * re, struct heap_unpaired * h) {
-  uint i;
+  int i;
 
   assert(re != NULL && h != NULL);
   assert(pair_mode == PAIR_NONE);
 
   /* compute full alignment scores */
-  for (i = 0; i < h->load; i++) {
+  for (i = 0; i < (int)h->load; i++) {
     struct read_hit * rh = h->array[i].rest.hit;
 
     hit_run_full_sw(re, rh, (int)abs_or_pct(sw_full_threshold, rh->score_max));
@@ -1992,7 +1706,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-       i < h->load && i < num_outputs
+       i < (int)h->load && i < num_outputs
 	 && ( (IS_ABSOLUTE(sw_full_threshold)
 	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
 	      || (~IS_ABSOLUTE(sw_full_threshold)
@@ -2028,13 +1742,16 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
       free(output1);
       free(output2);
 
-#pragma omp atomic
-      total_single_matches++;
     } else {
-#pragma omp atomic
-      total_dup_single_matches++;
+      re->final_dup_matches++;
     }
   }
+
+#pragma omp atomic
+  total_single_matches += re->final_matches;
+
+#pragma omp atomic
+  total_dup_single_matches += re->final_dup_matches;
 
 }
 
@@ -2045,12 +1762,12 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
  */
 static void
 readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_paired * h) {
-  uint i, j;
+  int i, j;
 
   assert(re1 != NULL && re2 != NULL && h != NULL);
 
   /* compute full alignment scores */
-  for (i = 0; i < h->load; i++) {
+  for (i = 0; i < (int)h->load; i++) {
     for (j = 0; j < 2; j++) {
       struct read_hit * rh = h->array[i].rest.hit[j];
       struct read_entry * re = (j == 0? re1 : re2);
@@ -2085,7 +1802,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-       i < h->load && i < num_outputs
+       i < (int)h->load && i < num_outputs
 	 && ( (IS_ABSOLUTE(sw_full_threshold)
 	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
 							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
@@ -2106,7 +1823,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
     if (!dup) {
       char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
-      //re1->paired_final_matches++;
+      re1->final_matches++;
 
       hit_output(re1, rh1, re2, rh2, &output1, &output2,true,true);
       hit_output(re2, rh2, re1, rh1, &output3, &output4,true,false);
@@ -2144,14 +1861,16 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
       free(output2);
       free(output3);
       free(output4);
-
-#pragma omp atomic
-      total_paired_matches++;
     } else {
-#pragma omp atomic
-      total_dup_paired_matches++;
+      re1->final_dup_matches++;
     }
   }
+
+#pragma omp atomic
+  total_paired_matches += re1->final_matches;
+#pragma omp atomic
+  total_dup_paired_matches += re1->final_dup_matches;
+
 }
 
 
@@ -2167,10 +1886,6 @@ read_free(struct read_entry * re)
 
   free(re->mapidx[0]);
   free(re->mapidx[1]);
-  if (re->has_Ns) {
-    free(re->mapidx_pos[0]);
-    free(re->mapidx_pos[1]);
-  }
   free(re->anchors[0]);
   free(re->anchors[1]);
   free(re->hits[0]);
@@ -2193,22 +1908,18 @@ handle_read(read_entry *re){
 #ifdef DEBUG_KMERS
   {
     uint sn, i, j;
-    fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u, has_Ns:%c\n",
-	    re->max_n_kmers, re->min_kmer_pos, re->has_Ns ? 'Y' : 'N');
+    fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u\n",
+	    re->max_n_kmers, re->min_kmer_pos);
     fprintf(stderr, "collapsed kmers from read:\n");
     for (sn = 0; sn < n_seeds; sn++) {
       fprintf(stderr, "sn:%u\n", sn);
       for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
 	fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-	if (re->has_Ns && !re->mapidx_pos[0][sn*re->max_n_kmers + i]) {
-	  fprintf(stderr, "X\n");
-	} else {
-	  for (j = 0; j < seed[sn].weight; j++) {
-	    fprintf(stderr, "%c%s",
-		    base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-				   shrimp_mode == MODE_COLOUR_SPACE),
-		    j < seed[sn].weight - 1? "," : "\n");
-	  }
+	for (j = 0; j < seed[sn].weight; j++) {
+	  fprintf(stderr, "%c%s",
+		  base_translate((re->mapidx[0][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				 shrimp_mode == MODE_COLOUR_SPACE),
+		  j < seed[sn].weight - 1? "," : "\n");
 	}
       }
     }
@@ -2217,15 +1928,11 @@ handle_read(read_entry *re){
       fprintf(stderr, "sn:%u\n", sn);
       for (i = 0; re->min_kmer_pos + i + seed[sn].span <= re->read_len; i++) {
 	fprintf(stderr, "\tpos:%u kmer:", re->min_kmer_pos + i);
-	if (re->has_Ns && !re->mapidx_pos[1][sn*re->max_n_kmers + i]) {
-	  fprintf(stderr, "X\n");
-	} else {
-	  for (j = 0; j < seed[sn].weight; j++) {
-	    fprintf(stderr, "%c%s",
-		    base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
-				   shrimp_mode == MODE_COLOUR_SPACE),
-		    j < seed[sn].weight - 1? "," : "\n");
-	  }
+	for (j = 0; j < seed[sn].weight; j++) {
+	  fprintf(stderr, "%c%s",
+		  base_translate((re->mapidx[1][sn*re->max_n_kmers + i] >> 2*(seed[sn].weight - 1 - j)) & 0x3,
+				 shrimp_mode == MODE_COLOUR_SPACE),
+		  j < seed[sn].weight - 1? "," : "\n");
 	}
       }
     }
@@ -2238,9 +1945,6 @@ handle_read(read_entry *re){
   read_pass1(re, false);
 
   // initialize heap of best hits for this read
-  //re->scores = (struct re_score *)xcalloc((num_outputs + 1) * sizeof(struct re_score));
-  //re->scores[0].heap_elems = 0;
-  //re->scores[0].heap_capacity = num_outputs;
   heap_unpaired_init(&h, num_tmp_outputs);
 
   read_get_vector_hits(re, &h);
@@ -2323,7 +2027,7 @@ read_reverse(struct read_entry * re) {
 static uint
 get_contig_number_from_name(char const * c)
 {
-  uint cn;
+  int cn;
   // hack: accept '>' for cn=0
   if (*c == '>')
     return 0;
@@ -2341,7 +2045,8 @@ static void
 read_compute_ranges(struct read_entry * re)
 {
   char * r, * r_save, * c, * c_save;
-  uint cn, st, g_start, g_end;
+  uint g_start, g_end;
+  int cn, st;
 
   assert(re->range_string != NULL);
 
@@ -2419,7 +2124,7 @@ launch_scan_threads(const char *file){
 #pragma omp parallel shared(more, fasta) num_threads(num_threads)
   {
     struct read_entry * re_buffer;
-    uint load, i;
+    int load, i;
     uint64_t before;
 
     re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
@@ -2455,8 +2160,8 @@ launch_scan_threads(const char *file){
 	  continue;
 	}
 
-	re_buffer[i].has_Ns = !(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq)); // from fasta.c
-	if (re_buffer[i].has_Ns) { // ignore this read
+	if (!(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq))) {
+	  // ignore this read
 	  if (pair_mode != PAIR_NONE && i % 2 == 1) {
 	    free(re_buffer[i-1].name);
 	  }
@@ -2486,14 +2191,14 @@ launch_scan_threads(const char *file){
 
 	re_buffer[i].mapidx[0] = NULL;
 	re_buffer[i].mapidx[1] = NULL;
-	re_buffer[i].mapidx_pos[0] = NULL;
-	re_buffer[i].mapidx_pos[1] = NULL;
 	re_buffer[i].anchors[0] = NULL;
 	re_buffer[i].anchors[1] = NULL;
 	re_buffer[i].hits[0] = NULL;
 	re_buffer[i].hits[1] = NULL;
 	re_buffer[i].ranges = NULL;
 	re_buffer[i].n_ranges = 0;
+	re_buffer[i].final_matches = 0;
+	re_buffer[i].final_dup_matches = 0;
 
 	if (re_buffer[i].range_string != NULL) {
 	  read_compute_ranges(&re_buffer[i]);
@@ -2529,7 +2234,7 @@ launch_scan_threads(const char *file){
 
 void print_genomemap_stats() {
   stat_t list_size, list_size_non0;
-  uint sn;
+  int sn;
   uint64_t capacity, mapidx;
   uint max;
 
@@ -2612,7 +2317,7 @@ load_genome(char **files, int nfiles)
 	uint32_t *read;
 	char *seq, *name;
 	uint32_t *kmerWindow;
-	uint sn;
+	int sn;
 	char *file;
 	bool is_rna;
 
@@ -2624,15 +2329,14 @@ load_genome(char **files, int nfiles)
 
 
 	for (sn = 0; sn < n_seeds; sn++) {
+	  if(Hflag){
+	    capacity = power(4, HASH_TABLE_POWER);
+	  } else {
+	    capacity = power(4, seed[sn].weight);
+	  }
 
-		if(Hflag){
-			capacity = power(4, HASH_TABLE_POWER);
-		} else {
-			capacity = power(4, seed[sn].weight);
-		}
-
-		genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
-		genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity,&mem_genomemap);
+	  genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
+	  genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity, &mem_genomemap);
 
 	}
 	num_contigs = 0;
@@ -2692,23 +2396,23 @@ load_genome(char **files, int nfiles)
 			genome_len[num_contigs -1] = seqlen;
 
 			if (shrimp_mode == MODE_COLOUR_SPACE){
-				genome_initbp = (uint32_t *)xrealloc(genome_initbp,sizeof(uint32_t *)*num_contigs);
-				genome_initbp[num_contigs -1] = EXTRACT(read,0);
-				read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
+			  genome_initbp = (int *)xrealloc(genome_initbp,sizeof(genome_initbp[0])*num_contigs);
+			  genome_initbp[num_contigs - 1] = EXTRACT(read,0);
+			  read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
 			}
 			kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
-			u_int load;
-			for (load = 0; i < seqlen + contig_offsets[num_contigs-1]; i++) {
-				uint base;
+			int load = 0;
+			for ( ; i < seqlen + contig_offsets[num_contigs-1]; i++) {
+				int base;
 
 				base = EXTRACT(read, i - contig_offsets[num_contigs-1]);
 				bitfield_prepend(kmerWindow, max_seed_span, base);
 
 				//skip past any Ns or Xs
 				if (base == BASE_N || base == BASE_X)
-					load = 0;
+				  load = 0;
 				else if (load < max_seed_span)
-					load++;;
+				  load++;;
 				for (sn = 0; sn < n_seeds; sn++) {
 					if (load < seed[sn].span)
 						continue;
@@ -2745,7 +2449,8 @@ load_genome(char **files, int nfiles)
 static void
 trim_genome()
 {
-  uint sn, capacity;
+  uint capacity;
+  int sn;
   uint32_t mapidx;
 
   for (sn = 0; sn < n_seeds; sn++) {
@@ -2847,7 +2552,7 @@ print_statistics()
 	fprintf(stderr, "\n");
 
 	int i;
-	for(i = 0; i < (int)num_threads; i++){
+	for(i = 0; i < num_threads; i++){
 	  total_scan_secs += scan_secs[i];
 	  total_readload_secs += readload_secs[i];
 	  total_wait_secs += (double)wait_ticks[i] / hz;
@@ -2870,7 +2575,7 @@ print_statistics()
 	  fprintf(stderr, "%s%s" "%11s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
 		  "", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
-	  for(i = 0; i < (int)num_threads; i++) {
+	  for(i = 0; i < num_threads; i++) {
 	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
 		    i, readload_secs[i], scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
@@ -2984,9 +2689,9 @@ print_statistics()
 	}
 }
 
-void usage(char *progname,bool full_usage){
+void usage(char * progname, bool full_usage){
   char *slash;
-  uint sn;
+  int sn;
 
   load_default_seeds();
 
@@ -3072,11 +2777,11 @@ void usage(char *progname,bool full_usage){
   fprintf(stderr, "\n");
 
   fprintf(stderr,
-	  "    -N    Number of Threads                       (default: %u)\n",
+	  "    -N    Number of Threads                       (default: %d)\n",
 	  DEF_NUM_THREADS);
   if (full_usage) {
   fprintf(stderr,
-	  "    -K    Thread Chunk Size                       (default: %u)\n",
+	  "    -K    Thread Chunk Size                       (default: %d)\n",
 	  DEF_CHUNK_SIZE);
   }
 
@@ -3127,19 +2832,19 @@ void usage(char *progname,bool full_usage){
 
 void print_settings() {
   static char const my_tab[] = "    ";
-  uint i;
+  int sn;
 
   fprintf(stderr, "Settings:\n");
   fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
 	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
 	  seed_to_string(0), seed[0].weight, seed[0].span);
-  for (i = 1; i < n_seeds; i++) {
+  for (sn = 1; sn < n_seeds; sn++) {
     fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
-	    seed_to_string(i), seed[i].weight, seed[i].span);
+	    seed_to_string(sn), seed[sn].weight, seed[sn].span);
   }
 
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of Outputs per Read:", num_outputs);
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Generation Mode:", num_matches);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", num_matches);
 
   if (IS_ABSOLUTE(window_len)) {
     fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Length:", (uint)-window_len);
@@ -3203,8 +2908,8 @@ void print_settings() {
   fprintf(stderr, "\n");
 
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Number of threads:", num_threads);
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Thread chuck size:", chunk_size);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chuck size:", chunk_size);
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
@@ -3739,9 +3444,9 @@ int main(int argc, char **argv){
 	//
 	if (Vflag && save_file == NULL && list_cutoff == DEF_LIST_CUTOFF) {
 	  // this will be a mapping job; enable automatic trimming
-	  uint i, sn;
+	  int i, sn;
 	  long long unsigned int total_genome_len = 0;
-	  uint max_seed_weight = 0;
+	  int max_seed_weight = 0;
 
 	  for (i = 0; i < num_contigs; i++) {
 	    total_genome_len += (long long unsigned int)genome_len[i];
@@ -3759,8 +3464,8 @@ int main(int argc, char **argv){
 
 	  // cutoff := max (1000, 100*(total_genome_len/4^max_seed_weight))
 	  list_cutoff = 1000;
-	  if ((uint)((100llu * total_genome_len)/power(4, max_seed_weight)) > list_cutoff) {
-	    list_cutoff = (uint)((100llu * total_genome_len)/power(4, max_seed_weight));
+	  if ((uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight)) > list_cutoff) {
+	    list_cutoff = (uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight));
 	  }
 	  fprintf(stderr, "Automatically trimming genome index lists longer than: %u\n", list_cutoff);
 	}
@@ -3823,7 +3528,7 @@ int main(int argc, char **argv){
 		//Print sam header
 		fprintf(stdout,"@HD\tVN:%i\tSO:%s\n",1,"unsorted");
 
-		uint s;
+		int s;
 		for(s = 0; s < num_contigs; s++){
 			fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[s],genome_len[s]);
 		}

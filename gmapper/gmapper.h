@@ -59,8 +59,6 @@ static bool const pair_reverse[5][2] =
 #define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
 #define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 
-#define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
-
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
  * upper limit on our lookup table allocation size. The memory usage of
@@ -69,22 +67,29 @@ static bool const pair_reverse[5][2] =
  * architectures.
  */
 #define MAX_SEED_WEIGHT		14
-
 #define MAX_SEED_SPAN		64
 
 /*
  * For larger seeds we'll just use a hash table. Presently, we're restricted to
  * 128 bytes in kmer_to_mapidx, but it's trivially extended.
  */
-#define MAX_HASH_SEED_WEIGHT	128
-#define MAX_HASH_SEED_SPAN	128
+#define MAX_HASH_SEED_WEIGHT	64
+#define MAX_HASH_SEED_SPAN	64
 #define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
+
+
+#define MAX_ANCHOR_LIST		10000000
+
 
 /*
  * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
  * we'll set them negative to distinguish.
  */
 #define IS_ABSOLUTE(x)	((x) < 0)
+
+static inline double abs_or_pct(double x, double base) {
+  return IS_ABSOLUTE(x) ? -x : base * (x / 100.0);
+}
 
 static int const default_spaced_seeds_cs_cnt = 4;
 static char const * const default_spaced_seeds_cs[] =
@@ -100,85 +105,65 @@ static char const * const default_spaced_seeds_ls[] =
 
 struct seed_type {
   bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */
-  uint32_t	span;		/* max 64 (could be uint8_t) */
-  uint32_t	weight;		/* max 64 */
-  // aligned to 8B
-};
-
-struct re_score {
-  struct sw_full_results * sfrp;	/* alignment results (final pass) */
-  struct anchor	anchor;
-
-  uint		contig_num;	/* contig index (for filename)*/
-  union {
-    int		score;		/* doubles as heap cnt in [0] */
-    uint	heap_elems;
-  };
-  union {
-    uint	g_idx;		/* doubles as heap alloc in [0]*/
-    uint	heap_capacity;
-  };
-  bool		rev_cmpl;	/* from contig's reverse cmpl */
+  int		span;		/* max 64 (could be uint8_t) */
+  int		weight;		/* max 64 */
 };
 
 struct range_restriction {
-  uint	cn;
-  uint	st;
-  uint	g_start;
-  uint	g_end;
+  int		cn;
+  int		st;
+  llint		g_start;
+  llint		g_end;
 };
 
 struct read_entry {
   char *	name;
   char *	seq;
-  re_score *	scores;
   uint32_t *	read[2];	/* the read as a bitstring */
 
   uint32_t *	mapidx[2];	/* per-seed list of mapidxs in read */
-  bool *	mapidx_pos[2];	/* per-seed list of validity of mapidx positions in read; only if read has Ns */
 
-  struct uw_anchor *	anchors[2];	/* list of anchors */
+  struct anchor *	anchors[2];	/* list of anchors */
 
   struct read_hit *	hits[2];	/* list of hits */
 
   struct range_restriction * ranges;
-  char *		range_string;
+  char *	range_string;
 
-  uint		n_anchors[2];
-  uint		n_hits[2];
-  uint		n_ranges;
+  int		n_anchors[2];
+  int		n_hits[2];
+  int		n_ranges;
 
-  uint32_t	sw_hits;
-  uint32_t	final_matches;
+  int		final_matches;
+  int		final_dup_matches;
 
-  int8_t	initbp[2];		/* colour space init letter */
-  uint8_t	read_len;
-  uint8_t	window_len;
+  int		initbp[2];		/* colour space init letter */
+  int		read_len;
+  int		window_len;
 
-  uint8_t	max_n_kmers;	/* = read_len - min_seed_span + 1 */
-  uint8_t	min_kmer_pos;	/* = 0 in LS; = 1 in CS */
-  uint8_t	input_strand;
-  bool		has_Ns;
+  int		max_n_kmers;	/* = read_len - min_seed_span + 1 */
+  int		min_kmer_pos;	/* = 0 in LS; = 1 in CS */
+  int		input_strand;
   bool		is_rna;
 };
 
 struct read_hit {
   struct sw_full_results *	sfrp;
   struct anchor	anchor;
-  uint		g_off;
+  llint		g_off;
   int		score_window_gen;
   int		score_vector;
   int		pct_score_vector;
   int		score_full;
   int		pct_score_full;
   int		score_max;
-  uint		matches;
-  uint		cn;
-  int		pair_min;
+  int		matches;
+  int		cn;
+  int		pair_min; // -1 means none
   int		pair_max;
-  uint16_t	w_len;
-  uint8_t	st;
-  uint8_t	gen_st;
+  int		w_len;
+  int		st;
+  int		gen_st;
 };
 
 struct read_hit_pair_holder {
