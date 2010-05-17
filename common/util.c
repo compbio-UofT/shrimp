@@ -576,9 +576,9 @@ reverse_complement_read_cs(uint32_t * read, int8_t initbp, int8_t initbp_rc, uin
 	assert(len > 0);
 	read_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
 
-	base = cstols(initbp, EXTRACT(read, 0), is_rna);
+	base = (int8_t)cstols(initbp, EXTRACT(read, 0), is_rna);
 	for (i = 1; i < len; i++){
-		base = cstols(base, EXTRACT(read,i), is_rna);
+	  base = (int8_t)cstols(base, EXTRACT(read,i), is_rna);
 		bitfield_insert(read_rc, len - i, EXTRACT(read,i));
 	}
 	bitfield_insert(read_rc, 0, lstocs(base, complement_base(initbp_rc, is_rna), is_rna));
@@ -1036,7 +1036,7 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 	int last_count = 0;
 
 	if(read_start != 0){
-		res += sprintf(res,"%uS",read_start);
+	  res += sprintf(res,"%uS",(unsigned int)read_start);
 	}
 
 	while(*current != '\0'){
@@ -1099,7 +1099,7 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 	}
 	res += finish_mode(mode,count+ last_count,res);
 	if(read_end + 1 != read_length){
-		sprintf(res,"%uS",read_length - read_end - 1);
+	  sprintf(res,"%uS",(unsigned int)(read_length - read_end - 1));
 	}
 }
 

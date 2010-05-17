@@ -2177,7 +2177,8 @@ launch_scan_threads(const char *file){
 }
 
 
-void print_genomemap_stats() {
+static void
+print_genomemap_stats() {
   stat_t list_size, list_size_non0;
   int sn;
   uint64_t capacity, mapidx;
@@ -2421,7 +2422,7 @@ trim_genome()
 static void
 print_insert_histogram()
 {
-  uint i;
+  int i;
   for (i = 0; i < 100; i++) {
     fprintf(stderr, "[%d-%d]: %.2f%%\n",
 	    min_insert_size + i * insert_histogram_bucket_size,
@@ -2634,7 +2635,8 @@ print_statistics()
 	}
 }
 
-void usage(char * progname, bool full_usage){
+static void
+usage(char * progname, bool full_usage){
   char *slash;
   int sn;
 
@@ -2775,16 +2777,17 @@ void usage(char * progname, bool full_usage){
   exit(1);
 }
 
-void print_settings() {
+static void
+print_settings() {
   static char const my_tab[] = "    ";
   int sn;
 
   fprintf(stderr, "Settings:\n");
-  fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab,
+  fprintf(stderr, "%s%-40s%s (%d/%d)\n", my_tab,
 	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
 	  seed_to_string(0), seed[0].weight, seed[0].span);
   for (sn = 1; sn < n_seeds; sn++) {
-    fprintf(stderr, "%s%-40s%s (%u/%u)\n", my_tab, "",
+    fprintf(stderr, "%s%-40s%s (%d/%d)\n", my_tab, "",
 	    seed_to_string(sn), seed[sn].weight, seed[sn].span);
   }
 
