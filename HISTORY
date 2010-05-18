@@ -1,4 +1,9 @@
-2.0: May 9, 2010
+2.0.1: May 18, 2010
+	- More friendly towards long reads (454). gmapper now supports them,
+	  but is not optimized for them.
+	- Fixed insert size calculations in SAM output.
+
+2.0.0: May 9, 2010
 	- New distribution, with drastic design changes.
 	- Native support for SAM format.
 
