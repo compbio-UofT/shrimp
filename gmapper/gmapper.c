@@ -1571,7 +1571,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
     	//fprintf(stdout,"4\n");
     	fivep_mp = inp_mp.genome_start;
     }
-    int ins_size = fivep_mp - fivep;
+    int ins_size = (re_mp ==NULL)?0:(fivep_mp - fivep);
 
     free(*output1);
     *output1 = (char *)xmalloc(sizeof(char *)*2000);
