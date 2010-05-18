@@ -100,8 +100,8 @@ SHRiMP2 primarily targets sensitivity, but it has come a long way to achieve it
 at a reasonable speed. To illustrate its performace:
 
   Sensitivity: SHRiMP2 achieves 94.4% precision  and  78.6% recall when  mapping
-  simulated  colour space reads of 50  base pairs (bp)  each containing 1 SNP, 1
-  indel of size up to 5bp, and 4% per-base error rate.
+  simulated colour space reads of 50 base pairs (bp) each containing 1 SNP _and_
+  1 indel of size up to 5bp _and_ 4% per-base error rate.
 
   Speed: SHRiMP2 on a single  3.0GHz core with  16GB of RAM  can map 36bp colour
   space reads against the reference  human genome (hg18) at  the rate of 160,000
@@ -906,9 +906,15 @@ Paired Mode
     outside of this range. This  parameter is only  available in paired  mapping
     mode. It defaults to "-I 50,2000".
 
-    Note: In all  paired mapping  modes, the  insert  is defined as the  genomic
-    region  strictly between,  and  excluding both CMWs  for  its feet. (In  the
-    example above, it equals 3.)
+    Note: In all   paired mapping modes, the   insert is defined  as the genomic
+    region  strictly  between, and excluding   both CMWs for   its feet. (In the
+    example above,   it  equals  3.) Observe   that   this  differs  from  other
+    definitions. E.g., insert size in Illumina  reads is usually measured as the
+    distance between the 5' ends of the paired reads.
+
+    Note: These parameters are only used to limit the  search space where to map
+    each   read.  In SAM  output,  the  insert size  is  recalculated using  the
+    standard definition for SAM.
 
 
 Thread Control
