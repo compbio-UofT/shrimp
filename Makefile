@@ -1,7 +1,7 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 
 ifndef CXXFLAGS
-CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
+CXXFLAGS=-O3 -DNDEBUG -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 
