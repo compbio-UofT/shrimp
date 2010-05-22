@@ -1,0 +1,71 @@
+split-project-db
+----------------
+
+This script is used to split a given reference genome into a set of database
+files that fit into a target RAM size, then project the files into indexes that
+can be reused by gmapper.
+
+
+Parameters:
+
+<file1.fa> <file2.fa> ..
+	List of reference genome files in fasta format.
+
+--ram-size <ram-size>
+	Target RAM size, in GB. This parameter is required.
+
+--dest-dir <dest-dir>
+	Destination directory where to place the database files. If not given,
+	files are placed in the current working directory. Note: both fasta
+	files and projections are placed here.
+
+--prefix <prefix>
+	Prefix for database files. Default is "db".
+
+--tmp-dir <tmp-dir>
+	Directory to store temporary files into. This defaults to
+	/tmp/<PID>. Note, the script requires 1x(genome size) temporary space.
+
+--shrimp-mode <mode>
+	This is "ls" or "cs", for letter space or color space,
+	respectively. This is a required parameter.
+
+--print-script
+        Only display commands that would be run. Do not actually run gmapper.
+
+--seed <seed0,seed1,..>
+	Comma-separated list of seeds that gmapper will use. This list is passed
+	on directly to gmapper as argument of parameter -s. See README for more
+	details. If absent, gmapper will not be given explicitly any seeds, so
+	it will run with its default set of seeds.
+
+--h-flag
+	This corresponds to giving gmapper the flag -H, telling it to use
+	hashing to index spaced kmers. For seeds of weight greater than 14, this
+	is required. See README for more details.
+
+
+Output:
+
+<dest-dir>/<prefix>-<ram-size>gb-<weights>seeds-<i>of<n>.fa
+	This is the <i>-th of <n> pieces in fasta format
+
+<dest-dir>/<prefix>-<ram-size>gb-<weights>seeds-<i>of<n>-<mode>.genome
+<dest-dir>/<prefix>-<ram-size>gb-<weights>seeds-<i>of<n>-<mode>.seed.*
+	This is the projection of the <i>-th piece.
+
+
+How this works:
+
+Step 1. Parse options.
+
+Step 2. Run
+split-db $*
+
+Step 3. Run
+project-db
+<dest-dir>/<prefix>-<ram-size>gb-*.fa
+[--dest-dir <dest-dir>]
+[--shrimp-mode <mode>]
+[--seed <seed0,seed1,...>]
+[--h-flag]

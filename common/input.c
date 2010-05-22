@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: input.c,v 1.6 2008/06/11 17:13:37 rumble Exp $	*/
 
 #include <ctype.h>
 #include <stdbool.h>
@@ -138,7 +138,7 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 	return (!inparen);
 }
 
-static struct format_spec * 
+struct format_spec *
 format_get_default()
 {
 	struct format_spec *fsp;
@@ -155,17 +155,18 @@ format_get_default()
 	return (fsp);
 }
 
-static struct format_spec *
+struct format_spec *
 format_get_from_string(char *format)
 {
 	struct format_spec *fsp;
 	char *field;
+	char * tok_save;
 	int i, next;
 
 	fsp = (struct format_spec *)xmalloc(sizeof(*fsp));
 	memset(fsp, 0, sizeof(*fsp));
 
-	field = strtok(format, " ");
+	field = strtok_r(format, " ", &tok_save);
 	while (field != NULL) {
 		field = strtrim(field);
 
@@ -186,13 +187,13 @@ format_get_from_string(char *format)
 		if (next == F_UNKNOWN)
 			fprintf(stderr, "warning: unknown format field [%s]\n", field);
 		
-		field = strtok(NULL, " ");
+		field = strtok_r(NULL, " ", &tok_save);
 	}
 
 	return (fsp);
 }
 
-static void
+void
 format_free(struct format_spec *fsp)
 {
 
@@ -284,6 +285,24 @@ input_free(struct input *inp)
 		free(inp->edit);
 }
 
+void
+input_parse_string(char * buf,struct format_spec *fsp,struct input *inp){
+  if (buf[0] == '>') {
+    buf++;
+  }
+  char *val;
+  int i;
+  char * tok_save;
+
+  val = strtok_r(buf, "\t", &tok_save);
+  for (i = 0; val != NULL; i++) {
+    if (i < fsp->nfields)
+      handle_field(inp, fsp->fields[i], val);
+
+    val = strtok_r(NULL, "\t", &tok_save);
+  }
+}
+
 /*
  * Parse the key-value paired output created by output_normal in output.c.
  * This will only parse lines beginning with '>', so it'll work just fine
@@ -314,17 +333,7 @@ input_parseline(gzFile fp, struct input *inp)
 			format_free(fsp);
 			fsp = format_get_from_string(buf);
 		} else if (buf[0] == '>') {
-			char *str = &buf[1];
-			char *val;
-			int i;
-
-			val = strtok(str, "\t");
-			for (i = 0; val != NULL; i++) {
-				if (i < fsp->nfields)
-					handle_field(inp, fsp->fields[i], val);
-
-				val = strtok(NULL, "\t");
-			}
+			input_parse_string(buf,fsp,inp);
 
 			break;
 		}

@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dag_align.h,v 1.2 2008/06/06 18:24:09 rumble Exp $	*/
 
 #ifndef ALIGN_H_
 #define ALIGN_H_

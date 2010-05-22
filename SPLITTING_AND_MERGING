@@ -1,0 +1,97 @@
+Splitting and Merging the Mapping
+---------------------------------
+
+Mapping a set of donor reads to a reference genome can be parallelized in two
+ways: splitting the genome into several chunks and splitting the reads into
+several chunks. The former of the two (splitting the genome) might be required
+in order to fit the jobs into the available RAM. The latter (splitting the
+reads) is optional, but it provides a way to fully utilize a computing
+cluster. This how-to briefly describes how to split and merge the mapping.
+
+
+Initial setup
+-------------
+
+db.fa - contains all contigs of the reference genome
+qr.fa - the reads, say in color space
+
+Suppose we have a cluster of 4 nodes of 16GB each.
+
+
+Splitting the Genome
+--------------------
+
+On each 16GB node, we decide to give the gmapper process 15GB of RAM, keeping
+the rest for the operating system. To split the genome into several pieces that
+fit in 15GB of RAM, we run:
+
+$ split-db db.fa --ram-size 15
+
+This creates several files of the form db-15gb-12,12,12,12seeds-XofY.fa, where X
+ranges from 1..Y. For simplicity, we assume Y=2, and we refer to the resulting
+files as db-1of2.fa and db-2of2.fa.
+
+
+Projecting the Genome
+---------------------
+
+This step is  optional but recommended.  This provides significant savings if we
+ever run gmapper against the individual pieces db-[12]of2.fa more than once. For
+instance, this will be the case if we decide to split the reads. If the reads we
+have are in color space, we project the genome pieces with:
+
+$ project-db db-*of2.fa --shrimp-mode cs
+
+This creates files of the form db-[12]of2-cs.genome and
+db-[12]of2-cs.seed.[0-3]. We refer to them by their prefix, as db-1of2-cs and
+db-2of2-cs.
+
+Note: If the reads are in letter space, use "ls".
+
+Note: Splitting and projecting the genome can be accomplished at the same time
+by running:
+
+$ split-project-db db.fa --ram-size 15 --shrimp-mode cs
+
+
+Splitting the Reads
+-------------------
+
+This is optional, but it provides for a way to fully utilize a computing
+cluster. If we have a cluster of N nodes and the genome was split into Y pieces,
+we would want to split the reads into N/Y pieces. In our example, say N=4 and
+Y=2, so we split the reads into 2 pieces, qr-1of2.fa and qr-2of2.fa.
+
+To split reads, use the splitreads.py script.
+
+
+Run the Mapping Jobs
+--------------------
+
+We run the following 4 jobs on different nodes of the cluster:
+
+$ gmapper-cs qr-${A}of2.fa db-${B}of2.fa [options...] >map-qr-${A}of2-db-${B}of2.out
+
+If we projected the genome, the command lines are:
+
+$ gmapper-cs qr-${A}of2.fa -L db-${B}of2-cs.fa [options...] >map-qr-${A}of2-db-${B}of2.out
+
+
+Merging Hits
+------------
+
+At this point, we have 4 output files. We merge them in two steps.
+
+First, we merge hits of the *same* reads across *different* pieces of the genome:
+
+$ merge-hits-same-qr-diff-db map-qr1of2-db*of2.out >map-qr1of2.out
+$ merge-hits-same-qr-diff-db map-qr2of2-db*of2.out >map-qr2of2.out
+
+Finally, merge hits of *different* reads across the *same* genome (now, all of
+it):
+
+$ merge-hits-diff-qr-same-db map-qr*of2.out >map.out
+
+Note: The merging can in principle be performed the other way around, first by
+the same genome piece, then by the same reads, but it is more costly (in terms
+of running time) to do so.

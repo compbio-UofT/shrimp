@@ -1,13 +1,7 @@
-/*	$Id$	*/
+/*	$Id: fasta.h,v 1.12 2009/06/16 23:26:21 rumble Exp $	*/
 
 #ifndef _FASTA_H_
 #define _FASTA_H_
-
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdbool.h>
-#include <zlib.h>
-
 
 #define LETTER_SPACE	1
 #define COLOUR_SPACE	2
@@ -55,19 +49,26 @@ typedef struct _fasta_t {
 	char   buffer[8*1024*1024];
 	char   translate[256];
 	bool   leftover;
+	bool	fastq;
 } * fasta_t;
 
 typedef struct _fasta_stats_t {
 	uint64_t	total_ticks;
 } * fasta_stats_t;
 
-fasta_t	  fasta_open(const char *, int);
+fasta_t	  fasta_open(const char *, int, bool);
 void	  fasta_close(fasta_t);
-bool	  fasta_get_next(fasta_t, char **, char **, bool *);
+bool	  fasta_get_next_with_range(fasta_t, char **, char **, bool *, char **, char **);
 int	  fasta_get_initial_base(fasta_t, char *);
 uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t, bool);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
 fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);
+
+static inline bool
+fasta_get_next(fasta_t file, char **name, char **seq, bool *is_rna) {
+  return fasta_get_next_with_range(file, name, seq, is_rna, NULL, NULL);
+}
+
 
 #endif

@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dag_glue.cpp,v 1.3 2009/04/07 23:41:40 rumble Exp $	*/
 
 #include <stdlib.h>
 #include <string>

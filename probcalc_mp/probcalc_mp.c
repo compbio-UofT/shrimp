@@ -1,4 +1,4 @@
-// $Id$
+// $Id: probcalc_mp.c,v 1.17 2009/02/27 23:59:43 rumble Exp $
 
 /****************************************************************************
  * The probcalc_mp project takes in a binary file filled with mapping_t 
@@ -283,7 +283,7 @@ int main(int argc, char **argv) {
 	elapsed_clock[TOTAL_TIME] = ((double) 
 			(end_clock[TOTAL_TIME] - start_clock[TOTAL_TIME])) / CLOCKS_PER_SEC;
 	
-	char rev[30] = "$Revision$";  	
+	char rev[30] = "$Revision: 1.17 $";  	
 	rev[16] = '\0';
 	char *prev = &rev[11];
 	
@@ -691,7 +691,7 @@ static void usage(char *progname) {
 	if (slash != NULL)
 		progname = slash + 1;
 
-	fprintf(stderr, "usage for Revision 1.166. Current $Revision$  \n"
+	fprintf(stderr, "usage for Revision 1.166. Current $Revision: 1.17 $  \n"
 			"%s -m binary_mapping_filename -f forward_suffix -b reverse_suffix"
 			" -g genome_length -M hard_distance_limit [-L nr_mate_pairs] [-q] "
 			"[-C PCHANCE_CUTOFF] [-G PGENOME_CUTOFF] [-R] "

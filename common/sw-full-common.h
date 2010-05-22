@@ -1,4 +1,8 @@
-/*	$Id$	*/
+/*	$Id: sw-full-common.h,v 1.3 2008/06/06 18:24:09 rumble Exp $	*/
+
+#ifndef _SW_FULL_COMMON_H
+#define _SW_FULL_COMMON_H
+
 
 struct sw_full_results {
 	/* Common fields */
@@ -43,3 +47,6 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 
 	return (equal);
 }
+
+
+#endif

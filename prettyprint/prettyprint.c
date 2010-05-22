@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: prettyprint.c,v 1.23 2009/06/16 23:26:25 rumble Exp $	*/
 
 #include <assert.h>
 #include <dirent.h>
@@ -25,7 +25,7 @@
 #include "../common/util.h"
 #include "../common/version.h"
 
-#include "../rmapper/rmapper.h"		/* for External parameters below */
+#include "../gmapper/gmapper.h"		/* for External parameters below */
 
 /* External parameters */
 static int match_value    = DEF_MATCH_VALUE;
@@ -125,11 +125,13 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 	}
 
 	if (sfr.score != fpo->input.score) {
-		fprintf(stderr, "warning: score differs from input "
-		    "file (read=\"%s\", genome=\"%s\")\n",
+	  static bool warned = false;
+	  if (!warned) {
+	    fprintf(stderr, "warning: score differs from input file (read=\"%s\", genome=\"%s\")\n",
 		    fpo->input.read, fpo->input.genome);
-		fprintf(stderr, "         Are you using different S-W "
-		    "parameters than before?\n");
+	    fprintf(stderr, "         Most likely cause is that prettyprint does not use anchors.\n");
+	    warned = true;
+	  }
 	}
 
 	fpo->output_normal = output_normal(read->name, contig->name, &sfr,
@@ -278,7 +280,7 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 	(void)sb;
 	(void)arg;
 
-	fasta = fasta_open(fpath, LETTER_SPACE);
+	fasta = fasta_open(fpath, LETTER_SPACE,false);
 	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to parse contig fasta file "
 		    "[%s]\n", fpath);
@@ -347,7 +349,7 @@ load_reads_file(char *fpath, struct stat *sb, void *arg)
 	else
 		space = LETTER_SPACE;
 
-	fasta = fasta_open(fpath, space);
+	fasta = fasta_open(fpath, space,false);
 	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to parse reads fasta file "
 		    "[%s]\n", fpath);
@@ -488,6 +490,7 @@ main(int argc, char **argv)
 
 	set_mode_from_argv(argv);
 
+	/*
 	if (shrimp_mode == MODE_HELICOS_SPACE) {
 		match_value	= DEF_MATCH_VALUE_DAG;
 		mismatch_value	= DEF_MISMATCH_VALUE_DAG;
@@ -496,6 +499,7 @@ main(int argc, char **argv)
 		a_gap_extend	= DEF_A_GAP_EXTEND_DAG;
 		b_gap_extend	= DEF_B_GAP_EXTEND_DAG;
 	}
+	*/
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");

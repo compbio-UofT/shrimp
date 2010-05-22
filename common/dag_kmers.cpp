@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dag_kmers.cpp,v 1.1 2008/05/15 16:32:02 rumble Exp $	*/
 
 #include <string> 
 #include "dag_align.h"

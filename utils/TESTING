@@ -1,0 +1,17 @@
+- split-db, project-db, split-project-db:
+
+Run with default parameters (e.g., only with --ram-size 3.5)
+
+Run with specific seeds
+
+Make sure can run
+split-project-db --mode ls ...
+followed by
+split-project-db --mode cs ...
+This should reuse (not regenerate!) the intermediate fasta files, as those do
+not depend on mode.
+
+
+- merge-hits:
+
+Merge paired/unpaired shrimp/sam output (4 tests in total).

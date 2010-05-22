@@ -1,0 +1,31 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+  echo 1>&2 "Use: `basename $0` <mappings>"
+  echo 1>&2 "Synopsis: detect shrimp/SAM output format and extract body"
+  exit 1
+fi
+
+if [ ! -r $1 ]; then
+  echo 1>&2 "error: cannot read file [$1]"
+  exit 1
+fi
+
+HEADER=`head -1 <$1 | cut -c 1`
+
+case $HEADER in
+"@" )
+  echo 1>&2 "Detected SAM output"
+
+  exec grep -v '^@' $1
+  ;;
+"#" )
+  echo 1>&2 "Detected shrimp output"
+
+  exec grep -v '^#' $1
+  ;;
+* )
+  echo 1>&2 "error: cannot detect output format"
+  exit 1
+  ;;
+esac

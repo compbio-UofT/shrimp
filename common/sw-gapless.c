@@ -22,6 +22,8 @@ static int	match, mismatch;
 /* statistics */
 static count_t	ticks, cells, invocs;
 
+#pragma omp threadprivate(initialised, match, mismatch, ticks, cells, invocs)
+
 
 int
 sw_gapless_setup(int _match, int _mismatch, bool reset_stats)
@@ -42,7 +44,7 @@ sw_gapless_setup(int _match, int _mismatch, bool reset_stats)
 
 
 void
-sw_gapless_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks, double * cellspersec)
+sw_gapless_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks)
 {
   if (_invocs != NULL)
     *_invocs = (uint64_t)count_get_count(&invocs);
@@ -50,12 +52,6 @@ sw_gapless_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks, doubl
     *_cells = (uint64_t)count_get_count(&cells);
   if (_ticks != NULL)
     *_ticks = (uint64_t)count_get_count(&ticks);
-
-  if (cellspersec != NULL) {
-    *cellspersec = (double)count_get_count(&cells) / ((double)count_get_count(&ticks) / cpuhz());
-    if (isnan(*cellspersec))
-      *cellspersec = 0;
-  }
 }
 
 int

@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: output.h,v 1.5 2008/06/06 18:24:09 rumble Exp $	*/
 
 char *readtostr(const uint32_t *, u_int, bool, int);
 char *output_format_line(bool);

@@ -1,0 +1,13 @@
+#!/bin/bash
+if [ $# -ne 1 -o ! -r "$1" ];
+then
+	if [ ! -r "$1" ];
+	then
+		echo Cannot read file \"$1\"
+	fi
+	echo Usage: $0 input_file
+	exit
+fi
+
+
+awk '{if (NR%4==1) {read_name=substr($0,2)} if (NR%4==2) {print ">"read_name,"\n"$0}}' $1

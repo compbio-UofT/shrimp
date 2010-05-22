@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dag_glue.h,v 1.1 2008/05/15 16:32:02 rumble Exp $	*/
 
 #ifdef __cplusplus
 extern "C" {

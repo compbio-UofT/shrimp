@@ -1,14 +1,10 @@
 #ifndef _HASH_H
 #define _HASH_H
 
-
-#include <stdlib.h>
 #include <stdint.h>
 #include <assert.h>
 
-
 #undef get16bits
-
 #if (defined(__GNUC__) && defined(__i386__)) || defined(__WATCOMC__) \
   || defined(_MSC_VER) || defined (__BORLANDC__) || defined (__TURBOC__)
 #define get16bits(d) (*((const uint16_t *) (d)))
@@ -76,9 +72,9 @@ hash_accumulate(uint32_t * key, uint32_t val) {
 
   uint32_t tmp;
 
-  *key += (val >> 16);				// high 16 bits
-  tmp   = ((val & 0xFFFF) << 11) ^ *key;	// low 16 bits
-  *key  = (*key << 16) ^ tmp;
+  *key += (val >> 16); // high 16 bits
+  tmp = ((val & 0xFFFF) << 11) ^ *key; // high 16 bits
+  *key = (*key << 16) ^ tmp;
   *key += *key >> 11;
 }
 

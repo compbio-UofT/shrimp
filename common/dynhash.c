@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dynhash.c,v 1.2 2008/06/06 18:24:09 rumble Exp $	*/
 
 #include <assert.h>
 #include <stdbool.h>

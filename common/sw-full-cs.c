@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: sw-full-cs.c,v 1.15 2009/06/16 23:26:21 rumble Exp $	*/
 
 #include <assert.h>
 #include <ctype.h>
@@ -106,6 +106,9 @@ static int		anchor_width;
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
+#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,gap_open,gap_ext,match,mismatch,xover_penalty,\
+		swmatrix,backtrace,dbalign,qralign,anchor_width,swticks,swcells,swinvocs)
+
 #define BT_CROSSOVER		0x80
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)
@@ -147,7 +150,7 @@ init_cell(int idx) {
 static int
 full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	int *kret, bool revcmpl,
-	struct anchor * anchors, uint anchors_cnt)
+	struct anchor * anchors, int anchors_cnt)
 {
   int i, j, k, l, max_i, max_j, max_k;
   int score, ms, go, ge, tmp, resetval;
@@ -180,24 +183,22 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   //ne_band = lena - (lenb - sw_band);
 
   if (anchors != NULL && anchor_width >= 0) {
-    join_anchors(anchors, anchors_cnt, &rectangle);
-    widen_anchor(&rectangle, (uint)anchor_width);
+    anchor_join(anchors, anchors_cnt, &rectangle);
+    anchor_widen(&rectangle, anchor_width);
   } else {
     struct anchor tmp_anchors[2];
 
     tmp_anchors[0].x = 0;
-    tmp_anchors[0].y = (int16_t)((lenb * match - threshscore) / match);
+    tmp_anchors[0].y = (lenb * match - threshscore) / match;
     tmp_anchors[0].length = 1;
     tmp_anchors[0].width = 1;
-    tmp_anchors[0].more_than_once = 0;
 
-    tmp_anchors[1].x = (int16_t)(lena - 1);
-    tmp_anchors[1].y = (int16_t)(lenb - 1 - tmp_anchors[0].y);
+    tmp_anchors[1].x = lena - 1;
+    tmp_anchors[1].y = lenb - 1 - tmp_anchors[0].y;
     tmp_anchors[1].length = 1;
     tmp_anchors[1].width = 1;
-    tmp_anchors[1].more_than_once = 0;
 
-    join_anchors(tmp_anchors, 2, &rectangle);
+    anchor_join(tmp_anchors, 2, &rectangle);
   }
 
   for (i = 0; i < lenb; i++) {
@@ -206,7 +207,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
      */
     int x_min, x_max;
 
-    get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
+    anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     //if (x_min > 0) {
     init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
     //}
@@ -476,12 +477,16 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     if (i+1 < lenb) {
       int next_x_min, next_x_max;
 
-      get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
+      anchor_get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
       for (j = x_max + 1; j <= next_x_max; j++) {
 	init_cell((i + 1) * (lena + 1) + (j + 1));
       }
     }
   }
+
+#ifdef DEBUG_SW
+  fprintf(stderr, "max_i:%d max_j:%d max_k:%d\n", max_i, max_j, max_k);
+#endif
 
   *iret = max_i;
   *jret = max_j;
@@ -518,6 +523,15 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
   if (cell->from[k].score_n > fromscore)
     from = cell->from[k].back_n;
 
+  if (from == 0) {
+    int l, base;
+    fprintf(stderr, "Assertion failed.\nQr:");
+    for (l = 1, base = qr[0][0]; l < qrlen; l++) {
+      fprintf(stderr, "%d", lstocs(base, qr[0][l], false));
+      base = qr[0][l];
+    }
+    fprintf(stderr, "\n");
+  }
   assert(from != 0);
 
   /* fill out the backtrace */
@@ -942,30 +956,24 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 }
 
 void
-sw_full_cs_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
-		 double *cellspersec)
+sw_full_cs_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 {
 	
-  if (invoc != NULL)
-    *invoc = swinvocs;
+  if (invocs != NULL)
+    *invocs = swinvocs;
   if (cells != NULL)
     *cells = swcells;
   if (ticks != NULL)
     *ticks = swticks;
-  if (cellspersec != NULL) {
-    *cellspersec = (double)swcells / ((double)swticks / cpuhz());
-    if (isnan(*cellspersec))
-      *cellspersec = 0;
-  }
 }
 
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 	   int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna,
-	   struct anchor * anchors, uint anchors_cnt)
+	   struct anchor * anchors, int anchors_cnt)
 {
   struct sw_full_results scratch;
-  uint64_t before;
+  llint before;
   int i, j, k;
 
   before = rdtsc();

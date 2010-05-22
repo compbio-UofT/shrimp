@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: sw-vector.c,v 1.15 2009/06/16 23:26:21 rumble Exp $	*/
 
 #include <assert.h>
 #include <ctype.h>
@@ -22,7 +22,6 @@
 #include "../common/util.h"
 #include "../common/sw-vector.h"
 
-#define USE_PREFETCH
 
 static int	initialised;
 static int8_t  *db, *db_ls, *qr;
@@ -35,6 +34,9 @@ static int	use_colours;
 
 /* statistics */
 static uint64_t swticks, swcells, swinvocs;
+
+#pragma omp threadprivate(initialised,db,db_ls,qr,dblen,qrlen,nogap,b_gap,a_gap_open,a_gap_ext,\
+		b_gap_open,b_gap_ext,match,mismatch,use_colours,swticks,swcells,swinvocs)
 
 /*
  * Calculate the Smith-Waterman score.
@@ -422,21 +424,15 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 }
 
 void
-sw_vector_stats(uint64_t *invoc, uint64_t *cells, uint64_t *ticks,
-    double *cellspersec)
+sw_vector_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 {
 	
-	if (invoc != NULL)
-		*invoc = swinvocs;
+	if (invocs != NULL)
+		*invocs = swinvocs;
 	if (cells != NULL)
 		*cells = swcells;
 	if (ticks != NULL)
 		*ticks = swticks;
-	if (cellspersec != NULL) {
-		*cellspersec = (double)swcells / ((double)swticks / cpuhz());
-		if (isnan(*cellspersec))
-			*cellspersec = 0;
-	}
 }
 
 int
@@ -447,10 +443,6 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	int i, score;
 
 	before = rdtsc();
-
-#ifdef USE_PREFETCH
-        _mm_prefetch((const char *)read, _MM_HINT_NTA);
-#endif
 
 	if (!initialised)
 		abort();

@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: util.h,v 1.22 2009/06/16 23:26:21 rumble Exp $	*/
 #ifndef _UTIL_H
 #define _UTIL_H
 
@@ -21,6 +21,8 @@ extern "C" {
 
 #include "../common/fasta.h"
 #include "../common/stats.h"
+#include "../common/hash.h"
+
 
 typedef enum {
 	MODE_LETTER_SPACE = 1,
@@ -54,6 +56,8 @@ struct _strbuf_t {
 };
 typedef struct _strbuf_t * strbuf_t;
 
+typedef long long int llint;
+
 void		set_mode_from_argv(char **);
 const char     *get_mode_string(void);
 uint64_t	gettimeinusecs(void);
@@ -79,6 +83,12 @@ void		bitfield_insert(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
 void		reverse_complement(uint32_t *, uint32_t *, uint32_t, bool);
+uint32_t *
+reverse_complement_read_cs(uint32_t * read,int8_t initbp, int8_t initbp_rc, uint32_t len, bool is_rna);
+uint32_t *
+reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna);
+void
+reverse_complement_read_ls_text(char * read, char *ret);
 uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
 		    void *);
 uint64_t	file_iterator_n(char **, int,
@@ -92,6 +102,8 @@ void	        strbuf_append(strbuf_t, char const *, ...);
 void		strbuf_destroy(strbuf_t);
 char	       *fast_gzgets(gzFile, char *, int);
 char	       *comma_integer(uint64_t);
+void xgzwrite(gzFile fp, voidp buf, unsigned len);
+void xgzread(gzFile fp, voidp buf, unsigned len);
 
 
 /* for optarg (and to shut up icc) */
@@ -177,6 +189,65 @@ lstocs(int first_letter, int second_letter, bool is_rna)
 
 	return (colourmat[first_letter][second_letter]);
 }
+
+static inline uint
+ceil_div(uint a, uint b) {
+  assert(a > 0 && b > 0);
+
+  return ((a - 1) / b) + 1;
+}
+
+/*
+ * Compute a hash value for a genomic region.
+ */
+static inline uint32_t
+hash_genome_window(uint32_t * genome, uint goff, uint glen) {
+  static uint const bases_per_buffer = 16;
+
+  uint i, j;
+  uint base;
+  uint32_t key = 0;
+  uint32_t buffer;
+
+  for (i = 0; i < ceil_div(glen, bases_per_buffer); i++) {
+    buffer = 0;
+    for (j = 0; j < bases_per_buffer && i * bases_per_buffer + j < glen; j++) {
+      base = EXTRACT(genome, goff + i * bases_per_buffer + j);
+      buffer <<= 2;
+      buffer |= (base & 0x03);
+    }
+    hash_accumulate(&key, buffer);
+  }
+  hash_finalize(&key);
+
+  return key;
+}
+
+/* compute base^power */
+static inline size_t
+power(size_t base, size_t exp)
+{
+  size_t result = 1;
+
+  while (exp > 0) {
+    if ((exp % 2) == 1)
+      result *= base;
+    base *= base;
+    exp /= 2;
+  }
+
+  return result;
+}
+
+/* compute 4^power */
+static inline llint
+power4(int exp) {
+  return (llint)1 << (2 * exp);
+}
+
+
+void
+edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res);
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: dynhash.h,v 1.1 2007/12/31 17:08:55 rumble Exp $	*/
 
 #ifndef _DYNHASH_H_
 #define _DYNHASH_H_

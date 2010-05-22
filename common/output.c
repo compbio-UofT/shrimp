@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: output.c,v 1.12 2008/06/11 17:13:37 rumble Exp $	*/
 
 #include <assert.h>
 #include <ctype.h>

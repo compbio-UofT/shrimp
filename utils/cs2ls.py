@@ -1,4 +1,4 @@
-#	$Id$
+#	$Id: cs2ls.py,v 1.1 2008/11/18 20:22:32 rumble Exp $
 
 import sys
 

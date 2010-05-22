@@ -1,4 +1,4 @@
-#	$Id$
+#	$Id: revcmpl.py,v 1.2 2008/06/06 18:24:28 rumble Exp $
 
 import sys
 from utils import *

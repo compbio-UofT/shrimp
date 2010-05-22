@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: util.c,v 1.25 2009/06/16 23:26:21 rumble Exp $	*/
 
 #include <assert.h>
 #include <inttypes.h>
@@ -12,7 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
-#include <pthread.h>
+//#include <pthread.h>
 
 #include <sys/time.h>
 #include <sys/types.h>
@@ -187,7 +187,6 @@ xcalloc_c(size_t size, count_t * c)
 void *
 xrealloc(void *ptr, size_t size)
 {
-
   ptr = realloc(ptr, size);
   if (ptr == NULL) {
     fprintf(stderr, "error: realloc failed: %s\n", strerror(errno));
@@ -505,6 +504,106 @@ reverse_complement(uint32_t *g_ls, uint32_t *g_cs, uint32_t g_len, bool is_rna)
 			lastbp = base;
 		}
 	}
+
+}
+/*
+ * compute and return the reverse complement of the read in letterspace
+ */
+uint32_t *
+reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna){
+	uint32_t * rev_cmp;
+	uint32_t i, j, fudge, up, down;
+
+	rev_cmp = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
+	for (i = 0, j = BPTO32BW(len) - 1; i <= j; i++, j--) {
+		rev_cmp[i] = swap_nibbles(read[j]);
+		if (i != j)
+			rev_cmp[j] = swap_nibbles(read[i]);
+
+		rev_cmp[i]=(complement_base((rev_cmp[i] & 0x0000000f) >>  0, is_rna) <<  0) |
+				(complement_base((rev_cmp[i] & 0x000000f0) >>  4, is_rna) <<  4) |
+				(complement_base((rev_cmp[i] & 0x00000f00) >>  8, is_rna) <<  8) |
+				(complement_base((rev_cmp[i] & 0x0000f000) >> 12, is_rna) << 12) |
+				(complement_base((rev_cmp[i] & 0x000f0000) >> 16, is_rna) << 16) |
+				(complement_base((rev_cmp[i] & 0x00f00000) >> 20, is_rna) << 20) |
+				(complement_base((rev_cmp[i] & 0x0f000000) >> 24, is_rna) << 24) |
+				(complement_base((rev_cmp[i] & 0xf0000000) >> 28, is_rna) << 28);
+
+		/* Don't swap twice if we're at the same index */
+		if (i == j) {
+			// if i == j and i == 0, then we're done. Else j would
+			// underflow in the for loop above with unsigned badness
+			if (i == 0)
+				break;
+			else
+				continue;
+		}
+
+		rev_cmp[j]=(complement_base((rev_cmp[j] & 0x0000000f) >>  0, is_rna) <<  0) |
+				(complement_base((rev_cmp[j] & 0x000000f0) >>  4, is_rna) <<  4) |
+				(complement_base((rev_cmp[j] & 0x00000f00) >>  8, is_rna) <<  8) |
+				(complement_base((rev_cmp[j] & 0x0000f000) >> 12, is_rna) << 12) |
+				(complement_base((rev_cmp[j] & 0x000f0000) >> 16, is_rna) << 16) |
+				(complement_base((rev_cmp[j] & 0x00f00000) >> 20, is_rna) << 20) |
+				(complement_base((rev_cmp[j] & 0x0f000000) >> 24, is_rna) << 24) |
+				(complement_base((rev_cmp[j] & 0xf0000000) >> 28, is_rna) << 28);
+	}
+	/*
+	 * If (g_len % 8) != 0, we need to shift all words down since
+	 * the last word had some zeroed fields.
+	 */
+	fudge = 8 - (len % 8);
+	if (fudge != 8) {
+		down = fudge * 4;
+		up = 32 - down;
+
+		for (i = 0; i < BPTO32BW(len); i++) {
+			if (i > 0)
+				rev_cmp[i - 1] |= (rev_cmp[i] << up);
+			rev_cmp[i] >>= down;
+		}
+	}
+	return rev_cmp;
+
+}
+
+uint32_t *
+reverse_complement_read_cs(uint32_t * read, int8_t initbp, int8_t initbp_rc, uint32_t len, bool is_rna){
+	uint32_t * read_rc;
+	uint i;
+	int8_t base;
+
+	assert(len > 0);
+	read_rc = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
+
+	base = (int8_t)cstols(initbp, EXTRACT(read, 0), is_rna);
+	for (i = 1; i < len; i++){
+	  base = (int8_t)cstols(base, EXTRACT(read,i), is_rna);
+		bitfield_insert(read_rc, len - i, EXTRACT(read,i));
+	}
+	bitfield_insert(read_rc, 0, lstocs(base, complement_base(initbp_rc, is_rna), is_rna));
+
+	return read_rc;
+}
+
+void
+reverse_complement_read_ls_text(char * read, char *ret){
+	int len = strlen(read);
+	int c;
+	for (c = 0; c < len; c ++){
+		char base = read[len - 1 - c];
+		if (base == 'g' || base == 'G'){
+			base = 'c';
+		} else if (base == 'a' || base == 'A'){
+			base = 't';
+		} else if (base == 't' || base == 'T'){
+			base = 'a';
+		} else if (base == 'c' || base == 'C'){
+			base = 'g';
+		}
+		ret[c] = base;
+	}
+	ret[len] = '\0';
 }
 
 /*
@@ -551,8 +650,13 @@ file_iterator(char *path, void (*fh)(char *, struct stat *, void *),
 		strcat(fpath, de->d_name);
 		xstat(fpath, &sb);
 
+#if defined(DT_REG) && defined(DT_LNK)
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+#else
 		if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))
 			continue;
+#endif
 
 		/* ensure it's a regular file or link to one */
 		if (S_ISREG(sb.st_mode)) {
@@ -858,6 +962,32 @@ fast_gztest(int nfiles, char **files)
 }
 #endif
 
+void xgzread(gzFile fp, voidp buf, unsigned len){
+	uint total = 0;
+	while (total < len){
+		uint res;
+		res = gzread(fp,(char *)buf+total,len-total);
+		if (res <= 0){
+			fprintf(stderr,"error: gzread returned %u\n",res);
+			exit(0);
+		}
+		total += res;
+	}
+}
+
+void xgzwrite(gzFile fp, voidp buf, unsigned len){
+	uint total = 0;
+	while (total < len){
+		uint res;
+		res = gzwrite(fp,(char *)buf+total,len-total);
+		if (res <= 0){
+			fprintf(stderr,"error: gzwrite returned %u\n",res);
+			exit(0);
+		}
+		total += res;
+	}
+}
+
 /*
  * Return a string on the stack corresponding to an unsigned integer that also
  * features commas. E.g.: int 1000 yields "1,000".
@@ -888,3 +1018,88 @@ comma_integer(uint64_t val)
 
 	return (ret);
 }
+enum mode {start,match,mismatch,ref_gap,read_gap};
+
+static int
+finish_mode(enum mode mode,int count,char *res){
+	if (mode == match || mode == mismatch) return sprintf(res,"%iM",count);
+	else if (mode == ref_gap) return sprintf(res,"%iI",count);
+	else if (mode == read_gap) return sprintf(res,"%iD",count);
+	else return 0;
+}
+
+void
+edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res){
+	char * current=edit;
+	enum mode mode = start;
+	int count = 0;
+	int last_count = 0;
+
+	if(read_start != 0){
+	  res += sprintf(res,"%uS",(unsigned int)read_start);
+	}
+
+	while(*current != '\0'){
+		if (*current <= '9' && *current >= '0'){
+			if(mode != match){
+				if (mode == mismatch){
+					last_count += count;
+				} else {
+					res += finish_mode(mode,count + last_count, res);
+					last_count = 0;
+				}
+				count = 0;
+			}
+			int t;
+			t = *current - '0';
+			assert(t >= 0 && t <= 9);
+			count = count*10 + t;
+			mode = match;
+		} else if(*current == '('){
+			res += finish_mode(mode, count + last_count, res);
+			count = 0;
+			last_count = 0;
+			mode = ref_gap;
+		} else if(*current == 'G' || *current == 'A' || *current == 'T' || *current == 'C'){
+			if (mode == ref_gap){
+				count++;
+			} else{
+				if (mode != mismatch){
+					if (mode == match){
+						last_count += count;
+					} else{
+						res += finish_mode(mode,count + last_count,res);
+						last_count = 0;
+					}
+					count = 0;
+				}
+				count++;
+				mode = mismatch;
+
+			}
+
+		} else if (*current == ')'){
+			res += finish_mode(mode, count + last_count, res);
+			count = 0;
+			last_count = 0;
+			mode = start;
+		} else if (*current == '-'){
+			if (mode != read_gap){
+				res += finish_mode(mode, count + last_count, res);
+				count = 0;
+				last_count = 0;
+			}
+			count ++;
+			mode = read_gap;
+		} else if (*current == 'x'){
+			last_count += count;
+			count = 0;
+		}
+		current++;
+	}
+	res += finish_mode(mode,count+ last_count,res);
+	if(read_end + 1 != read_length){
+	  sprintf(res,"%uS",(unsigned int)(read_length - read_end - 1));
+	}
+}
+

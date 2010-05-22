@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: fasta.c,v 1.23 2009/06/16 23:26:21 rumble Exp $	*/
 
 #include <assert.h>
 #include <ctype.h>
@@ -22,7 +22,7 @@
 static uint64_t total_ticks;
 
 fasta_t
-fasta_open(const char *file, int space)
+fasta_open(const char *file, int space, bool fastq)
 {
 	fasta_t fasta = NULL;
 	struct stat sb;
@@ -47,6 +47,7 @@ fasta_open(const char *file, int space)
 	fasta->fp = fp;
 	fasta->file = xstrdup(file);
 	fasta->space = space;
+	fasta->fastq = fastq;
 	memset(fasta->translate, -1, sizeof(fasta->translate));
 
 	if (space == COLOUR_SPACE) {
@@ -127,36 +128,62 @@ fasta_stats()
 }
 
 static char *
-extract_name(char *buffer)
+extract_name(char *buffer, char * * ranges)
 {
 	char *extracted;
 	char *ret;
 	int len;
+	char * tok_save;
 
-	assert(buffer[0] == '>');
+	assert(buffer[0] == '>' || buffer[0] == '@');
 
 	/* Funny business for valgrind. See bottom of fasta_get_next. */
+	/*
 	extracted = strtrim(&buffer[1]);
 	len = strlen(extracted);
 	ret = (char *)xmalloc(len + 17);
 	memcpy(ret, extracted, len);
 	memset(ret + len, 0, 17);
+	*/
+
+	extracted = strtok_r(&buffer[1], "\t", &tok_save);
+	extracted = strtrim(extracted);
+	len = strlen(extracted);
+	ret = (char *)xmalloc(len + 17);
+	memcpy(ret, extracted, len);
+	memset(ret + len, 0, 17);
+
+	if (ranges != NULL && (extracted = strtok_r(NULL, "\t", &tok_save)) != NULL) {
+	  len = strlen(extracted);
+	  *ranges = (char *)xmalloc(len + 17);
+	  memcpy(*ranges, extracted, len);
+	  memset(*ranges + len, 0, 17);
+	}
 
 	return (ret);
 }
 
 bool
-fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
+fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_rna, char * * ranges, char **qual)
 {
 	static int categories[256] = { 42 };
 	enum { CAT_SPACE, CAT_NEWLINE, CAT_NUL, CAT_ELSE };
 
 	int i;
 	bool gotname = false;
+	bool gotseq  = false;
 	uint32_t sequence_length = 0;
+	uint32_t quality_length = 0;
 	uint32_t max_sequence_length = 0;
+	uint32_t max_qual_length = 0;
 	uint64_t before = rdtsc();
 	char *readinseq;
+	char *readinqual;
+	char c;
+
+	if (fasta->fastq){
+		assert(qual != NULL);
+	}
 
 	/* isspace(3) is really slow, so build a lookup instead */
 	if (categories[0] == 42) {
@@ -174,25 +201,80 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 		}
 	}
 
-	*name = *sequence = readinseq = NULL;
+	*name = *sequence = readinseq = readinqual= NULL;
 
 	if (fasta->leftover) {
-		*name = extract_name(fasta->buffer);
+		*name = extract_name(fasta->buffer, ranges);
 		fasta->leftover = false;
 		gotname = true;
 	}
-
 	while (fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL) {
 		if (fasta->buffer[0] == '#')
 			continue;
 
-		if (fasta->buffer[0] == '>') {
+		if (fasta->buffer[0] == '+' && fasta->fastq){
+			gotseq = true;
+			continue;
+		}
+
+		if (gotseq){
+			if (max_qual_length == 0 ||
+					max_qual_length - quality_length <= sizeof(fasta->buffer)) {
+				if (max_qual_length == 0)
+					max_qual_length = 16*1024*1024;
+				else if (max_qual_length >= 128*1024*1024)
+					max_qual_length += 128*1024*1024;
+				else
+					max_qual_length *= 2;
+				readinqual = (char *)xrealloc(readinqual, max_qual_length);
+			}
+
+			for (i = 0; fasta->buffer[i] != '\0'; i++) {
+				int act = categories[(int)fasta->buffer[i]];
+
+				assert(i < (int)sizeof(fasta->buffer));
+
+				switch (act) {
+				case CAT_NUL:
+				case CAT_NEWLINE:
+					fasta->buffer[i] = '\0';
+					goto out;
+				case CAT_SPACE:
+					continue;
+				case CAT_ELSE:
+				default:
+					/* fall down below */
+					break;
+				}
+
+				readinqual[quality_length++] = fasta->buffer[i];
+
+				continue;
+				out:
+				break;
+			}
+
+			assert(quality_length <= max_qual_length);
+			assert(quality_length <= sequence_length);
+			if (quality_length == sequence_length){
+				break;
+			} else {
+				continue;
+			}
+		}
+
+		if (fasta->fastq){
+			c = '@';
+		} else {
+			c = '>';
+		}
+		if (fasta->buffer[0] == c) {
 			if (gotname) {
 				fasta->leftover = true;
 				break;
 			}
 
-			*name = extract_name(fasta->buffer);
+			*name = extract_name(fasta->buffer, ranges);
 			gotname = true;
 			continue;
 		}
@@ -217,7 +299,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 			case CAT_NUL:
 			case CAT_NEWLINE:
 				fasta->buffer[i] = '\0';
-				goto out;
+				goto out_qual;
 			case CAT_SPACE:
 				continue;
 			case CAT_ELSE:
@@ -229,7 +311,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 			readinseq[sequence_length++] = fasta->buffer[i];
 
 			continue;
- out:
+ out_qual:
 			break;
 		}
 
@@ -239,6 +321,8 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 	if (!gotname) {
 		if (readinseq != NULL)
 			free(readinseq);
+		if (readinqual != NULL)
+			free(readinqual);
 		total_ticks += (rdtsc() - before);
 		return (false);
 	}
@@ -261,6 +345,11 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 	*sequence = (char *)xmalloc(sequence_length + 17);
 	memcpy(*sequence, readinseq, sequence_length);
 	memset(*sequence + sequence_length, 0, 17);
+	if (fasta->fastq){
+		*qual = (char *)xmalloc(quality_length + 17);
+		memcpy(*qual, readinqual, quality_length);
+		memset(*qual + quality_length, 0, 17);
+	}
 
 	/* check if the sequence is rna (contains uracil and not thymine) */
 	if (is_rna != NULL) {
@@ -282,6 +371,7 @@ fasta_get_next(fasta_t fasta, char **name, char **sequence, bool *is_rna)
 	}
 
 	free(readinseq);
+	free(readinqual);
 	assert(*name != NULL);
 	assert(*sequence != NULL);
 	total_ticks += (rdtsc() - before);

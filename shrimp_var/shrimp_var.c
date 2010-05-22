@@ -146,8 +146,13 @@ int file_iterator(char *path) {
 			exit(1);
 		}
 
+#if defined(DT_REG) && defined(DT_LNK)
+		if (de->d_type != DT_REG && de->d_type != DT_LNK)
+			continue;
+#else
 		if (!S_ISREG(sb.st_mode) && !S_ISLNK(sb.st_mode))
 			continue;
+#endif
 
 		/* ensure it's a regular file or link to one */
 		if (S_ISREG(sb.st_mode)) {
@@ -410,7 +415,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 		}
 		
 		// check if it is a nucleotide
-		isnuc = (ech == 'A' || ech == 'C' || ech == 'T' || ech == 'G' || ech == 'N');
+		isnuc = (ech == 'A' || ech == 'C' || ech == 'T' || ech == 'G');
 		
 		// SNP
 		if (!inins & isnuc) {
@@ -473,7 +478,7 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 	}	
 	
 	fprintf(outfile, "\t%i %i %i\t", nr_snps, nr_ins, nr_dels);
-	fprintf(outfile, outstring);
+	fprintf(outfile, "%s",outstring);
 }
 
 /*
@@ -482,7 +487,6 @@ void editstr_to_stats(char * str, long readloc, int is_forward) {
 int assert_editstring_char(char echar) {
 	return
 		echar == 'A' || echar == 'C' || echar == 'G' || echar == 'T' ||
-	        echar == 'N' || 
 		echar == '1' || echar == '2' || echar == '3' || echar == '4' || 
 		echar == '5' || echar == '6' || echar == '7' || echar == '8' || 
 		echar == '9' || echar == '(' || echar == ')' || echar == '-' ||
@@ -498,7 +502,6 @@ int complement(char ech) {
 	if (ech == 'T') return 'A';
 	if (ech == 'C') return 'G';
 	if (ech == 'G') return 'C';
-	if (ech == 'N') return 'N';
 	assert(0);
 	return -1;
 }

@@ -1,4 +1,4 @@
-// $Id$
+// $Id: probcalc_mp.h,v 1.4 2009/02/15 23:53:48 dalcaadr Exp $
 
 // binary
 #define true 1

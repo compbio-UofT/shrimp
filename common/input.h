@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: input.h,v 1.8 2009/02/06 18:32:59 dalcaadr Exp $	*/
 
 struct input {
 	char    *read;				/* read name */
@@ -37,3 +37,14 @@ struct input {
 void	input_free(struct input *);
 bool	input_parseline(gzFile, struct input *);
 bool	editstr_to_sfr(const char *, struct sw_full_results *);
+
+void format_free(struct format_spec *fsp);
+
+struct format_spec *
+format_get_default();
+
+void
+input_parse_string(char * buf,struct format_spec *fsp,struct input *inp);
+
+struct format_spec *
+format_get_from_string(char *format);

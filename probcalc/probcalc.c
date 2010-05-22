@@ -1,4 +1,4 @@
-/*	$Id$	*/
+/*	$Id: probcalc.c,v 1.42 2009/02/22 20:07:12 rumble Exp $	*/
 
 #include <dirent.h>
 #include <errno.h>
