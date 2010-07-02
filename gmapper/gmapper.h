@@ -20,6 +20,7 @@ struct option standard_options[] =
 {	
 	{"un",1,0,10},
 	{"al",1,0,11},
+	{"sam-unaligned",1,0,12},
 	{"seeds",1,0,'s'}, 
 	{"report",1,0,'o'},
 	{"match-window",1,0,'w'},

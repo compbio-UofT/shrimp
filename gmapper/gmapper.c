@@ -88,8 +88,9 @@ static char *	right_reads_filename	= NULL;
 bool		single_reads_file	= true;
 
 /* Output Files */
-FILE* unaligned_reads_file =NULL;
-FILE* aligned_reads_file =NULL;
+FILE*	unaligned_reads_file =NULL;
+FILE*	aligned_reads_file =NULL;
+bool	sam_unaligned =false;
 
 /* Statistics */
 static llint	nreads;
@@ -2237,7 +2238,7 @@ handle_read(read_entry *re){
 	}
     }
   } else {
-	if (Eflag) {
+	if (Eflag && sam_unaligned) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; 
       		hit_output(re, NULL, NULL, NULL, &output1, NULL, false, NULL);
@@ -2302,7 +2303,7 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	}
     }
   } else {
-	if (Eflag) {
+	if (Eflag && sam_unaligned) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; char * output2=NULL;
       		hit_output(re1, NULL, re2, NULL, &output1, NULL, true, NULL);
@@ -3198,9 +3199,11 @@ usage(char * progname, bool full_usage){
 	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
   fprintf(stderr,
-	  "   -un/--unaligned      Dump unaligned reads to file  (default: disabled)\n");
+	  "   --un                 Dump unaligned reads to file  (default: disabled)\n");
   fprintf(stderr,
-	  "   -an/--aligned        Dump aligned reads to file    (default: disabled)\n");
+	  "   --al                 Dump aligned reads to file    (default: disabled)\n");
+  fprintf(stderr,
+	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
 	  "   -1/--upstream        Upstream read pair file\n");
   fprintf(stderr,
@@ -3405,6 +3408,9 @@ int main(int argc, char **argv){
 			if (aligned_reads_file==NULL) {
 				fprintf(stderr,"error: cannot open file \"%s\" for writting\n",optarg);	
 			}
+			break;
+		case 12:
+			sam_unaligned=true;
 			break;
 		case '1':
 			left_reads_filename = optarg;
@@ -3646,6 +3652,11 @@ int main(int argc, char **argv){
 	argc -= optind;
 	argv += optind;
 
+
+	if (sam_unaligned && !Eflag) {
+		fprintf(stderr,"error: when using flag --sam-unaligned must also use -E/--sam\n");
+		usage(progname,false);
+	}
 	if (right_reads_filename != NULL || left_reads_filename !=NULL) {
 		if (right_reads_filename == NULL || left_reads_filename == NULL ){
 			fprintf(stderr,"error: when using \"%s\" must also specify \"%s\"\n",

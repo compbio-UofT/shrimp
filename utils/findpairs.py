@@ -20,13 +20,43 @@ def upout(x):
 reads = []
 
 for f in sys.argv[5:]:
-	for line in open(f,'r').readlines():
-		if line[0] == '>':
-			reads.append([line])
-		elif line[0] == '#':
-			continue
-		elif reads:
-			reads[-1].append(line)
+	h=open(f,'r')
+	header=True
+	line=h.readline()
+	fastq=False
+	while line:
+		#check the header and the first read
+		if header:
+			if line[0]=='#':
+				continue
+			if line[0]=='@':
+				fastq=True
+		header=False 
+		if not fastq:
+			read_name=line
+			read_sequence=""
+			line=h.readline()
+			while line and line[0]!='>':
+				read_sequence+=line
+				line=h.readline()
+			reads.append([read_name,read_sequence])	
+		else:
+			read_name=line
+			read_sequence=""
+			line=h.readline()
+			while line and line[0]!='+':
+				read_sequence+=line
+				line=h.readline()
+			sequence_length=len(read_sequence.replace('\n',''))
+			plus_line=line
+			read_quality=""
+			quality_length=0
+			line=h.readline()
+			while line and quality_length<sequence_length:
+				read_quality+=line
+				quality_length+=len(line.strip())
+				line=h.readline()
+			reads.append([read_name,read_sequence,plus_line,read_quality])	
 
 def compare(x,y):
 	return cmp(x[0],y[0])
