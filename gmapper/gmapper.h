@@ -1,6 +1,7 @@
 #ifndef _GMAPPER_H
 #define _GMAPPER_H
 
+#include <getopt.h>
 #include <stdlib.h>
 #include "../common/bitmap.h"
 #include "../common/sw-full-common.h"
@@ -15,61 +16,59 @@
 #define PAIR_COL_FW	3
 #define PAIR_COL_BW	4
 
-	struct option standard_options[] =
-		{	
-			{"un",1,0,10},
-			{"al",1,0,11},
-			{"seeds",1,0,'s'},
-			{"report",1,0,'o'},
-			{"match-window",1,0,'w'},
-			{"cmv-mode",1,0,'n'},
-			{"cmv-overlap",1,0,'l'},
-			{"anchor-width",1,0,'a'},
-			{"save",1,0,'S'},
-			{"load",1,0,'L'},
-			{"cutoff",1,0,'z'},
-			{"match",1,0,'m'},
-			{"mismatch",1,0,'i'},
-			{"open-r",1,0,'g'},
-			{"open-q",1,0,'q'},	
-			{"ext-r",1,0,'e'},
-			{"ext-q",1,0,'f'},
-			{"cmv-threshold",1,0,'r'},
-			{"hit-threshold",1,0,'h'},
-			{"threads",1,0,'N'},
-			{"thread-chunk",1,0,'K'},
-			{"pair-mode",1,0,'p'},
-			{"isize",1,0,'I'},
-			{"ungapped",0,0,'U'},
-			{"negative",0,0,'C'},
-			{"positive",0,0,'F'},
-			{"pretty",0,0,'P'},
-			{"sam",0,0,'E'},
-			{"fastq",0,0,'Q'},
-			{"print-reads",0,0,'R'},
-			{"rev-tiebreak",0,0,'T'},
-			{"tiebreak-off",0,0,'t'},
-			{"isize-histogram",0,0,'X'},
-			{"proj-histogram",0,0,'Y'},
-			{"cachebypass-off",0,0,'Z'},
-			{"help",0,0,'?'},
-			{"spaced-kmers",0,0,'H'},
-			{"thread-stats",0,0,'D'},
-			{"trim-off",0,0,'V'}
-		};
-
-	struct option colour_space_options[] = {
-			{"crossover",1,0,'x'},
-			{"vec-threshold",1,0,'v'},
-			{0,0,0,0}
-		};
-	
-	struct option letter_space_options[] = {
-			{0,0,0,0}
-		}; 
-	size_t standard_entries = sizeof(standard_options)/sizeof(struct option);
-	size_t letter_entries = sizeof(letter_space_options)/sizeof(struct option);
-	size_t colour_entries = sizeof(colour_space_options)/sizeof(struct option);
+struct option standard_options[] =
+{	
+	{"un",1,0,10},
+	{"al",1,0,11},
+	{"seeds",1,0,'s'}, 
+	{"report",1,0,'o'},
+	{"match-window",1,0,'w'},
+	{"cmv-mode",1,0,'n'},
+	{"cmv-overlap",1,0,'l'},
+	{"anchor-width",1,0,'a'},
+	{"save",1,0,'S'},
+	{"load",1,0,'L'},
+	{"cutoff",1,0,'z'},
+	{"match",1,0,'m'},
+	{"mismatch",1,0,'i'},
+	{"open-r",1,0,'g'},
+	{"open-q",1,0,'q'},	
+	{"ext-r",1,0,'e'},
+	{"ext-q",1,0,'f'},
+	{"cmv-threshold",1,0,'r'},
+	{"hit-threshold",1,0,'h'},
+	{"threads",1,0,'N'},
+	{"thread-chunk",1,0,'K'},
+	{"pair-mode",1,0,'p'},
+	{"isize",1,0,'I'},
+	{"ungapped",0,0,'U'},
+	{"negative",0,0,'C'},
+	{"positive",0,0,'F'},
+	{"pretty",0,0,'P'},
+	{"sam",0,0,'E'},
+	{"fastq",0,0,'Q'},
+	{"print-reads",0,0,'R'},
+	{"rev-tiebreak",0,0,'T'},
+	{"tiebreak-off",0,0,'t'},
+	{"isize-histogram",0,0,'X'},
+	{"proj-histogram",0,0,'Y'},
+	{"cachebypass-off",0,0,'Z'},
+	{"help",0,0,'?'},
+	{"spaced-kmers",0,0,'H'},
+	{"thread-stats",0,0,'D'},
+	{"trim-off",0,0,'V'}
+};
+struct option colour_space_options[] = {
+	{"crossover",1,0,'x'},
+	{"vec-threshold",1,0,'v'},
+	{0,0,0,0}
+};
+struct option letter_space_options[] = {
+		{0,0,0,0}
+	}; 
+size_t standard_entries = sizeof(standard_options)/sizeof(struct option);
+size_t letter_entries = sizeof(letter_space_options)/sizeof(struct option);
+size_t colour_entries = sizeof(colour_space_options)/sizeof(struct option);
 static char const * const pair_mode_string[5] =
   { "none", "opposing strands; inwards", "opposing strands; outwards",
     "same strand; second is forward", "same strand; second is backward" };

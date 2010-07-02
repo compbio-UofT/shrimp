@@ -1309,7 +1309,7 @@ read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
 	  && (h->load < h->capacity
 	      || ( (IS_ABSOLUTE(sw_vect_threshold)
 		    && re->hits[st][i].score_vector > (int)h->array[0].key)
-		   || (~IS_ABSOLUTE(sw_vect_threshold)
+		   || (!IS_ABSOLUTE(sw_vect_threshold)
 		       && re->hits[st][i].pct_score_vector > (int)h->array[0].key)))) {
 	tmp.key = (IS_ABSOLUTE(sw_vect_threshold)? re->hits[st][i].score_vector : re->hits[st][i].pct_score_vector);
 	tmp.rest.hit = &re->hits[st][i];
@@ -1354,7 +1354,7 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 	    && (h->load < h->capacity
 		|| ( (IS_ABSOLUTE(sw_vect_threshold)
 		      && re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector > (int)h->array[0].key)
-		     || (~IS_ABSOLUTE(sw_vect_threshold)
+		     || (!IS_ABSOLUTE(sw_vect_threshold)
 			 && (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2 > (int)h->array[0].key)))) {
 	  tmp.key = (IS_ABSOLUTE(sw_vect_threshold)?
 		     re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector
@@ -1935,12 +1935,10 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   //heap_unpaired_heapsort(h);
   heap_unpaired_qsort(h);
 
-//  if ( (IS_ABSOLUTE(sw_full_threshold)
-//	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
-//   || (~IS_ABSOLUTE(sw_full_threshold)
-//	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
-//DZ1
-if ( (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max) ) {
+  if ( (IS_ABSOLUTE(sw_full_threshold)
+	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
+   || (!IS_ABSOLUTE(sw_full_threshold)
+	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
 #pragma omp atomic
     total_reads_matched++;
   }
@@ -1955,10 +1953,12 @@ if ( (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest
   }
 
   /* Output sorted list, removing any duplicates. */
-//DZ1
   for (i = 0;
-      i < (int)h->load && i<num_outputs
-	&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max);
+       i < (int)h->load && i < num_outputs
+	 && ( (IS_ABSOLUTE(sw_full_threshold)
+	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
+	      || (!IS_ABSOLUTE(sw_full_threshold)
+		  && (int)h->array[i].key >= (int)sw_full_threshold) );
        i++) {
     struct read_hit * rh = h->array[i].rest.hit;
     bool dup;
@@ -2059,15 +2059,22 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	}
   }
 
-if ( (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max) ) { 
+  if ( (IS_ABSOLUTE(sw_full_threshold)
+	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max))
+       || (!IS_ABSOLUTE(sw_full_threshold)
+	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
 #pragma omp atomic
     total_pairs_matched++;
   }
 
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-	i < (int)h->load && i < num_outputs
-	&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max);
+       i < (int)h->load && i < num_outputs
+	 && ( (IS_ABSOLUTE(sw_full_threshold)
+	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
+							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
+	      || (!IS_ABSOLUTE(sw_full_threshold)
+		  && (int)h->array[i].key >= (int)sw_full_threshold) );
        i++) {
     struct read_hit * rh1 = h->array[i].rest.hit[0];
     struct read_hit * rh2 = h->array[i].rest.hit[1];
