@@ -3106,7 +3106,15 @@ usage(char * progname, bool full_usage){
     progname = slash + 1;
 
   fprintf(stderr, 
-	  "usage: %s [parameters] [options] reads_file genome_file1 genome_file2...\n", progname);
+	  "usage: %s [options/parameters] { <r> | -1 <r1> -2 <r2> } <g1> <g2>...\n", progname);
+  fprintf(stderr,
+	  "   <r>                  Reads filename, paired or unpaired\n");
+  fprintf(stderr,
+	  "   <r1>                 Upstream reads filename\n");
+  fprintf(stderr,
+	  "   <r2>                 Downstream reads filename\n");
+  fprintf(stderr,
+	  "   <g1> <g2>...         Space seperated list of genome filenames\n");
   fprintf(stderr,
 	  "Parameters:\n");
   fprintf(stderr,
@@ -3199,15 +3207,9 @@ usage(char * progname, bool full_usage){
 	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
   fprintf(stderr,
-	  "   --un                 Dump unaligned reads to file  (default: disabled)\n");
-  fprintf(stderr,
-	  "   --al                 Dump aligned reads to file    (default: disabled)\n");
-  fprintf(stderr,
-	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
-  fprintf(stderr,
 	  "   -1/--upstream        Upstream read pair file\n");
   fprintf(stderr,
-	  "   -2/--downstream      Upstream read pair file\n");
+	  "   -2/--downstream      Downstream read pair file\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
@@ -3252,6 +3254,12 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "                                 Index Trimming       (default: enabled)\n");
   }
+  fprintf(stderr,
+	  "   --un                 Dump unaligned reads to file  (default: disabled)\n");
+  fprintf(stderr,
+	  "   --al                 Dump aligned reads to file    (default: disabled)\n");
+  fprintf(stderr,
+	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
 
