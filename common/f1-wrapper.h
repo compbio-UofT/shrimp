@@ -55,7 +55,12 @@ f1_setup(int _dblen, int _qrlen,
 			   _a_gap_open, _a_gap_ext, _b_gap_open, _b_gap_ext, _match, _mismatch,
 			   _use_colours, reset_stats);
 }
-
+static inline int
+f1_free(void) 
+{
+	free(f1_window_cache);
+	return 0;
+}
 
 /*
  * Get statistics of this filter.

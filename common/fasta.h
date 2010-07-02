@@ -1,3 +1,5 @@
+#include "util.h"
+
 /*	$Id: fasta.h,v 1.12 2009/06/16 23:26:21 rumble Exp $	*/
 
 #ifndef _FASTA_H_
@@ -42,32 +44,89 @@
 #define BASE_CS_MIN	BASE_0
 #define BASE_CS_MAX	BASE_3
 
+#define FASTA_PER_LINE 80
+
 typedef struct _fasta_t {
 	gzFile fp;
 	char  *file;
-	int    space;
+	shrimp_mode_t space;
 	char   buffer[8*1024*1024];
 	char   translate[256];
 	bool   leftover;
 	bool	fastq;
+	char *	parse_buffer;
+	uint32_t parse_buffer_size;
+	//for fast_gzgets 
+	char *save_buf;
+	int   save_len;
+	int   save_bytes;
+	int   save_skip;
+	bool header;
 } * fasta_t;
 
 typedef struct _fasta_stats_t {
 	uint64_t	total_ticks;
 } * fasta_stats_t;
 
-fasta_t	  fasta_open(const char *, int, bool);
+struct read_entry {
+  char *        name;
+  char *        seq;
+  char *        qual;
+  char *        plus_line; //The '+' line in fastq
+  uint32_t *    read[2];        /* the read as a bitstring */
+
+  uint32_t *    mapidx[2];      /* per-seed list of mapidxs in read */
+
+  struct anchor *       anchors[2];     /* list of anchors */
+
+  struct read_hit *     hits[2];        /* list of hits */
+
+  struct range_restriction * ranges;
+  char *        range_string;
+
+  int           n_anchors[2];
+  int           n_hits[2];
+  int           n_ranges;
+
+  int           final_matches;
+  int           final_dup_matches;
+
+  int           initbp[2];              /* colour space init letter */
+  int           read_len;
+  int           window_len;
+
+  int           max_n_kmers;    /* = read_len - min_seed_span + 1 */
+  int           min_kmer_pos;   /* = 0 in LS; = 1 in CS */
+  int           input_strand;
+  bool          is_rna;
+  bool		ignore;
+};
+
+
+fasta_t	  fasta_open(const char *, shrimp_mode_t, bool);
 void	  fasta_close(fasta_t);
-bool	  fasta_get_next_with_range(fasta_t, char **, char **, bool *, char **, char **);
-int	  fasta_get_initial_base(fasta_t, char *);
+//bool	  fasta_get_next_with_range(fasta_t, char **, char **, bool *, char **, char **);
+bool	  fasta_get_next_read_with_range(fasta_t, read_entry * re);
+int	  fasta_get_initial_base(int, char *);
 uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t, bool);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
 fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);
+void	fasta_write_read(FILE* file, read_entry * re);
+void	fasta_write_fasta(FILE* file, char* seq);
 
 static inline bool
-fasta_get_next(fasta_t file, char **name, char **seq, bool *is_rna) {
-  return fasta_get_next_with_range(file, name, seq, is_rna, NULL, NULL);
+fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
+	read_entry re;
+  //return fasta_get_next_with_range(file, name, seq, is_rna, NULL, NULL);
+  	bool ret = fasta_get_next_read_with_range(file, &re);
+	if (ret) {
+		*seq=re.seq;
+		*name=re.name;
+		*is_rna=re.is_rna;
+	}
+	return ret;	
+	
 }
 
 

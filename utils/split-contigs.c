@@ -47,14 +47,14 @@ void read_contigs_from_fasta_file(char const * file_name) {
   fasta_t fasta_file;
   char * seq;
 
-  fasta_file = fasta_open(file_name, LETTER_SPACE, false);
+  fasta_file = fasta_open(file_name, MODE_LETTER_SPACE, false);
   if (fasta_file == NULL) {
     fprintf(stderr, "error: could not open genome file [%s]\n", file_name);
     exit(1);
   }
 
   fprintf(stderr, "scanning contigs...\n");
-  while (n_contigs < MAX_CONTIGS && fasta_get_next(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
+  while (n_contigs < MAX_CONTIGS && fasta_get_next_contig(fasta_file, &contig[n_contigs].name, &seq, NULL)) {
     contig[n_contigs].size = strlen(seq);
     fprintf(stderr, "%s %d\n", contig[n_contigs].name, contig[n_contigs].size);
     free(seq);

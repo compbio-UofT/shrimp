@@ -904,6 +904,20 @@ pretty_print(int i, int j, int k)
 }
 
 int
+sw_full_cs_cleanup(void) {
+	free(db);
+	int i;
+	for (i=0; i<4; i++) {
+		free(qr[i]);
+	}
+	free(swmatrix);
+	free(backtrace);
+	free(dbalign);
+	free(qralign);
+	return 0;
+}
+
+int
 sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
 		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
 		 int _anchor_width)

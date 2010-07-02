@@ -463,6 +463,17 @@ pretty_print(int i, int j, int k)
 }
 
 int
+sw_full_ls_cleanup(void)
+{
+	free(db);
+	free(qr);
+	free(swmatrix);
+	free(backtrace);
+	free(dbalign);
+	free(qralign);
+	return (0);
+}
+int
 sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
     int _b_gap_open, int _b_gap_ext, int _match, int _mismatch,
 		 bool reset_stats, int _anchor_width)

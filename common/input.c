@@ -324,7 +324,7 @@ input_parseline(gzFile fp, struct input *inp)
 
 	while (true) {
 		/* XXX: Assume sizeof(buf) is always big enough. */
-		if (fast_gzgets(fp, buf, sizeof(buf)) == NULL) {
+		if (fast_gzgets(fp,buf,sizeof(buf)) == NULL) {
 			ret = false;
 			break;
 		}

@@ -15,6 +15,61 @@
 #define PAIR_COL_FW	3
 #define PAIR_COL_BW	4
 
+	struct option standard_options[] =
+		{	
+			{"un",1,0,10},
+			{"al",1,0,11},
+			{"seeds",1,0,'s'},
+			{"report",1,0,'o'},
+			{"match-window",1,0,'w'},
+			{"cmv-mode",1,0,'n'},
+			{"cmv-overlap",1,0,'l'},
+			{"anchor-width",1,0,'a'},
+			{"save",1,0,'S'},
+			{"load",1,0,'L'},
+			{"cutoff",1,0,'z'},
+			{"match",1,0,'m'},
+			{"mismatch",1,0,'i'},
+			{"open-r",1,0,'g'},
+			{"open-q",1,0,'q'},	
+			{"ext-r",1,0,'e'},
+			{"ext-q",1,0,'f'},
+			{"cmv-threshold",1,0,'r'},
+			{"hit-threshold",1,0,'h'},
+			{"threads",1,0,'N'},
+			{"thread-chunk",1,0,'K'},
+			{"pair-mode",1,0,'p'},
+			{"isize",1,0,'I'},
+			{"ungapped",0,0,'U'},
+			{"negative",0,0,'C'},
+			{"positive",0,0,'F'},
+			{"pretty",0,0,'P'},
+			{"sam",0,0,'E'},
+			{"fastq",0,0,'Q'},
+			{"print-reads",0,0,'R'},
+			{"rev-tiebreak",0,0,'T'},
+			{"tiebreak-off",0,0,'t'},
+			{"isize-histogram",0,0,'X'},
+			{"proj-histogram",0,0,'Y'},
+			{"cachebypass-off",0,0,'Z'},
+			{"help",0,0,'?'},
+			{"spaced-kmers",0,0,'H'},
+			{"thread-stats",0,0,'D'},
+			{"trim-off",0,0,'V'}
+		};
+
+	struct option colour_space_options[] = {
+			{"crossover",1,0,'x'},
+			{"vec-threshold",1,0,'v'},
+			{0,0,0,0}
+		};
+	
+	struct option letter_space_options[] = {
+			{0,0,0,0}
+		}; 
+	size_t standard_entries = sizeof(standard_options)/sizeof(struct option);
+	size_t letter_entries = sizeof(letter_space_options)/sizeof(struct option);
+	size_t colour_entries = sizeof(colour_space_options)/sizeof(struct option);
 static char const * const pair_mode_string[5] =
   { "none", "opposing strands; inwards", "opposing strands; outwards",
     "same strand; second is forward", "same strand; second is backward" };
@@ -116,37 +171,6 @@ struct range_restriction {
   llint		g_end;
 };
 
-struct read_entry {
-  char *	name;
-  char *	seq;
-  char *	qual;
-  uint32_t *	read[2];	/* the read as a bitstring */
-
-  uint32_t *	mapidx[2];	/* per-seed list of mapidxs in read */
-
-  struct anchor *	anchors[2];	/* list of anchors */
-
-  struct read_hit *	hits[2];	/* list of hits */
-
-  struct range_restriction * ranges;
-  char *	range_string;
-
-  int		n_anchors[2];
-  int		n_hits[2];
-  int		n_ranges;
-
-  int		final_matches;
-  int		final_dup_matches;
-
-  int		initbp[2];		/* colour space init letter */
-  int		read_len;
-  int		window_len;
-
-  int		max_n_kmers;	/* = read_len - min_seed_span + 1 */
-  int		min_kmer_pos;	/* = 0 in LS; = 1 in CS */
-  int		input_strand;
-  bool		is_rna;
-};
 
 struct read_hit {
   struct sw_full_results *	sfrp;
@@ -166,6 +190,12 @@ struct read_hit {
   int		st;
   int		gen_st;
 };
+
+typedef struct {
+	uint32_t * lengths;
+	char * ops;
+	int size;
+} cigar_t;
 
 struct read_hit_pair_holder {
   struct read_hit *	hit[2];

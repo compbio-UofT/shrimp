@@ -154,9 +154,9 @@ load_ref_contigs(char **files,int nfiles){
 
 
 	for (c = 0; c < nfiles; c++){
-		fasta = fasta_open(files[c],LETTER_SPACE,false);
+		fasta = fasta_open(files[c],MODE_LETTER_SPACE,false);
 		while(1){
-			if(!fasta_get_next(fasta, &name, &seq, NULL)){
+			if(!fasta_get_next_contig(fasta, &name, &seq, NULL)){
 				break;
 			}
 
@@ -182,14 +182,14 @@ load_reads_file(char *fpath)
 	struct sequence *s;
 	char *name, *seq;
 
-	fasta = fasta_open(fpath, LETTER_SPACE, false);
+	fasta = fasta_open(fpath, MODE_LETTER_SPACE, false);
 	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to parse reads fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq, NULL)) {
+	while (fasta_get_next_contig(fasta, &name, &seq, NULL)) {
 
 		s = (struct sequence *)xmalloc(sizeof(*s));
 		s->sequence = seq;

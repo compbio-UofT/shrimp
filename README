@@ -519,7 +519,7 @@ The significance of these options  is  the following:
 
   -Z : Disable caching of previous vector SW runs.
 
-  -v 60% : Lower the threshold for the full SW filter.
+  -h 60% : Lower the threshold for the full SW filter.
 
   -a -1 :  Disable the restriction of  the full SW dynamic programming algorithm
   to areas  around the  matching spaced kmers.   This  can help detecting larger

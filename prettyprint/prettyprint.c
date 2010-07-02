@@ -280,14 +280,14 @@ load_genome_file(char *fpath, struct stat *sb, void *arg)
 	(void)sb;
 	(void)arg;
 
-	fasta = fasta_open(fpath, LETTER_SPACE,false);
+	fasta = fasta_open(fpath, MODE_LETTER_SPACE,false);
 	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to parse contig fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq, &is_rna)) {
+	while (fasta_get_next_contig(fasta, &name, &seq, &is_rna)) {
 		bool found;
 		struct contig_ll *cll;
 
@@ -338,25 +338,20 @@ load_reads_file(char *fpath, struct stat *sb, void *arg)
 	fasta_t fasta;
 	struct sequence *s;
 	char *name, *seq;
-	int space;
 
 	/* shut up, icc */
 	(void)sb;
 	(void)arg;
 
-	if (shrimp_mode == MODE_COLOUR_SPACE)
-		space = COLOUR_SPACE;
-	else
-		space = LETTER_SPACE;
 
-	fasta = fasta_open(fpath, space,false);
+	fasta = fasta_open(fpath,shrimp_mode,false);
 	if (fasta == NULL) {
 		fprintf(stderr, "error: failed to parse reads fasta file "
 		    "[%s]\n", fpath);
 		exit(1);
 	}
 
-	while (fasta_get_next(fasta, &name, &seq, NULL)) {
+	while (fasta_get_next_contig(fasta, &name, &seq, NULL)) {
 		void *key, *val;
 		bool found;
 
@@ -365,7 +360,7 @@ load_reads_file(char *fpath, struct stat *sb, void *arg)
 		s->sequence_len = strlen(seq);
 		s->name = name;
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			s->initbp = fasta_get_initial_base(fasta, seq);
+			s->initbp = fasta_get_initial_base(shrimp_mode, seq);
 			s->sequence_len--;
 			assert(s->sequence_len > 1);
 		}

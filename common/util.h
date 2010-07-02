@@ -18,11 +18,10 @@ extern "C" {
 
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#include "../common/fasta.h"
-#include "../common/stats.h"
-#include "../common/hash.h"
-
+typedef struct {
+	char ** argv;
+	int argc;
+} shrimp_args_t;
 
 typedef enum {
 	MODE_LETTER_SPACE = 1,
@@ -30,7 +29,13 @@ typedef enum {
 	MODE_HELICOS_SPACE= 3
 } shrimp_mode_t;
 
+#include "../common/fasta.h"
+#include "../common/stats.h"
+#include "../common/hash.h"
+
+
 extern shrimp_mode_t shrimp_mode;
+extern shrimp_args_t shrimp_args;
 
 #ifdef __GNUC__
 #define __predict_false(_x)	__builtin_expect((_x), 0)
@@ -100,7 +105,8 @@ strbuf_t	strbuf_create(void);
 char	       *strbuf_string(strbuf_t, int *);
 void	        strbuf_append(strbuf_t, char const *, ...);
 void		strbuf_destroy(strbuf_t);
-char	       *fast_gzgets(gzFile, char *, int);
+char	       *fast_gzgets(gzFile, char*, int);
+char	       *fast_gzgets_safe(fasta_t f);
 char	       *comma_integer(uint64_t);
 void xgzwrite(gzFile fp, voidp buf, unsigned len);
 void xgzread(gzFile fp, voidp buf, unsigned len);

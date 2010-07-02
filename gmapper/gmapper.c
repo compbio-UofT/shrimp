@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <getopt.h>
 
 #include "../common/hash.h"
 #include "../common/fasta.h"
@@ -67,7 +68,7 @@ static bool Fflag = false;			/* do positive (forward) only */
 static bool Hflag = false;			/* use hash table, not lookup */
 static bool Pflag = false;			/* pretty print results */
 static bool Rflag = false;			/* add read sequence to output*/
-static bool Tflag = false;			/* reverse sw full tie breaks */
+static bool Tflag = true;			/* reverse sw full tie breaks */
 static bool Dflag = false;			/* print statistics for each thread */
 static bool Eflag = false;			/* output sam format */
 static bool Xflag = false;			/* print insert histogram */
@@ -81,6 +82,14 @@ static int	min_insert_size		= DEF_MIN_INSERT_SIZE;
 static int	max_insert_size		= DEF_MAX_INSERT_SIZE;
 static llint	insert_histogram[100];
 static int	insert_histogram_bucket_size = 1;
+static char *	reads_filename		= NULL;
+static char * 	left_reads_filename	= NULL;
+static char *	right_reads_filename	= NULL;
+bool		single_reads_file	= true;
+
+/* Output Files */
+FILE* unaligned_reads_file =NULL;
+FILE* aligned_reads_file =NULL;
 
 /* Statistics */
 static llint	nreads;
@@ -104,7 +113,7 @@ static uint32_t ***genomemap;
 static uint32_t **genomemap_len;
 
 /* offset info for genome contigs */
-static uint32_t *contig_offsets;
+static uint32_t *contig_offsets=NULL;
 static char **contig_names = NULL;
 static int	num_contigs;
 
@@ -1385,6 +1394,24 @@ reverse_hit(struct read_entry * re, struct read_hit * rh)
 
 
 /*
+	Get hit stats
+*/
+int
+hit_edit_distance(struct read_hit * rh) {
+  //find how many perfect matches, off by 1 matches and off by 2 matches
+  //       int matches;                            /* # of matches */
+  //        int mismatches;                         /* # of substitutions */
+  //      int insertions;                         /* # of insertions */
+  //      int deletions;                          /* # of deletions */
+	int edit_distance=0;
+	edit_distance+=rh->sfrp->mismatches;
+	edit_distance+=rh->sfrp->insertions;
+	edit_distance+=rh->sfrp->deletions;
+	assert(edit_distance>=0);	
+	return edit_distance;	
+}
+
+/*
  * Run full SW filter on this hit.
  */
 static void
@@ -1473,6 +1500,12 @@ void reverse(char* s, char* t) {
                        case '-':
                                t[l-i-1]='-';
                                break;
+                       case 'N':
+                               t[l-i-1]='N';
+                               break;
+                       case 'n':
+                               t[l-i-1]='n';
+                               break;
                        default:
                                fprintf(stderr,"There has been a error in getting reverse complement of %s\n",s);
                                exit(1);
@@ -1482,12 +1515,111 @@ void reverse(char* s, char* t) {
        //printf("%s vs %s\n", s , t);
        strcpy(s,t);
 }
+
+/*
+	read_start and read_end are 1 based
+*/
+cigar_t * make_cigar(int read_start, int read_end , int read_length, char* qralign,char* dbalign) {
+	cigar_t * cigar = (cigar_t*)xmalloc(sizeof(cigar_t));
+	cigar->size=2; 
+	assert(cigar->size>=2); //for start and end without loop
+	cigar->ops=(char*)xmalloc(sizeof(char)*cigar->size);
+	cigar->lengths=(uint32_t*)xmalloc(sizeof(uint32_t)*cigar->size);
+	int used=0;
+	if (read_start>1) {
+		assert(cigar->size-used>0);
+		cigar->ops[used]='S';
+		cigar->lengths[used]=read_start-1;
+		used++;
+	}
+	int i=0; int qralign_length=strlen(qralign);
+	while (i<qralign_length) {
+		int length; char op;
+		if (qralign[i]=='-') {
+			for (length=0; qralign[i+length]=='-' && i+length<qralign_length; length++);
+			op='D';
+		} else if (dbalign[i]=='-') {
+			for (length=0; dbalign[i+length]=='-' && i+length<qralign_length; length++);
+			op='I';
+		} else {
+			for (length=0; dbalign[i+length]!='-' && qralign[i+length]!='-' && i+length<qralign_length; length++);
+			op='M';
+		}
+		while ((used+1)>=cigar->size) { //make it bigger, want to make sure have enough for one more after loop!
+			assert(cigar->size!=0);
+			cigar->size*=2;
+			cigar->ops=(char*)xrealloc(cigar->ops,sizeof(char)*cigar->size);
+			cigar->lengths=(uint32_t*)xrealloc(cigar->lengths,sizeof(uint32_t)*cigar->size);			
+		}
+		cigar->ops[used]=op;
+		cigar->lengths[used]=length;
+		i+=length;
+		used++;		
+	}
+	if (read_end!=read_length) {
+		assert(used<cigar->size); //by loop invariant and initial size >=2
+		cigar->ops[used]='S';
+		cigar->lengths[used]=read_length-read_end; 
+		used++;
+	}
+	cigar->ops=(char*)xrealloc(cigar->ops,sizeof(char)*used);
+	cigar->lengths=(uint32_t*)xrealloc(cigar->lengths,sizeof(uint32_t)*used);
+	cigar->size=used;
+	return cigar;
+} 
+
+
+void reverse_cigar(cigar_t * cigar) {
+	char ops[cigar->size];
+	uint32_t lengths[cigar->size];
+	memcpy(ops,cigar->ops,sizeof(char)*cigar->size);
+	memcpy(lengths,cigar->lengths,sizeof(uint32_t)*cigar->size);
+	int i;	
+	for (i=0; i<cigar->size; i++) {
+		cigar->ops[i]=ops[cigar->size-i-1];
+		cigar->lengths[i]=lengths[cigar->size-i-1];
+	}
+	return;
+}
+
+char* make_cigar_string(cigar_t * cigar) {
+	int string_length=cigar->size; //1 char for each op
+	int i;
+	for (i=0; i<cigar->size; i++) {
+		int j=0,length;
+		for (length=cigar->lengths[i]; length>0; j++)
+			length/=10;
+		string_length+=j;
+	}
+	string_length++; // for null term
+	char * ret = (char*)xmalloc(sizeof(char)*(string_length));
+	int used=0;
+	for (i=0; i<cigar->size; i++) {
+		//printf("%d%c\n",cigar->lengths[i],cigar->ops[i]);
+		used+=sprintf(ret+used,"%d%c",cigar->lengths[i],cigar->ops[i]);
+	}
+	//printf("%d vs %d, %d\n",used,string_length,cigar->size);
+	assert(used+1==string_length);
+	ret[used]='\0';
+	return ret;
+}
+
+void free_cigar(cigar_t * cigar) {
+	if (cigar->size>0) {
+		assert(cigar->ops!=NULL);
+		assert(cigar->lengths!=NULL);
+		free(cigar->ops);
+		free(cigar->lengths);
+	}
+	free(cigar);
+}
+
 /*
  * Print given hit.
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool paired, bool first)
+hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool first_in_pair, int* hits)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
@@ -1505,168 +1637,256 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
  *
  */
 {
-  assert(re != NULL && rh != NULL);
-  assert(rh->sfrp != NULL);
+  assert(re !=NULL);
 
-  *output1 = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
+  if(!Eflag) {
+  	assert(rh != NULL);
+  	assert(rh->sfrp != NULL);
+  	*output1 = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
 			   genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
 			   re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
-
-  if(Pflag) {
-	  //pretty print output
-    *output2 = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
-			     genome_contigs[rh->cn], genome_len[rh->cn],
-			     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
-			     re->read_len, re->initbp[rh->st], rh->gen_st);
-  } else if(Eflag){
-	  //sam output
-    struct format_spec *fsp;
-    char * output = output_format_line(Rflag);
-    fsp = format_get_from_string(output);
-    free(output);
-
-    struct input inp, inp_mp;
-    memset(&inp, 0, sizeof(inp));
-    memset(&inp_mp, 0, sizeof(inp_mp));
-
-    //this uses the regular shrimp output (in output1) and parses it to an easy to use input structur
-    input_parse_string(*output1,fsp,&inp);
-    if(re_mp != NULL){
-    	free(*output1);
-		*output1 = output_normal(re_mp->name, contig_names[rh_mp->cn], rh_mp->sfrp,
-    			   genome_len[rh_mp->cn], shrimp_mode == MODE_COLOUR_SPACE, re_mp->read[rh_mp->st],
-    			   re_mp->read_len, re_mp->initbp[rh_mp->st], rh_mp->gen_st, Rflag);
-
-		input_parse_string(*output1,fsp,&inp_mp);
-
-    }
-    char * cigar, *read;
-    uint32_t * read_bitstring; //, *read_ls_bitstring;
-    cigar = (char *)xmalloc(sizeof(char)*200);
-	int first_bp = 0;
-
-	//convert the edit string to a cigar string
-    edit2cigar(inp.edit,inp.read_start,inp.read_end,inp.read_length,cigar);
-
-    int contigstart = inp.genome_start + 1;
-
-    //if the read maps reverse complement reverse the cigar string
-    if(inp.flags & INPUT_FLAG_IS_REVCMPL){
-    	char * cigar_reverse = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
-    	*cigar_reverse = '\0';
-    	char * tmp = (char *)xmalloc(sizeof(char)*strlen(cigar)+1);
-    	*tmp = '\0';
-    	char * ptr = cigar;
-    	char * last = tmp;
-    	for (ptr = cigar; *ptr != '\0'; ptr++){
-    		*last = *ptr;
-    		last ++;
-    		*last = '\0';
-    		if (!(*ptr <= '9' && *ptr >= '0')){
-    			strcat(tmp,cigar_reverse);
-    			strcpy(cigar_reverse,tmp);
-    			last = tmp;
-    			*tmp = '\0';
-    		}
-    	}
-    	free(cigar);
-    	cigar = cigar_reverse;
-    	free(tmp);
-    }
-    
-
-	read_bitstring = re->read[rh->gen_st];
-
-    if(shrimp_mode == COLOUR_SPACE){
-    	//in colour space we use letter space string from the read_hit structure but must remove the -'s from it
-    	char * tmp_read = rh->sfrp->qralign;
-    	int len = strlen(tmp_read);
-    	read = (char *)xmalloc(sizeof(char)*len+1);
-    	int i;
-    	int j = 0;
-    	for (i = 0; i < len;i++){
-    		if(tmp_read[i] != '-'){
-    			read[j] = tmp_read[i];
-    			j++;
-    		}
-    	}
-    	read[j] = '\0';
-    	
-    	tmp_read = (char *)xmalloc(sizeof(char)*len+1);
-    	if (inp.flags & INPUT_FLAG_IS_REVCMPL){
-    		reverse(read,tmp_read);
-    	}
-    	
-    	free(tmp_read); 
-    	//we must also change the soft clips in the cigar string to hard clips because the read_hit structure does not
-    	//store the bases that do not align
-    	len = strlen(cigar);
-    	for (i = 0; i < len; i++){
-    		if (cigar[i] == 'S'){
-    			cigar[i] = 'H';
-    		}
-    	}
+	if (Pflag) {
+		//pretty print output
+		*output2 = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
+				     genome_contigs[rh->cn], genome_len[rh->cn],
+				     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
+				     re->read_len, re->initbp[rh->st], rh->gen_st);
+	}
+  } else {
+	//TODO change this size?
+	*output1 = (char *)xmalloc(sizeof(char *)*4000);
+	//qname
+	char * read_name = re->name;
+	char qname[strlen(read_name)+1];
+	strcpy(qname,read_name);
+	//flag
+	int flag;
+	//rname
+	char * rname = "*";
+	//pos
+	int pos=0;
+	//mapq
+	int mapq=255;
+	//cigar
+	char * cigar="*";
+	cigar_t * cigar_binary=NULL;
+	//mrnm
+	const char * mrnm = "*"; //mate reference name
+	//mpos
+	int mpos=0;
+	//isize
+	int isize=0;
+	//seq
+	char * seq = re->seq;
+	//qual
+	int read_length = re->read_len;
+	char qual[read_length+10];
+	strcpy(qual,"*");
+	//initialize flags	
+	bool paired = (re_mp != NULL );
+	//bool query_unmapped = (re->n_hits[0] + re->n_hits[1])>0 ? false : true;
+	bool query_unmapped = (rh==NULL);
+	bool mate_unmapped;
+	if (paired) {
+		int min_read_name_length=MIN(strlen(read_name),strlen(re_mp->name));
+		int i;
+		for (i=0; i<min_read_name_length; i++) {
+			if (read_name[i]==re_mp->name[i]) {
+				qname[i]=read_name[i];
+			} else {
+				break;
+			}
+		}
+		if (i>0 && (qname[i-1]==':' || qname[i-1]=='/')) {
+			i--;
+		}
+		qname[i]='\0';
+		//mate_unmapped=(re_mp->n_hits[0]+re_mp->n_hits[1])>0 ? false : true;
+		mate_unmapped= (rh_mp==NULL);
 	} else {
-		read = readtostr(read_bitstring,re->read_len,false,0);
-    }
-    char *name;
-    bool second = !first && paired;
-    if (re_mp == NULL){
-    	name = inp.read;
-    } else {
-    	//in paired mode the name used is the largest common prefix
-    	int len = strlen(inp.read);
-    	name = (char *)xmalloc(sizeof(char *)*len+1);
-    	strncpy(name,inp.read,strlen(inp.read)+1);
-		int i = 0;
-		for (i = 0; i < len && *(inp.read + i) == *(inp_mp.read + i); i++);
-		i--;
-		name[i] = '\0';
-    }
+		mate_unmapped=false;
+	}
+	bool proper_pair = (paired && !query_unmapped && !mate_unmapped);
+	bool reverse_strand = false;
+	bool reverse_strand_mp = false;
+	bool second_in_pair = (paired && !first_in_pair);
+	bool primary_alignment = false;
+	bool platform_quality_fail = false;
+	bool pcr_duplicate = false;
+	//if this read has no mapping
+	if (query_unmapped || (paired && mate_unmapped)) {
+		mapq=0;
+		if (Qflag && shrimp_mode == MODE_LETTER_SPACE ){
+			strcpy(qual,re->qual);
+		}
+		flag = 
+			( paired ?  0x0001 : 0) |
+			( proper_pair ? 0x0002 : 0) |
+			( query_unmapped ? 0x0004 : 0) |
+			( mate_unmapped ? 0x0008 : 0) |
+			( reverse_strand ? 0x0010 : 0) |
+			( reverse_strand_mp ? 0x0020 : 0) |
+			( first_in_pair ? 0x0040 : 0) |
+			( second_in_pair ? 0x0080 : 0) |
+			( primary_alignment ? 0x0100 : 0) |
+			( platform_quality_fail ? 0x0200 : 0) |
+			( pcr_duplicate ? 0x0400 : 0);
+		sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
+			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
+			isize,seq,qual);	
+		return;
+	}
+	assert(rh!=NULL);
+	assert( !paired || (!query_unmapped && !mate_unmapped));
+	//start filling in the fields
+	rname = contig_names[rh->cn];
+	reverse_strand = (rh->gen_st == 1);
+	int read_start = rh->sfrp->read_start+1; //1based
+	int read_end = read_start + rh->sfrp->rmapped -1; //1base
+	int genome_length = genome_len[rh->cn];
+	cigar_binary = make_cigar(read_start,read_end,read_length,rh->sfrp->qralign,rh->sfrp->dbalign);
+	//if its letter space need to reverse the qual string if its backwards
+	if (shrimp_mode == MODE_LETTER_SPACE) {
+		seq=re->seq;
+		if (Qflag) {
+			if (!reverse_strand) {
+				strcpy(qual,re->qual);
+			} else {
+				int qual_len = strlen(re->qual); //not same as read_len, for color space reads... apperently.....
+				assert((qual_len+1)<(re->read_len+10));
+				int i;
+				for (i=0; i<qual_len; i++) {
+					qual[(qual_len-1)-i]=re->qual[i];
+				}
+				qual[qual_len]='\0';
+			}
+		}
+	//else in colour space dont print a qual string
+	//but get the seq differently and change 'S' to 'H' in cigar
+	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
+		int seq_length=read_end-read_start+1;
+		seq = (char*)xmalloc(sizeof(char)*(seq_length+1));
+		int qralign_length=strlen(rh->sfrp->qralign);
+		int i,j=0;
+		for(i=0;i<qralign_length;i++) {
+			char c=rh->sfrp->qralign[i];
+			if (c!='-') { 
+				if (c>='a') {
+					c-=32;
+				}
+				seq[j++]=c;
+			}
+		}
+		assert(j==seq_length);
+		seq[seq_length]='\0';
+		//also change 'S' in cigar to 'H'
+		for (i=0; i<cigar_binary->size; i++) {
+			if (cigar_binary->ops[i]=='S') {
+				cigar_binary->ops[i]='H';
+			}
+		}
+	}
+	//get the pos
+	int genome_start;
+	if (!reverse_strand) {
+		genome_start = rh->sfrp->genome_start+1; // 0 based -> 1 based
+	} else {
+		int genome_right_most_coordinate = genome_length - rh->sfrp->genome_start;
+		//rh->sfrp->deletions is deletions in the reference
+		// This is when the read has extra characters that dont match into ref
+		genome_start = genome_right_most_coordinate - (read_end - read_start - rh->sfrp->deletions + rh->sfrp->insertions);
+		char * tmp = (char*)xmalloc(sizeof(char)*(strlen(seq)+1));
+		reverse(seq,tmp);
+		free(tmp);
+		reverse_cigar(cigar_binary);
+	}
+	int genome_end=genome_start+rh->sfrp->gmapped-1;
+	pos=genome_start;
+	//make the cigar string
+	cigar = make_cigar_string(cigar_binary); 
 
+	//is this thing paired?
+	if (paired) {
+		assert(rh_mp!=NULL && re_mp!=NULL);
+		char * read_name_mp = re->name;
+		char * rname_mp = contig_names[rh_mp->cn];
+		int read_start_mp = rh_mp->sfrp->read_start+1; //1based
+		int read_length_mp = re_mp->read_len;
+		int read_end_mp = read_start_mp + rh_mp->sfrp->rmapped -1; //1base
+		int genome_length_mp = genome_len[rh_mp->cn];
+		int genome_start_mp;
+		reverse_strand_mp = (rh_mp->gen_st ==1);
+		if (!reverse_strand_mp) {
+			genome_start_mp = rh_mp->sfrp->genome_start+1; // 0 based -> 1 based
+		} else {
+			int genome_right_most_coordinate = genome_length_mp - rh_mp->sfrp->genome_start;
+			//rh->sfrp->deletions is deletions in the reference
+			// This is when the read has extra characters that dont match into ref
+			genome_start_mp = genome_right_most_coordinate - (read_end_mp - read_start_mp - rh_mp->sfrp->deletions + rh_mp->sfrp->insertions);
+		}
+		int genome_end_mp=genome_start_mp+rh_mp->sfrp->gmapped-1;
+		mpos=genome_start_mp;
+
+		mrnm = (strcmp(rname,rname_mp)==0) ? "=" : rname_mp;
+		//printf("%d %d %c, %d %d %c\n",genome_start, genome_end,reverse_strand ? '-' : '+' , genome_start_mp, genome_end_mp, reverse_strand_mp ? '-' : '+');
+		int fivep = 0;
+		int fivep_mp = 0;
+		if (reverse_strand){
+			fivep = genome_end;
+		} else {
+			fivep = genome_start - 1;
+		}
+
+		if (reverse_strand_mp){
+			fivep_mp = genome_end_mp;
+		} else {
+			fivep_mp = genome_start_mp-1;
+		}
+		isize = (fivep_mp - fivep);
+	}
+	flag = 
+		( paired ?  0x0001 : 0) |
+		( proper_pair ? 0x0002 : 0) |
+		( query_unmapped ? 0x0004 : 0) |
+		( mate_unmapped ? 0x0008 : 0) |
+		( reverse_strand ? 0x0010 : 0) |
+		( reverse_strand_mp ? 0x0020 : 0) |
+		( first_in_pair ? 0x0040 : 0) |
+		( second_in_pair ? 0x0080 : 0) |
+		( primary_alignment ? 0x0100 : 0) |
+		( platform_quality_fail ? 0x0200 : 0) |
+		( pcr_duplicate ? 0x0400 : 0);
+	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%d",
+		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
+		isize,seq,qual,rh->sfrp->score);	
+	extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d",hits[0],hits[1],hits[2],re->read_len-rh->sfrp->matches+rh->sfrp->insertions);
+	if (shrimp_mode == COLOUR_SPACE){
+		//TODO
+		//int first_bp = re->initbp[0];
+		//printf("%s vs %s\n",readtostr(re->read[0],re->read_len,true,first_bp),re->seq);
+		//assert(strcmp(readtostr(re->read[0],re->read_len,true,first_bp),re->seq)==0);
+		if (Qflag) {
+			extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
+		}
+		extra = extra + sprintf(extra, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
+	}
+	if (cigar_binary!=NULL) {
+		free_cigar(cigar_binary);
+		free(cigar);
+	}
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+		free(seq);
+	}
 
     //to calculate the insert size we need to find the five' end of the reads
-    int fivep = 0;
-    int fivep_mp = 0;
-    if (inp.flags & INPUT_FLAG_IS_REVCMPL){
-    	fivep = inp.genome_end + 1;
-    } else {
-    	fivep = inp.genome_start;
-    }
-
-    if (inp_mp.flags & INPUT_FLAG_IS_REVCMPL){
-    	fivep_mp = inp_mp.genome_end + 1;
-    } else {
-    	fivep_mp = inp_mp.genome_start;
-    }
-    int ins_size = (re_mp ==NULL)?0:(fivep_mp - fivep);
-
-    free(*output1);
-    *output1 = (char *)xmalloc(sizeof(char *)*2000);
-    //hear is the sam output look at the sam specification for more details
-    char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%i",
-	    name,
-	    ((inp.flags & INPUT_FLAG_IS_REVCMPL) ? 16 : 0) | ((re_mp != NULL) && (inp.flags & INPUT_FLAG_IS_REVCMPL) ? 32 : 0) | ((paired) ? 1 : 0) | (first ? 64 : 0) | (second ? 128 : 0),
-	    inp.genome,
-	    contigstart,
-	    255,
-	    cigar,
-	    ((re_mp == NULL)?"*":(strcmp(inp.genome,inp_mp.genome)== 0) ? "=": inp_mp.genome),
-	    ((re_mp == NULL) ? 0:(inp_mp.genome_start + 1)),
-	    ins_size,
-	    read,
-	    ((Qflag) ? re->qual: "*"),
+/*
 	    inp.score);
-    if (shrimp_mode == COLOUR_SPACE){
-    	first_bp = re->initbp[0];
-    	sprintf(extra,"\tCS:Z:%s\tXX:Z:%s",readtostr(re->read[0],re->read_len,true,first_bp),rh->sfrp->qralign);
-    }
     if(re_mp != NULL){
     	free(name);
     }
     free(read);
     free(cigar);
-    format_free(fsp);
+    format_free(fsp);*/
 
   }
 }
@@ -1715,21 +1935,30 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   //heap_unpaired_heapsort(h);
   heap_unpaired_qsort(h);
 
-  if ( (IS_ABSOLUTE(sw_full_threshold)
-	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
-       || (~IS_ABSOLUTE(sw_full_threshold)
-	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
+//  if ( (IS_ABSOLUTE(sw_full_threshold)
+//	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
+//   || (~IS_ABSOLUTE(sw_full_threshold)
+//	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
+//DZ1
+if ( (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max) ) {
 #pragma omp atomic
     total_reads_matched++;
   }
 
+  int hits[] = {0,0,0};
+  for (i=0; i<(int)h->load; i++) {
+	struct sw_full_results * sfrp = h->array[i].rest.hit->sfrp;
+	int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+	if (0<=edit_distance && edit_distance<3) {
+		hits[edit_distance]++;
+	}
+  }
+
   /* Output sorted list, removing any duplicates. */
+//DZ1
   for (i = 0;
-       i < (int)h->load && i < num_outputs
-	 && ( (IS_ABSOLUTE(sw_full_threshold)
-	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
-	      || (~IS_ABSOLUTE(sw_full_threshold)
-		  && (int)h->array[i].key >= (int)sw_full_threshold) );
+      i < (int)h->load && i<num_outputs
+	&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max);
        i++) {
     struct read_hit * rh = h->array[i].rest.hit;
     bool dup;
@@ -1744,8 +1973,8 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
       re->final_matches++;
 
-      hit_output(re, rh, NULL, NULL, &output1, &output2, false, false);
-
+      hit_output(re, rh, NULL, NULL, &output1, &output2, false, hits);
+//TODO - maybe buffer printf output here ? might make it go faster?
       if (!Pflag) {
 #pragma omp critical (stdout)
 	{
@@ -1766,6 +1995,9 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
     }
   }
 
+//TODO maybe have each thread own counter and then sum?
+//This might be pretty heavy, maybe not because of 
+//printf? 
 #pragma omp atomic
   total_single_matches += re->final_matches;
 
@@ -1784,7 +2016,6 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
   int i, j;
 
   assert(re1 != NULL && re2 != NULL && h != NULL);
-
   /* compute full alignment scores */
   for (i = 0; i < (int)h->load; i++) {
     for (j = 0; j < 2; j++) {
@@ -1811,22 +2042,32 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
   //heap_paired_heapsort(h);
   heap_paired_qsort(h);
 
-  if ( (IS_ABSOLUTE(sw_full_threshold)
-	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max))
-       || (~IS_ABSOLUTE(sw_full_threshold)
-	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
+  int hits1[] = {0,0,0};
+  for (i=0; i<(int)h->load; i++) {
+	struct sw_full_results * sfrp = h->array[i].rest.hit[0]->sfrp;
+	int edit_distance=re1->read_len-sfrp->matches+sfrp->insertions;
+	if (0<=edit_distance && edit_distance<3) {
+		hits1[edit_distance]++;
+	}
+  }
+  int hits2[] = {0,0,0};
+  for (i=0; i<(int)h->load; i++) {
+	struct sw_full_results * sfrp = h->array[i].rest.hit[1]->sfrp;
+	int edit_distance=re2->read_len-sfrp->matches+sfrp->insertions;
+	if (0<=edit_distance && edit_distance<3) {
+		hits2[edit_distance]++;
+	}
+  }
+
+if ( (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max) ) { 
 #pragma omp atomic
     total_pairs_matched++;
   }
 
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-       i < (int)h->load && i < num_outputs
-	 && ( (IS_ABSOLUTE(sw_full_threshold)
-	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
-							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
-	      || (~IS_ABSOLUTE(sw_full_threshold)
-		  && (int)h->array[i].key >= (int)sw_full_threshold) );
+	i < (int)h->load && i < num_outputs
+	&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max);
        i++) {
     struct read_hit * rh1 = h->array[i].rest.hit[0];
     struct read_hit * rh2 = h->array[i].rest.hit[1];
@@ -1843,9 +2084,9 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
       char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
       re1->final_matches++;
-
-      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,true);
-      hit_output(re2, rh2, re1, rh1, &output3, &output4,true,false);
+      assert(rh1!=NULL && rh2!=NULL);
+      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,hits1);
+      hit_output(re2, rh2, re1, rh1, &output3, &output4,false,hits2);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -1896,10 +2137,21 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 /*
  * Free memory allocated by this read.
  */
-static void
-read_free(struct read_entry * re)
-{
+static void 
+read_free(read_entry * re) {
   free(re->name);
+  free(re->seq);
+  if (Qflag) {
+        assert(re->qual!=NULL);
+        free(re->qual);
+        assert(re->plus_line!=NULL);
+        free(re->plus_line);
+  }
+}
+static void
+read_free_full(struct read_entry * re)
+{
+  read_free(re);
   free(re->read[0]);
   free(re->read[1]);
 
@@ -1969,15 +2221,39 @@ handle_read(read_entry *re){
   read_get_vector_hits(re, &h);
 
   DEBUG("second pass");
-  if (h.load > 0)
+  if (h.load > 0) {
     read_pass2(re, &h);
+    if (aligned_reads_file!=NULL) {
+	#pragma omp critical (stdout) 
+	{
+		fasta_write_read(aligned_reads_file,re);
+	}
+    }
+  } else {
+	if (Eflag) {
+		//no alignments, print to sam empty record
+		char* output1=NULL; 
+      		hit_output(re, NULL, NULL, NULL, &output1, NULL, false, NULL);
+		#pragma omp critical (stdout)
+		{
+			fprintf(stdout, "%s\n", output1);
+		}
+	}
+	if (unaligned_reads_file!=NULL) {
+		#pragma omp critical (stdout) 
+		{
+			fasta_write_read(unaligned_reads_file,re);
+		}
+	}
+  }
+
 
   // Done with this read; deallocate memory.
   for (i = 0; i < h.load; i++)
     hit_free_sfrp(h.array[i].rest.hit);
   heap_unpaired_destroy(&h);
 
-  read_free(re);
+  read_free_full(re);
 
   scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
@@ -2008,8 +2284,38 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 
   readpair_get_vector_hits(re1, re2, &h);
 
-  if (h.load > 0)
+  DEBUG("second pass");
+  if (h.load > 0) {
     readpair_pass2(re1, re2, &h);
+    if (aligned_reads_file!=NULL) {
+	#pragma omp critical (stdout)
+	{
+		fasta_write_read(aligned_reads_file,re1);
+		fasta_write_read(aligned_reads_file,re2);
+	}
+    }
+  } else {
+	if (Eflag) {
+		//no alignments, print to sam empty record
+		char* output1=NULL; char * output2=NULL;
+      		hit_output(re1, NULL, re2, NULL, &output1, NULL, true, NULL);
+      		hit_output(re2, NULL, re1, NULL, &output2, NULL, false, NULL);
+		#pragma omp critical (stdout)
+		{
+			fprintf(stdout, "%s\n", output1);
+			fprintf(stdout, "%s\n", output2);
+		}
+		
+
+	}
+	if (unaligned_reads_file!=NULL) {
+	#pragma omp critical (stdout)
+		{
+			fasta_write_read(unaligned_reads_file,re1);
+			fasta_write_read(unaligned_reads_file,re2);
+		}
+	}
+  }
 
   /* Done; free read entry */
   for (i = 0; i < h.load; i++) {
@@ -2019,8 +2325,8 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 
   heap_paired_destroy(&h);
 
-  read_free(re1);
-  read_free(re2);
+  read_free_full(re1);
+  read_free_full(re2);
 
   scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
@@ -2118,51 +2424,95 @@ read_compute_ranges(struct read_entry * re)
  * Launch the threads that will scan the reads
  */
 static bool
-launch_scan_threads(const char *file){
-  fasta_t fasta;
-  int space;
+launch_scan_threads(){
+  fasta_t fasta=NULL;
+  fasta_t left_fasta=NULL;
+  fasta_t right_fasta=NULL;
 
   //open the fasta file and check for errors
-  if (shrimp_mode == MODE_LETTER_SPACE)
-    space = LETTER_SPACE;
-  else
-    space = COLOUR_SPACE;
-  fasta = fasta_open(file, space, Qflag);
-  if (fasta == NULL) {
-    fprintf(stderr, "error: failed to open read file [%s]\n", file);
-    return (false);
+  if (single_reads_file) {  
+  	fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
+	if (fasta == NULL) {
+		fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
+		return (false);
+	} else {
+		fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
+	}
   } else {
-    fprintf(stderr, "- Processing read file [%s]\n", file);
+	left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
+	if (left_fasta == NULL) {
+		fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
+		return (false);
+	}
+	right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
+	if (right_fasta == NULL) {
+		fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
+		return (false);
+	}
+	if (right_fasta->space != left_fasta->space) {
+		fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
+		return (false);
+	}
+	fasta=left_fasta;
+	fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
   }
 
-  if (pair_mode != PAIR_NONE)
-    assert(chunk_size % 2 == 0); // read an even number of reads
+  if ((pair_mode != PAIR_NONE || !single_reads_file) && (chunk_size%2)!=0) {
+	fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
+  }
 
-  bool more = true;
+  bool read_more = true;
+  bool more_in_left_file=true; bool more_in_right_file=true;
 
-#pragma omp parallel shared(more, fasta) num_threads(num_threads)
+#pragma omp parallel shared(read_more,more_in_left_file,more_in_right_file, fasta) num_threads(num_threads)
   {
     struct read_entry * re_buffer;
     int load, i;
     uint64_t before;
 
     re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
+    memset(re_buffer,0,chunk_size * sizeof(re_buffer[0]));
 
-    while (more){
+    while (read_more){
       before = rdtsc();
-
+//Maybe just have one thread read in everything and then split the work ? TODO
 #pragma omp critical (fill_reads_buffer)
       {
 	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
 
-	for (load = 0; load < chunk_size; load++) {
-	  if (!fasta_get_next_with_range(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna,
-					 &re_buffer[load].range_string, &re_buffer[load].qual)) {
-	    more = false;
-	    break;
+	load = 0;
+	assert(chunk_size>2);
+	while( read_more && ((single_reads_file && load < chunk_size) || (!single_reads_file && load < chunk_size-1))) {
+	  //if (!fasta_get_next_with_range(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna,
+	//				 &re_buffer[load].range_string, &re_buffer[load].qual))
+	  if (single_reads_file) { 
+		  if (fasta_get_next_read_with_range(fasta, &re_buffer[load])) {
+		    load++;
+		  } else { 
+		    read_more = false;
+		  }
+	  } else {
+		  //read from the left file
+		  if (fasta_get_next_read_with_range(left_fasta, &re_buffer[load])) {
+		  	load++;
+		  } else {
+		  	more_in_left_file = false;
+		  }
+		  //read from the right file
+		  if (fasta_get_next_read_with_range(right_fasta, &re_buffer[load])) {
+		  	load++;
+		  } else {
+		  	more_in_right_file = false;
+		  }
+		  //make sure that one is not smaller then the other
+		  if (more_in_left_file!=more_in_right_file) {
+			fprintf(stderr,"error: when using options -1 and -2, both files specified must have the same number of entries\n");
+			exit(1);
+		  }
+		  //keep reading?
+		  read_more=more_in_left_file && more_in_right_file; 
 	  }
 	}
-
 	nreads += load;
       } // end critical section
 
@@ -2170,28 +2520,22 @@ launch_scan_threads(const char *file){
 	assert(load % 2 == 0); // read even number of reads
 
       for (i = 0; i < load; i++) {
-
 	// if running in paired mode and first foot is ignored, ignore this one, too
-	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].name == NULL) {
-	  free(re_buffer[i].name);
-	  re_buffer[i].name = NULL;
-	  free(re_buffer[i].seq);
-	  free(re_buffer[i].qual);
+	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].ignore) {
+	  read_free(re_buffer+i-1);
+	  read_free(re_buffer+i);
 	  continue;
 	}
 
 	if (!(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq))) {
-	  // ignore this read
 	  if (pair_mode != PAIR_NONE && i % 2 == 1) {
-	    free(re_buffer[i-1].name);
+	    read_free(re_buffer+i-1);
+	    read_free(re_buffer+i);
 	  }
-	  free(re_buffer[i].name);
-	  re_buffer[i].name = NULL;
-	  free(re_buffer[i].seq);
-	  free(re_buffer[i].qual);
 	  continue;
 	}
 
+	re_buffer[i].ignore = false;
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
@@ -2200,7 +2544,7 @@ launch_scan_threads(const char *file){
 	  re_buffer[i].read_len--;
 	  re_buffer[i].max_n_kmers -= 2; // 1st color always discarded from kmers
 	  re_buffer[i].min_kmer_pos = 1;
-	  re_buffer[i].initbp[0] = fasta_get_initial_base(fasta,re_buffer[i].seq);
+	  re_buffer[i].initbp[0] = fasta_get_initial_base(shrimp_mode,re_buffer[i].seq);
 	  re_buffer[i].initbp[1] = re_buffer[i].initbp[0];
 	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0], (int8_t)re_buffer[i].initbp[1],
 							    re_buffer[i].read_len, re_buffer[i].is_rna);
@@ -2227,8 +2571,7 @@ launch_scan_threads(const char *file){
 	  re_buffer[i].range_string = NULL;
 	}
 
-	free(re_buffer[i].seq);
-
+	//free(re_buffer[i].seq);
 	if (pair_mode == PAIR_NONE)
 	  {
 	    handle_read(&re_buffer[i]);
@@ -2248,7 +2591,12 @@ launch_scan_threads(const char *file){
     free(re_buffer);
   } // end parallel section
 
-  fasta_close(fasta);
+  if (single_reads_file) {
+    fasta_close(fasta);
+  } else {
+    fasta_close(left_fasta);
+    fasta_close(right_fasta);
+  }
   return true;
 }
 
@@ -2327,6 +2675,28 @@ print_genomemap_stats() {
 }
 
 
+void free_genome(void) {
+	int sn,capacity;
+	for (sn=0; sn<n_seeds; sn++){
+	  	if(Hflag){
+	 	   capacity = power(4, HASH_TABLE_POWER);
+	 	 } else {
+	    	capacity = power(4, seed[sn].weight);
+	  	}
+		//uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
+		int i;
+		for(i=0; i<capacity; i++) {
+			if (genomemap[sn][i]!=NULL) {
+				free(genomemap[sn][i]);
+			}
+		}	
+		free(genomemap[sn]);
+		free(genomemap_len[sn]);
+	}
+	free(genomemap);
+	free(genomemap_len);
+}
+
 /*
  * index the kmers in the genome contained in the file.
  * This can then be used to align reads against.
@@ -2358,6 +2728,7 @@ load_genome(char **files, int nfiles)
 	  }
 
 	  genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
+	  memset(genomemap[sn],0,sizeof(uint32_t *) * capacity);
 	  genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity, &mem_genomemap);
 
 	}
@@ -2367,7 +2738,7 @@ load_genome(char **files, int nfiles)
 	for(cfile = 0; cfile < nfiles; cfile++){
 		file = files[cfile];
 		//open the fasta file and check for errors
-		fasta = fasta_open(file, LETTER_SPACE, false);
+		fasta = fasta_open(file, MODE_LETTER_SPACE, false);
 		if (fasta == NULL) {
 			fprintf(stderr,"error: failded to open genome file [%s]\n",file);
 			return (false);
@@ -2377,7 +2748,7 @@ load_genome(char **files, int nfiles)
 
 		//Read the contigs and record their sizes
 
-		while(fasta_get_next(fasta, &name, &seq, &is_rna)){
+		while(fasta_get_next_contig(fasta, &name, &seq, &is_rna)){
 			genome_is_rna = is_rna;
 			num_contigs++;
 			contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
@@ -2451,6 +2822,10 @@ load_genome(char **files, int nfiles)
 
 				}
 			}
+			if (shrimp_mode==MODE_COLOUR_SPACE) {
+				free(read);
+			}
+			
 			free(seq);
 			seq = name = NULL;
 
@@ -2722,135 +3097,145 @@ usage(char * progname, bool full_usage){
   if (slash != NULL)
     progname = slash + 1;
 
-  fprintf(stderr, "usage: %s [parameters] [options] reads_file genome_file1 genome_file2...\n", progname);
-
-  fprintf(stderr, "Parameters:\n");
-
+  fprintf(stderr, 
+	  "usage: %s [parameters] [options] reads_file genome_file1 genome_file2...\n", progname);
   fprintf(stderr,
-	  "    -s    Spaced Seed(s)                          (default: ");
+	  "Parameters:\n");
+  fprintf(stderr,
+	  "   -s/--seeds           Spaced Seed(s)                (default: ");
   for (sn = 0; sn < n_seeds; sn++) {
     if (sn > 0)
-      fprintf(stderr, "                                                            ");
+      fprintf(stderr,
+	  "                                                       ");
     fprintf(stderr, "%s%s\n", seed_to_string(sn), (sn == n_seeds - 1? ")" : ","));
   }
-
   fprintf(stderr,
-	  "    -o    Maximum Hits per Read                   (default: %d)\n",
+	  "   -o/--report          Maximum Hits per Read         (default: %d)\n",
 	  DEF_NUM_OUTPUTS);
   fprintf(stderr,
-	  "    -w    Match Window Length                     (default: %.02f%%)\n",
+	  "   -w/--match-window    Match Window Length           (default: %.02f%%)\n",
 	  DEF_WINDOW_LEN);
   fprintf(stderr,
-	  "    -n    Seed Matches per Window                 (default: %d)\n",
+	  "   -n/--cmv-mode        Seed Matches per Window       (default: %d)\n",
 	  DEF_NUM_MATCHES);
   if (full_usage) {
   fprintf(stderr,
-	  "    -l    Match Window Overlap Length             (default: %.02f%%)\n",
+	  "   -l/--cmv-overlap     Match Window Overlap Length   (default: %.02f%%)\n",
 	  DEF_WINDOW_OVERLAP);
   fprintf(stderr,
-	  "    -a    Anchor Width Limiting Full SW           (default: %d; disable: -1)\n",
+	  "   -a/--anchor-width    Anchor Width Limiting Full SW (default: %d; disable: -1)\n",
 	  DEF_ANCHOR_WIDTH);
 
   fprintf(stderr, "\n");
   fprintf(stderr,
-	  "    -S    Save Genome Projection in File          (default: no)\n");
+	  "   -S/--save            Save Genome Proj. in File     (default: no)\n");
   fprintf(stderr,
-	  "    -L    Load Genome Projection from File        (default: no)\n");
+	  "   -L/--load            Load Genome Proj. from File   (default: no)\n");
   fprintf(stderr,
-	  "    -z    Projection List Cut-off Length          (default: %u)\n",
+	  "   -z/--cutoff          Projection List Cut-off Len.  (default: %u)\n",
 	  DEF_LIST_CUTOFF);
   }
 
   fprintf(stderr, "\n");
   fprintf(stderr,
-	  "    -m    SW Match Score                          (default: %d)\n",
+	  "   -m/--match           SW Match Score                (default: %d)\n",
 	  DEF_MATCH_VALUE);
   fprintf(stderr,
-	  "    -i    SW Mismatch Score                       (default: %d)\n",
+	  "   -i/--mismatch        SW Mismatch Score             (default: %d)\n",
 	  DEF_MISMATCH_VALUE);
   fprintf(stderr,
-	  "    -g    SW Gap Open Score (Reference)           (default: %d)\n",
+	  "   -g/--open-r          SW Gap Open Score (Reference) (default: %d)\n",
 	  DEF_A_GAP_OPEN);
   fprintf(stderr,
-	  "    -q    SW Gap Open Score (Query)               (default: %d)\n",
+	  "   -q/--open-q          SW Gap Open Score (Query)     (default: %d)\n",
 	  DEF_B_GAP_OPEN);
   fprintf(stderr,
-	  "    -e    SW Gap Extend Score (Reference)         (default: %d)\n",
+	  "   -e/--ext-r           SW Gap Extend Score(Reference)(default: %d)\n",
 	  DEF_A_GAP_EXTEND);
   fprintf(stderr,
-	  "    -f    SW Gap Extend Score (Query)             (default: %d)\n",
+	  "   -f/--ext-q           SW Gap Extend Score (Query)   (default: %d)\n",
 	  DEF_B_GAP_EXTEND);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-	  "    -x    SW Crossover Score                      (default: %d)\n",
+	  "   -x/--crossover       SW Crossover Score            (default: %d)\n",
 	  DEF_XOVER_PENALTY);
   }
   fprintf(stderr,
-	  "    -r    Window Generation Threshold             (default: %.02f%%)\n",
+	  "   -r/--cmv-threshold   Window Generation Threshold   (default: %.02f%%)\n",
 	  DEF_WINDOW_GEN_THRESHOLD);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-	  "    -v    SW Vector Hit Threshold                 (default: %.02f%%)\n",
+	  "   -v/--vec-threshold   SW Vector Hit Threshold       (default: %.02f%%)\n",
 	  DEF_SW_VECT_THRESHOLD);
   }
   fprintf(stderr,
-	  "    -h    SW Full Hit Threshold                   (default: %.02f%%)\n",
+	  "   -h/--hit-threshold   SW Full Hit Threshold         (default: %.02f%%)\n",
 	  DEF_SW_FULL_THRESHOLD);
 
   fprintf(stderr, "\n");
 
   fprintf(stderr,
-	  "    -N    Number of Threads                       (default: %d)\n",
+	  "   -N/--threads         Number of Threads             (default: %d)\n",
 	  DEF_NUM_THREADS);
   if (full_usage) {
   fprintf(stderr,
-	  "    -K    Thread Chunk Size                       (default: %d)\n",
+	  "   -K/--thread-chunk    Thread Chunk Size             (default: %d)\n",
 	  DEF_CHUNK_SIZE);
   }
 
   fprintf(stderr, "\n");
   fprintf(stderr,
-	  "    -p    Paired Mode                             (default: %s)\n",
+	  "   -p/--pair-mode       Paired Mode                   (default: %s)\n",
 	  pair_mode_string[pair_mode]);
   fprintf(stderr,
-	  "    -I    Min and Max Insert Size                 (default: %d,%d)\n",
+	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
 
   fprintf(stderr,
-	  "    -U    Perform Ungapped Alignment                    (default: disabled)\n");
+	  "   -U/--ungapped        Perform Ungapped Alignment    (default: disabled)\n");
   fprintf(stderr,
-	  "    -C    Only Process Negative Strand (Rev. Compl.)    (default: disabled)\n");
+	  "   -C/--negative        Negative Strand Aln. Only     (default: disabled)\n");
   fprintf(stderr,
-	  "    -F    Only Process Positive Strand                  (default: disabled)\n");
+	  "   -F/--positive        Positive Strand Aln. Only     (default: disabled)\n");
   fprintf(stderr,
-	  "    -P    Pretty Print Alignments                       (default: disabled)\n");
+	  "   -P/--pretty          Pretty Print Alignments       (default: disabled)\n");
   fprintf(stderr,
-	  "    -E    Output SAM Format                             (default: disabled)\n");
+	  "   -E/--sam             Output SAM Format             (default: disabled)\n");
   fprintf(stderr,
-  	  "    -Q    Reads are in fastq format                     (default: disabled)\n");
+  	  "   -Q/--fastq           Reads are in fastq format     (default: disabled)\n");
   if (full_usage) {
   fprintf(stderr,
-	  "    -R    Print Reads in Output                         (default: disabled)\n");
+	  "   -R/--print-reads     Print Reads in Output         (default: disabled)\n");
+ // fprintf(stderr,
+//	  "    -T    (does nothing since default) Reverse Tie-break on Negative Strand          (default: enabled)\n");
   fprintf(stderr,
-	  "    -T    Reverse Tie-break on Negative Strand          (default: disabled)\n");
+	  "   -t/--tiebreak-off    Disable Reverse Tie-break\n");
   fprintf(stderr,
-	  "    -X    Print Insert Size Histogram                   (default: disabled)\n");
+	  "                                  on Negative Strand  (default: enabled)\n");
   fprintf(stderr,
-	  "    -Y    Print Genome Projection Histogram             (default: disabled)\n");
+	  "   -X/--isize-hist      Print Insert Size Histogram   (default: disabled)\n");
   fprintf(stderr,
-	  "    -Z    Disable Cache Bypass for SW Vector Calls      (default: enabled)\n");
+	  "   -Y/--proj-hist       Print Genome Proj. Histogram  (default: disabled)\n");
   fprintf(stderr,
-	  "    -H    Hash Spaced Kmers in Genome Projection        (default: disabled)\n");
+	  "   -Z/--bypass-off      Disable Cache Bypass for SW\n");
   fprintf(stderr,
-	  "    -D    Individual Thread Statistics                  (default: disabled)\n");
+	  "                                    Vector Calls      (default: enabled)\n");
   fprintf(stderr,
-	  "    -V    Disable Automatic Genome Index Trimming       (default: enabled)\n");
+	  "   -H/--spaced-kmers    Hash Spaced Kmers in Genome\n");
+  fprintf(stderr,
+	  "                                    Projection        (default: disabled)\n");
+  fprintf(stderr,
+	  "   -D/--thread-stats    Individual Thread Statistics  (default: disabled)\n");
+  fprintf(stderr,
+	  "   -V/--trim-off        Disable Automatic Genome\n");
+  fprintf(stderr,
+	  "                                 Index Trimming       (default: enabled)\n");
   }
   fprintf(stderr,
-	  "    -?    Full List of Parameters and Options\n");
+	  "   -?/--help            Full List of Parameters and Options\n");
 
   exit(1);
 }
@@ -2949,7 +3334,6 @@ print_settings() {
 int main(int argc, char **argv){
 	char **genome_files = NULL;
 	int ngenome_files = 0;
-	char *reads_file = NULL;
 
 	char *progname = argv[0];
 	char const * optstr = NULL;
@@ -2960,6 +3344,8 @@ int main(int argc, char **argv){
 	bool a_gap_extend_set, b_gap_extend_set;
 	bool num_matches_set = false;
 
+	shrimp_args.argc=argc;
+	shrimp_args.argv=argv;
 	set_mode_from_argv(argv);
 
 	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
@@ -2971,22 +3357,46 @@ int main(int argc, char **argv){
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
 
+	struct option getopt_long_options[standard_entries+MAX(colour_entries,letter_entries)];
+	memcpy(getopt_long_options,standard_options,sizeof(standard_options));
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUVXYZQx:v:";
+		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TtUVXYZQx:v:";
+		memcpy(getopt_long_options+standard_entries,colour_space_options,sizeof(colour_space_options));
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TUVXYZQ";
+		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TtUVXYZQ";
+		memcpy(getopt_long_options+standard_entries,letter_space_options,sizeof(letter_space_options));
 		break;
 	case MODE_HELICOS_SPACE:
-		fprintf(stderr,"Helicose currently unsuported\n");
+		fprintf(stderr,"Helicose currently unsupported\n");
 		exit(1);
 		break;
 	}
 
-	while ((ch = getopt(argc,argv,optstr)) != -1){
+	
+
+	while ((ch = getopt_long(argc,argv,optstr,getopt_long_options,NULL)) != -1){
 		switch (ch) {
+		case 10:
+			unaligned_reads_file=fopen(optarg,"w");
+			if (unaligned_reads_file==NULL) {
+				fprintf(stderr,"error: cannot open file \"%s\" for writting\n",optarg);	
+			}
+			break;
+		case 11:
+			aligned_reads_file=fopen(optarg,"w");
+			if (aligned_reads_file==NULL) {
+				fprintf(stderr,"error: cannot open file \"%s\" for writting\n",optarg);	
+			}
+			break;
+		case '1':
+			left_reads_filename = optarg;
+			break;
+		case '2':
+			right_reads_filename = optarg;
+			break;
 		case 's':
 			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
 				if (!add_spaced_seed(optarg)) {
@@ -3101,6 +3511,9 @@ int main(int argc, char **argv){
 			break;
 		case 'R':
 			Rflag = true;
+			break;
+		case 't':
+			Tflag= false;
 			break;
 		case 'T':
 			Tflag = true;
@@ -3218,6 +3631,19 @@ int main(int argc, char **argv){
 	argc -= optind;
 	argv += optind;
 
+	if (right_reads_filename != NULL || left_reads_filename !=NULL) {
+		if (right_reads_filename == NULL || left_reads_filename == NULL ){
+			fprintf(stderr,"error: when using \"%s\" must also specify \"%s\"\n",
+				(left_reads_filename != NULL) ? "-1" : "-2",
+				(left_reads_filename != NULL) ? "-2" : "-1");
+			usage(progname,false);
+		}
+		single_reads_file=false;
+		if (strcmp(right_reads_filename,"-")==0 && strcmp(left_reads_filename,"-")==0) {
+			fprintf(stderr,"error: both -1 and -2 arguments cannot be stdin (\"-\")\n");
+			usage(progname,false);
+		}
+	}
 	if (pair_mode != PAIR_NONE && !num_matches_set) {
 	  num_matches = 4;
 	}
@@ -3260,11 +3686,16 @@ int main(int argc, char **argv){
 	  } 
 	else if (load_file != NULL)
 	  { // args: reads file
-	    if (argc == 0) {
+	    if (argc == 0 && single_reads_file) {
 	      fprintf(stderr,"error: read_file not specified\n");
 	      usage(progname, false);
 	    } else if (argc == 1) {
-	      reads_file    = argv[0];
+	      if (single_reads_file) {
+	      	reads_filename    = argv[0];
+	      } else {
+		fprintf(stderr,"error: cannot specify a reads file when using -L, -1 and -2\n");
+		usage(progname,false);
+	      }
 	    } else {
 	      fprintf(stderr,"error: too many arguments with -L\n");
 	      usage(progname, false);
@@ -3279,16 +3710,25 @@ int main(int argc, char **argv){
 	    genome_files  = &argv[0];
 	    ngenome_files = argc;
 	  }
-	else
+	else if (single_reads_file)
 	  { // args: reads file, genome file(s)
 	    if (argc < 2) {
 	      fprintf(stderr, "error: %sgenome_file(s) not specified\n",
 		      (argc == 0) ? "reads_file, " : "");
 	      usage(progname, false);
 	    }
-	    reads_file    = argv[0];
+	    reads_filename    = argv[0];
 	    genome_files  = &argv[1];
 	    ngenome_files = argc - 1;
+	  }
+	else 
+	  {
+	   if( argc < 1) {
+	      fprintf(stderr, "error: genome_file(s) not specified\n");
+	      usage(progname, false);
+	   }
+	    genome_files  = &argv[0];
+	    ngenome_files = argc;
 	  }
 
 	if (!Cflag && !Fflag) {
@@ -3561,16 +4001,55 @@ int main(int argc, char **argv){
 		for(s = 0; s < num_contigs; s++){
 			fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[s],genome_len[s]);
 		}
-		fprintf(stdout,"@PG\tID:%s\tVN:%s\n","gmapper",SHRIMP_VERSION_STRING);
+		fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
+		for (s=0; s<(shrimp_args.argc-1); s++) {
+			fprintf(stdout,"%s ",shrimp_args.argv[s]);
+		}
+		fprintf(stdout,"%s\n",shrimp_args.argv[s]);
 	} else {
 		output = output_format_line(Rflag);
 		puts(output);
 		free(output);
 	}
-
 	before = gettimeinusecs();
-	launch_scan_threads(reads_file);
+	bool launched = launch_scan_threads();
+	if (!launched) {
+		fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
+		exit(1);
+	}
 	total_work_usecs += (gettimeinusecs() - before);
-
+	
+	if (load_file==NULL) {
+		free_genome();
+	}
 	print_statistics();
+#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
+		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
+	{
+		sw_vector_cleanup();
+		if (shrimp_mode==MODE_COLOUR_SPACE) {
+			sw_full_cs_cleanup();
+		}
+		sw_full_ls_cleanup();
+		f1_free();	
+	}
+	int i;
+	for (i=0; i<num_contigs; i++){
+		free(contig_names[i]);
+		free(genome_contigs[i]);
+		free(genome_contigs_rc[i]);
+	}
+	if (shrimp_mode==MODE_COLOUR_SPACE) {
+		for (i=0; i<num_contigs; i++){
+			free(genome_cs_contigs[i]);
+		}
+		free(genome_cs_contigs);
+		free(genome_initbp);
+	}
+	free(genome_len);
+	free(genome_contigs_rc);
+	free(genome_contigs);
+	free(contig_names);
+	free(contig_offsets);
+	free(seed);
 }

@@ -20,6 +20,7 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 
+shrimp_args_t shrimp_args;
 shrimp_mode_t shrimp_mode = MODE_LETTER_SPACE;
 
 void
@@ -906,6 +907,106 @@ fast_gzgets(gzFile gz, char *buf, int len)
 		free(save_buf);
 	save_buf = NULL;
 	save_len = save_bytes = save_skip = 0;
+
+	return (NULL);
+}
+/*
+ * Fast and loose replacement for gzgets, for use when one is just
+ * sequentially calling gzgets on the whole file. Note that this is
+ * _not_ reentrant!
+ */
+
+char *
+fast_gzgets_safe(fasta_t f)
+{
+	
+	int ret, i, total;
+
+	assert(sizeof(f->buffer) >= 0);
+
+	if (sizeof(f->buffer) == 0) {
+		fprintf(stderr,"Buffer has size 0!!!\n");
+		exit(1);	
+	}
+	if (f->save_len < (int)sizeof(f->buffer)) {
+		f->save_len = sizeof(f->buffer);
+		f->save_buf = (char *)xrealloc(f->save_buf, f->save_len);
+	}
+
+	assert(f->save_bytes >= 0);
+	assert(f->save_bytes < f->save_len);
+
+	ret = -1;
+	total = 0;
+	do {
+		bool nl = false;
+
+		assert(f->save_skip < f->save_len);
+
+		if (f->save_bytes == 0) {
+			ret = gzread(f->fp, f->save_buf, f->save_len - 1);
+			if (ret < 0)
+				break;
+			f->save_skip = 0;
+			f->save_bytes = ret;
+		}
+		int offset=0;
+		for (i = 0; i < f->save_bytes && (total + i) < (f->save_len - 1); i++) {
+			if ((f->buffer[total + i - offset] = f->save_buf[f->save_skip + i]) == '\n' ) {
+				if (f->header && f->buffer[0]=='#') {
+					f->buffer[total+i-offset]='\0';
+					offset=i+1;
+					total=0;
+					continue;
+				}
+				f->header=false;
+				nl  = true;
+				i++;
+				break;
+			}
+		}
+
+		total += i;
+		f->buffer[total] = '\0';
+
+		assert(f->save_bytes >= 0);
+		assert(total < f->save_len);
+
+		if (nl) {
+			assert(i > 0);
+			assert(i <= f->save_bytes);
+			assert(f->save_buf[f->save_skip + i - 1] == '\n');
+			f->save_bytes -= i;
+			f->save_skip += i;
+			return (f->buffer);
+		} else if (total == (f->save_len - 1)) {
+			if (i == total) { 
+				f->save_bytes = f->save_skip = 0;
+			} else {
+				assert(i < total);
+				f->save_bytes -= i;
+				f->save_skip += i;
+			}
+			return (f->buffer);
+		} else if (f->save_bytes == 0) {
+			if (total == 0)
+				break;
+			assert(ret == 0);
+			f->save_bytes = f->save_skip = 0;
+			return (f->buffer);
+		} else if (i == f->save_bytes) {
+			assert(i > 0);
+			f->save_bytes -= i;
+			f->save_skip += i;
+		} else {
+			assert(0);
+		}
+	} while (true);
+
+	if (f->save_buf != NULL)
+		free(f->save_buf);
+	f->save_buf = NULL;
+	f->save_len = f->save_bytes = f->save_skip = 0;
 
 	return (NULL);
 }

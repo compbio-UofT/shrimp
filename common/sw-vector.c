@@ -373,6 +373,15 @@ vect_sw_same_gap(int8_t *seqA, int lena, int8_t *seqB, int lenb,
 	return (score);
 }
 
+int sw_vector_cleanup(void) {
+	free(db);
+	free(db_ls);
+	free(qr);
+	free(nogap);
+	free(b_gap);
+	return 0;
+}
+
 int
 sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
     int _b_gap_open, int _b_gap_ext, int _match, int _mismatch,

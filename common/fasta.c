@@ -22,35 +22,62 @@
 static uint64_t total_ticks;
 
 fasta_t
-fasta_open(const char *file, int space, bool fastq)
+fasta_open(const char *file, shrimp_mode_t space, bool fastq)
 {
 	fasta_t fasta = NULL;
 	struct stat sb;
 	gzFile fp;
 	uint64_t before = rdtsc();
 
-	assert(space == COLOUR_SPACE || space == LETTER_SPACE);
+	assert(space == MODE_COLOUR_SPACE || space == MODE_LETTER_SPACE);
 
-	if (stat(file, &sb))
-		goto out;
-
-	if (!S_ISREG(sb.st_mode))
-		goto out;
-
-	fp = gzopen(file, "r");
-	if (fp == NULL)
-		goto out;
+	if (strcmp(file,"-")==0) {
+		fp = gzdopen(fileno(stdin),"r");
+	} else {
+		if (stat(file, &sb)) {
+			fprintf(stderr,"error: Syscall stat failed on file \"%s\"!\n",file);
+			total_ticks += (rdtsc() - before);
+			return NULL;
+		}
+		if (!S_ISREG(sb.st_mode)) {
+			fprintf(stderr,"error: \"%s\" is not a regular file!\n",file);
+			total_ticks += (rdtsc() - before);
+			return NULL;
+		}
+		fp = gzopen(file, "r");
+	}
+	if (fp == NULL) {
+		fprintf(stderr,"error: Failed to open \"%s\" for reading!\n",file);
+		total_ticks += (rdtsc() - before);
+		return NULL;		
+	}
 
 	fasta = (fasta_t)xmalloc(sizeof(*fasta));
 	memset(fasta, 0, sizeof(*fasta));
+
+	//if its fastq skip the header
+	/*if (fastq) {
+		z_off_t index=0;
+		while (gzgets(fp, fasta->buffer, sizeof(fasta->buffer)) !=NULL) {
+			if (fasta->buffer[0]!='#') {
+				break;
+			}
+			index+=strlen(fasta->buffer);
+		}
+		//gzseek(fp,index,SEEK_SET);
+		gzseek(fp,0,SEEK_SET);
+	}*/
 
 	fasta->fp = fp;
 	fasta->file = xstrdup(file);
 	fasta->space = space;
 	fasta->fastq = fastq;
+	fasta->parse_buffer_size = sizeof(fasta->buffer);
+	fasta->parse_buffer = (char*)xmalloc(fasta->parse_buffer_size);
+	fasta->header=true;
 	memset(fasta->translate, -1, sizeof(fasta->translate));
 
-	if (space == COLOUR_SPACE) {
+	if (space == MODE_COLOUR_SPACE) {
 		fasta->translate[(int)'0'] = BASE_0;
 		fasta->translate[(int)'1'] = BASE_1;
 		fasta->translate[(int)'2'] = BASE_2;
@@ -98,10 +125,7 @@ fasta_open(const char *file, int space, bool fastq)
 		fasta->translate[(int)'X'] = BASE_X;
 		fasta->translate[(int)'x'] = BASE_X;
 	}
-
- out:
-	total_ticks += (rdtsc() - before);
-	return (fasta);
+	return fasta;
 }
 
 void
@@ -111,6 +135,8 @@ fasta_close(fasta_t fasta)
 
 	gzclose(fasta->fp);
 	free(fasta->file);
+	free(fasta->parse_buffer);
+	fasta->parse_buffer=0;
 	free(fasta);
 
 	total_ticks += (rdtsc() - before);
@@ -148,7 +174,13 @@ extract_name(char *buffer, char * * ranges)
 
 	extracted = strtok_r(&buffer[1], "\t", &tok_save);
 	extracted = strtrim(extracted);
-	len = strlen(extracted);
+	int full_length=strlen(extracted);
+	for (len=0; len<full_length; len++) {
+		if (extracted[len]==' ' || extracted[len]=='\t') {
+			break;
+		}
+	}
+	//len = strlen(extracted);
 	ret = (char *)xmalloc(len + 17);
 	memcpy(ret, extracted, len);
 	memset(ret + len, 0, 17);
@@ -163,178 +195,210 @@ extract_name(char *buffer, char * * ranges)
 	return (ret);
 }
 
-bool
-fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_rna, char * * ranges, char **qual)
-{
-	static int categories[256] = { 42 };
-	enum { CAT_SPACE, CAT_NEWLINE, CAT_NUL, CAT_ELSE };
 
+void fasta_write_fasta(FILE * file, char * seq) {
+	assert(seq!=NULL);
+	int index=0;
+	int length=strlen(seq);
+	char buffer[FASTA_PER_LINE];
+	while (index<length) {
+		int copy_over=MIN(FASTA_PER_LINE-1,length-index);
+		memcpy(buffer,seq,copy_over);
+		buffer[copy_over]='\0';
+		fprintf(file,"%s\n",buffer);
+		index+=copy_over;	
+	}
+}
+
+void fasta_write_read(FILE * file, read_entry * re) {
+		//TODO does not print out the ranges vars as well!
+	if (re->qual==NULL) {
+		fprintf(file,">%s\n",re->name);
+		fasta_write_fasta(file,re->seq);
+	} else {
+		//its fastq
+		fprintf(file,"@%s\n",re->name);
+		fasta_write_fasta(file,re->seq);
+		fprintf(file,"%s\n",re->plus_line);
+		fasta_write_fasta(file,re->qual);
+	}
+};
+
+bool
+fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
+{
 	int i;
-	bool gotname = false;
-	bool gotseq  = false;
 	uint32_t sequence_length = 0;
 	uint32_t quality_length = 0;
-	uint32_t max_sequence_length = 0;
-	uint32_t max_qual_length = 0;
+	uint32_t plus_line_length = 0;
+	uint32_t read_name_length = 0;
 	uint64_t before = rdtsc();
-	char *readinseq;
-	char *readinqual;
 	char c;
-
+	assert(re!=NULL);
 	if (fasta->fastq){
-		assert(qual != NULL);
+		c = '@';
+	} else {
+		c = '>';
 	}
+	re->name = re->seq = NULL;
+	assert(fasta->parse_buffer!=NULL);
+	assert(fasta->parse_buffer_size>0);
 
-	/* isspace(3) is really slow, so build a lookup instead */
-	if (categories[0] == 42) {
-		for (i = 0; i < 256; i++) {
-			if (i == '\n')
-				categories[i] = CAT_NEWLINE;
-			else if (i == '\0')
-				categories[i] = CAT_NUL;
-			else if (isspace(i))
-				categories[i] = CAT_SPACE;
-			else if (i == '-')	/* simply ignore dashes in haplome alignments */
-				categories[i] = CAT_SPACE;
-			else
-				categories[i] = CAT_ELSE;
-		}
-	}
-
-	*name = *sequence = readinseq = readinqual= NULL;
-
-	if (fasta->leftover) {
-		*name = extract_name(fasta->buffer, ranges);
-		fasta->leftover = false;
-		gotname = true;
-	}
-	while (fast_gzgets(fasta->fp, fasta->buffer, sizeof(fasta->buffer)) != NULL) {
-		if (fasta->buffer[0] == '#')
-			continue;
-
-		if (fasta->buffer[0] == '+' && fasta->fastq){
-			gotseq = true;
-			continue;
-		}
-
-		if (gotseq){
-			if (max_qual_length == 0 ||
-					max_qual_length - quality_length <= sizeof(fasta->buffer)) {
-				if (max_qual_length == 0)
-					max_qual_length = 16*1024*1024;
-				else if (max_qual_length >= 128*1024*1024)
-					max_qual_length += 128*1024*1024;
-				else
-					max_qual_length *= 2;
-				readinqual = (char *)xrealloc(readinqual, max_qual_length);
+	/*
+		The name of the read
+	*/
+	bool end_of_line=false;
+	fasta->parse_buffer[0]='\0';
+	while (fasta->leftover || fast_gzgets_safe(fasta) != NULL ) {
+			//if was leftover, after this its gone
+			fasta->leftover=false;
+			while (fasta->parse_buffer_size <= (sizeof(fasta->buffer) + read_name_length)) {
+					fasta->parse_buffer_size *= 2;
+					fasta->parse_buffer = (char *)xrealloc(fasta->parse_buffer,fasta->parse_buffer_size);
 			}
-
-			for (i = 0; fasta->buffer[i] != '\0'; i++) {
-				int act = categories[(int)fasta->buffer[i]];
-
-				assert(i < (int)sizeof(fasta->buffer));
-
-				switch (act) {
-				case CAT_NUL:
-				case CAT_NEWLINE:
-					fasta->buffer[i] = '\0';
-					goto out;
-				case CAT_SPACE:
-					continue;
-				case CAT_ELSE:
-				default:
-					/* fall down below */
-					break;
+			for (i = 0; fasta->buffer[i] != '\0' && fasta->buffer[i]!='\n'; i++) {
+				fasta->parse_buffer[read_name_length++] = fasta->buffer[i];
+			}
+			if (fasta->parse_buffer[0]!=c) {
+				if (c=='>' && fasta->parse_buffer[0]=='@') {
+					fprintf(stderr,"Expecting \">\" but got \"%c\" are you sure it's not FASTQ format?\n",fasta->parse_buffer[0]);
+				} else if (c=='@' && fasta->parse_buffer[0]=='>') {
+					fprintf(stderr,"Expecting \"@\" but got \"%c\" are you sure it's not FASTA format?\n",fasta->parse_buffer[0]);
+				} else {
+					fprintf(stderr,"Expecting \"%c\" but got \"%c\" are you sure it's right format?\n",c,fasta->parse_buffer[0]);
 				}
-
-				readinqual[quality_length++] = fasta->buffer[i];
-
-				continue;
-				out:
+				total_ticks += (rdtsc() - before);
+				return (false);
+			}
+			if (fasta->buffer[i]=='\n') {
+				end_of_line=true;
+				fasta->parse_buffer[read_name_length]='\0';
+				re->name = extract_name(fasta->parse_buffer, &(re->range_string));
 				break;
 			}
 
-			assert(quality_length <= max_qual_length);
-			assert(quality_length <= sequence_length);
-			if (quality_length == sequence_length){
-				break;
-			} else {
-				continue;
-			}
-		}
-
-		if (fasta->fastq){
-			c = '@';
-		} else {
-			c = '>';
-		}
-		if (fasta->buffer[0] == c) {
-			if (gotname) {
-				fasta->leftover = true;
-				break;
-			}
-
-			*name = extract_name(fasta->buffer, ranges);
-			gotname = true;
-			continue;
-		}
-
-		if (max_sequence_length == 0 ||
-		    max_sequence_length - sequence_length <= sizeof(fasta->buffer)) {
-			if (max_sequence_length == 0)
-				max_sequence_length = 16*1024*1024;
-			else if (max_sequence_length >= 128*1024*1024)
-				max_sequence_length += 128*1024*1024;
-			else
-				max_sequence_length *= 2;
-			readinseq = (char *)xrealloc(readinseq, max_sequence_length);
-		}
-
-		for (i = 0; fasta->buffer[i] != '\0'; i++) {
-			int act = categories[(int)fasta->buffer[i]];
-
-			assert(i < (int)sizeof(fasta->buffer));
-
-			switch (act) {
-			case CAT_NUL:
-			case CAT_NEWLINE:
-				fasta->buffer[i] = '\0';
-				goto out_qual;
-			case CAT_SPACE:
-				continue;
-			case CAT_ELSE:
-			default:
-				/* fall down below */
-				break;
-			}
-
-			readinseq[sequence_length++] = fasta->buffer[i];
-
-			continue;
- out_qual:
-			break;
-		}
-
-		assert(sequence_length <= max_sequence_length);
 	}
-
-	if (!gotname) {
-		if (readinseq != NULL)
-			free(readinseq);
-		if (readinqual != NULL)
-			free(readinqual);
+	if (read_name_length==0) {
 		total_ticks += (rdtsc() - before);
 		return (false);
 	}
-
-	/* if we read in a tag name but there's no sequence, don't just return false */ 
-	if (gotname && readinseq == NULL) {
-		readinseq = xstrdup("");
-		sequence_length = 1;
-	}
-
-	if (readinseq == NULL)
+	if (read_name_length<=1 || !end_of_line) {
+		total_ticks += (rdtsc() - before);
+		fprintf(stderr,"error: Invalid read name! Are you sure this is a FASTA or FASTQ file?\n%s\n",fasta->buffer);
 		return (false);
+	}	
+	
+	assert(re->name!=NULL);
+	/*
+		The read sequence
+	*/
+	fasta->parse_buffer[0]='\0';
+	while (fast_gzgets_safe(fasta) != NULL ) {
+			//Check if we have finished reading this sequence
+			if (fasta->fastq && fasta->buffer[0]=='+') {
+				break;
+			} else if (!fasta->fastq && fasta->buffer[0]=='>') {
+				fasta->leftover=true;
+				break;
+			}
+			//otherwise keep reading the sequence
+			while (fasta->parse_buffer_size <= (sizeof(fasta->buffer) + sequence_length)) {
+					fasta->parse_buffer_size *= 2;
+					fasta->parse_buffer = (char *)xrealloc(fasta->parse_buffer,fasta->parse_buffer_size);
+			}
+			for (i = 0; fasta->buffer[i] != '\0' && fasta->buffer[i]!='\n'; i++) {
+				fasta->parse_buffer[sequence_length++] = fasta->buffer[i];
+			}
+	}
+	if (sequence_length==0) {
+		fprintf(stderr,"Read in sequence of length zero!\n");
+		total_ticks += (rdtsc() - before);
+		return (false);
+	}
+	assert(sequence_length>0);
+	re->seq = (char *)xmalloc(sequence_length + 17);
+	memcpy(re->seq, fasta->parse_buffer, sequence_length);
+	memset(re->seq + sequence_length, 0, 17);
+	if (fasta->fastq) {
+		/*
+			Read in the plus line
+		*/
+		//already got the first chunk above
+		assert(fasta->buffer[0]=='+');
+		do {
+			//otherwise keep reading the sequence
+			while (fasta->parse_buffer_size <= (sizeof(fasta->buffer) + plus_line_length)) {
+					fasta->parse_buffer_size *= 2;
+					fasta->parse_buffer = (char *)xrealloc(fasta->parse_buffer,fasta->parse_buffer_size);
+			}
+			for (i = 0; fasta->buffer[i] != '\0' && fasta->buffer[i]!='\n'; i++) {
+				fasta->parse_buffer[plus_line_length++] = fasta->buffer[i];
+			}
+			if (fasta->buffer[i]=='\n') {
+				fasta->parse_buffer[plus_line_length]='\0';
+				break;
+			}
+		} while (fast_gzgets_safe(fasta) != NULL );
+		if (plus_line_length<1 || fasta->buffer[strlen(fasta->buffer)-1]!='\n') {
+			fprintf(stderr,"error: Error while readingin FASTQ entry!\n");
+			total_ticks += (rdtsc() - before);
+			return (false);	
+		}
+		re->plus_line = (char *)xmalloc(plus_line_length + 17);
+		memcpy(re->plus_line, fasta->parse_buffer, plus_line_length);
+		memset(re->plus_line + plus_line_length, 0, 17);
+		
+		/*
+			Read in the qualities
+		*/
+		fasta->parse_buffer[0]='\0';
+		while (fast_gzgets_safe(fasta) != NULL ) {
+				while (fasta->parse_buffer_size <= (sizeof(fasta->buffer) + quality_length)) {
+						fasta->parse_buffer_size *= 2;
+						fasta->parse_buffer = (char *)xrealloc(fasta->parse_buffer,fasta->parse_buffer_size);
+				}
+				for (i = 0; fasta->buffer[i] != '\0' && fasta->buffer[i]!='\n'; i++) {
+					fasta->parse_buffer[quality_length++] = fasta->buffer[i];
+				}
+				/*
+					Want to make sure that we haven't written past buffer
+					And want to make sure that we dont have more qual
+					values then the length of the sequence
+				*/
+				assert(quality_length <= fasta->parse_buffer_size);
+				assert(quality_length <= sequence_length);
+			
+				/*
+					See if we are done reading quality values. This is a bit
+					different for colour space and letter space. Since the first
+					letter in the colour space read does not have a quality value	
+				*/
+				if (quality_length == sequence_length && shrimp_mode==MODE_LETTER_SPACE){
+					break;
+				} else if (quality_length == sequence_length-1 && shrimp_mode==MODE_COLOUR_SPACE) {
+					break;
+				} else {
+					continue;
+				}
+		}
+		if (quality_length != sequence_length && shrimp_mode==MODE_LETTER_SPACE){
+			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
+			free(re->seq);
+			free(re->plus_line);
+			total_ticks += (rdtsc() - before);
+			return (false);
+		} else if (quality_length != sequence_length-1 && shrimp_mode==MODE_COLOUR_SPACE) {
+			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
+			free(re->seq);
+			free(re->plus_line);
+			total_ticks += (rdtsc() - before);
+			return (false);
+		}
+		re->qual = (char *)xmalloc(quality_length + 17);
+		memcpy(re->qual, fasta->parse_buffer, quality_length);
+		memset(re->qual + quality_length, 0, 17);
+	}	
+
 
 	/*
 	 * Ensure nul-termination and allocate extra space to appease valgrind.
@@ -342,47 +406,47 @@ fasta_get_next_with_range(fasta_t fasta, char **name, char **sequence, bool *is_
 	 * conditionally jumping on uninitialised memory. That explanation
 	 * doesn't seem right to me, but doing this makes it happy again.
 	 */
-	*sequence = (char *)xmalloc(sequence_length + 17);
+	/**sequence = (char *)xmalloc(sequence_length + 17);
 	memcpy(*sequence, readinseq, sequence_length);
 	memset(*sequence + sequence_length, 0, 17);
 	if (fasta->fastq){
 		*qual = (char *)xmalloc(quality_length + 17);
 		memcpy(*qual, readinqual, quality_length);
 		memset(*qual + quality_length, 0, 17);
-	}
+	}*/
 
 	/* check if the sequence is rna (contains uracil and not thymine) */
-	if (is_rna != NULL) {
-		bool got_uracil = false;
-		bool got_thymine = false;
-		unsigned int j;
+	bool got_uracil = false;
+	bool got_thymine = false;
+	unsigned int j;
 
-		for (j = 0; j < sequence_length; j++) {
-			unsigned char chr = readinseq[j];
-			got_thymine |= (chr == 'T' || chr == 't');
-			got_uracil  |= (chr == 'U' || chr == 'u');
-		}
-
-		if (got_uracil && got_thymine)
-			fprintf(stderr, "WARNING: sequence has both uracil and "
-			    "thymine!?!\n");
-
-		*is_rna = (got_uracil && !got_thymine);
+	for (j = 0; j < sequence_length; j++) {
+		unsigned char chr = (re->seq)[j];
+		got_thymine |= (chr == 'T' || chr == 't');
+		got_uracil  |= (chr == 'U' || chr == 'u');
 	}
 
-	free(readinseq);
-	free(readinqual);
-	assert(*name != NULL);
-	assert(*sequence != NULL);
+	if (got_uracil && got_thymine)
+		fprintf(stderr, "WARNING: sequence has both uracil and "
+		    "thymine!?!\n");
+
+	re->is_rna = (got_uracil && !got_thymine);
+
+	assert(re->name != NULL);
+	assert(re->seq != NULL);
+	if (fasta->fastq) {
+		assert(re->qual != NULL);
+		assert(re->plus_line != NULL);
+	}
 	total_ticks += (rdtsc() - before);
 	return (true);
 }
 
 int
-fasta_get_initial_base(fasta_t fasta, char *sequence)
+fasta_get_initial_base(int space, char *sequence)
 {
 
-	assert(fasta->space == COLOUR_SPACE);
+	assert(space == COLOUR_SPACE);
 
 	switch (*sequence) {
 	case 'A':
