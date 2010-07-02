@@ -3190,6 +3190,14 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
+  fprintf(stderr,
+	  "   -un/--unaligned      Dump unaligned reads to file  (default: disabled)\n");
+  fprintf(stderr,
+	  "   -an/--aligned        Dump aligned reads to file    (default: disabled)\n");
+  fprintf(stderr,
+	  "   -1/--upstream        Upstream read pair file\n");
+  fprintf(stderr,
+	  "   -2/--downstream      Upstream read pair file\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
