@@ -44,6 +44,7 @@ static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
+static int	longest_read_len	= 1000;
 
 /* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
@@ -2582,16 +2583,27 @@ launch_scan_threads(){
 	//free(re_buffer[i].seq);
 	if (pair_mode == PAIR_NONE)
 	  {
-	    handle_read(&re_buffer[i]);
+	    if (re_buffer[i].read_len>longest_read_len) {
+		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
+	    } else {
+	    	handle_read(&re_buffer[i]);
+	    }
 	  }
 	else if (i % 2 == 1) 
 	  {
-	    if (pair_reverse[pair_mode][0])
-	      read_reverse(&re_buffer[i-1]);
-	    if (pair_reverse[pair_mode][1])
-	      read_reverse(&re_buffer[i]);
+	    if (re_buffer[i].read_len>longest_read_len) {
+		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
+	    } else if (re_buffer[i-1].read_len>longest_read_len) {
+		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i-1].name,re_buffer[i-1].read_len,longest_read_len);
+	    } else {
+	
+		    if (pair_reverse[pair_mode][0])
+		      read_reverse(&re_buffer[i-1]);
+		    if (pair_reverse[pair_mode][1])
+		      read_reverse(&re_buffer[i]);
 
-	    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
+		    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
+	   }
 	  }
       }
     }
@@ -3207,9 +3219,15 @@ usage(char * progname, bool full_usage){
 	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
   fprintf(stderr,
+	  "   --longest-read       Maximum read length\n");
+  fprintf(stderr,
 	  "   -1/--upstream        Upstream read pair file\n");
   fprintf(stderr,
 	  "   -2/--downstream      Downstream read pair file\n");
+  fprintf(stderr,
+	  "   --un                 Dump unaligned reads to file\n");
+  fprintf(stderr,
+	  "   --al                 Dump aligned reads to file\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
@@ -3254,10 +3272,6 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "                                 Index Trimming       (default: enabled)\n");
   }
-  fprintf(stderr,
-	  "   --un                 Dump unaligned reads to file  (default: disabled)\n");
-  fprintf(stderr,
-	  "   --al                 Dump aligned reads to file    (default: disabled)\n");
   fprintf(stderr,
 	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
@@ -3419,6 +3433,13 @@ int main(int argc, char **argv){
 			break;
 		case 12:
 			sam_unaligned=true;
+			break;
+		case 13:
+			longest_read_len=atoi(optarg);
+			if (longest_read_len<200) {
+				fprintf(stderr,"error: longest read length must be at least 200\n");
+				exit(1);
+			}
 			break;
 		case '1':
 			left_reads_filename = optarg;
@@ -3990,7 +4011,7 @@ int main(int argc, char **argv){
 	}
 
 	//TODO setup need max window and max read len
-	int longest_read_len = 1000;
+	//int longest_read_len = 2000;
 	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)

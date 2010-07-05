@@ -3,7 +3,7 @@
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 endif
-#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g
+#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_SW_FULL_CALLS
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 
 LD=$(CXX)

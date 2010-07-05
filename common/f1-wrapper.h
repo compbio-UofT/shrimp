@@ -102,6 +102,7 @@ f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rle
     }
   }
 
+
   /* Compute */
   if (!gapless_sw) {
     score = sw_vector(genome, goff, wlen, read, rlen,
