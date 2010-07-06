@@ -1621,7 +1621,7 @@ void free_cigar(cigar_t * cigar) {
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool first_in_pair, int* hits)
+hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool first_in_pair, int* hits, int found_alignments)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
@@ -1656,7 +1656,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	}
   } else {
 	//TODO change this size?
-	*output1 = (char *)xmalloc(sizeof(char *)*4000);
+	int buffer_size=MAX(longest_read_len,1000)*6;
+	*output1 = (char *)xmalloc(sizeof(char *)*buffer_size);
 	//qname
 	char * read_name = re->name;
 	char qname[strlen(read_name)+1];
@@ -1715,6 +1716,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	bool primary_alignment = false;
 	bool platform_quality_fail = false;
 	bool pcr_duplicate = false;
+	int stored_alignments = MIN(num_outputs,found_alignments); //IH
 	//if this read has no mapping
 	if (query_unmapped || (paired && mate_unmapped)) {
 		mapq=0;
@@ -1733,9 +1735,16 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			( primary_alignment ? 0x0100 : 0) |
 			( platform_quality_fail ? 0x0200 : 0) |
 			( pcr_duplicate ? 0x0400 : 0);
-		sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
+		char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 			isize,seq,qual);	
+		assert(found_alignments==0);
+		assert(stored_alignments==0);
+		assert(hits[0]==0);
+		assert(hits[1]==0);
+		assert(hits[2]==0);
+		assert(hits[3]==0);
+		extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNH:i:%d\tIH:i:%d",hits[0],hits[1],hits[2],found_alignments,stored_alignments);
 		return;
 	}
 	assert(rh!=NULL);
@@ -1858,10 +1867,10 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		( primary_alignment ? 0x0100 : 0) |
 		( platform_quality_fail ? 0x0200 : 0) |
 		( pcr_duplicate ? 0x0400 : 0);
-	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s\tAS:i:%d",
+	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-		isize,seq,qual,rh->sfrp->score);	
-	extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d",hits[0],hits[1],hits[2],re->read_len-rh->sfrp->matches+rh->sfrp->insertions);
+		isize,seq,qual);	
+	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],re->read_len-rh->sfrp->matches+rh->sfrp->insertions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -1945,12 +1954,21 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
     total_reads_matched++;
   }
 
+  int found_alignments=0;
   int hits[] = {0,0,0};
   for (i=0; i<(int)h->load; i++) {
 	struct sw_full_results * sfrp = h->array[i].rest.hit->sfrp;
-	int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
-	if (0<=edit_distance && edit_distance<3) {
-		hits[edit_distance]++;
+	if (i==0) {
+		sfrp->dup=false;
+	} else {
+		sfrp->dup=sw_full_results_equal(h->array[i-1].rest.hit->sfrp, sfrp);
+	}
+	if (!sfrp->dup) {
+		found_alignments++;
+		int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+		if (0<=edit_distance && edit_distance<3) {
+			hits[edit_distance]++;
+		}
 	}
   }
 
@@ -1963,19 +1981,19 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 		  && (int)h->array[i].key >= (int)sw_full_threshold) );
        i++) {
     struct read_hit * rh = h->array[i].rest.hit;
-    bool dup;
+    /*bool dup;
 
     if (i == 0)
       dup = false;
     else
       dup = sw_full_results_equal(h->array[i-1].rest.hit->sfrp, rh->sfrp);
-
-    if (!dup) {
+	*/
+    if (!rh->sfrp->dup) {
       char * output1 = NULL, * output2 = NULL;
 
       re->final_matches++;
 
-      hit_output(re, rh, NULL, NULL, &output1, &output2, false, hits);
+      hit_output(re, rh, NULL, NULL, &output1, &output2, false, hits,found_alignments);
 //TODO - maybe buffer printf output here ? might make it go faster?
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -2044,20 +2062,29 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
   //heap_paired_heapsort(h);
   heap_paired_qsort(h);
 
+  int found_alignments=0;
   int hits1[] = {0,0,0};
-  for (i=0; i<(int)h->load; i++) {
-	struct sw_full_results * sfrp = h->array[i].rest.hit[0]->sfrp;
-	int edit_distance=re1->read_len-sfrp->matches+sfrp->insertions;
-	if (0<=edit_distance && edit_distance<3) {
-		hits1[edit_distance]++;
-	}
-  }
   int hits2[] = {0,0,0};
   for (i=0; i<(int)h->load; i++) {
-	struct sw_full_results * sfrp = h->array[i].rest.hit[1]->sfrp;
-	int edit_distance=re2->read_len-sfrp->matches+sfrp->insertions;
-	if (0<=edit_distance && edit_distance<3) {
-		hits2[edit_distance]++;
+	struct sw_full_results * sfrp1 = h->array[i].rest.hit[0]->sfrp;
+	struct sw_full_results * sfrp2 = h->array[i].rest.hit[1]->sfrp;
+	if (i==0) {
+		sfrp1->dup=false;	
+		sfrp2->dup=false;
+	} else {
+		sfrp1->dup=sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, sfrp1);
+		sfrp2->dup=sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, sfrp2);
+	}
+	if ((!sfrp1->dup) && (!sfrp2->dup)) {
+		int edit_distance1=re1->read_len-sfrp1->matches+sfrp1->insertions;
+		int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
+		found_alignments++;
+		if (0<=edit_distance1 && edit_distance1<3) {
+			hits1[edit_distance1]++;
+		}
+		if (0<=edit_distance2 && edit_distance2<3) {
+			hits2[edit_distance2]++;
+		}
 	}
   }
 
@@ -2080,22 +2107,23 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
        i++) {
     struct read_hit * rh1 = h->array[i].rest.hit[0];
     struct read_hit * rh2 = h->array[i].rest.hit[1];
-    bool dup;
     uint bucket;
 
+	/*
+    bool dup;
     if (i == 0)
       dup = false;
     else
       dup = sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
 	&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
-
-    if (!dup) {
+	*/
+    if ((!rh1->sfrp->dup) && (!rh2->sfrp->dup)) {
       char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
       re1->final_matches++;
       assert(rh1!=NULL && rh2!=NULL);
-      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,hits1);
-      hit_output(re2, rh2, re1, rh1, &output3, &output4,false,hits2);
+      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,hits1,found_alignments);
+      hit_output(re2, rh2, re1, rh1, &output3, &output4,false,hits2,found_alignments);
 
       if (!Pflag) {
 #pragma omp critical (stdout)
@@ -2242,7 +2270,7 @@ handle_read(read_entry *re){
 	if (Eflag && sam_unaligned) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; 
-      		hit_output(re, NULL, NULL, NULL, &output1, NULL, false, NULL);
+      		hit_output(re, NULL, NULL, NULL, &output1, NULL, false, NULL,0);
 		#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);
@@ -2307,8 +2335,8 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	if (Eflag && sam_unaligned) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; char * output2=NULL;
-      		hit_output(re1, NULL, re2, NULL, &output1, NULL, true, NULL);
-      		hit_output(re2, NULL, re1, NULL, &output2, NULL, false, NULL);
+      		hit_output(re1, NULL, re2, NULL, &output1, NULL, true, NULL,0);
+      		hit_output(re2, NULL, re1, NULL, &output2, NULL, false, NULL,0);
 		#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);

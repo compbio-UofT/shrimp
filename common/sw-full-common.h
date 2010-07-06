@@ -21,6 +21,7 @@ struct sw_full_results {
 
 	/* Colour space fields */
 	int crossovers;				/* # of mat. xovers */
+	bool dup;
 };
 
 static inline bool
