@@ -1693,7 +1693,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	if (shrimp_mode == MODE_LETTER_SPACE) {
 		int i; 
 		for (i=0; i<re->read_len; i++) {
-			switch(re->seq[i]) {
+			char c = re->seq[i];				
+			switch(c) {
 				case 'R':
 				case 'Y':
 				case 'S':
@@ -1707,7 +1708,10 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 					seq[i]='N';
 					break;
 				default:
-					seq[i]=re->seq[i];
+					if (c>='a') {
+						c-=32;
+					}
+					seq[i]=c;
 					break;	
 			}
 		} 
@@ -1792,10 +1796,16 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	int genome_length = genome_len[rh->cn];
 	cigar_binary = make_cigar(read_start,read_end,read_length,rh->sfrp->qralign,rh->sfrp->dbalign);
 
-	int seq_length=read_end-read_start+1;
-	assert(seq_length<=re->read_len);
 	int qralign_length=strlen(rh->sfrp->qralign);
 	int i,j=0;
+	int seq_length=0;
+	if (shrimp_mode == MODE_LETTER_SPACE ) {
+		j=read_start-1;
+		seq_length=re->read_len;
+	} else if (shrimp_mode == MODE_COLOUR_SPACE ) {
+		seq_length=read_end-read_start+1;
+	}
+	assert(seq_length<=re->read_len);
 	for(i=0;i<qralign_length;i++) {
 		char c=rh->sfrp->qralign[i];
 		if (c!='-') { 
@@ -1839,8 +1849,15 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			seq[j++]=c;
 		}
 	}
-	assert(j==seq_length);
-	seq[seq_length]='\0';
+	if (shrimp_mode == MODE_LETTER_SPACE ) {
+		printf("%d, %d, %d, %d\n",j, re->read_len, read_end,seq_length);
+		assert(j+(re->read_len-read_end)==seq_length);
+		seq[j+(re->read_len-read_end)]='\0';
+	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
+		assert(j==seq_length);
+		seq[seq_length]='\0';
+	}
+
 	//if its letter space need to reverse the qual string if its backwards
 	if (shrimp_mode == MODE_LETTER_SPACE) {
 		//seq=re->seq;
