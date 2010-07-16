@@ -1,7 +1,7 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 #CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel
 
-CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g
+#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 endif

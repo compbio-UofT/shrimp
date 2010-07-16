@@ -1850,7 +1850,6 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		}
 	}
 	if (shrimp_mode == MODE_LETTER_SPACE ) {
-		printf("%d, %d, %d, %d\n",j, re->read_len, read_end,seq_length);
 		assert(j+(re->read_len-read_end)==seq_length);
 		seq[j+(re->read_len-read_end)]='\0';
 	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
