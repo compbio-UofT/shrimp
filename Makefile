@@ -1,10 +1,12 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
+#CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel
 
+#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g
 ifndef CXXFLAGS
 CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 endif
-#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_SW_FULL_CALLS
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
+#CXX=/opt/intel/cce/10.1.015/bin/icc
 
 LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++

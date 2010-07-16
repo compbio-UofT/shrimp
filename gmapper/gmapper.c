@@ -1475,39 +1475,46 @@ void reverse(char* s, char* t) {
        int i;
        for (i=0; i<l; i++) {
                switch (s[i]) {
-                       case 'A':
-                               t[l-i-1]='T';
-                               break;
-                       case 'a':
-                               t[l-i-1]='t';
-                               break;
-                       case 'C':
-                               t[l-i-1]='G';
-                               break;
-                       case 'c':
-                               t[l-i-1]='g';
-                               break;
-                       case 'G':
-                               t[l-i-1]='C';
-                               break;
-                       case 'g':
-                               t[l-i-1]='c';
-                               break;
-                       case 'T':
-                               t[l-i-1]='A';
-                               break;
-                       case 't':
-                               t[l-i-1]='a';
-                               break;
-                       case '-':
-                               t[l-i-1]='-';
-                               break;
-                       case 'N':
-                               t[l-i-1]='N';
-                               break;
-                       case 'n':
-                               t[l-i-1]='n';
-                               break;
+                       case 'A': t[l-i-1]='T'; break;
+                       case 'a': t[l-i-1]='t'; break;
+                       case 'T': t[l-i-1]='A'; break;
+                       case 't': t[l-i-1]='a'; break;
+
+                       case 'C': t[l-i-1]='G'; break;
+                       case 'c': t[l-i-1]='g'; break;
+                       case 'G': t[l-i-1]='C'; break;
+                       case 'g': t[l-i-1]='c'; break;
+
+                       case '-': t[l-i-1]='-'; break;
+
+                       case 'N': t[l-i-1]='N'; break;
+                       case 'n': t[l-i-1]='n'; break;
+
+                       case 'R': t[l-i-1]='Y'; break;
+                       case 'r': t[l-i-1]='y'; break;
+                       case 'Y': t[l-i-1]='R'; break;
+                       case 'y': t[l-i-1]='r'; break;
+
+                       case 'S': t[l-i-1]='S'; break;
+                       case 's': t[l-i-1]='s'; break;
+                       case 'W': t[l-i-1]='W'; break;
+                       case 'w': t[l-i-1]='w'; break;
+
+                       case 'K': t[l-i-1]='M'; break;
+                       case 'k': t[l-i-1]='m'; break;
+                       case 'M': t[l-i-1]='K'; break;
+                       case 'm': t[l-i-1]='k'; break;
+
+                       case 'B': t[l-i-1]='V'; break;
+                       case 'b': t[l-i-1]='v'; break;
+                       case 'V': t[l-i-1]='B'; break;
+                       case 'v': t[l-i-1]='b'; break;
+
+                       case 'D': t[l-i-1]='H'; break;
+                       case 'd': t[l-i-1]='h'; break;
+                       case 'H': t[l-i-1]='D'; break;
+                       case 'h': t[l-i-1]='d'; break;
+	
                        default:
                                fprintf(stderr,"There has been a error in getting reverse complement of %s\n",s);
                                exit(1);
@@ -1680,7 +1687,35 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	//isize
 	int isize=0;
 	//seq
-	char * seq = re->seq;
+	assert(shrimp_mode==MODE_COLOUR_SPACE || (signed int)strlen(re->seq)==re->read_len);
+	assert(shrimp_mode==MODE_LETTER_SPACE || (signed int)strlen(re->seq)==re->read_len+1);
+	char seq[re->read_len+1];
+	if (shrimp_mode == MODE_LETTER_SPACE) {
+		int i; 
+		for (i=0; i<re->read_len; i++) {
+			switch(re->seq[i]) {
+				case 'R':
+				case 'Y':
+				case 'S':
+				case 'W':
+				case 'K':
+				case 'M':
+				case 'B':
+				case 'D':
+				case 'H':
+				case 'V':
+					seq[i]='N';
+					break;
+				default:
+					seq[i]=re->seq[i];
+					break;	
+			}
+		} 
+		assert(i==re->read_len);
+		seq[re->read_len]='\0';
+	} else {
+		seq[0]='*'; seq[1]='\0';
+	}
 	//qual
 	int read_length = re->read_len;
 	char qual[read_length+10];
@@ -1756,9 +1791,59 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	int read_end = read_start + rh->sfrp->rmapped -1; //1base
 	int genome_length = genome_len[rh->cn];
 	cigar_binary = make_cigar(read_start,read_end,read_length,rh->sfrp->qralign,rh->sfrp->dbalign);
+
+	int seq_length=read_end-read_start+1;
+	assert(seq_length<=re->read_len);
+	int qralign_length=strlen(rh->sfrp->qralign);
+	int i,j=0;
+	for(i=0;i<qralign_length;i++) {
+		char c=rh->sfrp->qralign[i];
+		if (c!='-') { 
+			if (c>='a') {
+				c-=32;
+			}
+			if (c!='A' && c!='a' &&
+				c!='G' && c!='g' &&
+				c!='C' && c!='c' &&
+				c!='T' && c!='t' &&
+				c!='N' && c!='n') {
+				//see if we can figure out what its suppose to be
+				if (rh->sfrp->dbalign[i]!='-') {
+					char r = rh->sfrp->dbalign[i];
+					if (r>='a') {
+						c-=32;
+					}
+					switch (r) {
+						case 'A':
+							if (c=='R' || c=='W' || c=='M' || c=='D' || c=='H' || c=='V' )
+								c='A';
+							break;
+						case 'C':
+							if (c=='Y' || c=='S' || c=='M' || c=='B' || c=='H' || c=='V')
+								c='C';
+							break;
+						case 'G':
+							if (c=='R' || c=='S' || c=='K' || c=='B' || c=='D' || c=='V')
+								c='G';
+							break;
+						case 'T':
+							if (c=='Y' || c=='W' || c=='K' || c=='B' || c=='D' || c=='H') 
+								c='T';
+							break;
+						default: 
+							fprintf(stderr,"There has been an error in printing an alignment\n");
+							exit(1);
+					}
+				}
+			}
+			seq[j++]=c;
+		}
+	}
+	assert(j==seq_length);
+	seq[seq_length]='\0';
 	//if its letter space need to reverse the qual string if its backwards
 	if (shrimp_mode == MODE_LETTER_SPACE) {
-		seq=re->seq;
+		//seq=re->seq;
 		if (Qflag) {
 			if (!reverse_strand) {
 				strcpy(qual,re->qual);
@@ -1775,21 +1860,6 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	//else in colour space dont print a qual string
 	//but get the seq differently and change 'S' to 'H' in cigar
 	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
-		int seq_length=read_end-read_start+1;
-		seq = (char*)xmalloc(sizeof(char)*(seq_length+1));
-		int qralign_length=strlen(rh->sfrp->qralign);
-		int i,j=0;
-		for(i=0;i<qralign_length;i++) {
-			char c=rh->sfrp->qralign[i];
-			if (c!='-') { 
-				if (c>='a') {
-					c-=32;
-				}
-				seq[j++]=c;
-			}
-		}
-		assert(j==seq_length);
-		seq[seq_length]='\0';
 		//also change 'S' in cigar to 'H'
 		for (i=0; i<cigar_binary->size; i++) {
 			if (cigar_binary->ops[i]=='S') {
@@ -1885,9 +1955,6 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		free_cigar(cigar_binary);
 		free(cigar);
 	}
-	if (shrimp_mode == MODE_COLOUR_SPACE) {
-		free(seq);
-	}
 
     //to calculate the insert size we need to find the five' end of the reads
 /*
@@ -1972,9 +2039,10 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 	}
   }
 
+  int outputted=0;
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-       i < (int)h->load && i < num_outputs
+       i < (int)h->load && outputted < num_outputs
 	 && ( (IS_ABSOLUTE(sw_full_threshold)
 	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
 	      || (!IS_ABSOLUTE(sw_full_threshold)
@@ -1989,6 +2057,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
       dup = sw_full_results_equal(h->array[i-1].rest.hit->sfrp, rh->sfrp);
 	*/
     if (!rh->sfrp->dup) {
+      outputted++;
       char * output1 = NULL, * output2 = NULL;
 
       re->final_matches++;
@@ -2096,9 +2165,10 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
     total_pairs_matched++;
   }
 
+  int outputted=0;
   /* Output sorted list, removing any duplicates. */
   for (i = 0;
-       i < (int)h->load && i < num_outputs
+       i < (int)h->load && outputted < num_outputs
 	 && ( (IS_ABSOLUTE(sw_full_threshold)
 	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
 							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
@@ -2118,6 +2188,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
 	*/
     if ((!rh1->sfrp->dup) && (!rh2->sfrp->dup)) {
+      outputted++;
       char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
       re1->final_matches++;
@@ -2300,7 +2371,6 @@ static void
 handle_readpair(struct read_entry * re1, struct read_entry * re2) {
   heap_paired h;
   uint i;
-
   uint64_t before = rdtsc();
 
   read_get_mapidxs(re1);
@@ -2564,13 +2634,13 @@ launch_scan_threads(){
 	  continue;
 	}
 
-	if (!(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq))) {
-	  if (pair_mode != PAIR_NONE && i % 2 == 1) {
-	    read_free(re_buffer+i-1);
-	    read_free(re_buffer+i);
-	  }
-	  continue;
-	}
+	//if (!(strcspn(re_buffer[i].seq, "nNxX.") == strlen(re_buffer[i].seq))) {
+	//  if (pair_mode != PAIR_NONE && i % 2 == 1) {
+	//    read_free(re_buffer+i-1);
+	//    read_free(re_buffer+i);
+	//  }
+	//  continue;
+	//}
 
 	re_buffer[i].ignore = false;
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
