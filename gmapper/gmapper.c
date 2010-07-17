@@ -1044,7 +1044,6 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
       gstart = gend - re->window_len;
     else
       gstart = 0;
-
     /*
      * Modes of matching:
      * 1. gapless: only extend current anchor; no window_gen_threshold check
@@ -1136,6 +1135,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 	re->hits[st][re->n_hits[st]].pair_min = -1;
 	re->hits[st][re->n_hits[st]].pair_max = -1;
 	re->n_hits[st]++;
+    //fprintf(stderr,"gstart %d, gend %d, cn offset %d, max_idx %d, g_off %d\n",gstart,gend,contig_offsets[cn],max_idx,goff);
       }
   }
 
@@ -2017,7 +2017,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   /* compute full alignment scores */
   for (i = 0; i < (int)h->load; i++) {
     struct read_hit * rh = h->array[i].rest.hit;
-
+    //fprintf(stderr,"g_off is %llu\n",rh->g_off);
     hit_run_full_sw(re, rh, (int)abs_or_pct(sw_full_threshold, rh->score_max));
     h->array[i].key = (IS_ABSOLUTE(sw_full_threshold)? rh->score_full : rh->pct_score_full);
   }
@@ -2053,6 +2053,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 			hits[edit_distance]++;
 		}
 	}
+	//fprintf(stderr,"%s\n%s\n",sfrp->dbalign,sfrp->qralign);
   }
 
   int outputted=0;

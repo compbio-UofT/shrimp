@@ -105,6 +105,7 @@ f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rle
 
   /* Compute */
   if (!gapless_sw) {
+	//fprintf(stderr,"Doing a vector call, %d, %d, %d\n", goff, wlen, rlen);
     score = sw_vector(genome, goff, wlen, read, rlen,
 		      genome_ls, init_bp, is_rna);
   } else {

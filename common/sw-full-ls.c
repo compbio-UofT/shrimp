@@ -73,10 +73,73 @@ init_cell(int idx) {
 }
 
 
+static void print_sw(int lena, int lenb) {
+	int i,j;
+	printf("      %5s ","-");
+	for (j=1; j< lenb+1; j++) {
+		printf("%5c ",base_translate(qr[j-1],false)); 
+	}
+	printf("\n");
+	//rows
+	for (i=0; i<lena+1; i++) {
+		//cols
+		if (i==0) {
+			printf("    - ");
+		} else {
+			printf("%5c ",base_translate(db[i-1],false));
+		}
+		for (j=0; j<lenb+1; j++) {
+			swcell curr=swmatrix[j*(lena+1)+i];
+			int tmp=0;
+			tmp=MAX(curr.score_north,curr.score_west);
+			tmp=MAX(tmp,curr.score_northwest);
+			printf("%5d ",tmp);
+		}
+		printf("\n");
+	}
+}
+
+static void print_sw_backtrace(int lena, int lenb) {
+	int i,j;
+	printf("      %5s ","-");
+	for (j=1; j< lenb+1; j++) {
+		printf("%5c ",base_translate(qr[j-1],false)); 
+	}
+	printf("\n");
+	//rows
+	for (i=0; i<lena+1; i++) {
+		//cols
+		if (i==0) {
+			printf("    - ");
+		} else {
+			printf("%5c ",base_translate(db[i-1],false));
+		}
+		for (j=0; j<lenb+1; j++) {
+			swcell curr=swmatrix[j*(lena+1)+i];
+			int btrace[3]={0,0,0};
+			int maxscore=0;
+			maxscore=MAX(curr.score_north,curr.score_west);
+			maxscore=MAX(maxscore,curr.score_northwest);
+			if (curr.score_west==maxscore) {
+				btrace[0]=curr.back_west;
+			}	
+			if (curr.score_northwest==maxscore) {
+				btrace[1]=curr.back_northwest;
+			}
+			if (curr.score_north==maxscore) {
+				btrace[2]=curr.back_north;
+			}
+			printf("%d/%d/%d ",btrace[0],btrace[1],btrace[2]);
+		}
+		printf("\n");
+	}
+}
+
 static int
 full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret, bool revcmpl,
 	struct anchor * anchors, int anchors_cnt)
 {
+  //fprintf(stderr,"Executing full_sw\n");
   int i, j;
   //int sw_band, ne_band;
   int score, ms, a_go, a_ge, b_go, b_ge, tmp;
@@ -262,7 +325,7 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
       }
 
       if (tmp <= 0)
-	tmp = tmp2 = 0;
+	 tmp = tmp2 = 0;
 
       cell_cur->score_west = tmp;
       cell_cur->back_west  = tmp2;
@@ -294,7 +357,10 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
 
   *iret = i;
   *jret = j;
-
+  //fprintf(stderr,"Returning i = %d, j= %d, score= %d , maxscore=%d\n",i,j,score,maxscore);
+  //print_sw(lena,lenb);
+  //print_sw_backtrace(lena,lenb);
+  //fprintf(stderr,"Final score is %d\n",score);
   if (score == maxscore)
     return score;
   else if (anchors != NULL)
@@ -320,7 +386,6 @@ do_backtrace(int lena, int i, int j, struct sw_full_results *sfr)
 	int k, from, fromscore;
 
 	cell = &swmatrix[(i + 1) * (lena + 1) + j + 1];
-
 	from = cell->back_northwest;
 	fromscore = cell->score_northwest;
 	if (cell->score_west > fromscore) {
@@ -335,6 +400,7 @@ do_backtrace(int lena, int i, int j, struct sw_full_results *sfr)
 	/* fill out the backtrace */
 	k = (dblen + qrlen) - 1;
 	while (i >= 0 && j >= 0) {
+		//printf("Got cell %d , %d for backtrace\n",i+1,j+1);
 		assert(k >= 0);
 
 		cell = NULL;
