@@ -200,6 +200,7 @@ def main(argv):
 	split_contigs_output_filename=tmp_dir+'/split_contigs_out'
 	split_contigs_output_handle=open(split_contigs_output_filename,'w')
 	command=('%s %s %s %s' % (split_contigs_executable,tmp_filename,ram_size,seed_weights)).split()
+	print " ".join(command)
 	split_contigs_process=subprocess.Popen(command,stdout=split_contigs_output_handle)
 	if split_contigs_process.wait()!=0:
 		print >> sys.stderr, "An error has occured."

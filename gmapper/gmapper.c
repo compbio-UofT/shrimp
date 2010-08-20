@@ -722,7 +722,7 @@ static void
 read_get_mapidxs_per_strand(struct read_entry * re, int st) {
   int i, sn, load, base, r_idx;
   uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0]) * BPTO32BW(max_seed_span));
-
+  
   re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
 
   load = 0;
@@ -1818,10 +1818,11 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 				c!='T' && c!='t' &&
 				c!='N' && c!='n') {
 				//see if we can figure out what its suppose to be
+				c='N';
 				if (rh->sfrp->dbalign[i]!='-') {
 					char r = rh->sfrp->dbalign[i];
 					if (r>='a') {
-						c-=32;
+						r-=32;
 					}
 					switch (r) {
 						case 'A':
@@ -1841,8 +1842,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 								c='T';
 							break;
 						default: 
-							fprintf(stderr,"There has been an error in printing an alignment\n");
-							exit(1);
+							fprintf(stderr,"There has been an error in printing an alignment, %c\n",r);
+							break;
 					}
 				}
 			}
@@ -2674,6 +2675,12 @@ launch_scan_threads(){
 							    re_buffer[i].read_len, re_buffer[i].is_rna);
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
+	}
+	//Check if we can actually use this read
+	if (re_buffer[i].max_n_kmers<0) {
+		fprintf(stderr,"warning: Read smaller then any seed, skipping read!\n");
+		read_free_full(&re_buffer[i]);
+		continue;	
 	}
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
 	re_buffer[i].input_strand = 0;

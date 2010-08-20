@@ -113,6 +113,73 @@ static uint64_t		swticks, swcells, swinvocs;
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)
 
+
+static void print_sw(int lena, int lenb) {
+
+	int k;
+	for (k=0; k<4; k++) {
+		int i,j;
+		printf("      %5s ","-");
+		for (j=1; j< lenb+1; j++) {
+			printf("%5c ",base_translate(qr[k][j-1],false)); 
+		}
+		printf("\n");
+		//rows
+		for (i=0; i<lena+1; i++) {
+			//cols
+			if (i==0) {
+				printf("    - ");
+			} else {
+				printf("%5c ",base_translate(db[i-1],false));
+			}
+			for (j=0; j<lenb+1; j++) {
+				swcell curr=swmatrix[j*(lena+1)+i];
+				int tmp=0;
+				tmp=MAX(curr.from[k].score_n,curr.from[k].score_w);
+				tmp=MAX(tmp,curr.from[k].score_nw);
+				printf("%5d ",tmp);
+			}
+			printf("\n");
+		}
+	}
+}
+/*
+static void print_sw_backtrace(int lena, int lenb) {
+	int i,j;
+	printf("      %5s ","-");
+	for (j=1; j< lenb+1; j++) {
+		printf("%5c ",base_translate(qr[j-1],false)); 
+	}
+	printf("\n");
+	//rows
+	for (i=0; i<lena+1; i++) {
+		//cols
+		if (i==0) {
+			printf("    - ");
+		} else {
+			printf("%5c ",base_translate(db[i-1],false));
+		}
+		for (j=0; j<lenb+1; j++) {
+			swcell curr=swmatrix[j*(lena+1)+i];
+			int btrace[3]={0,0,0};
+			int maxscore=0;
+			maxscore=MAX(curr.score_north,curr.score_west);
+			maxscore=MAX(maxscore,curr.score_northwest);
+			if (curr.score_west==maxscore) {
+				btrace[0]=curr.back_west;
+			}	
+			if (curr.score_northwest==maxscore) {
+				btrace[1]=curr.back_northwest;
+			}
+			if (curr.score_north==maxscore) {
+				btrace[2]=curr.back_north;
+			}
+			printf("%d/%d/%d ",btrace[0],btrace[1],btrace[2]);
+		}
+		printf("\n");
+	}
+}*/
+
 inline static void
 init_cell(int idx) {
   swmatrix[idx].from[0].score_nw = 0;
@@ -168,7 +235,6 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   for (j = 0; j < lena + 1; j++) {
     init_cell(j);
   }
-
   //for (j = 0; j < lenb + 1; j++) {
   //init_cell(j * (lena + 1));
   //}
@@ -201,6 +267,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     anchor_join(tmp_anchors, 2, &rectangle);
   }
 
+
+
   for (i = 0; i < lenb; i++) {
     /*
      * computing row i of virtual matrix, stored in row i+1
@@ -209,6 +277,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 
     anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     //if (x_min > 0) {
+    //fprintf(stderr,"INIT cell %d , %d, %d\n",i+1, (x_min-1)+1,x_max);
     init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
     //}
 
@@ -479,6 +548,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 
       anchor_get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
       for (j = x_max + 1; j <= next_x_max; j++) {
+	//fprintf(stderr,"Init cell %d , , %d\n",i+1,j+1);
 	init_cell((i + 1) * (lena + 1) + (j + 1));
       }
     }
@@ -491,7 +561,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   *iret = max_i;
   *jret = max_j;
   *kret = max_k;
-
+  //print_sw(lena,lenb);
   return (score);
 }
 

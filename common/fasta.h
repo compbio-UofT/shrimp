@@ -123,7 +123,9 @@ fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
 	if (ret) {
 		*seq=re.seq;
 		*name=re.name;
-		*is_rna=re.is_rna;
+		if (is_rna!=NULL) {
+			*is_rna=re.is_rna;
+		}
 	}
 	return ret;	
 	
