@@ -60,7 +60,8 @@ struct option standard_options[] =
 	{"help",0,0,'?'},
 	{"spaced-kmers",0,0,'H'},
 	{"thread-stats",0,0,'D'},
-	{"trim-off",0,0,'V'}
+	{"trim-off",0,0,'V'},
+	{"strata",0,0,9}
 };
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},

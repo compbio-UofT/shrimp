@@ -64,6 +64,7 @@ static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
 
 /* Flags */
+static bool strata_flag = false;		/* get only top scoring hits */
 static bool Cflag = false;			/* do complement only */
 static bool Fflag = false;			/* do positive (forward) only */
 static bool Hflag = false;			/* use hash table, not lookup */
@@ -2067,6 +2068,9 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 		  && (int)h->array[i].key >= (int)sw_full_threshold) );
        i++) {
     struct read_hit * rh = h->array[i].rest.hit;
+    if (strata_flag && h->array[i].key != h->array[0].key) {
+	break;
+    }
     /*bool dup;
 
     if (i == 0)
@@ -2162,7 +2166,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 		sfrp1->dup=sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, sfrp1);
 		sfrp2->dup=sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, sfrp2);
 	}
-	if ((!sfrp1->dup) && (!sfrp2->dup)) {
+	if ((!sfrp1->dup) || (!sfrp2->dup)) {
 		int edit_distance1=re1->read_len-sfrp1->matches+sfrp1->insertions;
 		int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
 		found_alignments++;
@@ -2195,6 +2199,9 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
        i++) {
     struct read_hit * rh1 = h->array[i].rest.hit[0];
     struct read_hit * rh2 = h->array[i].rest.hit[1];
+    if (strata_flag && h->array[i].key != h->array[0].key) {
+	break;
+    }
     uint bucket;
 
 	/*
@@ -2202,10 +2209,13 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
     if (i == 0)
       dup = false;
     else
-      dup = sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
-	&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
+   
+		dup= sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
+		&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
 	*/
-    if ((!rh1->sfrp->dup) && (!rh2->sfrp->dup)) {
+
+
+    if ((!rh1->sfrp->dup) || (!rh2->sfrp->dup)) {
       outputted++;
       char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
@@ -3397,6 +3407,8 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
+	  "   --strata             Print only the best scoring hits");
+  fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
 
   exit(1);
@@ -3541,6 +3553,9 @@ int main(int argc, char **argv){
 
 	while ((ch = getopt_long(argc,argv,optstr,getopt_long_options,NULL)) != -1){
 		switch (ch) {
+		case 9:
+			strata_flag = true;
+			break;
 		case 10:
 			unaligned_reads_file=fopen(optarg,"w");
 			if (unaligned_reads_file==NULL) {

@@ -29,8 +29,13 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 {
 	char *dbalign1, *dbalign2;
 	char *qralign1, *qralign2;
+	bool dup1, dup2;
 	bool equal;
 
+	dup1=sfr1->dup;
+	sfr1->dup=false;
+	dup2=sfr2->dup;
+	sfr2->dup=false;
 	dbalign1 = sfr1->dbalign;
 	dbalign2 = sfr2->dbalign;
 	qralign1 = sfr1->qralign;
@@ -41,6 +46,8 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 
 	equal = memcmp(sfr1, sfr2, sizeof(*sfr1)) == 0;
 
+	sfr1->dup=dup1;
+	sfr2->dup=dup2;
 	sfr1->dbalign = dbalign1;
 	sfr2->dbalign = dbalign2;
 	sfr1->qralign = qralign1;
