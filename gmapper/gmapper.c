@@ -1038,13 +1038,15 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 
     // set gstart and gend
     gend = (re->anchors[st][i].x - contig_offsets[cn]) + re->read_len - 1 - re->anchors[st][i].y;
-    if (gend > genome_len[cn] - 1)
+    if (gend > genome_len[cn] - 1) {
       gend = genome_len[cn] - 1;
+    }
 
-    if (gend >= re->window_len)
+    if (gend >= re->window_len) {
       gstart = gend - re->window_len;
-    else
+    } else {
       gstart = 0;
+    }
     /*
      * Modes of matching:
      * 1. gapless: only extend current anchor; no window_gen_threshold check
@@ -1063,9 +1065,9 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 	   j >= 0
 	     && re->anchors[st][j].x >= (llint)contig_offsets[cn] + gstart;
 	   j--) {
-	if (re->anchors[st][j].y >= re->anchors[st][i].y)
+	if (re->anchors[st][j].y >= re->anchors[st][i].y) {
 	  continue;
-
+	}
 	if (re->anchors[st][i].x - (llint)contig_offsets[cn] - re->anchors[st][i].y
 	    > re->anchors[st][j].x - (llint)contig_offsets[cn] - re->anchors[st][j].y)
 	  { // deletion in read
@@ -1078,11 +1080,12 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 	    long_len = (int)(re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
 	  }
 
-	if (long_len > short_len)
+	if (long_len > short_len) {
 	  tmp_score = short_len * match_score + b_gap_open_score
 	    + (long_len - short_len) * b_gap_extend_score;
-	else
+	} else {
 	  tmp_score = short_len * match_score;
+	}
 
 	if (tmp_score > max_score) {
 	  max_idx = j;
@@ -1099,13 +1102,14 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 	// set goff
 	int x_len = (int)(re->anchors[st][i].x - re->anchors[st][max_idx].x) + re->anchors[st][i].length;
 
-	if ((re->window_len - x_len)/2 < re->anchors[st][max_idx].x - contig_offsets[cn])
+	if ((re->window_len - x_len)/2 < re->anchors[st][max_idx].x - contig_offsets[cn]) {
 	  goff = (re->anchors[st][max_idx].x - contig_offsets[cn]) - (re->window_len - x_len)/2;
-	else
+	} else {
 	  goff = 0;
-
-	if (goff + w_len > genome_len[cn])
+	}
+	if (goff + w_len > genome_len[cn]) {
 	  goff = genome_len[cn] - w_len;
+	}
 
 	// compute anchor
 	if (max_idx < i) {
@@ -1136,7 +1140,6 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
 	re->hits[st][re->n_hits[st]].pair_min = -1;
 	re->hits[st][re->n_hits[st]].pair_max = -1;
 	re->n_hits[st]++;
-    //fprintf(stderr,"gstart %d, gend %d, cn offset %d, max_idx %d, g_off %d\n",gstart,gend,contig_offsets[cn],max_idx,goff);
       }
   }
 
@@ -1780,11 +1783,11 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			isize,seq,qual);	
 		assert(found_alignments==0);
 		assert(stored_alignments==0);
-		assert(hits[0]==0);
-		assert(hits[1]==0);
-		assert(hits[2]==0);
-		assert(hits[3]==0);
-		extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNH:i:%d\tIH:i:%d",hits[0],hits[1],hits[2],found_alignments,stored_alignments);
+		//assert(hits[0]==0);
+		//assert(hits[1]==0);
+		//assert(hits[2]==0);
+		//assert(hits[3]==0);
+		//extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNH:i:%d\tIH:i:%d",hits[0],hits[1],hits[2],found_alignments,stored_alignments);
 		return;
 	}
 	assert(rh!=NULL);
@@ -2209,11 +2212,9 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
     if (i == 0)
       dup = false;
     else
-   
 		dup= sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
 		&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
 	*/
-
 
     if ((!rh1->sfrp->dup) || (!rh2->sfrp->dup)) {
       outputted++;
@@ -3407,7 +3408,7 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
-	  "   --strata             Print only the best scoring hits");
+	  "   --strata             Print only the best scoring hits\n");
   fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
 
