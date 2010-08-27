@@ -16,6 +16,8 @@
 #define PAIR_COL_FW	3
 #define PAIR_COL_BW	4
 
+#define DEF_LONGEST_READ_LENGTH	1000
+
 struct option standard_options[] =
 {
 	{"un",1,0,10},
@@ -27,8 +29,8 @@ struct option standard_options[] =
 	{"seeds",1,0,'s'}, 
 	{"report",1,0,'o'},
 	{"match-window",1,0,'w'},
-	{"cmv-mode",1,0,'n'},
-	{"cmv-overlap",1,0,'l'},
+	{"cmw-mode",1,0,'n'},
+	{"cmw-overlap",1,0,'l'},
 	{"anchor-width",1,0,'a'},
 	{"save",1,0,'S'},
 	{"load",1,0,'L'},
@@ -40,7 +42,7 @@ struct option standard_options[] =
 	{"ext-r",1,0,'e'},
 	{"ext-q",1,0,'f'},
 	{"cmv-threshold",1,0,'r'},
-	{"hit-threshold",1,0,'h'},
+	{"full-threshold",1,0,'h'},
 	{"threads",1,0,'N'},
 	{"thread-chunk",1,0,'K'},
 	{"pair-mode",1,0,'p'},

@@ -182,10 +182,10 @@ SHRiMP2 uses the OpenMP API to achieve multi-threaded operation.
 ----------------------
 
 Assume we downloaded the linux binary package in
-./SHRiMP_2_0.lx26.x86_64.tar.gz
+./SHRiMP_2_0_1.lx26.x86_64.tar.gz
 
-  $ tar xvzf SHRiMP_2_0.lx26.x86_64.tar.gz
-  $ cd SHRiMP_2_0
+  $ tar xvzf SHRiMP_2_0_1.lx26.x86_64.tar.gz
+  $ cd SHRiMP_2_0_1
   $ file bin/gmapper
   bin/gmapper: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV), for
   GNU/Linux 2.6.9, statically linked, for GNU/Linux 2.6.9, not stripped
@@ -198,10 +198,10 @@ utils/.
 3.2 Compiling SHRiMP2 from source
 ---------------------------------
 
-Assume we downloaded the source package in ./SHRiMP_2_0.src.tar.gz
+Assume we downloaded the source package in ./SHRiMP_2_0_1.src.tar.gz
 
-  $ tar xvzf SHRiMP_2_0.src.tar.gz
-  $ cd SHRiMP_2_0
+  $ tar xvzf SHRiMP_2_0_1.src.tar.gz
+  $ cd SHRiMP_2_0_1
   $ make
   [...warnings, hopefully no errors...]
   $ ls bin/gmapper*
@@ -641,7 +641,7 @@ The list is organized conceputally by the "area" where parameters operate.
 Genome Projection
 -----------------
 
-  [ -s <seed1,seed2,....> ]
+  [ -s/--seeds <seed1,seed2,....> ]
 
     Each spaced seed is a  contiguous string of 0s  and 1s. Several spaced seeds
     can be specified either by separating them by commas as a single paramter to
@@ -651,16 +651,16 @@ Genome Projection
     Note: When running gmapper in colour space mode, seeds are applied to colour
     space representations of the genome and the reads.
 
-  [ -H ]
+  [ -H/--spaced-kmers ]
 
     Hash spaced kmers obtained from each spaced  seed into 24-bit strings before
     indexing them.
 
-  [ -z <cutoff> ]
+  [ -z/--cutoff <cutoff> ]
 
     Ignore lists in the genome index that are longer than <cutoff>.
 
-  [ -V ]
+  [ -V/--trim-off ]
 
     Disable automatic genome  index trimming. By default,  if no  "-z" is given,
     gmapper trims the lists in the  genome index longer  than a given threshold.
@@ -670,7 +670,7 @@ Genome Projection
 
     This flag is ignored if either -z or -S is given.
 
-  [ -S <filename> ]
+  [ -S/--save <filename> ]
 
     With this parameter,  gmapper projects and indexes  the genome, and saves it
     in several  files for  future use.  No read mapping   is performed. The only
@@ -689,7 +689,7 @@ Genome Projection
     and  colour space indexes are different.  If you have  colour (letter) space
     reads, you should build a colour (letter) space index of the genome.
 
-  [ -L <filename> ]
+  [ -L/--load <filename> ]
 
     Load a genome index from the given file. Also  loads the set of spaced seeds
     used in the projection, as  well as the value of  the -H flag when the index
@@ -714,21 +714,21 @@ Genome Projection
 General Mapping
 ---------------
 
-  [ -w <window_length> ]
+  [ -w/--match-window <window_length> ]
 
     Specifies the length of the genome window against which a read is mapped. It
     can be given either as an absolute value, e.g., "-w  62", or as a percentage
     of read length, e.g., "-w 133%". It defaults to "-w 140%".
 
-  [ -U ]
+  [ -U/--ungapped ]
 
     Perform ungapped alignment.
 
-  [ -F ]
+  [ -F/--positive ]
 
     Only process the forward (positive) strand of the genome.
 
-  [ -C ]
+  [ -C/--negative ]
 
     Only process the reverse complement (negative) strand of the genome.
 
@@ -736,16 +736,16 @@ General Mapping
 Smith-Waterman Scores
 ---------------------
 
-  [ -m <match_score> ]
+  [ -m/--match <match_score> ]
 
     The score for matches during the Smith-Waterman score calculation. This
     should be positive.
 
-  [ -i <mismatch_score> ]
+  [ -i/--mismatch <mismatch_score> ]
 
     The score for mismatches. This should be negative.
 
-  [ -g <gap_open_reference_score> ]
+  [ -g/--open-r <gap_open_reference_score> ]
 
     The score to open a gap along the genome sequence. Should be negative.
 
@@ -754,25 +754,25 @@ Smith-Waterman Scores
 
       <gap_open_score>+<gap_extend_score>
 
-  [ -q <gap_open_query_score> ]
+  [ -q/--open-q <gap_open_query_score> ]
 
     The score to open a gap along the read sequence. Should be negative.
 
     Note: If -g is  set and -q is  not set, the  gap open penalty for the  query
     will be set to the same value as specified for the reference.
 
-  [ -e <gap_extend_reference_score> ]
+  [ -e/--ext-r <gap_extend_reference_score> ]
 
     The score to extend a gap along the genome sequence. Should be negative.
 
-  [ -f <gap_extend_query_score> ]
+  [ -f/--ext-q <gap_extend_query_score> ]
 
     The score to extend a gap along the read sequence. Should be negative.
 
     Note: If -e is set and -f  is not set, the  gap extend penalty for the query
     will be set to the same value as specified for the reference.
 
-  [ -x <crossover_score> ]
+  [ -x/--crossover <crossover_score> ]
 
     The score for  calling a colour space sequencing  error. Should be negative.
     Available only in colour  space mode. Disable  with a prohibitive value: "-x
@@ -782,7 +782,7 @@ Smith-Waterman Scores
 Filter 1: Window Generation
 ---------------------------
 
-  [ -n <window_generation_mode> ]
+  [ -n/--cmw-mode <window_generation_mode> ]
 
     This parameter controls how candidate mapping windows  (CMW) are created for
     every  read or  readpair.  In   unpaired mode,  possible values are   1 or 2
@@ -799,7 +799,7 @@ Filter 1: Window Generation
 	 other
       4: at least 2 spaced seed matches in either foot
 
-  [ -r <window_generation_threshold> ]
+  [ -r/--cmw-threshold <window_generation_threshold> ]
 
     Generate a CMW as long as the "optimistic" estimation of  the match score is
     greater than  <window_generation_threshold>. The estimation  is computed  by
@@ -827,7 +827,7 @@ Filter 1: Window Generation
 Filter 2: Vector SW/Ungapped Alignment
 --------------------------------------
 
-  [ -v <vector_sw_threshold> ]
+  [ -v/--vec-threshold <vector_sw_threshold> ]
 
     For every  CMW  for a  read,  discard  it if  after  running the  vector  SW
     algorithm, its mapping  score is below  <vector_sw_threshold>. The threshold
@@ -837,14 +837,14 @@ Filter 2: Vector SW/Ungapped Alignment
     Available only in   colour space mode.  (In  letter space mode,  this equals
     <full_sw_threshold>.)
 
-  [ -l <window_overlap> ]
+  [ -l/--cmw-overlap <window_overlap> ]
 
     Following a CMW filter 2  hit, ignore further  CMWs that overlap it by  more
     than <window_overlap>. It  can be given as  either an absolute value,  e.g.,
     "-w 62", or a percentage of read length, e.g.,  "-w 50%". It defaults to "-l
     80%".
 
-  [ -Z ]
+  [ -Z/--cachebypass-off ]
 
     Disable cache  bypass of vector SW calls.   This  is disabled by  default in
     ungapped mode ("-U").
@@ -853,32 +853,41 @@ Filter 2: Vector SW/Ungapped Alignment
 Filter 3: Scalar (Full) SW Alignment
 ------------------------------------
 
-  [ -h <full_sw_threshold> ]
+  [ -h/--full-threshold <full_sw_threshold> ]
 
     For  every  CMW, discard  it  if after  running  the  full SW algorithm, its
     mapping   score is   below  <full_sw_threshold>.  The  threshold is   either
     absolute,  e.g., "-h  400", or a  percentage of  the  maximum possible match
     score, e.g., "-h 80%". It defaults to "-h 68%".
 
-  [ -o <num_outputs> ]
+  [ -o/--report <num_outputs> ]
 
     Output the top <num_outputs> filter 3 hits for each read/pair.
 
-  [ -a <anchor_width> ]
+  [ --strata ]
+
+    Only output the highest scoring mappings for any given read, upto
+    <num_outputs> mappings per read.
+
+  [ -a/--anchor-width <anchor_width> ]
 
     Limit the full SW  algorithm to a  band  of <anchor_width> additional  width
     around matching kmers (anchors). This defaults to "-a 8" in gapped mode, and
     "-a 0" in ungapped mode. To disable anchor usage altogether, use "-a -1".
 
-  [ -T ]
+  [ -T/--rev-tiebreak ]
 
     Reverse the order in which tie-breaks are resolved on the negative strand.
+
+  [ -t/--tiebreak-off ]
+
+    Disable reverse tiebreak (--rev-tiebreak , on by default).
 
 
 Paired Mode
 -----------
 
-  [ -p <paired_mode> ]
+  [ -p/--pair-mode <paired_mode> ]
 
     By  default,   gmapper operates in unpaired   mapping  mode.  This parameter
     enables  the paired mapping     mode.  The possible  values are:   "opp-in",
@@ -900,7 +909,7 @@ Paired Mode
     (R1:GGA, R2:GTA) or (R1:TAC, R2:TCC) are "col-fw"
     (R1:GTA, R2:GGA) or (R1:TCC, R2:TAC) are "col-bw"
 
-  [ -I <min,max> ]
+  [ -I/--isize <min,max> ]
 
     Discard  any pair for  which  the insert size    between its two feet  falls
     outside of this range. This  parameter is only  available in paired  mapping
@@ -920,41 +929,73 @@ Paired Mode
 Thread Control
 --------------
 
-  [ -N <num_threads> ]
+  [ -N/--threads <num_threads> ]
 
     Use <num_threads> threads of control. It defaults to "-N 1".
 
-  [ -K <chunk_size> ]
+  [ -K/--thread-chunk <chunk_size> ]
 
     Threads take turns  "checking out" a  chunk of reads, mapping them, printing
     the results, and "checking out" the next chunk. This parameter specifies how
     many reads should be in each such chunk. Defaults to "-K 1000".
 
-  [ -D ]
+  [ -D/--thread-stats ]
 
     Print individual thread statistics in the log file.
+
+
+Input Control
+--------------
+
+  [ --longest-read ]
+
+    The longest input read is of this length.
+
+  [ -Q/--fastq ]
+
+    The input is FASTQ format.
+
+  [ -1/--upstream <filename> ]
+
+    Use the given file as input for the upstream reads in paired mode.
+
+  [ -2/--downstream <filename> ]
+
+    Use the given file as input for the downstream reads in paired mode.
 
 
 Output Control
 --------------
 
-  [ -P ]
+  [ -P/--pretty ]
 
     Select SHRiMP output format, and pretty-print alignments.
 
-  [ -R ]
+  [ -R/--print-reads ]
 
     Select SHRiMP output format, and include reads in the output.
 
-  [ -E ]
+  [ -E/--sam ]
 
     Select SAM output format.
+
+  [ --sam-unaligned ]
+
+    If SAM output format is also selected dump unaligned reads to the SAM output.
+
+  [ -un <filename> ]
+
+    Print unaligned reads to target file.
+
+  [ -al <filename> ]
+
+    Print aligned reads to target file.
 
 
 Diagnostics
 -----------
 
-  [ -X ]
+  [ -X/--isize-histogram ]
 
     When running in paired mapping mode, dump histogram of insert sizes. (Use it
     with a statistically significant small  set of reads.)  This can be used  to
@@ -962,7 +1003,7 @@ Diagnostics
     insert sizes should be bell-shaped. If it looks uniform, the paired mode was
     probably wrong.
 
-  [ -Y ]
+  [ -Y/--proj-histogram ]
 
     Dump histogram of  the lengths of  the genomic index lists. The distribution
     of these list lengths has huge tails (e.g. average 50, maximum 500,000), and

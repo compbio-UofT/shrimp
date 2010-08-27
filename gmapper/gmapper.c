@@ -44,7 +44,7 @@ static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
-static int	longest_read_len	= 1000;
+static int	longest_read_len	= DEF_LONGEST_READ_LENGTH;
 
 /* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
@@ -3277,11 +3277,11 @@ usage(char * progname, bool full_usage){
 	  "   -w/--match-window    Match Window Length           (default: %.02f%%)\n",
 	  DEF_WINDOW_LEN);
   fprintf(stderr,
-	  "   -n/--cmv-mode        Seed Matches per Window       (default: %d)\n",
+	  "   -n/--cmw-mode        Seed Matches per Window       (default: %d)\n",
 	  DEF_NUM_MATCHES);
   if (full_usage) {
   fprintf(stderr,
-	  "   -l/--cmv-overlap     Match Window Overlap Length   (default: %.02f%%)\n",
+	  "   -l/--cmw-overlap     Match Window Overlap Length   (default: %.02f%%)\n",
 	  DEF_WINDOW_OVERLAP);
   fprintf(stderr,
 	  "   -a/--anchor-width    Anchor Width Limiting Full SW (default: %d; disable: -1)\n",
@@ -3322,7 +3322,7 @@ usage(char * progname, bool full_usage){
 	  DEF_XOVER_PENALTY);
   }
   fprintf(stderr,
-	  "   -r/--cmv-threshold   Window Generation Threshold   (default: %.02f%%)\n",
+	  "   -r/--cmw-threshold   Window Generation Threshold   (default: %.02f%%)\n",
 	  DEF_WINDOW_GEN_THRESHOLD);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
@@ -3330,7 +3330,7 @@ usage(char * progname, bool full_usage){
 	  DEF_SW_VECT_THRESHOLD);
   }
   fprintf(stderr,
-	  "   -h/--hit-threshold   SW Full Hit Threshold         (default: %.02f%%)\n",
+	  "   -h/--full-threshold   SW Full Hit Threshold         (default: %.02f%%)\n",
 	  DEF_SW_FULL_THRESHOLD);
 
   fprintf(stderr, "\n");
@@ -3352,15 +3352,16 @@ usage(char * progname, bool full_usage){
 	  "   -I/--isize           Min and Max Insert Size       (default: %d,%d)\n",
 	  DEF_MIN_INSERT_SIZE, DEF_MAX_INSERT_SIZE);
   fprintf(stderr,
-	  "   --longest-read       Maximum read length\n");
+	  "      --longest-read    Maximum read length           (default: %d)\n",
+	  DEF_LONGEST_READ_LENGTH);
   fprintf(stderr,
 	  "   -1/--upstream        Upstream read pair file\n");
   fprintf(stderr,
 	  "   -2/--downstream      Downstream read pair file\n");
   fprintf(stderr,
-	  "   --un                 Dump unaligned reads to file\n");
+	  "      --un              Dump unaligned reads to file\n");
   fprintf(stderr,
-	  "   --al                 Dump aligned reads to file\n");
+	  "      --al              Dump aligned reads to file\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
@@ -3406,9 +3407,9 @@ usage(char * progname, bool full_usage){
 	  "                                 Index Trimming       (default: enabled)\n");
   }
   fprintf(stderr,
-	  "   --sam-unaligned      Unaligned reads in SAM output (default: disabled)\n");
+	  "      --sam-unaligned   Unaligned reads in SAM output (default: disabled)\n");
   fprintf(stderr,
-	  "   --strata             Print only the best scoring hits\n");
+	  "      --strata          Print only the best scoring hits\n");
   fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
 
