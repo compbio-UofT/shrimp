@@ -203,12 +203,16 @@ main(int argc, char *argv[]) {
   if (target_chunks > 1) {
     fprintf(stderr, "rebalancing...\n");
     long long unsigned try_len;
-    int try_chunks;
+    int try_chunks = 0;
     do {
       try_len = target_len;
       for (j = 0; j < 10; j++) {
 	try_len = try_len - (target_len / 1000);
 	fprintf(stderr, "trying chunk size: %llu.. ", try_len);
+        if (try_len < contig[0].size) {
+          fprintf(stderr, "no; too small\n");
+          break;
+        }
 	try_chunks = greedy_fit(try_len);
 	if (try_chunks <= target_chunks) {
 	  fprintf(stderr, "yes\n");
@@ -216,7 +220,7 @@ main(int argc, char *argv[]) {
 	}
 	fprintf(stderr, "no\n");
       }
-      if (j < 10) {
+      if (j < 10 && !(try_len < contig[0].size)) {
 	if (try_chunks < target_chunks) {
 	  target_chunks = try_chunks;
 	  fprintf(stderr, "target chunks: %d\n", target_chunks);
