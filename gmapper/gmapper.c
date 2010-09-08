@@ -3330,7 +3330,7 @@ usage(char * progname, bool full_usage){
 	  DEF_SW_VECT_THRESHOLD);
   }
   fprintf(stderr,
-	  "   -h/--full-threshold   SW Full Hit Threshold         (default: %.02f%%)\n",
+	  "   -h/--full-threshold  SW Full Hit Threshold         (default: %.02f%%)\n",
 	  DEF_SW_FULL_THRESHOLD);
 
   fprintf(stderr, "\n");
