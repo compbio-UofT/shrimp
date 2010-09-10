@@ -1,0 +1,24 @@
+extract-subsequence
+----------
+
+This script is used to extarct part of a fasta sequence from a file.
+
+
+Parameters:
+
+<file.fa>
+	Input file in fasta format.
+
+<offset>
+	The offset form where to begin capturing the subsequence.
+	
+<length>
+	The length of subsequence to caputre and return.
+
+--contig <contig>
+	The name of the contig from which to extract sequence from.
+	Default is first contig in fasta file.
+
+--fasta
+	If specified returns the subsequence in fasta format.
+
