@@ -78,6 +78,7 @@ static bool Yflag = false;			/* print genome projection histogram */
 static bool Vflag = true;			/* automatic genome index trimming */
 static bool Qflag = false;			/* use fastq reads */
 static bool Gflag = false;			/* global-cs flag - effects CS only ! */
+static bool Bflag = false;			/* be like bfast - cs only! */
 
 /* Mate Pairs */
 static int	pair_mode		= DEF_PAIR_MODE;
@@ -1889,7 +1890,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 				cigar_binary->ops[i]='H';
 			}
 		}
-		if (Gflag) {
+		if (Bflag && Qflag) {
 			for (i=0; i<(read_end-read_start+1); i++) {
 				qual[i]=re->qual[i+read_start-1];
 			}
@@ -1988,7 +1989,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 		isize,seq,qual);	
-	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],re->read_len-rh->sfrp->matches+rh->sfrp->insertions,found_alignments,stored_alignments);
+	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->insertions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -2080,7 +2081,8 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 	}
 	if (!sfrp->dup) {
 		found_alignments++;
-		int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+		//int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+		int edit_distance=sfrp->mismatches+sfrp->insertions;
 		if (0<=edit_distance && edit_distance<3) {
 			hits[edit_distance]++;
 		}
@@ -2113,7 +2115,6 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
       char * output1 = NULL, * output2 = NULL;
 
       re->final_matches++;
-
       hit_output(re, rh, NULL, NULL, &output1, &output2, false, hits,found_alignments);
 //TODO - maybe buffer printf output here ? might make it go faster?
       if (!Pflag) {
@@ -2197,8 +2198,10 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 		sfrp2->dup=sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, sfrp2);
 	}
 	if ((!sfrp1->dup) || (!sfrp2->dup)) {
-		int edit_distance1=re1->read_len-sfrp1->matches+sfrp1->insertions;
-		int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
+		//int edit_distance1=re1->read_len-sfrp1->matches+sfrp1->insertions;
+		//int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
+		int edit_distance1=sfrp1->mismatches+sfrp1->insertions;
+		int edit_distance2=sfrp2->mismatches+sfrp2->insertions;
 		found_alignments++;
 		if (0<=edit_distance1 && edit_distance1<3) {
 			hits1[edit_distance1]++;
@@ -2866,7 +2869,7 @@ void free_genome(void) {
 		//uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
 		int i;
 		for(i=0; i<capacity; i++) {
-			if (genomemap[sn][i]!=NULL) {
+			if (genomemap[sn][i]!=NULL && (i==0 || load_file==NULL)) {
 				free(genomemap[sn][i]);
 			}
 		}	
@@ -3398,6 +3401,8 @@ usage(char * progname, bool full_usage){
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
           "      --global          Try to do global alignment    (default: disabled)\n");
+  fprintf(stderr,
+          "      --bfast           Try to align like bfast       (default: disabled)\n");
   }
   fprintf(stderr,
 	  "   -C/--negative        Negative Strand Aln. Only     (default: disabled)\n");
@@ -3612,6 +3617,10 @@ int main(int argc, char **argv){
 			}
 			break;
 		case 14:
+			Gflag = true;
+			break;
+		case 15:
+			Bflag = true;
 			Gflag = true;
 			break;
 		case '1':
@@ -3924,9 +3933,6 @@ int main(int argc, char **argv){
 		fprintf(stderr,"error: cannot specify a reads file when using -L, -1 and -2\n");
 		usage(progname,false);
 	      }
-	    } else {
-	      fprintf(stderr,"error: too many arguments with -L\n");
-	      usage(progname, false);
 	    }
 	  }
 	else if (save_file != NULL)
@@ -4247,9 +4253,9 @@ int main(int argc, char **argv){
 	}
 	total_work_usecs += (gettimeinusecs() - before);
 	
-	if (load_file==NULL) {
+	//if (load_file==NULL) {
 		free_genome();
-	}
+	//}
 	print_statistics();
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
@@ -4264,11 +4270,13 @@ int main(int argc, char **argv){
 	int i;
 	for (i=0; i<num_contigs; i++){
 		free(contig_names[i]);
-		free(genome_contigs[i]);
-		free(genome_contigs_rc[i]);
+		if (i==0 || load_file==NULL) {
+			free(genome_contigs[i]);
+			free(genome_contigs_rc[i]);
+		}
 	}
 	if (shrimp_mode==MODE_COLOUR_SPACE) {
-		for (i=0; i<num_contigs; i++){
+		for (i=0; i<num_contigs && (i==0 || load_file==NULL); i++){
 			free(genome_cs_contigs[i]);
 		}
 		free(genome_cs_contigs);
