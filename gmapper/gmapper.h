@@ -68,6 +68,8 @@ struct option standard_options[] =
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},
 	{"vec-threshold",1,0,'v'},
+	{"global",0,0,14},
+	{"bfast",0,0,15},
 	{0,0,0,0}
 };
 struct option letter_space_options[] = {

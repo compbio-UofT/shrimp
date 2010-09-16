@@ -3,6 +3,7 @@
 
 #CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
+#CXXFLAGS=-g -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
 CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 #CXXFLAGS=-g -Wall -DNDEBUG
 endif

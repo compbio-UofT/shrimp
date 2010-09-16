@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <limits.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -110,6 +111,7 @@ static uint64_t		swticks, swcells, swinvocs;
 		swmatrix,backtrace,dbalign,qralign,anchor_width,swticks,swcells,swinvocs)
 
 #define BT_CROSSOVER		0x80
+#define BT_CLIPPED		0xf0
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)
 
@@ -120,23 +122,26 @@ static void print_sw(int lena, int lenb) {
 	for (k=0; k<4; k++) {
 		int i,j;
 		printf("      %5s ","-");
-		for (j=1; j< lenb+1; j++) {
-			printf("%5c ",base_translate(qr[k][j-1],false)); 
+		for (j=1; j< lena+1; j++) {
+			printf("%5c ",base_translate(db[j-1],false)); 
 		}
 		printf("\n");
 		//rows
-		for (i=0; i<lena+1; i++) {
+		for (i=0; i<lenb+1; i++) {
 			//cols
 			if (i==0) {
 				printf("    - ");
 			} else {
-				printf("%5c ",base_translate(db[i-1],false));
+				printf("%5c ",base_translate(qr[k][i-1],false));
 			}
 			for (j=0; j<lenb+1; j++) {
 				swcell curr=swmatrix[j*(lena+1)+i];
 				int tmp=0;
 				tmp=MAX(curr.from[k].score_n,curr.from[k].score_w);
 				tmp=MAX(tmp,curr.from[k].score_nw);
+				if (tmp<-99) {	
+					tmp=-99;	
+				} 
 				printf("%5d ",tmp);
 			}
 			printf("\n");
@@ -175,25 +180,41 @@ static void print_sw_backtrace(int lena, int lenb) {
 				btrace[2]=curr.back_north;
 			}
 			printf("%d/%d/%d ",btrace[0],btrace[1],btrace[2]);
-		}
+	1}
 		printf("\n");
 	}
 }*/
 
 inline static void
-init_cell(int idx) {
-  swmatrix[idx].from[0].score_nw = 0;
-  swmatrix[idx].from[0].score_n  = -gap_open;
-  swmatrix[idx].from[0].score_w  = -gap_open;
-  swmatrix[idx].from[1].score_nw = xover_penalty;
-  swmatrix[idx].from[1].score_n  = -gap_open + xover_penalty;
-  swmatrix[idx].from[1].score_w  = -gap_open + xover_penalty;
-  swmatrix[idx].from[2].score_nw = xover_penalty;
-  swmatrix[idx].from[2].score_n  = -gap_open + xover_penalty;
-  swmatrix[idx].from[2].score_w  = -gap_open + xover_penalty;
-  swmatrix[idx].from[3].score_nw = xover_penalty;
-  swmatrix[idx].from[3].score_n  = -gap_open + xover_penalty;
-  swmatrix[idx].from[3].score_w  = -gap_open + xover_penalty;
+init_cell(int idx, int local_alignment) {
+  if (local_alignment) {
+	  swmatrix[idx].from[0].score_nw = 0;
+	  swmatrix[idx].from[0].score_n  = -gap_open;
+	  swmatrix[idx].from[0].score_w  = -gap_open;
+	  swmatrix[idx].from[1].score_nw = xover_penalty;
+	  swmatrix[idx].from[1].score_n  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[1].score_w  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[2].score_nw = xover_penalty;
+	  swmatrix[idx].from[2].score_n  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[2].score_w  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[3].score_nw = xover_penalty;
+	  swmatrix[idx].from[3].score_n  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[3].score_w  = -gap_open + xover_penalty;
+  } else {
+	  swmatrix[idx].from[0].score_nw = -INT_MAX/2;
+	  swmatrix[idx].from[0].score_n  = -INT_MAX/2;
+	  swmatrix[idx].from[0].score_w  = -INT_MAX/2;
+	  swmatrix[idx].from[1].score_nw = -INT_MAX/2;
+	  swmatrix[idx].from[1].score_n  = -INT_MAX/2;
+	  swmatrix[idx].from[1].score_w  = -INT_MAX/2;
+	  swmatrix[idx].from[2].score_nw = -INT_MAX/2;
+	  swmatrix[idx].from[2].score_n  = -INT_MAX/2;
+	  swmatrix[idx].from[2].score_w  = -INT_MAX/2;
+	  swmatrix[idx].from[3].score_nw = -INT_MAX/2;
+	  swmatrix[idx].from[3].score_n  = -INT_MAX/2;
+	  swmatrix[idx].from[3].score_w  = -INT_MAX/2;
+
+  }
 
   swmatrix[idx].from[0].back_nw = 0;
   swmatrix[idx].from[0].back_n  = 0;
@@ -217,13 +238,14 @@ init_cell(int idx) {
 static int
 full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	int *kret, bool revcmpl,
-	struct anchor * anchors, int anchors_cnt)
+	struct anchor * anchors, int anchors_cnt, int local_alignment)
 {
   int i, j, k, l, max_i, max_j, max_k;
   int score, ms, go, ge, tmp, resetval;
   //int sw_band, ne_band;
   int8_t tmp2;
   struct anchor rectangle;
+
 
   /* shut up gcc */
   max_i = max_j = max_k = j = 0;
@@ -233,7 +255,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   ge = gap_ext;
 
   for (j = 0; j < lena + 1; j++) {
-    init_cell(j);
+    init_cell(j,1);
   }
   //for (j = 0; j < lenb + 1; j++) {
   //init_cell(j * (lena + 1));
@@ -276,13 +298,18 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     int x_min, x_max;
 
     anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
+    if (!local_alignment) {
+    	//x_max=MIN(lena,x_max); x_min=MAX(0,x_min-lenb/40); 
+    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0 ?  1 : 0);
+    	init_cell(i * (lena + 1) + x_max  + 1,  0);
+    } else {
+    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1);
+    }
     //if (x_min > 0) {
     //fprintf(stderr,"INIT cell %d , %d, %d\n",i+1, (x_min-1)+1,x_max);
-    init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1);
     //}
 
     swcells += x_max - x_min + 1;
-
     for (j = x_min; j <= x_max; j++) {
       /*
        * computing column j of virtual matrix, stored in column j+1
@@ -387,7 +414,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	  }
 	}
 
-	if (tmp <= resetval) {
+	if (tmp <= resetval && local_alignment) {
 	  tmp = resetval;
 	  tmp2 = 0;
 	}
@@ -449,7 +476,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	  }
 	}
 
-	if (tmp <= resetval) {
+	if (tmp <= resetval && local_alignment) {
 	  tmp = resetval;
 	  tmp2 = 0;
 	}
@@ -484,7 +511,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	 *     genomic gap, so we won't.
 	 */
 
-	if (tmp <= resetval) {
+	if (tmp <= resetval && local_alignment) {
 	  tmp = resetval;
 	  tmp2 = 0;
 	}
@@ -549,7 +576,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
       anchor_get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
       for (j = x_max + 1; j <= next_x_max; j++) {
 	//fprintf(stderr,"Init cell %d , , %d\n",i+1,j+1);
-	init_cell((i + 1) * (lena + 1) + (j + 1));
+	init_cell((i + 1) * (lena + 1) + (j + 1),local_alignment);
       }
     }
   }
@@ -1054,7 +1081,7 @@ sw_full_cs_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 	   int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna,
-	   struct anchor * anchors, int anchors_cnt)
+	   struct anchor * anchors, int anchors_cnt, int local_alignment)
 {
   struct sw_full_results scratch;
   llint before;
@@ -1115,7 +1142,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   }
 #endif
 
-  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt);
+  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt,local_alignment);
   if (sfr->score >= 0 && sfr->score >= threshscore) {
     k = do_backtrace(glen, i, j, k, sfr);
     pretty_print(sfr->read_start, sfr->genome_start, k);

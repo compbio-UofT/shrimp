@@ -116,7 +116,7 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 		sw_full_cs(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len, read->initbp,
 		    fpo->input.score, &sfr, revcmpl && Tflag,
-		    contig->is_rna, NULL, 0);
+		    contig->is_rna, NULL, 0, 1);
 	} else {
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
