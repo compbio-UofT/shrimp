@@ -134,8 +134,8 @@ static void print_sw(int lena, int lenb) {
 			} else {
 				printf("%5c ",base_translate(qr[k][i-1],false));
 			}
-			for (j=0; j<lenb+1; j++) {
-				swcell curr=swmatrix[j*(lena+1)+i];
+			for (j=0; j<lena+1; j++) {
+				swcell curr=swmatrix[i*(lena+1)+j];
 				int tmp=0;
 				tmp=MAX(curr.from[k].score_n,curr.from[k].score_w);
 				tmp=MAX(tmp,curr.from[k].score_nw);
@@ -235,6 +235,7 @@ init_cell(int idx, int local_alignment) {
  * computing each possible letter space read string and doing a four layer
  * scan.
  */
+//lena - genome length
 static int
 full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	int *kret, bool revcmpl,
@@ -301,7 +302,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     if (!local_alignment) {
     	//x_max=MIN(lena,x_max); x_min=MAX(0,x_min-lenb/40); 
     	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0 ?  1 : 0);
-    	init_cell(i * (lena + 1) + x_max  + 1,  0);
+    	//init_cell(i * (lena + 1) + x_max  + 1,  0);
     } else {
     	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1);
     }
@@ -588,7 +589,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   *iret = max_i;
   *jret = max_j;
   *kret = max_k;
-  //print_sw(lena,lenb);
+  print_sw(lena,lenb);
   return (score);
 }
 
