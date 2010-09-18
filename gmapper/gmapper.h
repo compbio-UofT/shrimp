@@ -119,8 +119,12 @@ static bool const pair_reverse[5][2] =
 
 /* Score Thresholds */
 #define DEF_WINDOW_GEN_THRESHOLD	55.0	/* Min required to generate match window */
-#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
-#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
+//SHRiMP v 2.0.1
+//#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
+//#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
+//SHRiMP v 2.0.2
+#define DEF_SW_VECT_THRESHOLD	50.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_FULL_THRESHOLD	55.0	/* read_length x match_value x .55 */
 
 /*
  * The maximum seed weight (maximum number of 1's in the seed) sets an
