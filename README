@@ -646,7 +646,9 @@ Genome Projection
     Each spaced seed is a  contiguous string of 0s  and 1s. Several spaced seeds
     can be specified either by separating them by commas as a single paramter to
     -s,  or  by giving -s several   times. By default, gmapper  uses  a set of 4
-    spaced seeds of weight 12.
+    spaced seeds of weight 12. Several sets  of default seeds are available  for
+    certain weights. These can be loaded by, e.g. "-s w16",  to load the default
+    set of seeds of weight 16.
 
     Note: When running gmapper in colour space mode, seeds are applied to colour
     space representations of the genome and the reads.

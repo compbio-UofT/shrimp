@@ -158,17 +158,38 @@ static inline double abs_or_pct(double x, double base) {
   return IS_ABSOLUTE(x) ? -x : base * (x / 100.0);
 }
 
-static int const default_spaced_seeds_cs_cnt = 4;
-static char const * const default_spaced_seeds_cs[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  //{ "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
-{ "111110001111111", "111100111001001111", "111001001000111001111", "1111001000010001001001111" };
+#define DEF_MAX_N_DEFAULT_SEEDS 5
+typedef char const * const default_seed_array_t[DEF_MAX_N_DEFAULT_SEEDS];
 
-static int const default_spaced_seeds_ls_cnt = 4;
-static char const * const default_spaced_seeds_ls[] =
-  //{ "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" };
-  //{ "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" };
-{ "111101101011111", "111010110011001111", "1110110001011010111", "11110010100000100110111" };
+static int const default_min_spaced_seed_weight_cs = 10;
+static int const default_max_spaced_seed_weight_cs = 18;
+static int const default_spaced_seed_weight_cs = 12;
+static int const default_spaced_seeds_cs_cnt[9] = { 4, 4, 4, 0, 0, 0, 4, 0, 4 };
+static default_seed_array_t const default_spaced_seeds_cs[9] = {
+  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
+  { "111110001111111", "111100111001001111", "111001001000111001111", "1111001000010001001001111" },
+  { },
+  { },
+  { },
+  { "111111101110111111", "1111100101101101011111", "11110011001010100011011111", "111101001100000100110011010111" },
+  { },
+  { "11111011111110111111", "11110111011010111011111", "11111100110101101001011111", "1111101010110010001001110111" } };
+
+static int const default_min_spaced_seed_weight_ls = 10;
+static int const default_max_spaced_seed_weight_ls = 18;
+static int const default_spaced_seed_weight_ls = 12;
+static int const default_spaced_seeds_ls_cnt[9] = { 4, 4, 4, 0, 0, 0, 4, 0, 4 };
+static default_seed_array_t const default_spaced_seeds_ls[9] = {
+  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
+  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
+  { "111101101011111", "111010110011001111", "1110110001011010111", "11110010100000100110111" },
+  { },
+  { },
+  { },
+  { "111111101110111111", "1111100101101101011111", "11110011001010100011011111", "111101001100000100110011010111" },
+  { },
+  { "11111011111110111111", "11110111011010111011111", "11111100110101101001011111", "1111101010110010001001110111" } };
 
 struct seed_type {
   bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */

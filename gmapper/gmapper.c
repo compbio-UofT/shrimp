@@ -247,25 +247,33 @@ add_spaced_seed(char const * seed_string)
   return true;
 }
 
-static void
-load_default_seeds() {
+static bool
+load_default_seeds(int weight) {
   int i;
 
-  n_seeds = 0;
+  //n_seeds = 0;
   switch(shrimp_mode) {
   case MODE_COLOUR_SPACE:
-    for (i = 0; i < default_spaced_seeds_cs_cnt; i++)
-      add_spaced_seed(default_spaced_seeds_cs[i]);
+    if (weight == 0)
+      weight = default_spaced_seed_weight_cs;
+    else if (weight < default_min_spaced_seed_weight_cs || weight > default_max_spaced_seed_weight_cs)
+      return false;
+    for (i = 0; i < default_spaced_seeds_cs_cnt[weight - default_min_spaced_seed_weight_cs]; i++)
+      add_spaced_seed(default_spaced_seeds_cs[weight - default_min_spaced_seed_weight_cs][i]);
     break;
   case MODE_LETTER_SPACE:
-    for (i = 0; i < default_spaced_seeds_ls_cnt; i++)
-      add_spaced_seed(default_spaced_seeds_ls[i]);
+    if (weight == 0)
+      weight = default_spaced_seed_weight_ls;
+    else if (weight < default_min_spaced_seed_weight_ls || weight > default_max_spaced_seed_weight_ls)
+      return false;
+    for (i = 0; i < default_spaced_seeds_ls_cnt[weight - default_min_spaced_seed_weight_ls]; i++)
+      add_spaced_seed(default_spaced_seeds_ls[weight - default_min_spaced_seed_weight_ls][i]);
     break;
   case MODE_HELICOS_SPACE:
-    fprintf(stderr, "error: helicos mode not implemented\n");
-    exit(1);
+    assert(0);
     break;
   }
+  return true;
 }
 
 static void
@@ -3274,7 +3282,8 @@ usage(char * progname, bool full_usage){
   char *slash;
   int sn;
 
-  load_default_seeds();
+  if (n_seeds == 0)
+    load_default_seeds(0);
 
   slash = strrchr(progname, '/');
   if (slash != NULL)
@@ -3631,17 +3640,33 @@ int main(int argc, char **argv){
 			break;
 		case 's':
 			if (strchr(optarg, ',') == NULL) { // allow comma-separated seeds
-				if (!add_spaced_seed(optarg)) {
-					fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
-					exit (1);
+				if (optarg[0] == 'w') {
+					int weight = (int)atoi(&optarg[1]);
+					if (!load_default_seeds(weight)) {
+						fprintf(stderr, "error: invalid spaced seed weight (%d)\n", weight);
+						exit(1);
+					}
+				} else {
+					if (!add_spaced_seed(optarg)) {
+						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", optarg);
+						exit (1);
+					}
 				}
 			} else {
 				c = strtok(optarg, ",");
 				do {
-					if (!add_spaced_seed(c)) {
-						fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
-						exit (1);
-					}
+                                	if (c[0] == 'w') {
+	                                        int weight = (int)atoi(&c[1]);
+        	                                if (!load_default_seeds(weight)) {
+                	                                fprintf(stderr, "error: invalid spaced seed weight (%d)\n", weight);
+                        	                        exit(1);
+                                	        }
+	                                } else {
+        	                                if (!add_spaced_seed(c)) {
+                	                                fprintf(stderr, "error: invalid spaced seed \"%s\"\n", c);
+                        	                        exit (1);
+                                	        }
+                                	}
 					c = strtok(NULL, ",");
 				} while (c != NULL);
 			}
@@ -3900,7 +3925,7 @@ int main(int argc, char **argv){
 	}
 
 	if (n_seeds == 0 && load_file == NULL) {
-	  load_default_seeds();
+	  load_default_seeds(0);
 	}
 
 	kmer_to_mapidx = kmer_to_mapidx_orig;
