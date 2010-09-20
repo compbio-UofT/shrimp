@@ -1,3 +1,10 @@
+2.0.2: Sep 20, 2010
+	- Long formats for many option and parameter names are now available.
+        - New options available, including ability to dump unmapped reads in SAM output.
+	- New sets of seeds of weight 16 and 18 are available.
+        - New default score thresholds that increase sensitivity for read lengths
+          less than 70bp.
+
 2.0.1: May 18, 2010
 	- More friendly towards long reads (454). gmapper now supports them,
 	  but is not optimized for them.
