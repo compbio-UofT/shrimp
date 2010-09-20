@@ -881,7 +881,18 @@ Filter 3: Scalar (Full) SW Alignment
 
   [ -t/--tiebreak-off ]
 
-    Disable reverse tiebreak (--rev-tiebreak , on by default).
+    Disable reverse tiebreak (-T/--rev-tiebreak , on by default).
+
+  [    --global ]
+
+    Color-space only. Perform a full global alginment in the last phase of 
+    alginments (full scalar).
+
+  [    --bfast ]
+
+    Color-space only. Try to align like BFAST. This enables global alignments
+    and if in FASTQ mode, outputs base qualities in the QUAL field, just like 
+    BFAST. 
 
 
 Paired Mode

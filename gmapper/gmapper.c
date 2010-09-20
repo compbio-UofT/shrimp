@@ -3400,7 +3400,7 @@ usage(char * progname, bool full_usage){
 	  "   -U/--ungapped        Perform Ungapped Alignment    (default: disabled)\n");
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-          "      --global          Try to do global alignment    (default: disabled)\n");
+          "      --global          Perform full global alignment (default: disabled)\n");
   fprintf(stderr,
           "      --bfast           Try to align like bfast       (default: disabled)\n");
   }
