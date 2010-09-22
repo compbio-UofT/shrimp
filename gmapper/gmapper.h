@@ -24,7 +24,7 @@ struct option standard_options[] =
 	{"al",1,0,11},
 	{"upstream",1,0,'1'},
 	{"downstream",1,0,'2'},
-	{"sam-unaligned",1,0,12},
+	{"sam-unaligned",0,0,12},
 	{"longest-read",1,0,13},	
 	{"seeds",1,0,'s'}, 
 	{"report",1,0,'o'},
