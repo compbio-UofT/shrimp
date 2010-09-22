@@ -259,7 +259,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 			for (i = 0; fasta->buffer[i] != '\0' && fasta->buffer[i]!='\n'; i++) {
 				fasta->parse_buffer[read_name_length++] = fasta->buffer[i];
 			}
-			if (fasta->parse_buffer[0]!=c) {
+			if (fasta->parse_buffer[0]!='#' && fasta->parse_buffer[0]!=c) {
 				if (c=='>' && fasta->parse_buffer[0]=='@') {
 					fprintf(stderr,"Expecting \">\" but got \"%c\" are you sure it's not FASTQ format?\n",fasta->parse_buffer[0]);
 				} else if (c=='@' && fasta->parse_buffer[0]=='>') {
@@ -271,6 +271,11 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 				return (false);
 			}
 			if (fasta->buffer[i]=='\n') {
+				if (fasta->buffer[0]=='#') {
+					fasta->parse_buffer[0]='\0';
+					read_name_length=0;
+					continue;
+				}
 				end_of_line=true;
 				fasta->parse_buffer[read_name_length]='\0';
 				re->name = extract_name(fasta->parse_buffer, &(re->range_string));
@@ -300,6 +305,8 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 			} else if (!fasta->fastq && fasta->buffer[0]=='>') {
 				fasta->leftover=true;
 				break;
+			} else if (fasta->buffer[0]=='#') {
+				continue;
 			}
 			//otherwise keep reading the sequence
 			while (fasta->parse_buffer_size <= (sizeof(fasta->buffer) + sequence_length)) {
@@ -377,6 +384,10 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 					break;
 				} else if (quality_length == sequence_length-1 && shrimp_mode==MODE_COLOUR_SPACE) {
 					break;
+				} else if (quality_length > sequence_length) {
+					fprintf(stderr,"There has been a problem reading in the read \"%s\", the quality length exceeds the sequence length!\n",re->name);
+					fprintf(stderr,"Are you using the right executable? gmapper-cs for color space? and gmapper-ls for letter space?\n");
+					exit(1);
 				} else {
 					continue;
 				}

@@ -589,7 +589,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   *iret = max_i;
   *jret = max_j;
   *kret = max_k;
-  print_sw(lena,lenb);
+  //print_sw(lena,lenb);
   return (score);
 }
 
