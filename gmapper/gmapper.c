@@ -1661,7 +1661,6 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
  */
 {
   assert(re !=NULL);
-
   if(!Eflag) {
   	assert(rh != NULL);
   	assert(rh->sfrp != NULL);

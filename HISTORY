@@ -4,6 +4,23 @@
 	- New sets of seeds of weight 16 and 18 are available.
         - New default score thresholds that increase sensitivity for read lengths
           less than 70bp.
+	- Added support for longer read mappings
+	- Added additional SAM output fields,
+	  H0,H1,H2,NM,NH,IH,CQ,CS,CM,XX - (sam user defined field) gives
+	  crossover locations
+	- Added --strata option to only report from top scoring alignments
+	- Added --global option to perform color space global read alignment
+	- Added --bfast option that performs global color space alignments
+	  along with reporting color space base qualities
+	- Added options to dump aligned and/or unaligned reads to separate files
+	- Added option to report unaligned reads in SAM output file
+	- Added FASTQ support
+	- Changed reverse-tie-break to be enabled by default
+	- Added option for paired reads to be specified as two files
+	- Fixed SAM output flags field, previously was incorrectly set bits
+	- Fixed RNAME in SAM output not to include whitespace (RNAME cannot
+	  include whitespace as part of SAM specifications)
+	- Fixed negation bug in shrimp filtering code (~ vs !)
 
 2.0.1: May 18, 2010
 	- More friendly towards long reads (454). gmapper now supports them,
