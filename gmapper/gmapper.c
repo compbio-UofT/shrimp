@@ -2089,7 +2089,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 	if (!sfrp->dup) {
 		found_alignments++;
 		//int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
-		int edit_distance=sfrp->mismatches+sfrp->insertions;
+		int edit_distance=sfrp->mismatches+sfrp->insertions+sfrp->deletions;
 		if (0<=edit_distance && edit_distance<3) {
 			hits[edit_distance]++;
 		}
@@ -2207,8 +2207,8 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	if ((!sfrp1->dup) || (!sfrp2->dup)) {
 		//int edit_distance1=re1->read_len-sfrp1->matches+sfrp1->insertions;
 		//int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
-		int edit_distance1=sfrp1->mismatches+sfrp1->insertions;
-		int edit_distance2=sfrp2->mismatches+sfrp2->insertions;
+		int edit_distance1=sfrp1->mismatches+sfrp1->insertions+sfrp1->deletions;
+		int edit_distance2=sfrp2->mismatches+sfrp2->insertions+sfrp1->deletions;
 		found_alignments++;
 		if (0<=edit_distance1 && edit_distance1<3) {
 			hits1[edit_distance1]++;
