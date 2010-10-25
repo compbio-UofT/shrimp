@@ -9,6 +9,8 @@
 #include "../common/anchors.h"
 #include "../common/heap.h"
 
+#define DEF_MAX_ALIGNMENTS 0
+
 /* pair mode definitions */
 #define PAIR_NONE	0
 #define PAIR_OPP_IN	1
@@ -63,13 +65,18 @@ struct option standard_options[] =
 	{"spaced-kmers",0,0,'H'},
 	{"thread-stats",0,0,'D'},
 	{"trim-off",0,0,'V'},
-	{"strata",0,0,9}
+	{"strata",0,0,9},
+	{"max-alignments",1,0,14},
+	{"global",0,0,15},
+	{"read-group",1,0,17},
+	{"sam-header",1,0,18},
+	{"half-paired",0,0,19},
+	{"sam-r2",0,0,20}
 };
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},
 	{"vec-threshold",1,0,'v'},
-	{"global",0,0,14},
-	{"bfast",0,0,15},
+	{"bfast",0,0,16},
 	{0,0,0,0}
 };
 struct option letter_space_options[] = {

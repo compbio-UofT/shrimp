@@ -1,6 +1,8 @@
 #!/bin/bash
 DEST_FILE=""
-PAIRED=""
+PAIRED="no"
+STRATA="no"
+OUTPUT=0
 TMP_DIR="/tmp/$$"
 SUFFIX=':[^:]*$'
 PROGRAM_NAME=$0
@@ -31,6 +33,13 @@ Parameters:
         specifies whether the read is the first or second in a pair. This suffix
         is only used when neither --paired nor --unpaired is given, and only if
         shrimp output format is detected (and not sam). Defaults to ":[^:]*$".
+
+--output <amount>
+	Output maximum amount alignments per read
+
+--strata
+	If strata is enabled only output alignments with highest score for a read
+
 Note:
         If neither --paired nor --unpaired is given, a script is run to detect
         the correct setting.
@@ -58,6 +67,12 @@ until [ -z "$1" ]; do
     "--unpaired")
       shift
       PAIRED="no";;
+    "--output")
+      shift
+      OUTPUT=$1; shift;;
+    "--strata")
+      shift
+      STRATA="yes";;
     "--suffix")
       shift
       SUFFIX=$1; shift;;
@@ -136,11 +151,11 @@ while [ "$#" -gt 0 ]; do
   if [ "$PAIRED" = "yes" ]; then
     $SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
       | $SHRIMP_FOLDER/utils/mappings-collapse-pairs - 2>/dev/null \
-      | sort \
+      | sort -T ${TMP_DIR} \
       > $TMP_DIR/$(basename $1).sort
   else
     $SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
-      | sort \
+      | sort -T ${TMP_DIR} \
       > $TMP_DIR/$(basename $1).sort
   fi
   shift
@@ -148,13 +163,16 @@ done
 
 # merge into destination
 if [ "$PAIRED" = "yes" ]; then
-  sort -m $TMP_DIR/*.sort \
+  sort -T ${TMP_DIR} -m $TMP_DIR/*.sort \
     | $SHRIMP_FOLDER/utils/mappings-expand-pairs - 2>/dev/null \
-    >> $DEST_FILE
+    >> ${TMP_DIR}/merged.tmp
 else
-  sort -m $TMP_DIR/*.sort \
-    >> $DEST_FILE
+  sort -T ${TMP_DIR} -m $TMP_DIR/*.sort \
+    >> ${TMP_DIR}/merged.tmp
 fi
 
+#grab strata or -o options
+$SHRIMP_FOLDER/utils/mappings-top-hits.py $OUTPUT $STRATA $PAIRED ${TMP_DIR}/merged.tmp >> $DEST_FILE
+
 # clean up
-rm -rf $TMP_DIR
+#rm -rf $TMP_DIR

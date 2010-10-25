@@ -67,7 +67,7 @@ def main(argv):
 		elif o in ("-p","--prefix"):
 			prefix=a
 		elif o in ("-t","--tmp-dir"):
-			tmp_dir=remove_tailing(a)
+			tmp_dir=remove_trailing(a)
 			if not tmp_dir:
 				usage(shrimp_folder)
 				sys.exit(1)

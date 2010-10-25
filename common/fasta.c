@@ -241,6 +241,9 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 		c = '>';
 	}
 	re->name = re->seq = NULL;
+	re->paired=false;
+	re->first_in_pair=false;
+	re->mate_pair=NULL;
 	assert(fasta->parse_buffer!=NULL);
 	assert(fasta->parse_buffer_size>0);
 
@@ -406,7 +409,10 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 			return (false);
 		}
 		re->qual = (char *)xmalloc(quality_length + 17);
-		memcpy(re->qual, fasta->parse_buffer, quality_length);
+		for (i=0; i<quality_length; i++) {
+			re->qual[i]=MAX((char)fasta->parse_buffer[i],'!');
+		}	
+		//memcpy(re->qual, fasta->parse_buffer, quality_length);
 		memset(re->qual + quality_length, 0, 17);
 	}	
 

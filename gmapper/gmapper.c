@@ -39,12 +39,14 @@ static double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
 static int	num_matches		= DEF_NUM_MATCHES;
 static int	num_outputs		= DEF_NUM_OUTPUTS;
+static int	max_alignments		= DEF_MAX_ALIGNMENTS;
 static int	num_tmp_outputs		= 20 + num_outputs;
 static int	anchor_width		= DEF_ANCHOR_WIDTH;
 static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	longest_read_len	= DEF_LONGEST_READ_LENGTH;
+
 
 /* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
@@ -77,8 +79,9 @@ static bool Xflag = false;			/* print insert histogram */
 static bool Yflag = false;			/* print genome projection histogram */
 static bool Vflag = true;			/* automatic genome index trimming */
 static bool Qflag = false;			/* use fastq reads */
-static bool Gflag = false;			/* global-cs flag - effects CS only ! */
+static bool Gflag = false;			/* global alignment flag ! */
 static bool Bflag = false;			/* be like bfast - cs only! */
+
 
 /* Mate Pairs */
 static int	pair_mode		= DEF_PAIR_MODE;
@@ -91,15 +94,23 @@ static char * 	left_reads_filename	= NULL;
 static char *	right_reads_filename	= NULL;
 bool		single_reads_file	= true;
 
-/* Output Files */
+/* SAM stuff */
 FILE*	unaligned_reads_file =NULL;
 FILE*	aligned_reads_file =NULL;
 bool	sam_unaligned =false;
+bool	sam_half_paired = false; //output reads in paired mode that only have one mapping
+bool	sam_r2 = false;
+static char * sam_header_filename = NULL;
+static char * sam_read_group_name = NULL;
+static char * sam_sample_name = NULL;
+
 
 /* Statistics */
 static llint	nreads;
 static llint	total_reads_matched;
 static llint	total_pairs_matched;
+static llint	total_reads_dropped;
+static llint	total_pairs_dropped;
 static llint	total_single_matches;
 static llint	total_paired_matches;
 static llint	total_dup_single_matches;			/* number of duplicate hits */
@@ -1315,7 +1326,7 @@ read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
   heap_unpaired_elem tmp;
 
   assert(re != NULL && h != NULL);
-  assert(pair_mode == PAIR_NONE);
+  assert(pair_mode == PAIR_NONE || sam_half_paired);
 
   for (st = 0; st < 2; st++) {
     assert(re->n_hits[st] == 0 || re->hits[st] != NULL);
@@ -1387,8 +1398,10 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 	    heap_paired_replace_min(h, &tmp);
 	}
       }
+      
     }
   }
+
 }
 
 
@@ -1474,7 +1487,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
       sw_full_ls(gen, rh->g_off, rh->w_len,
 		 re->read[rh->st], re->read_len,
 		 thresh, rh->score_vector, rh->sfrp, rh->gen_st && Tflag,
-		 &rh->anchor, 1);
+		 &rh->anchor, 1, Gflag ? 0 : 1);
       assert(rh->sfrp->score == rh->score_vector);
     } else { // this wouldn't have passed the filter
       rh->sfrp->score = 0;
@@ -1503,6 +1516,7 @@ void reverse(char* s, char* t) {
 
                        case 'N': t[l-i-1]='N'; break;
                        case 'n': t[l-i-1]='n'; break;
+		       case '.': t[l-i-1]='.'; break;
 
                        case 'R': t[l-i-1]='Y'; break;
                        case 'r': t[l-i-1]='y'; break;
@@ -1642,14 +1656,13 @@ void free_cigar(cigar_t * cigar) {
  *
  */
 static inline void
-hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_mp, struct read_hit * rh_mp, char ** output1, char ** output2, bool first_in_pair, int* hits, int found_alignments)
+hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp, char ** output1, char ** output2, bool first_in_pair, int* hits, int found_alignments)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
  *
  * re is the read_entry for the current read
  * rh is the read_hit for the current read
- * re_mp is the read_entry for the current reads mate pair
  * rh_mp is the read_hit for the current reads mate pair
  *
  * output1 is a pointer to a string to be used for the firest line of output
@@ -1676,7 +1689,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	}
   } else {
 	//TODO change this size?
-	int buffer_size=MAX(longest_read_len,1000)*6;
+	int buffer_size=MAX(longest_read_len,1000)*8;
 	*output1 = (char *)xmalloc(sizeof(char *)*buffer_size);
 	//qname
 	char * read_name = re->name;
@@ -1738,11 +1751,18 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	char qual[read_length+10];
 	strcpy(qual,"*");
 	//initialize flags	
-	bool paired = (re_mp != NULL );
+	bool paired_read = re->paired;
+	struct read_entry * re_mp = re->mate_pair;
+	assert(!paired_read || re_mp!=NULL);
+	bool paired_alignment = paired_read && (rh!=NULL && rh_mp!=NULL); //paired mapping, not paired read!
+	//bool proper_pair = (paired_read && !query_unmapped && !mate_unmapped);
 	//bool query_unmapped = (re->n_hits[0] + re->n_hits[1])>0 ? false : true;
 	bool query_unmapped = (rh==NULL);
 	bool mate_unmapped;
-	if (paired) {
+	bool reverse_strand = false;
+	bool reverse_strand_mp = false;
+	int genome_end_mp=0; int genome_start_mp=0;
+	if (paired_read) {
 		int min_read_name_length=MIN(strlen(read_name),strlen(re_mp->name));
 		int i;
 		for (i=0; i<min_read_name_length; i++) {
@@ -1758,26 +1778,44 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		qname[i]='\0';
 		//mate_unmapped=(re_mp->n_hits[0]+re_mp->n_hits[1])>0 ? false : true;
 		mate_unmapped= (rh_mp==NULL);
+		if (!mate_unmapped) {
+			char * read_name_mp = re->name;
+			char * rname_mp = contig_names[rh_mp->cn];
+			int read_start_mp = rh_mp->sfrp->read_start+1; //1based
+			int read_length_mp = re_mp->read_len;
+			int read_end_mp = read_start_mp + rh_mp->sfrp->rmapped -1; //1base
+			int genome_length_mp = genome_len[rh_mp->cn];
+			int genome_start_mp;
+			reverse_strand_mp = (rh_mp->gen_st ==1);
+			if (!reverse_strand_mp) {
+				genome_start_mp = rh_mp->sfrp->genome_start+1; // 0 based -> 1 based
+			} else {
+				int genome_right_most_coordinate = genome_length_mp - rh_mp->sfrp->genome_start;
+				//rh->sfrp->deletions is deletions in the reference
+				// This is when the read has extra characters that dont match into ref
+				genome_start_mp = genome_right_most_coordinate - (read_end_mp - read_start_mp - rh_mp->sfrp->deletions + rh_mp->sfrp->insertions);
+			}
+			genome_end_mp=genome_start_mp+rh_mp->sfrp->gmapped-1;
+			mpos=genome_start_mp;
+			mrnm = contig_names[rh_mp->cn];
+		}
 	} else {
-		mate_unmapped=false;
+		mate_unmapped=true;
 	}
-	bool proper_pair = (paired && !query_unmapped && !mate_unmapped);
-	bool reverse_strand = false;
-	bool reverse_strand_mp = false;
-	bool second_in_pair = (paired && !first_in_pair);
+	bool second_in_pair = (paired_read && !first_in_pair);
 	bool primary_alignment = false;
 	bool platform_quality_fail = false;
 	bool pcr_duplicate = false;
 	int stored_alignments = MIN(num_outputs,found_alignments); //IH
-	//if this read has no mapping
-	if (query_unmapped || (paired && mate_unmapped)) {
+	//if the read has no mapping or if not in half_paired mode and the mate has no mapping
+	if (query_unmapped || (!sam_half_paired && paired_read && mate_unmapped)) {
 		mapq=0;
 		if (Qflag && shrimp_mode == MODE_LETTER_SPACE ){
 			strcpy(qual,re->qual);
 		}
 		flag = 
-			( paired ?  0x0001 : 0) |
-			( proper_pair ? 0x0002 : 0) |
+			( paired_read ?  0x0001 : 0) |
+			( paired_alignment ? 0x0002 : 0) |
 			( query_unmapped ? 0x0004 : 0) |
 			( mate_unmapped ? 0x0008 : 0) |
 			( reverse_strand ? 0x0010 : 0) |
@@ -1789,7 +1827,23 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			( pcr_duplicate ? 0x0400 : 0);
 		char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-			isize,seq,qual);	
+			isize,seq,qual);
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			if (Qflag) {
+				extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
+			}
+			extra = extra + sprintf(extra, "\tCS:Z:%s",re->seq);
+		}
+		if (sam_r2) {
+			if (shrimp_mode == MODE_COLOUR_SPACE) {
+				extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
+			} else {
+				extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
+			}
+		}
+		if (sam_read_group_name!=NULL ){
+			extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
+		}	
 		assert(found_alignments==0);
 		assert(stored_alignments==0);
 		//assert(hits[0]==0);
@@ -1800,7 +1854,7 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		return;
 	}
 	assert(rh!=NULL);
-	assert( !paired || (!query_unmapped && !mate_unmapped));
+	assert( !paired_read || (!query_unmapped && !mate_unmapped) || sam_half_paired);
 	//start filling in the fields
 	rname = contig_names[rh->cn];
 	reverse_strand = (rh->gen_st == 1);
@@ -1898,28 +1952,36 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			}
 		}
 		if (Bflag && Qflag) {
-			for (i=0; i<(read_end-read_start+1); i++) {
+			int read_length=(read_end-read_start+1);
+			for (i=0; i<read_length; i++) {
 				qual[i]=re->qual[i+read_start-1];
 			}
 			qual[i]='\0';
-			for (i=0; i<(read_end-read_start+1)-1; i++) {
+			for (i=0; i<read_length-1; i++) {
 				//this is different from bfast
 				//qralign is already clipped! i.e. doesn't have clipped stuff and is
 				//read orientation (not always on positive reference strand!)
 				int first_position_mismatch = rh->sfrp->qralign[i] > 96;
 				int second_position_mismatch = rh->sfrp->qralign[i+1] > 96;
-				int base_qual='"'-1;
+				int base_qual=0;
 				if (first_position_mismatch && second_position_mismatch ) {
 					base_qual+=0;
 				} else if (first_position_mismatch) {
 					base_qual+=qual[i+1]-qual[i];
 				} else if (second_position_mismatch) {
-					base_qual+=qual[i]-qual[i+1];
+					base_qual+=qual[i]-qual[i+1]+33;
 				} else {
-					base_qual+=qual[i]+qual[i+1]+10;
+					base_qual+=qual[i]+qual[i+1]+10-33;
 				}
 				base_qual=MIN('`',MAX(base_qual,'"'));
 				qual[i]=base_qual;
+			}
+			if (reverse_strand) {
+				for (i=0; i<read_length/2; i++) {
+					char temp = qual[i];
+					qual[i]=qual[read_length-i-1];
+					qual[read_length-i-1]=temp;
+				}
 			}
 		}
 	}
@@ -1942,29 +2004,11 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 	//make the cigar string
 	cigar = make_cigar_string(cigar_binary); 
 
-	//is this thing paired?
-	if (paired) {
+	//do some stats using matepair
+	if (paired_read && !mate_unmapped) {
 		assert(rh_mp!=NULL && re_mp!=NULL);
-		char * read_name_mp = re->name;
-		char * rname_mp = contig_names[rh_mp->cn];
-		int read_start_mp = rh_mp->sfrp->read_start+1; //1based
-		int read_length_mp = re_mp->read_len;
-		int read_end_mp = read_start_mp + rh_mp->sfrp->rmapped -1; //1base
-		int genome_length_mp = genome_len[rh_mp->cn];
-		int genome_start_mp;
-		reverse_strand_mp = (rh_mp->gen_st ==1);
-		if (!reverse_strand_mp) {
-			genome_start_mp = rh_mp->sfrp->genome_start+1; // 0 based -> 1 based
-		} else {
-			int genome_right_most_coordinate = genome_length_mp - rh_mp->sfrp->genome_start;
-			//rh->sfrp->deletions is deletions in the reference
-			// This is when the read has extra characters that dont match into ref
-			genome_start_mp = genome_right_most_coordinate - (read_end_mp - read_start_mp - rh_mp->sfrp->deletions + rh_mp->sfrp->insertions);
-		}
-		int genome_end_mp=genome_start_mp+rh_mp->sfrp->gmapped-1;
-		mpos=genome_start_mp;
 
-		mrnm = (strcmp(rname,rname_mp)==0) ? "=" : rname_mp;
+		mrnm = (strcmp(rname,mrnm)==0) ? "=" : mrnm;
 		//printf("%d %d %c, %d %d %c\n",genome_start, genome_end,reverse_strand ? '-' : '+' , genome_start_mp, genome_end_mp, reverse_strand_mp ? '-' : '+');
 		int fivep = 0;
 		int fivep_mp = 0;
@@ -1982,8 +2026,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		isize = (fivep_mp - fivep);
 	}
 	flag = 
-		( paired ?  0x0001 : 0) |
-		( proper_pair ? 0x0002 : 0) |
+		( paired_read ?  0x0001 : 0) |
+		( paired_alignment ? 0x0002 : 0) |
 		( query_unmapped ? 0x0004 : 0) |
 		( mate_unmapped ? 0x0008 : 0) |
 		( reverse_strand ? 0x0010 : 0) |
@@ -1995,8 +2039,8 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 		( pcr_duplicate ? 0x0400 : 0);
 	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-		isize,seq,qual);	
-	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->insertions,found_alignments,stored_alignments);
+		isize,seq,qual);
+	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -2006,6 +2050,17 @@ hit_output(struct read_entry * re, struct read_hit * rh,struct read_entry * re_m
 			extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
 		}
 		extra = extra + sprintf(extra, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
+	} 
+	if (sam_r2) {
+		if (shrimp_mode == MODE_COLOUR_SPACE) {
+			extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
+		} else {
+			extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
+		}
+	}
+	
+	if (sam_read_group_name!=NULL) {
+			extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);
@@ -2047,12 +2102,12 @@ hit_free_sfrp(struct read_hit * rh)
  * Do a final pass for given read.
  * Highest scoring matches are in scores heap.
  */
-static void
+static int
 read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   int i;
 
   assert(re != NULL && h != NULL);
-  assert(pair_mode == PAIR_NONE);
+  assert(pair_mode == PAIR_NONE || sam_half_paired);
 
   /* compute full alignment scores */
   for (i = 0; i < (int)h->load; i++) {
@@ -2069,13 +2124,6 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   //heap_unpaired_heapsort(h);
   heap_unpaired_qsort(h);
 
-  if ( (IS_ABSOLUTE(sw_full_threshold)
-	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
-   || (!IS_ABSOLUTE(sw_full_threshold)
-	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
-#pragma omp atomic
-    total_reads_matched++;
-  }
 
   int found_alignments=0;
   int hits[] = {0,0,0};
@@ -2087,63 +2135,105 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 		sfrp->dup=sw_full_results_equal(h->array[i-1].rest.hit->sfrp, sfrp);
 	}
 	if (!sfrp->dup) {
-		found_alignments++;
-		//int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
-		int edit_distance=sfrp->mismatches+sfrp->insertions+sfrp->deletions;
-		if (0<=edit_distance && edit_distance<3) {
-			hits[edit_distance]++;
+		if ( (IS_ABSOLUTE(sw_full_threshold)
+			&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
+		   || (!IS_ABSOLUTE(sw_full_threshold)
+			   && (int)h->array[i].key >= (int)sw_full_threshold) ) {
+			if (!strata_flag) {
+				found_alignments++;
+				//int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+				int edit_distance=sfrp->mismatches+sfrp->insertions+sfrp->deletions;
+				if (0<=edit_distance && edit_distance<3) {
+					hits[edit_distance]++;
+				}
+			} else if ((int)h->array[i].key==(int)h->array[0].key) {
+				found_alignments++;
+				//int edit_distance=re->read_len-sfrp->matches+sfrp->insertions;
+				int edit_distance=sfrp->mismatches+sfrp->insertions+sfrp->deletions;
+				if (0<=edit_distance && edit_distance<3) {
+					hits[edit_distance]++;
+				}
+			}
 		}
 	}
 	//fprintf(stderr,"%s\n%s\n",sfrp->dbalign,sfrp->qralign);
   }
 
-  int outputted=0;
-  /* Output sorted list, removing any duplicates. */
-  for (i = 0;
-       i < (int)h->load && outputted < num_outputs
-	 && ( (IS_ABSOLUTE(sw_full_threshold)
-	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
-	      || (!IS_ABSOLUTE(sw_full_threshold)
-		  && (int)h->array[i].key >= (int)sw_full_threshold) );
-       i++) {
-    struct read_hit * rh = h->array[i].rest.hit;
-    if (strata_flag && h->array[i].key != h->array[0].key) {
-	break;
-    }
-    /*bool dup;
-
-    if (i == 0)
-      dup = false;
-    else
-      dup = sw_full_results_equal(h->array[i-1].rest.hit->sfrp, rh->sfrp);
-	*/
-    if (!rh->sfrp->dup) {
-      outputted++;
-      char * output1 = NULL, * output2 = NULL;
-
-      re->final_matches++;
-      hit_output(re, rh, NULL, NULL, &output1, &output2, false, hits,found_alignments);
-//TODO - maybe buffer printf output here ? might make it go faster?
-      if (!Pflag) {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n", output1);
-	}
-      } else {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n\n%s\n", output1, output2);
-	}
-      }
-
-      free(output1);
-      free(output2);
-
-    } else {
-      re->final_dup_matches++;
-    }
+  if ( (IS_ABSOLUTE(sw_full_threshold)
+	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
+   || (!IS_ABSOLUTE(sw_full_threshold)
+	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
+	  if (found_alignments<=num_outputs) {
+	#pragma omp atomic
+	    total_reads_matched++;
+	  } else {
+	#pragma omp atomic
+	    total_reads_dropped++;
+	  }
   }
 
+  if (max_alignments==0 || found_alignments<=max_alignments) {
+	  int outputted=0;
+	  /* Output sorted list, removing any duplicates. */
+	  for (i = 0;
+	       i < (int)h->load && outputted < num_outputs
+		 && ( (IS_ABSOLUTE(sw_full_threshold)
+		       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit->score_max))
+		      || (!IS_ABSOLUTE(sw_full_threshold)
+			  && (int)h->array[i].key >= (int)sw_full_threshold) );
+	       i++) {
+	    struct read_hit * rh = h->array[i].rest.hit;
+	    if (strata_flag && h->array[i].key != h->array[0].key) {
+		break;
+	    }
+	    /*bool dup;
+
+	    if (i == 0)
+	      dup = false;
+	    else
+	      dup = sw_full_results_equal(h->array[i-1].rest.hit->sfrp, rh->sfrp);
+		*/
+	    if (!rh->sfrp->dup) {
+	      outputted++;
+	      char * output1 = NULL, * output2 = NULL;
+	      re->final_matches++;
+	      if (sam_half_paired) {
+		int other_hits[]={0,0,0};
+		if (re->first_in_pair) {
+	      		hit_output(re, rh, NULL, &output1, NULL ,true,hits,found_alignments);
+	      		hit_output(re->mate_pair, NULL, rh, &output2, NULL,false,other_hits,0);
+		} else {
+	      		hit_output(re->mate_pair, NULL, rh, &output1, NULL,true,other_hits,0);
+	      		hit_output(re, rh, NULL, &output2, NULL,false,hits,found_alignments);
+		}
+	      } else {
+	      	hit_output(re, rh, NULL,  &output1, &output2, false, hits,found_alignments);
+	      }
+	//TODO - maybe buffer printf output here ? might make it go faster?
+	      if (!Pflag) {
+	#pragma omp critical (stdout)
+		{
+		  fprintf(stdout, "%s\n", output1);
+		  if (sam_half_paired) {
+		  	fprintf(stdout, "%s\n", output2);
+		  }
+		}
+	      } else {
+	#pragma omp critical (stdout)
+		{
+		  fprintf(stdout, "%s\n\n%s\n", output1, output2);
+		}
+	      }
+
+	      free(output1);
+	      if (Pflag || sam_half_paired) {
+	      	free(output2);
+	      }
+
+	    } else {
+	      re->final_dup_matches++;
+	    }
+	  }
 //TODO maybe have each thread own counter and then sum?
 //This might be pretty heavy, maybe not because of 
 //printf? 
@@ -2152,7 +2242,8 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 
 #pragma omp atomic
   total_dup_single_matches += re->final_dup_matches;
-
+   }
+	return found_alignments;
 }
 
 
@@ -2160,7 +2251,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
  * Do a final pass for given pair of reads.
  * Highest scoring matches are in scores heap.
  */
-static void
+static int
 readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_paired * h) {
   int i, j;
 
@@ -2209,12 +2300,27 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 		//int edit_distance2=re2->read_len-sfrp2->matches+sfrp2->insertions;
 		int edit_distance1=sfrp1->mismatches+sfrp1->insertions+sfrp1->deletions;
 		int edit_distance2=sfrp2->mismatches+sfrp2->insertions+sfrp1->deletions;
-		found_alignments++;
-		if (0<=edit_distance1 && edit_distance1<3) {
-			hits1[edit_distance1]++;
-		}
-		if (0<=edit_distance2 && edit_distance2<3) {
-			hits2[edit_distance2]++;
+		if ( (IS_ABSOLUTE(sw_full_threshold)
+			&& (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold, h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
+		       || (!IS_ABSOLUTE(sw_full_threshold)
+			   && (int)h->array[i].key >= (int)sw_full_threshold) ) {
+			if (!strata_flag) {
+				found_alignments++;
+				if (0<=edit_distance1 && edit_distance1<3) {
+					hits1[edit_distance1]++;
+				}
+				if (0<=edit_distance2 && edit_distance2<3) {
+					hits2[edit_distance2]++;
+				}
+			} else if ((int)h->array[i].key==(int)h->array[0].key) {
+				found_alignments++;
+				if (0<=edit_distance1 && edit_distance1<3) {
+					hits1[edit_distance1]++;
+				}
+				if (0<=edit_distance2 && edit_distance2<3) {
+					hits2[edit_distance2]++;
+				}
+			}
 		}
 	}
   }
@@ -2223,88 +2329,97 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max))
        || (!IS_ABSOLUTE(sw_full_threshold)
 	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
+    if (found_alignments<=num_outputs) {
 #pragma omp atomic
-    total_pairs_matched++;
+    	total_pairs_matched++;
+    } else {
+#pragma omp atomic
+	total_pairs_dropped++;
+    }
   }
 
   int outputted=0;
   /* Output sorted list, removing any duplicates. */
-  for (i = 0;
-       i < (int)h->load && outputted < num_outputs
-	 && ( (IS_ABSOLUTE(sw_full_threshold)
-	       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
-							  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
-	      || (!IS_ABSOLUTE(sw_full_threshold)
-		  && (int)h->array[i].key >= (int)sw_full_threshold) );
-       i++) {
-    struct read_hit * rh1 = h->array[i].rest.hit[0];
-    struct read_hit * rh2 = h->array[i].rest.hit[1];
-    if (strata_flag && h->array[i].key != h->array[0].key) {
-	break;
-    }
-    uint bucket;
+  if (max_alignments==0 || found_alignments<=max_alignments) {
+	  for (i = 0;
+	       i < (int)h->load && outputted < num_outputs
+		 && ( (IS_ABSOLUTE(sw_full_threshold)
+		       && (int)h->array[i].key >= (int)abs_or_pct(sw_full_threshold,
+								  h->array[i].rest.hit[0]->score_max + h->array[i].rest.hit[1]->score_max))
+		      || (!IS_ABSOLUTE(sw_full_threshold)
+			  && (int)h->array[i].key >= (int)sw_full_threshold) );
+	       i++) {
+	    struct read_hit * rh1 = h->array[i].rest.hit[0];
+	    struct read_hit * rh2 = h->array[i].rest.hit[1];
+	    if (strata_flag && h->array[i].key != h->array[0].key) {
+		break;
+	    }
+	    uint bucket;
 
-	/*
-    bool dup;
-    if (i == 0)
-      dup = false;
-    else
-		dup= sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
-		&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
-	*/
+		/*
+	    bool dup;
+	    if (i == 0)
+	      dup = false;
+	    else
+			dup= sw_full_results_equal(h->array[i-1].rest.hit[0]->sfrp, rh1->sfrp)
+			&& sw_full_results_equal(h->array[i-1].rest.hit[1]->sfrp, rh2->sfrp);
+		*/
 
-    if ((!rh1->sfrp->dup) || (!rh2->sfrp->dup)) {
-      outputted++;
-      char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
+	    if ((!rh1->sfrp->dup) || (!rh2->sfrp->dup)) {
+	      outputted++;
+	      char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
 
-      re1->final_matches++;
-      assert(rh1!=NULL && rh2!=NULL);
-      hit_output(re1, rh1, re2, rh2, &output1, &output2,true,hits1,found_alignments);
-      hit_output(re2, rh2, re1, rh1, &output3, &output4,false,hits2,found_alignments);
+	      re1->final_matches++;
+	      assert(rh1!=NULL && rh2!=NULL);
+	      hit_output(re1, rh1,  rh2, &output1, &output2,true,hits1,found_alignments);
+	      hit_output(re2, rh2,  rh1, &output3, &output4,false,hits2,found_alignments);
 
-      if (!Pflag) {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n%s\n", output1, output3);
-	}
-      } else {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
-	}
-      }
+	      if (!Pflag) {
+	#pragma omp critical (stdout)
+		{
+		  fprintf(stdout, "%s\n%s\n", output1, output3);
+		}
+	      } else {
+	#pragma omp critical (stdout)
+		{
+		  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
+		}
+	      }
 
-      if (Xflag) {
-	if (h->array[i].rest.insert_size < min_insert_size)
-	  bucket = 0;
-	else if (h->array[i].rest.insert_size > max_insert_size)
-	  bucket = 99;
-	else
-	  bucket = (uint)((h->array[i].rest.insert_size - min_insert_size) / insert_histogram_bucket_size);
+	      if (Xflag) {
+		if (h->array[i].rest.insert_size < min_insert_size)
+		  bucket = 0;
+		else if (h->array[i].rest.insert_size > max_insert_size)
+		  bucket = 99;
+		else
+		  bucket = (uint)((h->array[i].rest.insert_size - min_insert_size) / insert_histogram_bucket_size);
 
-	if (bucket >= 100) {
-	  fprintf(stderr, "error: insert_size:%d re1->name:(%s)\n", h->array[i].rest.insert_size, re1->name);
-	}
-	assert(bucket < 100);
+		if (bucket >= 100) {
+		  fprintf(stderr, "error: insert_size:%d re1->name:(%s)\n", h->array[i].rest.insert_size, re1->name);
+		}
+		assert(bucket < 100);
 
-#pragma omp atomic
-	insert_histogram[bucket]++;
-      }
+	#pragma omp atomic
+		insert_histogram[bucket]++;
+	      }
 
-      free(output1);
-      free(output2);
-      free(output3);
-      free(output4);
-    } else {
-      re1->final_dup_matches++;
-    }
-  }
+	      free(output1);
+	      free(output3);
+	      if (Pflag) {
+	      	free(output2);
+	      	free(output4);
+	      }
+	    } else {
+	      re1->final_dup_matches++;
+	    }
+	  }
 
-#pragma omp atomic
-  total_paired_matches += re1->final_matches;
-#pragma omp atomic
-  total_dup_paired_matches += re1->final_dup_matches;
-
+	#pragma omp atomic
+	  total_paired_matches += re1->final_matches;
+	#pragma omp atomic
+	  total_dup_paired_matches += re1->final_dup_matches;
+   }
+   return found_alignments;
 }
 
 
@@ -2349,7 +2464,6 @@ handle_read(read_entry *re){
   uint64_t before = rdtsc();
 
   read_get_mapidxs(re);
-
 #ifdef DEBUG_KMERS
   {
     uint sn, i, j;
@@ -2395,23 +2509,26 @@ handle_read(read_entry *re){
   read_get_vector_hits(re, &h);
 
   DEBUG("second pass");
+  int found_alignments=0;
   if (h.load > 0) {
-    read_pass2(re, &h);
+    found_alignments = read_pass2(re, &h);
     if (aligned_reads_file!=NULL) {
 	#pragma omp critical (stdout) 
 	{
 		fasta_write_read(aligned_reads_file,re);
 	}
     }
-  } else {
+  }
+  if (found_alignments==0) {
 	if (Eflag && sam_unaligned) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; 
-      		hit_output(re, NULL, NULL, NULL, &output1, NULL, false, NULL,0);
+      		hit_output(re, NULL, NULL, &output1, NULL, false, NULL,0);
 		#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);
 		}
+		free(output1);
 	}
 	if (unaligned_reads_file!=NULL) {
 		#pragma omp critical (stdout) 
@@ -2458,8 +2575,9 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
   readpair_get_vector_hits(re1, re2, &h);
 
   DEBUG("second pass");
+  int found_alignments=0;
   if (h.load > 0) {
-    readpair_pass2(re1, re2, &h);
+    found_alignments+=readpair_pass2(re1, re2, &h);
     if (aligned_reads_file!=NULL) {
 	#pragma omp critical (stdout)
 	{
@@ -2467,18 +2585,46 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 		fasta_write_read(aligned_reads_file,re2);
 	}
     }
-  } else {
-	if (Eflag && sam_unaligned) {
+  }
+  if (found_alignments==0) {
+	if (sam_half_paired) {
+  		heap_unpaired h;
+		unsigned int i;
+		
+  		read_pass1(re1, false);
+  		heap_unpaired_init(&h, num_tmp_outputs);
+  		read_get_vector_hits(re1, &h);
+		if (h.load>0) {
+			found_alignments+=read_pass2(re1, &h);	
+		}
+		// Done with this read; deallocate memory.
+		for (i = 0; i < h.load; i++)
+		  hit_free_sfrp(h.array[i].rest.hit);
+		heap_unpaired_destroy(&h);
+ 
+ 		read_pass1(re2, false);
+  		heap_unpaired_init(&h, num_tmp_outputs);
+  		read_get_vector_hits(re2, &h);
+		if (h.load>0) {
+			found_alignments+=read_pass2(re2, &h);	
+		}
+		// Done with this read; deallocate memory.
+		for (i = 0; i < h.load; i++)
+		  hit_free_sfrp(h.array[i].rest.hit);
+		heap_unpaired_destroy(&h);
+	}
+	if (Eflag && sam_unaligned && found_alignments==0) {
 		//no alignments, print to sam empty record
 		char* output1=NULL; char * output2=NULL;
-      		hit_output(re1, NULL, re2, NULL, &output1, NULL, true, NULL,0);
-      		hit_output(re2, NULL, re1, NULL, &output2, NULL, false, NULL,0);
+      		hit_output(re1, NULL, NULL, &output1, NULL, true, NULL,0);
+      		hit_output(re2, NULL, NULL, &output2, NULL, false, NULL,0);
 		#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);
 			fprintf(stdout, "%s\n", output2);
 		}
-		
+		free(output1);
+		free(output2);		
 
 	}
 	if (unaligned_reads_file!=NULL) {
@@ -2688,7 +2834,6 @@ launch_scan_threads(){
 	}
 	nreads += load;
       } // end critical section
-
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
 
@@ -2771,7 +2916,12 @@ launch_scan_threads(){
 		      read_reverse(&re_buffer[i-1]);
 		    if (pair_reverse[pair_mode][1])
 		      read_reverse(&re_buffer[i]);
-
+		    re_buffer[i-1].paired=true;
+		    re_buffer[i-1].first_in_pair=true;
+		    re_buffer[i-1].mate_pair=&re_buffer[i];
+		    re_buffer[i].paired=true;
+		    re_buffer[i].first_in_pair=false;
+		    re_buffer[i].mate_pair=&re_buffer[i-1];
 		    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
 	   }
 	  }
@@ -3219,6 +3369,10 @@ print_statistics()
 		    "Reads Matched:",
 		    comma_integer(total_reads_matched),
 		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "Reads Dropped:",
+		    comma_integer(total_reads_dropped),
+		    (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
 	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
 		    "Total Matches:",
 		    comma_integer(total_single_matches));
@@ -3235,6 +3389,10 @@ print_statistics()
 		    "Pairs Matched:",
 		    comma_integer(total_pairs_matched),
 		    (nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
+	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "Pairs Dropped:",
+		    comma_integer(total_pairs_dropped),
+		    (nreads == 0) ? 0 : ((double)total_pairs_dropped / (double)(nreads/2)) * 100);
 	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
 		    "Total Paired Matches:",
 		    comma_integer(total_paired_matches));
@@ -3311,6 +3469,9 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
 	  "   -o/--report          Maximum Hits per Read         (default: %d)\n",
 	  DEF_NUM_OUTPUTS);
+  fprintf(stderr,
+          "      --max-alignments  Max. align. per read  (0=all) (default: %d)\n",
+	  DEF_MAX_ALIGNMENTS);
   fprintf(stderr,
 	  "   -w/--match-window    Match Window Length           (default: %.02f%%)\n",
 	  DEF_WINDOW_LEN);
@@ -3400,15 +3561,19 @@ usage(char * progname, bool full_usage){
 	  "      --un              Dump unaligned reads to file\n");
   fprintf(stderr,
 	  "      --al              Dump aligned reads to file\n");
+  fprintf(stderr,
+	  "      --read-group      Attach SAM Read Group name\n");
+  fprintf(stderr,
+          "      --sam-header      Use file as SAM header\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
 
   fprintf(stderr,
 	  "   -U/--ungapped        Perform Ungapped Alignment    (default: disabled)\n");
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
           "      --global          Perform full global alignment (default: disabled)\n");
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
           "      --bfast           Try to align like bfast       (default: disabled)\n");
   }
@@ -3452,6 +3617,8 @@ usage(char * progname, bool full_usage){
   }
   fprintf(stderr,
 	  "      --sam-unaligned   Unaligned reads in SAM output (default: disabled)\n");
+  fprintf(stderr,
+	  "      --half-paired     Output half mapped read pairs (default: disabled)\n");
   fprintf(stderr,
 	  "      --strata          Print only the best scoring hits\n");
   fprintf(stderr,
@@ -3625,11 +3792,35 @@ int main(int argc, char **argv){
 			}
 			break;
 		case 14:
-			Gflag = true;
+			max_alignments=atoi(optarg);
 			break;
 		case 15:
+			Gflag = true;
+			break;
+		case 16:
 			Bflag = true;
 			Gflag = true;
+			break;
+		case 17:
+			sam_read_group_name=optarg;
+			sam_sample_name = strchr(optarg,',');
+			if (sam_sample_name==NULL) {
+				fprintf(stderr,"error: sam read group needs to be two values, delimited by commas.\n");
+				fprintf(stderr,"       the first value is unique read group identifier\n");
+				fprintf(stderr,"       the second is the sample (use pool name where a pool is being sequence\n");
+				exit(1);	
+			}
+			sam_sample_name[0]='\0';
+			sam_sample_name++;
+			break;
+		case 18:
+			sam_header_filename=optarg;
+			break;	
+		case 19:
+			sam_half_paired=true;
+			break;
+		case 20:
+			sam_r2=true;
 			break;
 		case '1':
 			left_reads_filename = optarg;
@@ -3887,7 +4078,10 @@ int main(int argc, char **argv){
 	argc -= optind;
 	argv += optind;
 
-
+	if (Gflag && gapless_sw) {
+		fprintf(stderr,"error: cannot use global (or bfast) and ungapped mode at the same time!\n");
+		exit(1);
+	}
 	if (sam_unaligned && !Eflag) {
 		fprintf(stderr,"error: when using flag --sam-unaligned must also use -E/--sam\n");
 		usage(progname,false);
@@ -3997,6 +4191,15 @@ int main(int argc, char **argv){
 	  fprintf(stderr, "warning: in paired mode, both strands must be inspected; ignoring -C and -F\n");
 	  Cflag = Fflag = true;
 	}
+	if (pair_mode == PAIR_NONE && sam_half_paired) {
+	  fprintf(stderr, "error: cannot use option half-paired in non-paired mode!\n");
+	  exit(1);
+	}
+	if (pair_mode == PAIR_NONE && sam_r2) {
+	  fprintf(stderr, "error: cannot use option sam-r2 in non-paired mode!\n");
+	  exit(1);
+	}
+	
 
 	if (shrimp_mode == MODE_LETTER_SPACE) {
 	  sw_vect_threshold = sw_full_threshold;
@@ -4252,18 +4455,35 @@ int main(int argc, char **argv){
 
 	char * output;
 	if (Eflag){
-		//Print sam header
-		fprintf(stdout,"@HD\tVN:%i\tSO:%s\n",1,"unsorted");
+		int i;
+		if (sam_header_filename!=NULL) {
+			FILE * sam_header_file = fopen(sam_header_filename,"r");
+			if (sam_header_file==NULL) {
+				perror("Failed to open sam header file ");
+				exit(1);
+			}
+			char buffer[2049];
+			while (fread(buffer,1,2049,sam_header_file)) {
+				fprintf(stdout,buffer);
+			}
+		} else {
+			//Print sam header
+			fprintf(stdout,"@HD\tVN:%i\tSO:%s\n",1,"unsorted");
 
-		int s;
-		for(s = 0; s < num_contigs; s++){
-			fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[s],genome_len[s]);
+			for(i = 0; i < num_contigs; i++){
+				fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
+			}
 		}
+		//read group
+		if (sam_read_group_name!=NULL) {
+			fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
+		}
+		//print command line args used to invoke SHRiMP
 		fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
-		for (s=0; s<(shrimp_args.argc-1); s++) {
-			fprintf(stdout,"%s ",shrimp_args.argv[s]);
+		for (i=0; i<(shrimp_args.argc-1); i++) {
+			fprintf(stdout,"%s ",shrimp_args.argv[i]);
 		}
-		fprintf(stdout,"%s\n",shrimp_args.argv[s]);
+		fprintf(stdout,"%s\n",shrimp_args.argv[i]);
 	} else {
 		output = output_format_line(Rflag);
 		puts(output);

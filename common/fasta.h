@@ -100,6 +100,9 @@ struct read_entry {
   int           input_strand;
   bool          is_rna;
   bool		ignore;
+  bool		paired;
+  bool		first_in_pair;
+  struct read_entry * mate_pair;
 };
 
 

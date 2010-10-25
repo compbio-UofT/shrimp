@@ -524,6 +524,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	/*
 	 * max score
 	 */
+	if (local_alignment || i==lenb-1) {
 	if (!revcmpl) {
 	  if (cell_cur->from[k].score_nw > score) {
 	    score = cell_cur->from[k].score_nw;
@@ -550,6 +551,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	    score = cell_cur->from[k].score_nw;
 	    max_i = i, max_j = j, max_k = k;
 	  }
+	}
 	}
 
 #ifdef DEBUG_SW

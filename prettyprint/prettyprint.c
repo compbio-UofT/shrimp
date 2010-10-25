@@ -121,7 +121,7 @@ compute_alignment(struct fpo *fpo, struct sequence *contig)
 		sw_full_ls(contig->sequence, genome_start, genome_len,
 		    read->sequence, read->sequence_len,
 		    fpo->input.score, fpo->input.score, &sfr, revcmpl && Tflag,
-		    NULL, 0);
+		    NULL, 0,1);
 	}
 
 	if (sfr.score != fpo->input.score) {
