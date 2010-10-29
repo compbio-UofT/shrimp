@@ -1,0 +1,83 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+  echo "Use: $0 <output_file>"
+  exit 1
+fi
+
+if [ ! -r $1 ]; then
+  echo "error: cannot read file [$1]"
+  exit 1
+fi
+
+if [ -z "$SHRIMP_FOLDER" ]; then
+  echo 1>&2 "warning: SHRIMP_FOLDER undefined; assuming ."
+  SHRIMP_FOLDER="."
+fi
+
+if [ ! -d "$SHRIMP_FOLDER/utils/" ]; then
+  echo 1>&2 "error: cannot find directory $SHRIMP_FOLDER/utils/"
+  exit 1
+fi
+
+COMMENT=`head -1 $1 | cut -c 1`
+case "$COMMENT" in
+"#" )
+  echo 1>&2 "Detected shrimp format"
+  FIELDS="1,9"
+  ERASE="BLAAAAAAAAAAAAAAAAAAAAAH"
+  ;;
+"@" )
+  echo 1>&2 "Detected SAM format"
+  FIELDS="1,12"
+  ERASE="AS:i:"
+  ;;
+* )
+  echo 1>&2 "error: unrecognized format"
+  exit 1
+  ;;
+esac
+
+$SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
+  | cut -f $FIELDS \
+  | sed "s/${ERASE}//" \
+  | awk '
+{
+  hits += 1;
+  if ($1 == prev) {
+    cnt += 1;
+    if ($2 == max) {
+      cnt_max += 1;
+    } else if ($2 > max) {
+      max = $2;
+      cnt_max = 1;
+    }
+  } else {
+    total_reads += 1;
+    if (cnt == 1) {
+      total_unique_hit += 1;
+    }
+    if (cnt_max == 1) {
+      total_unique_top_hit += 1;
+    }
+    prev = $1;
+    cnt = 1;
+    max = $2;
+    cnt_max = 1;
+  }
+}
+END {
+  if (cnt == 1) {
+    total_unique_hit += 1;
+  }
+  if (cnt_max == 1) {
+      total_unique_top_hit += 1;
+  }
+
+  printf "Total reads mapped: %d\n", total_reads;
+  printf "Total hits: %d\n", hits;
+  printf "Reads with unique hit: %d\n", total_unique_hit;
+  printf "Reads with unique top hit: %d\n", total_unique_top_hit;
+  printf "Average hits per read mapped: %.2f\n", hits/total_reads;
+}'
+

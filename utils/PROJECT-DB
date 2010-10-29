@@ -1,0 +1,64 @@
+project-db
+----------
+
+This script is used to split a given reference genome into a set of database
+files that fit into a target RAM size. gmapper can then be run independently on
+each of the database files.
+
+
+Parameters:
+
+<file1.fa> <file2.fa> ...
+	Input files in fasta format.
+
+--dest-dir <dest-dir>
+	Destination directory where to place the database files. If not given,
+	files are placed in the current working directory.
+
+--shrimp-mode <mode>
+	This is "ls" or "cs", for letter space or color space,
+	respectively. This is a required parameter.
+
+--seed <seed0,seed1,...>
+	Comma-separated list of seeds that gmapper will use. This list is passed
+	on directly to gmapper as argument of parameter -s. See README for more
+	details. If absent, gmapper will not be given explicitly any seeds, so
+	it will run with its default set of seeds.
+
+--print-script
+	Only display commands that would be run. Do not actually run gmapper.
+
+--h-flag
+	This corresponds to giving gmapper the flag -H, telling it to use
+	hashing to index spaced kmers. For seeds of weight greater than 14, this
+	is required. See README for more details.
+
+
+Note: The gmapper calls issued by this script can be parallelized across machines.
+
+
+Output:
+
+<file>-<mode>.genome
+<file>-<mode>.seed.*
+	This is the projection of <file.fa>
+
+
+How this works:
+
+Step 1. Parse options.
+
+Step 2. For every input file <file.fa>:
+  Let <f>=name stripped of the last extension. (E.g. "x.yy.zzz" => "x.yy")
+  If exists file <dest-dir>/<f>-<mode>.genome:
+    Print message "database already exists in files <dest-dir>/<f>-<mode>.*"
+    Continue loop
+  If <file.fa> does not exist
+    Exit with error
+  Run:
+
+gmapper-<mode>               (using the parameter of --mode to select ls or cs)
+[-s <seed0,seed1,..>]        (if given, pass the argument of --seed)
+[-H]                         (if given --h-flag, pass -H)
+-S <dest-dir>/<f>-<mode>
+<file.fa>

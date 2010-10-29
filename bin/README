@@ -1,0 +1,9 @@
+Program			Function	
+-------			--------
+gmapper-cs		colourspace mapper
+gmapper-ls		letterspace mapper
+prettyprint-cs		pretty print alignments from rmapper/probcalc (c. space)
+prettyprint-ls		pretty print alignments from rmapper/probcalc (l. space)
+probcalc		parse rmapper output (non-pretty-printed output)
+probcalc_mp		combine read mappings from probalc into mate pairs
+shrimp_var		list detailed hit variations in rmapper/probcalc results
