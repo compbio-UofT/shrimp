@@ -35,7 +35,8 @@ Parameters:
         shrimp output format is detected (and not sam). Defaults to ":[^:]*$".
 
 --output <amount>
-	Output maximum amount alignments per read
+	Output maximum amount alignments per read. If more alignments then this
+	reported, then supress all alignments for this read.
 
 --strata
 	If strata is enabled only output alignments with highest score for a read

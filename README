@@ -182,10 +182,10 @@ SHRiMP2 uses the OpenMP API to achieve multi-threaded operation.
 ----------------------
 
 Assume we downloaded the linux binary package in
-./SHRiMP_2_0_1.lx26.x86_64.tar.gz
+./SHRiMP_2_0_3.lx26.x86_64.tar.gz
 
-  $ tar xvzf SHRiMP_2_0_1.lx26.x86_64.tar.gz
-  $ cd SHRiMP_2_0_1
+  $ tar xvzf SHRiMP_2_0_3.lx26.x86_64.tar.gz
+  $ cd SHRiMP_2_0_3
   $ file bin/gmapper
   bin/gmapper: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV), for
   GNU/Linux 2.6.9, statically linked, for GNU/Linux 2.6.9, not stripped
@@ -198,10 +198,10 @@ utils/.
 3.2 Compiling SHRiMP2 from source
 ---------------------------------
 
-Assume we downloaded the source package in ./SHRiMP_2_0_1.src.tar.gz
+Assume we downloaded the source package in ./SHRiMP_2_0_3.src.tar.gz
 
-  $ tar xvzf SHRiMP_2_0_1.src.tar.gz
-  $ cd SHRiMP_2_0_1
+  $ tar xvzf SHRiMP_2_0_3.src.tar.gz
+  $ cd SHRiMP_2_0_3
   $ make
   [...warnings, hopefully no errors...]
   $ ls bin/gmapper*
@@ -937,6 +937,14 @@ Paired Mode
     Note: These parameters are only used to limit the  search space where to map
     each   read.  In SAM  output,  the  insert size  is  recalculated using  the
     standard definition for SAM.
+ 
+  [    --half-paired ]
+    Try to map in pairs. If a pair does not map, try aligning each read indepen-
+    dently, reporting these independent alignments.
+
+  [    --sam-r2 ]
+    Report the SAM r2 field for letter space alignments. Report a similar x2 fi-
+    eld for colour space alignments.
 
 
 Thread Control
@@ -995,6 +1003,15 @@ Output Control
   [ --sam-unaligned ]
 
     If SAM output format is also selected dump unaligned reads to the SAM output.
+
+  [ --sam-header <filename> ]
+
+    Output the filename as header instead of regular SHRiMP / SAM header. Includes
+    additional lines defining a read group if need be.
+  
+  [ --read-group read_group,pool_name ]
+
+    Include in the same output the corresponding read_group and pool_name.
 
   [ -un <filename> ]
 

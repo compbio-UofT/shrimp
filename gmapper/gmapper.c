@@ -1758,7 +1758,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//bool proper_pair = (paired_read && !query_unmapped && !mate_unmapped);
 	//bool query_unmapped = (re->n_hits[0] + re->n_hits[1])>0 ? false : true;
 	bool query_unmapped = (rh==NULL);
-	bool mate_unmapped;
+	bool mate_unmapped=false;
 	bool reverse_strand = false;
 	bool reverse_strand_mp = false;
 	int genome_end_mp=0; int genome_start_mp=0;
@@ -1779,13 +1779,12 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		//mate_unmapped=(re_mp->n_hits[0]+re_mp->n_hits[1])>0 ? false : true;
 		mate_unmapped= (rh_mp==NULL);
 		if (!mate_unmapped) {
-			char * read_name_mp = re->name;
-			char * rname_mp = contig_names[rh_mp->cn];
+			//char * read_name_mp = re->name;
+			//char * rname_mp = contig_names[rh_mp->cn];
 			int read_start_mp = rh_mp->sfrp->read_start+1; //1based
-			int read_length_mp = re_mp->read_len;
+			//int read_length_mp = re_mp->read_len;
 			int read_end_mp = read_start_mp + rh_mp->sfrp->rmapped -1; //1base
 			int genome_length_mp = genome_len[rh_mp->cn];
-			int genome_start_mp;
 			reverse_strand_mp = (rh_mp->gen_st ==1);
 			if (!reverse_strand_mp) {
 				genome_start_mp = rh_mp->sfrp->genome_start+1; // 0 based -> 1 based
@@ -1799,8 +1798,6 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 			mpos=genome_start_mp;
 			mrnm = contig_names[rh_mp->cn];
 		}
-	} else {
-		mate_unmapped=true;
 	}
 	bool second_in_pair = (paired_read && !first_in_pair);
 	bool primary_alignment = false;
@@ -2040,7 +2037,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 		isize,seq,qual);
-	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions,found_alignments,stored_alignments);
+	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -4462,9 +4459,20 @@ int main(int argc, char **argv){
 				perror("Failed to open sam header file ");
 				exit(1);
 			}
-			char buffer[2049];
-			while (fread(buffer,1,2049,sam_header_file)) {
+			size_t buffer_size=2046;
+			char buffer[buffer_size];
+			size_t read; bool ends_in_newline=true;
+			while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
+				buffer[read]='\0';
 				fprintf(stdout,buffer);
+				if (buffer[read-1]=='\n') {
+					ends_in_newline=true;
+				} else {
+					ends_in_newline=false;
+				}
+			}
+			if (!ends_in_newline) {
+				fprintf(stdout,"\n");
 			}
 		} else {
 			//Print sam header

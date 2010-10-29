@@ -117,7 +117,7 @@ static uint64_t		swticks, swcells, swinvocs;
 
 
 static void print_sw(int lena, int lenb) {
-
+	printf("len a %d, len b %d\n",lena,lenb);
 	int k;
 	for (k=0; k<4; k++) {
 		int i,j;
@@ -301,8 +301,9 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     if (!local_alignment) {
     	//x_max=MIN(lena,x_max); x_min=MAX(0,x_min-lenb/40); 
-    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0 ?  1 : 0);
     	//init_cell(i * (lena + 1) + x_max  + 1,  0);
+    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0  ?  1 : 0);
+    	//init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0);
     } else {
     	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1);
     }
@@ -636,6 +637,7 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
 
   /* fill out the backtrace */
   while (i >= 0 && j >= 0) {
+	//printf("i %d, j %d\n",i,j);
     assert(off >= 0);
 
     cell = NULL;

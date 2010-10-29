@@ -220,7 +220,8 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
 
     anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     if (!local_alignment) {
-	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0 ?  1 : 0);
+	//init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0 ?  1 : 0);
+	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0);
     } else {
     	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1,1);
     }
