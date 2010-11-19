@@ -1,0 +1,35 @@
+mappings-top-hits
+--------
+
+This script is used to filter alignments after they have been initially merged.
+
+Parameters:
+
+[--strata] [--sam-unaligned] [--paired] [--half-paired] [--max-alignments] [-o/--report 10] input_filename
+
+<input_filename>
+	Merged and readname sorted SAM input. '-' for STDIN.
+
+--strata
+	Only report highest scoring alignments for each read.
+
+--sam-unaligned
+	Report alignments for reads that are considered unaligned under current settings.
+
+--paired
+	Alignments are paired.
+
+--half-paired
+	Alignments are paired and half-paired.
+
+--max-alignments <max-alignments>
+	Do not not report alignments for reads with more then this many valid alignments under
+	the current settings. Default 0, report all.
+
+-o/--report <num-outputs>
+	Report at most this many alignments per read. If there are more, select the first seen.
+	Default 10.
+
+Output:
+	To STDOUT.
+
