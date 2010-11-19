@@ -74,7 +74,6 @@ heap_percolate_down(struct heap * h, uint node) {
     memcpy(h->result, &h->array[(min - 1)*h->elem_size], h->elem_size);
     memcpy(&h->array[(min - 1)*h->elem_size], &h->array[(node - 1)*h->elem_size], h->elem_size);
     memcpy(&h->array[(node - 1)*h->elem_size], h->result, h->elem_size);
-    
     node = min;
   } while (1);
 }

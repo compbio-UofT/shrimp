@@ -302,8 +302,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
     if (!local_alignment) {
     	//x_max=MIN(lena,x_max); x_min=MAX(0,x_min-lenb/40); 
     	//init_cell(i * (lena + 1) + x_max  + 1,  0);
-    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0  ?  1 : 0);
-    	//init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0);
+    	//init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0  ?  1 : 0);
+    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0);
     } else {
     	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1);
     }

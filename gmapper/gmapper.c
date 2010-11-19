@@ -1488,7 +1488,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
 		 re->read[rh->st], re->read_len,
 		 thresh, rh->score_vector, rh->sfrp, rh->gen_st && Tflag,
 		 &rh->anchor, 1, Gflag ? 0 : 1);
-      assert(rh->sfrp->score == rh->score_vector);
+      //assert(rh->sfrp->score == rh->score_vector);
     } else { // this wouldn't have passed the filter
       rh->sfrp->score = 0;
     }
@@ -1828,6 +1828,8 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			if (Qflag) {
 				extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
+			} else {
+				extra = extra + sprintf(extra,"\tCQ:Z:%s",qual);
 			}
 			extra = extra + sprintf(extra, "\tCS:Z:%s",re->seq);
 		}
@@ -2160,7 +2162,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit->score_max))
    || (!IS_ABSOLUTE(sw_full_threshold)
 	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
-	  if (found_alignments<=num_outputs) {
+	  if (max_alignments==0 || found_alignments<=max_alignments) {
 	#pragma omp atomic
 	    total_reads_matched++;
 	  } else {
@@ -2326,7 +2328,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	&& (int)h->array[0].key >= (int)abs_or_pct(sw_full_threshold, h->array[0].rest.hit[0]->score_max + h->array[0].rest.hit[1]->score_max))
        || (!IS_ABSOLUTE(sw_full_threshold)
 	   && (int)h->array[0].key >= (int)sw_full_threshold) ) {
-    if (found_alignments<=num_outputs) {
+    if (max_alignments==0 || found_alignments<=max_alignments) {
 #pragma omp atomic
     	total_pairs_matched++;
     } else {
@@ -3874,6 +3876,7 @@ int main(int argc, char **argv){
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
+			num_tmp_outputs = 30 + num_outputs;
 			break;
 		case 'm':
 			match_score = atoi(optarg);
@@ -4476,7 +4479,7 @@ int main(int argc, char **argv){
 			}
 		} else {
 			//Print sam header
-			fprintf(stdout,"@HD\tVN:%i\tSO:%s\n",1,"unsorted");
+			fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
 
 			for(i = 0; i < num_contigs; i++){
 				fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
