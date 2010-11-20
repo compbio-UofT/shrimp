@@ -12,6 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <zlib.h>
+#include <limits.h>
 //#include <pthread.h>
 
 #include <sys/time.h>
@@ -1063,17 +1064,19 @@ fast_gztest(int nfiles, char **files)
 }
 #endif
 
-void xgzread(gzFile fp, voidp buf, unsigned len){
-	uint total = 0;
-	while (total < len){
-		uint res;
-		res = gzread(fp,(char *)buf+total,len-total);
-		if (res <= 0){
-			fprintf(stderr,"error: gzread returned %u\n",res);
-			exit(0);
-		}
-		total += res;
-	}
+void xgzread(gzFile fp, voidp buf, size_t len) {
+        size_t total = 0;
+        while (total < len) {
+                int res;
+                int to_read = (len - total <= (size_t)INT_MAX? (int)(len - total) : INT_MAX);
+                res = gzread(fp, (char *)buf+total, to_read);
+                if (res <= 0) {
+                        fprintf(stderr, "error: gzread returned %u\n", res);
+                        exit(0);
+                }
+                total += (size_t)res;
+        }
+
 }
 
 void xgzwrite(gzFile fp, voidp buf, unsigned len){

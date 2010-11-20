@@ -495,7 +495,7 @@ static bool load_genome_map_seed(const char *file){
   // genome_map
   uint32_t * map;
   map = (uint32_t *)xmalloc_c(sizeof(uint32_t) * total, &mem_genomemap);
-  gzread(fp,map,sizeof(uint32_t) * total);
+  xgzread(fp,map,sizeof(uint32_t) * total);
   uint32_t * ptr;
   ptr = map;
 

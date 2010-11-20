@@ -109,7 +109,7 @@ char	       *fast_gzgets(gzFile, char*, int);
 char	       *fast_gzgets_safe(fasta_t f);
 char	       *comma_integer(uint64_t);
 void xgzwrite(gzFile fp, voidp buf, unsigned len);
-void xgzread(gzFile fp, voidp buf, unsigned len);
+void xgzread(gzFile fp, voidp buf, size_t len);
 
 
 /* for optarg (and to shut up icc) */
