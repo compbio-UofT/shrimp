@@ -71,7 +71,8 @@ struct option standard_options[] =
 	{"read-group",1,0,17},
 	{"sam-header",1,0,18},
 	{"half-paired",0,0,19},
-	{"sam-r2",0,0,20}
+	{"sam-r2",0,0,20},
+	{"mode",1,0,'M'}
 };
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},
@@ -197,6 +198,10 @@ static default_seed_array_t const default_spaced_seeds_ls[9] = {
   { "111111101110111111", "1111100101101101011111", "11110011001010100011011111", "111101001100000100110011010111" },
   { },
   { "11111011111110111111", "11110111011010111011111", "11111100110101101001011111", "11111010101100100010011101111" } };
+
+static int const default_spaced_seeds_mirna_cnt = 5;
+static default_seed_array_t const default_spaced_seeds_mirna =
+  { "00111111001111111100", "00111111110011111100", "00111111111100111100", "00111111111111001100", "00111111111111110000" } ;
 
 struct seed_type {
   bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */

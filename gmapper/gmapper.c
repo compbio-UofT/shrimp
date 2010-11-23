@@ -34,6 +34,9 @@ DEF_HEAP(uint32_t,uint,uu)
 DEF_HEAP(uint, struct read_hit_holder, unpaired)
 DEF_HEAP(uint, struct read_hit_pair_holder, paired)
 
+/* Mode */
+static int	mode_mirna		= false;
+
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
 static double	window_overlap		= DEF_WINDOW_OVERLAP;
@@ -256,6 +259,12 @@ add_spaced_seed(char const * seed_string)
   avg_seed_span = avg_seed_span/n_seeds;
 
   return true;
+}
+
+static void
+load_default_mirna_seeds() {
+  for (int i = 0; i < default_spaced_seeds_mirna_cnt; i++)
+    add_spaced_seed(default_spaced_seeds_mirna[i]);
 }
 
 static bool
@@ -3717,6 +3726,29 @@ print_settings() {
 }
 
 
+static int
+set_mode_from_string(char const * s) {
+  if (!strcmp(s, "mirna")) {
+    mode_mirna = true;
+
+    load_default_mirna_seeds();
+
+    Hflag = true;
+    gapless_sw = true;
+    anchor_width = 0;
+    a_gap_open_score = -255;
+    b_gap_open_score = -255;
+    hash_filter_calls = false;
+    num_matches = 1;
+    window_len = 100.0;
+
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
+
 int main(int argc, char **argv){
 	char **genome_files = NULL;
 	int ngenome_files = 0;
@@ -3748,11 +3780,11 @@ int main(int argc, char **argv){
 	//TODO -t -9 -d -Z -D -Y
 	switch(shrimp_mode){
 	case MODE_COLOUR_SPACE:
-		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TtUVXYZQx:v:";
+		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:M:N:PRS:TtUVXYZQx:v:";
 		memcpy(getopt_long_options+standard_entries,colour_space_options,sizeof(colour_space_options));
 		break;
 	case MODE_LETTER_SPACE:
-		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:N:PRS:TtUVXYZQ";
+		optstr = "?1:2:s:n:w:l:o:p:m:i:g:q:e:f:h:r:a:z:DCEFHI:K:L:M:N:PRS:TtUVXYZQ";
 		memcpy(getopt_long_options+standard_entries,letter_space_options,sizeof(letter_space_options));
 		break;
 	case MODE_HELICOS_SPACE:
@@ -4070,6 +4102,16 @@ int main(int argc, char **argv){
 		case 'Q':
 			Qflag = true;
 			break;
+		case 'M':
+			c = strtok(optarg, ",");
+			do {
+			  if (!set_mode_from_string(c)) {
+			    fprintf(stderr, "error: unrecognized mode (%s)\n", c);
+			    exit(1);
+			  }
+			  c = strtok(NULL, ",");
+			} while (c != NULL);		  
+			break;
 		default:
 			usage(progname, false);
 		}
@@ -4112,7 +4154,7 @@ int main(int argc, char **argv){
 	  }
 	}
 
-	if(load_file != NULL && n_seeds != 0){
+	if(load_file != NULL && n_seeds != 0 && !mode_mirna){
 	  fprintf(stderr,"error: cannot specify seeds when loading genome map\n");
 	  usage(progname,false);
 	}
