@@ -1376,4 +1376,5 @@ sensitivity.
 We would  like to thank  Dr. Alessandro  Guffanti (Bioinformatics, Genomnia srl,
 Milan,  Italy),   Christine Voellenkle and Jeroen  van   Rooij ( Policlinico San
 Donato, Milan, Italy) for their  feedback on using  SHRiMP for mapping micro RNA
-data.
+data, including the set of spaced seeds mentioned in section 3.5, which are used
+by default in miRNA mode.
