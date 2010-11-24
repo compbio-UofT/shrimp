@@ -435,6 +435,12 @@ many of those, because the initial seed match already guarantees a decent
 score);
 - the 2 top hits (-o 2) per read are ouput.
 
+In SHRiMP 2.0.4, a new command-line option was introduced that can be used to
+load several miRNA-specific settings: "-M mirna" or "--mode mirna" is
+equivalent with:
+  loading the 5 seeds mentioned above; plus
+  "-H -n 1 -w 100% -U -a 0 -g -255 -q -255 -Z"
+
 We have a look at the mappings:
 
   $ head -n 15 map.out
@@ -895,6 +901,17 @@ Filter 3: Scalar (Full) SW Alignment
     Color-space only. Try to align like BFAST. This enables global alignments
     and if in FASTQ mode, outputs base qualities in the QUAL field, just like 
     BFAST. 
+
+
+Sets of settings
+----------------
+
+  [ -M/--mode <mode> ]
+
+    Currently only "mirna" is a valid mode. In this case, the option is
+    equivalent with:
+      loading the 5 seeds mentioned above (in the miRNA section 3.5); plus
+      "-H -n 1 -w 100% -U -a 0 -g -255 -q -255 -Z"
 
 
 Paired Mode

@@ -3731,7 +3731,7 @@ set_mode_from_string(char const * s) {
   if (!strcmp(s, "mirna")) {
     mode_mirna = true;
 
-    load_default_mirna_seeds();
+    //load_default_mirna_seeds();
 
     Hflag = true;
     gapless_sw = true;
@@ -4154,13 +4154,16 @@ int main(int argc, char **argv){
 	  }
 	}
 
-	if(load_file != NULL && n_seeds != 0 && !mode_mirna){
+	if(load_file != NULL && n_seeds != 0){
 	  fprintf(stderr,"error: cannot specify seeds when loading genome map\n");
 	  usage(progname,false);
 	}
 
 	if (n_seeds == 0 && load_file == NULL) {
-	  load_default_seeds(0);
+	  if (mode_mirna)
+	    load_default_mirna_seeds();
+	  else
+	    load_default_seeds(0);
 	}
 
 	kmer_to_mapidx = kmer_to_mapidx_orig;
