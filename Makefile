@@ -5,8 +5,9 @@
 
 #CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
+#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 #CXXFLAGS=-g -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
-CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
+CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
 #CXXFLAGS=-p -fopenmp -g -O1 -Wall -DNDEBUG
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
@@ -39,6 +40,22 @@ bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
     common/debug.h common/f1-wrapper.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+bin/mergesam: mergesam/merge_sam.o mergesam/sam2pretty_lib.o mergesam/merge_sam_main.o mergesam/merge_sam_heap.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+mergesam/merge_sam.o: mergesam/merge_sam.c mergesam/merge_sam.h 
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/merge_sam_main.o: mergesam/merge_sam_main.c  
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/merge_sam_heap.o: mergesam/merge_sam_heap.c mergesam/merge_sam_heap.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+	
 
 #
 # probcalc 
@@ -156,7 +173,7 @@ common/bitmap.o: common/bitmap.c common/bitmap.h
 clean:
 	rm -f bin/colourise bin/probcalc bin/gmapper* \
 	    bin/prettyprint* bin/probcalc_mp bin/shrimp_var \
-	    bin/shrimp2sam utils/split-contigs
+	    bin/shrimp2sam utils/split-contigs bin/mergesam
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f

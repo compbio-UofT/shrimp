@@ -33,9 +33,10 @@
 DEF_HEAP(uint32_t,uint,uu)
 DEF_HEAP(uint, struct read_hit_holder, unpaired)
 DEF_HEAP(uint, struct read_hit_pair_holder, paired)
+DEF_HEAP(uint32_t,char*,out)
 
 /* Mode */
-static int	mode_mirna		= false;
+static int      mode_mirna              = false;
 
 /* Parameters */
 static double	window_len		= DEF_WINDOW_LEN;
@@ -67,6 +68,20 @@ static int	crossover_score		= DEF_XOVER_PENALTY;
 static double	window_gen_threshold	= DEF_WINDOW_GEN_THRESHOLD;
 static double	sw_vect_threshold	= DEF_SW_VECT_THRESHOLD;
 static double	sw_full_threshold	= DEF_SW_FULL_THRESHOLD;
+
+/* Thread output buffer */
+char ** thread_output_buffer;
+size_t * thread_output_buffer_sizes;
+char ** thread_output_buffer_filled;
+unsigned int * thread_output_buffer_chunk;
+#define DEF_THREAD_OUTPUT_BUFFER_INITIAL	1024*1024*10
+#define DEF_THREAD_OUTPUT_BUFFER_INCREMENT	1024*1024*10
+#define DEF_THREAD_OUTPUT_BUFFER_SAFETY	1024*500
+#define DEF_THREAD_OUTPUT_HEAP_CAPACITY	1024
+size_t	thread_output_buffer_initial = DEF_THREAD_OUTPUT_BUFFER_INITIAL;
+size_t	thread_output_buffer_increment = DEF_THREAD_OUTPUT_BUFFER_INCREMENT;
+size_t  thread_output_buffer_safety = DEF_THREAD_OUTPUT_BUFFER_SAFETY;
+unsigned int thread_output_heap_capacity = DEF_THREAD_OUTPUT_HEAP_CAPACITY;
 
 /* Flags */
 static bool strata_flag = false;		/* get only top scoring hits */
@@ -266,6 +281,7 @@ load_default_mirna_seeds() {
   for (int i = 0; i < default_spaced_seeds_mirna_cnt; i++)
     add_spaced_seed(default_spaced_seeds_mirna[i]);
 }
+
 
 static bool
 load_default_seeds(int weight) {
@@ -1697,6 +1713,24 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 				     re->read_len, re->initbp[rh->st], rh->gen_st);
 	}
   } else {
+	int thread_id = omp_get_thread_num();
+	char ** output_buffer = thread_output_buffer_filled+thread_id;
+ 	char * output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
+	while ( (size_t)(output_buffer_end - *output_buffer) < thread_output_buffer_safety) { 
+		//fprintf(stderr,"%d incrementing buffer, free space %llu\n",thread_id,output_buffer_end - *output_buffer );
+		size_t new_size = thread_output_buffer_sizes[thread_id]+thread_output_buffer_increment;
+		size_t filled = thread_output_buffer_filled[thread_id]-thread_output_buffer[thread_id];
+		//fprintf(stderr, "there are %llu bytes used\n",filled);
+		thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
+		if (thread_output_buffer[thread_id]==NULL) {
+			fprintf(stderr,"Hit output : realloc failed!\n");
+			exit(1);
+		}
+		thread_output_buffer_sizes[thread_id]=new_size;
+		thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id]+filled;
+		output_buffer = thread_output_buffer_filled+thread_id;
+		output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
+	}	
 	//TODO change this size?
 	int buffer_size=MAX(longest_read_len,1000)*8;
 	*output1 = (char *)xmalloc(sizeof(char *)*buffer_size);
@@ -1834,24 +1868,35 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 			isize,seq,qual);
+		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
+			"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
+			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
+			isize,seq,qual);
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			if (Qflag) {
 				extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
+				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
 			} else {
 				extra = extra + sprintf(extra,"\tCQ:Z:%s",qual);
+				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",qual);
 			}
 			extra = extra + sprintf(extra, "\tCS:Z:%s",re->seq);
+			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s",re->seq);
 		}
 		if (sam_r2) {
 			if (shrimp_mode == MODE_COLOUR_SPACE) {
 				extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
+				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
 			} else {
 				extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
+				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 			}
 		}
 		if (sam_read_group_name!=NULL ){
 			extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
-		}	
+			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
+		}
+		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
 		assert(found_alignments==0);
 		assert(stored_alignments==0);
 		//assert(hits[0]==0);
@@ -2048,7 +2093,13 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 		isize,seq,qual);
+	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
+		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
+		isize,seq,qual);
 	extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
+	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
+		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
+		rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -2056,24 +2107,30 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		//assert(strcmp(readtostr(re->read[0],re->read_len,true,first_bp),re->seq)==0);
 		if (Qflag) {
 			extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
+			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
 		}
 		extra = extra + sprintf(extra, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
+		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
 	} 
 	if (sam_r2) {
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
+			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
 		} else {
 			extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
+			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 		}
 	}
 	
 	if (sam_read_group_name!=NULL) {
 			extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
+			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);
 		free(cigar);
 	}
+	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
 
     //to calculate the insert size we need to find the five' end of the reads
 /*
@@ -2218,19 +2275,18 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 	      	hit_output(re, rh, NULL,  &output1, &output2, false, hits,found_alignments);
 	      }
 	//TODO - maybe buffer printf output here ? might make it go faster?
-	      if (!Pflag) {
-	#pragma omp critical (stdout)
-		{
-		  fprintf(stdout, "%s\n", output1);
-		  if (sam_half_paired) {
-		  	fprintf(stdout, "%s\n", output2);
-		  }
-		}
-	      } else {
-	#pragma omp critical (stdout)
-		{
-		  fprintf(stdout, "%s\n\n%s\n", output1, output2);
-		}
+	      if (!Eflag) {
+			if ( !Pflag) {
+		#pragma omp critical (stdout)
+			{
+			  fprintf(stdout, "%s\n", output1);
+			}
+		      } else {
+		#pragma omp critical (stdout)
+			{
+			  fprintf(stdout, "%s\n\n%s\n", output1, output2);
+			}
+		      }
 	      }
 
 	      free(output1);
@@ -2381,17 +2437,18 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2, struct heap_pai
 	      assert(rh1!=NULL && rh2!=NULL);
 	      hit_output(re1, rh1,  rh2, &output1, &output2,true,hits1,found_alignments);
 	      hit_output(re2, rh2,  rh1, &output3, &output4,false,hits2,found_alignments);
-
-	      if (!Pflag) {
-	#pragma omp critical (stdout)
-		{
-		  fprintf(stdout, "%s\n%s\n", output1, output3);
-		}
-	      } else {
-	#pragma omp critical (stdout)
-		{
-		  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
-		}
+	      if (!Eflag) {
+		      if (!Pflag) {
+		#pragma omp critical (stdout)
+			{
+			  fprintf(stdout, "%s\n%s\n", output1, output3);
+			}
+		      } else {
+		#pragma omp critical (stdout)
+			{
+			  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
+			}
+		      }
 	      }
 
 	      if (Xflag) {
@@ -2532,10 +2589,10 @@ handle_read(read_entry *re){
 		//no alignments, print to sam empty record
 		char* output1=NULL; 
       		hit_output(re, NULL, NULL, &output1, NULL, false, NULL,0);
-		#pragma omp critical (stdout)
+		/*#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);
-		}
+		}*/
 		free(output1);
 	}
 	if (unaligned_reads_file!=NULL) {
@@ -2626,11 +2683,11 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 		char* output1=NULL; char * output2=NULL;
       		hit_output(re1, NULL, NULL, &output1, NULL, true, NULL,0);
       		hit_output(re2, NULL, NULL, &output2, NULL, false, NULL,0);
-		#pragma omp critical (stdout)
+		/*#pragma omp critical (stdout)
 		{
 			fprintf(stdout, "%s\n", output1);
 			fprintf(stdout, "%s\n", output2);
-		}
+		}*/
 		free(output1);
 		free(output2);		
 
@@ -2747,6 +2804,7 @@ read_compute_ranges(struct read_entry * re)
 }
 
 
+
 /*
  * Launch the threads that will scan the reads
  */
@@ -2791,20 +2849,54 @@ launch_scan_threads(){
   bool read_more = true;
   bool more_in_left_file=true; bool more_in_right_file=true;
 
+  /* initiate the thread buffers */
+  thread_output_buffer_sizes = (size_t*)malloc(sizeof(size_t)*num_threads);
+  if (thread_output_buffer_sizes==NULL) {
+	fprintf(stderr,"Failed to malloc thread_output_buffer_sizes buffer!\n");
+	exit(1);
+  }
+  memset(thread_output_buffer_sizes,0, sizeof(size_t)*num_threads);	 
+  thread_output_buffer_filled = (char**)malloc(sizeof(char*)*num_threads);
+  if (thread_output_buffer_filled==NULL) {
+	fprintf(stderr,"Failed to malloc thread_output_buffer_filled buffer!\n");
+	exit(1);
+  }	 
+  memset(thread_output_buffer_filled,0, sizeof(char*)*num_threads);	
+  thread_output_buffer = (char**)malloc(sizeof(char*)*num_threads);
+  if (thread_output_buffer==NULL) {
+	fprintf(stderr,"Failed to malloc thread_output_buffer buffer!\n");
+	exit(1);
+  }	 
+  memset(thread_output_buffer,0, sizeof(char*)*num_threads);	
+  thread_output_buffer_chunk = (unsigned int*)malloc(sizeof(unsigned int)*num_threads);
+  if (thread_output_buffer_chunk==NULL) {
+	fprintf(stderr,"Failed to malloc thread_output_buffer_chunk buffer!\n");
+	exit(1);
+  }	 
+  memset(thread_output_buffer_chunk,0, sizeof(unsigned int)*num_threads);	
+  
+  unsigned int current_thread_chunk = 1;
+  unsigned int next_chunk_to_print = 1;
+  struct heap_out h; 
+  heap_out_init(&h, thread_output_heap_capacity );
+
 #pragma omp parallel shared(read_more,more_in_left_file,more_in_right_file, fasta) num_threads(num_threads)
   {
+    int thread_id = omp_get_thread_num();
     struct read_entry * re_buffer;
     int load, i;
     uint64_t before;
-
     re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
     memset(re_buffer,0,chunk_size * sizeof(re_buffer[0]));
 
+
     while (read_more){
       before = rdtsc();
-//Maybe just have one thread read in everything and then split the work ? TODO
+
+      //Read in this threads 'chunk'
 #pragma omp critical (fill_reads_buffer)
       {
+	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 	load = 0;
@@ -2845,6 +2937,15 @@ launch_scan_threads(){
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
 
+      thread_output_buffer_sizes[thread_id]=thread_output_buffer_initial;
+      thread_output_buffer[thread_id]=(char*)malloc(sizeof(char)*thread_output_buffer_sizes[thread_id]);
+      if (thread_output_buffer[thread_id]==NULL) {
+	fprintf(stderr,"Failed to allocate memory for actual thread_buffer!\n");
+	exit(1);
+      }
+      thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id];
+      thread_output_buffer[thread_id][0]='\0';
+
       for (i = 0; i < load; i++) {
 	// if running in paired mode and first foot is ignored, ignore this one, too
 	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].ignore) {
@@ -2880,6 +2981,7 @@ launch_scan_threads(){
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers<0) {
 		fprintf(stderr,"warning: Read smaller then any seed, skipping read!\n");
+		re_buffer[i].max_n_kmers=1;
 		read_free_full(&re_buffer[i]);
 		continue;	
 	}
@@ -2934,11 +3036,38 @@ launch_scan_threads(){
 	   }
 	  }
       }
+      //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
+	#pragma omp critical 
+	{
+		struct heap_out_elem tmp;
+		tmp.key=thread_output_buffer_chunk[thread_id];
+		tmp.rest=thread_output_buffer[thread_id];
+		thread_output_buffer[thread_id]=NULL;	
+		heap_out_insert(&h,&tmp);	
+		heap_out_get_min(&h,&tmp);
+		while (h.load>0 && tmp.key==next_chunk_to_print) {
+			heap_out_extract_min(&h,&tmp);
+			fprintf(stdout,"%s",tmp.rest);
+			free(tmp.rest);
+			next_chunk_to_print++;
+		}
+	}
     }
 
     free(re_buffer);
   } // end parallel section
 
+	struct heap_out_elem tmp;
+	while (h.load>0) {
+		heap_out_extract_min(&h,&tmp);
+		fprintf(stdout,"%s",tmp.rest);
+		free(tmp.rest);
+	}
+	heap_out_destroy(&h);
+  free(thread_output_buffer_sizes);
+  free(thread_output_buffer_filled);
+  free(thread_output_buffer);
+  free(thread_output_buffer_chunk);
   if (single_reads_file) {
     fasta_close(fasta);
   } else {
@@ -3725,7 +3854,6 @@ print_settings() {
 
 }
 
-
 static int
 set_mode_from_string(char const * s) {
   if (!strcmp(s, "mirna")) {
@@ -4102,16 +4230,16 @@ int main(int argc, char **argv){
 		case 'Q':
 			Qflag = true;
 			break;
-		case 'M':
-			c = strtok(optarg, ",");
-			do {
-			  if (!set_mode_from_string(c)) {
-			    fprintf(stderr, "error: unrecognized mode (%s)\n", c);
-			    exit(1);
-			  }
-			  c = strtok(NULL, ",");
-			} while (c != NULL);		  
-			break;
+                case 'M':
+                        c = strtok(optarg, ",");
+                        do {
+                          if (!set_mode_from_string(c)) {
+                            fprintf(stderr, "error: unrecognized mode (%s)\n", c);
+                            exit(1);
+                          } 
+                          c = strtok(NULL, ",");
+                        } while (c != NULL);
+                        break;
 		default:
 			usage(progname, false);
 		}
@@ -4160,10 +4288,10 @@ int main(int argc, char **argv){
 	}
 
 	if (n_seeds == 0 && load_file == NULL) {
-	  if (mode_mirna)
-	    load_default_mirna_seeds();
-	  else
-	    load_default_seeds(0);
+          if (mode_mirna)
+            load_default_mirna_seeds();
+          else
+            load_default_seeds(0);
 	}
 
 	kmer_to_mapidx = kmer_to_mapidx_orig;
@@ -4512,7 +4640,7 @@ int main(int argc, char **argv){
 			size_t read; bool ends_in_newline=true;
 			while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
 				buffer[read]='\0';
-				fprintf(stdout,buffer);
+				fprintf(stdout,"%s",buffer);
 				if (buffer[read-1]=='\n') {
 					ends_in_newline=true;
 				} else {

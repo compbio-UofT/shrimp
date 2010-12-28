@@ -372,8 +372,7 @@ The options used above have the following meaning:
 
 After the mapping jobs complete, we merge the results with:
 
-  $ $SHRIMP_FOLDER/utils/merge-hits-same-qr-diff-db --paired \
-  --dest-file map.sam map.db?of4.sam
+  $ $SHRIMP_FOLDER/bin/mergesam -r reads.500kx2.36bp.ls.fa --letter-space -o map.sam map.db?of4.sam
 
 Above, the merging script we used corresponds to "same query set" (same reads)
 and "different databases" (disjoint chunks of hg18).
