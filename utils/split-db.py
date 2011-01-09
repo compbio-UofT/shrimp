@@ -91,8 +91,6 @@ def main(argv):
 
 	#check if temp directory exists
 	if os.path.exists(tmp_dir):
-		for handle in handles:
-			handle.close()
 		print >> sys.stderr, "Temp directory %s exists!" % tmp_dir
 		usage(shrimp_folder)
 		sys.exit(1)
