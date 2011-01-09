@@ -1,0 +1,11 @@
+#!/bin/bash
+if [ $# -ne 2 -a $# -ne 3 ];
+then
+	echo $0 first_dir second_dir \[verbose?\]
+	exit
+fi
+
+#get some files
+find ../ | grep -v svn | grep -v "\.swp$" | grep -v "\.gz$" | grep -v "not_in_dist"  > all_files_n_folders; while read line; do if [ ! -d $line ]; then echo $line | sed 's/\.\./\./g'; fi; done < all_files_n_folders > all_files
+while read line; do diff $1/$line $2/$line > /dev/null; if [ $? -ne 0 ] ; then echo $line; if [ $# -eq 3 ] ; then diff $1/$line $2/$line ; fi; fi ; done < all_files 
+
