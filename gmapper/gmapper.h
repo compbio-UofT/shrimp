@@ -72,7 +72,11 @@ struct option standard_options[] =
 	{"sam-header",1,0,18},
 	{"half-paired",0,0,19},
 	{"sam-r2",0,0,20},
-	{"mode",1,0,'M'}
+	{"mode",1,0,'M'},
+	{"trim-front",1,0,200},
+	{"trim-end",1,0,201},
+	{"trim-first",1,0,202},
+	{"trim-second",1,0,203}
 };
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},

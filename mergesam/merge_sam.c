@@ -668,7 +668,7 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		if (read_names_filled==0) {
 			break;
 		}
-		size_t i;
+		int i;
 		//for (i=0; i<read_names_filled; i++) {
 		//	fprintf(stderr,"%d R:%s\n",read_names_filled,read_names[i]);
 		//}

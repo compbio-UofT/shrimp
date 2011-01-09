@@ -50,7 +50,11 @@ static uint32_t	list_cutoff		= DEF_LIST_CUTOFF;
 static bool	gapless_sw		= DEF_GAPLESS_SW;
 static bool	hash_filter_calls	= DEF_HASH_FILTER_CALLS;
 static int	longest_read_len	= DEF_LONGEST_READ_LENGTH;
-
+static bool	trim			= false;
+static int	trim_front		= 0;
+static int 	trim_end		= 0;
+static bool	trim_first		= true;
+static bool	trim_second		= true;
 
 /* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
@@ -1300,6 +1304,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
+	//printf("HIT %d\n",i);
       // find matching hit, if any
       while (j < re2->n_hits[st2]
 	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
@@ -1315,7 +1320,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 	     && re2->hits[st2][k].cn == re1->hits[st1][i].cn
 	     && (int64_t)re2->hits[st2][k].g_off <= (int64_t)re1->hits[st1][i].g_off + delta_max)
 	k++;
-
+	//printf("Bounding between g_off %d and %d\n",(int64_t)re1->hits[st1][i].g_off + delta_min,(int64_t)re1->hits[st1][i].g_off + delta_max);
       if (j == k) // no paired hit
 	continue;
 
@@ -2495,9 +2500,15 @@ static void
 read_free(read_entry * re) {
   free(re->name);
   free(re->seq);
+  if (re->orig_seq!=re->seq) {
+	free(re->orig_seq);
+  }
   if (Qflag) {
         assert(re->qual!=NULL);
         free(re->qual);
+	if (re->qual!=re->orig_qual) {
+		free(re->orig_qual);
+	}
         assert(re->plus_line!=NULL);
         free(re->plus_line);
   }
@@ -2803,7 +2814,27 @@ read_compute_ranges(struct read_entry * re)
     }
 }
 
-
+/* Trim a read */
+static void trim_read(struct read_entry * re) {
+	re->orig_seq=strdup(re->seq);
+	if (Qflag) {
+		re->orig_qual=strdup(re->qual);
+	}
+	//handle colour space too!
+	int length=strlen(re->seq);
+	int i;
+	for (i=0; i<length-trim_end-trim_front; i++) {
+		re->seq[i]=re->seq[i+trim_front];
+		if (Qflag) {
+			re->qual[i]=re->qual[i+trim_front];
+		}
+	}
+	memset(re->seq+i,0,17);
+	if (Qflag) {
+		memset(re->qual+i,0,17);
+	}
+	return;
+}
 
 /*
  * Launch the threads that will scan the reads
@@ -2961,6 +2992,20 @@ launch_scan_threads(){
 	//  }
 	//  continue;
 	//}
+	
+	//Trim the reads
+	if (trim) {
+		if (pair_mode != PAIR_NONE ) {
+			if (trim_first) {
+				trim_read(re_buffer+i-1);
+			}
+			if (trim_second) {
+				trim_read(re_buffer+i);
+			}
+		} else {
+			trim_read(re_buffer+i);
+		}
+	}	
 
 	re_buffer[i].ignore = false;
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
@@ -3702,6 +3747,14 @@ usage(char * progname, bool full_usage){
 	  "      --read-group      Attach SAM Read Group name\n");
   fprintf(stderr,
           "      --sam-header      Use file as SAM header\n");
+  fprintf(stderr,
+          "      --trim-front      Trim front of reads by this amount\n");
+  fprintf(stderr,
+          "      --trim-end        Trim end of reads by this amount\n");
+  fprintf(stderr,
+          "      --trim-first      Trim only first read in pair\n");
+  fprintf(stderr,
+          "      --trim-second     Trim only second read in pair\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
@@ -4240,6 +4293,36 @@ int main(int argc, char **argv){
                           c = strtok(NULL, ",");
                         } while (c != NULL);
                         break;
+		case 200:
+			trim=true;
+			trim_front=atoi(optarg);
+			if (shrimp_mode == MODE_COLOUR_SPACE) {
+				fprintf(stderr,"--trim-front cannot be used in colour space mode!\n");
+				exit(1);
+			}
+			if (trim_front<0) {
+				fprintf(stderr,"--trim-front value must be positive\n");
+				exit(1);
+			}
+			break;
+		case 201:
+			trim=true;
+			trim_end=atoi(optarg);
+			if (trim_end<0) {
+				fprintf(stderr,"--trim-end value must be positive\n");
+				exit(1);
+			}
+			break;
+		case 202:
+			trim=true;
+			trim_first=true;
+			trim_second=false;
+			break;
+		case 203:
+			trim=true;
+			trim_second=true;
+			trim_first=false;
+			break;
 		default:
 			usage(progname, false);
 		}
@@ -4250,7 +4333,7 @@ int main(int argc, char **argv){
 
 	if (Gflag && gapless_sw) {
 		fprintf(stderr,"error: cannot use global (or bfast) and ungapped mode at the same time!\n");
-		exit(1);
+		usage(progname,false);
 	}
 	if (sam_unaligned && !Eflag) {
 		fprintf(stderr,"error: when using flag --sam-unaligned must also use -E/--sam\n");
@@ -4272,6 +4355,10 @@ int main(int argc, char **argv){
 	if (pair_mode != PAIR_NONE && !num_matches_set) {
 	  num_matches = 4;
 	}
+	if (pair_mode == PAIR_NONE && (!trim_first || !trim_second)) {
+		fprintf(stderr,"error: cannot use --trim-first or --trim-second in unpaired mode\n");
+		usage(progname,false);
+	} 
 
 	if (Xflag) {
 	  if (pair_mode == PAIR_NONE) {

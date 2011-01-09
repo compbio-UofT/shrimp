@@ -71,7 +71,9 @@ typedef struct _fasta_stats_t {
 struct read_entry {
   char *        name;
   char *        seq;
+  char *	orig_seq;
   char *        qual;
+  char *	orig_qual;
   char *        plus_line; //The '+' line in fastq
   uint32_t *    read[2];        /* the read as a bitstring */
 

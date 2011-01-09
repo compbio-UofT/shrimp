@@ -182,10 +182,10 @@ SHRiMP2 uses the OpenMP API to achieve multi-threaded operation.
 ----------------------
 
 Assume we downloaded the linux binary package in
-./SHRiMP_2_0_3.lx26.x86_64.tar.gz
+./SHRiMP_2_1_0.lx26.x86_64.tar.gz
 
-  $ tar xvzf SHRiMP_2_0_3.lx26.x86_64.tar.gz
-  $ cd SHRiMP_2_0_3
+  $ tar xvzf SHRiMP_2_1_0.lx26.x86_64.tar.gz
+  $ cd SHRiMP_2_1_0
   $ file bin/gmapper
   bin/gmapper: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV), for
   GNU/Linux 2.6.9, statically linked, for GNU/Linux 2.6.9, not stripped
@@ -198,10 +198,10 @@ utils/.
 3.2 Compiling SHRiMP2 from source
 ---------------------------------
 
-Assume we downloaded the source package in ./SHRiMP_2_0_3.src.tar.gz
+Assume we downloaded the source package in ./SHRiMP_2_1_0.src.tar.gz
 
-  $ tar xvzf SHRiMP_2_0_3.src.tar.gz
-  $ cd SHRiMP_2_0_3
+  $ tar xvzf SHRiMP_2_1_0.src.tar.gz
+  $ cd SHRiMP_2_1_0
   $ make
   [...warnings, hopefully no errors...]
   $ ls bin/gmapper*

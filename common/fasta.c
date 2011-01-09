@@ -214,13 +214,13 @@ void fasta_write_read(FILE * file, read_entry * re) {
 		//TODO does not print out the ranges vars as well!
 	if (re->qual==NULL) {
 		fprintf(file,">%s\n",re->name);
-		fasta_write_fasta(file,re->seq);
+		fasta_write_fasta(file,re->orig_seq);
 	} else {
 		//its fastq
 		fprintf(file,"@%s\n",re->name);
-		fasta_write_fasta(file,re->seq);
+		fasta_write_fasta(file,re->orig_seq);
 		fprintf(file,"%s\n",re->plus_line);
-		fasta_write_fasta(file,re->qual);
+		fasta_write_fasta(file,re->orig_qual);
 	}
 };
 
@@ -329,6 +329,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 	re->seq = (char *)xmalloc(sequence_length + 17);
 	memcpy(re->seq, fasta->parse_buffer, sequence_length);
 	memset(re->seq + sequence_length, 0, 17);
+	re->orig_seq=re->seq;
 	if (fasta->fastq) {
 		/*
 			Read in the plus line
@@ -414,6 +415,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 		}	
 		//memcpy(re->qual, fasta->parse_buffer, quality_length);
 		memset(re->qual + quality_length, 0, 17);
+		re->orig_qual=re->qual;
 	}	
 
 

@@ -1,3 +1,30 @@
+2.1.0: Dec 28, 2010
+	- Added new mirna mode
+	- Output of gmapper now in same order as reads in multi-thread mode
+	- Added mergesam program to replace merging scripts
+	- Added MAPQ annotation option to mergesam program
+
+2.0.4: Nov 19, 2010
+	- Fixed a bug in both cs and ls global alignments, that in some cases caused 
+	clipping to be in output alignments
+	- Added support for spaces in FASTQ quality files, this is translated to a '!'
+	- Fixed merging script to support half-paired mode and be slightly more stable
+		- TODO: A more stable, and faster merging script for next SHRiMP release
+	- Fixed an error that only outputted 30 alignments, no matter what the '-o' flag
+	was specified to be
+
+2.0.3: Oct 28, 2010
+        - Fixed a global alignment issue resulting in clipped alignments.
+        - Added flag --half-paired , to map each pair independently if 
+          mapping a pair fails.
+        - Added flag --sam-r2 to report SAM r2 field for alignments.
+        - Added --sam-header flag to replace output SAM header with file
+        - Added --read-group flag to output read-group in SAM for alignments
+        - Fixed a issue with blank quality values for some reads
+        - Implemented a global letter space alignment
+        - Fixed a typo in split-db.py
+        - Fixed an error in length 18 default seeds, last seed was incorrect
+
 2.0.2: Sep 20, 2010
 	- Long formats for many option and parameter names are now available.
         - New options available, including ability to dump unmapped reads in SAM output.
