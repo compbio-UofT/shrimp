@@ -29,6 +29,7 @@ void usage(char * s , int e) {
 	fprintf(f,"   --mapq            Compute MAPQ values               Default: No\n");
 	fprintf(f,"   --mapq-hits       MAPQ based on top this many hits  Default: (report)+1\n");
 	fprintf(f,"   --mapq-strata     MAPQ based on strata hits         Default: No\n");
+	fprintf(f,"-i/--insert-size     Insert size for score tie-break   Default: Off\n");
 	fprintf(f,"-- Runtime Settings----------------------\n");
 	fprintf(f,"-R/--read-threads    Should be less then #SAM files    Default: 1\n");
 	fprintf(f,"-C/--compute-threads Should be low, try 1,2,3          Default: 1\n");
@@ -71,6 +72,7 @@ struct option long_op[] =
 		{"compute-threads",1,0,'C'},
 		{"buffer-size",1,0,'M'},
 		{"output",1,0,'o'},
+		{"insert-size",1,0,'i'},
 		{0,0,0,0}
 	};
 		
@@ -95,7 +97,7 @@ int main(int argc, char** argv) {
 	int compute_threads=1;
 	int buffer_size=10;
 	int op_id;
-	char short_op[] = "r:hvN:O:X:QC:R:M:o:";
+	char short_op[] = "r:hvN:O:X:Qi:C:R:M:o:";
 	char c = getopt_long(argc, argv, short_op, long_op, &op_id);
 	while (c != EOF) {
 		switch (c) {
@@ -113,6 +115,10 @@ int main(int argc, char** argv) {
 				int threads=atoi(optarg);
 				omp_set_num_threads(threads);
 			}
+			break;
+		case 'i':
+			of.isize=atoi(optarg);
+			of.use_isize=true;
 			break;
 		case 3:
 			of.strata=true;
@@ -203,8 +209,8 @@ int main(int argc, char** argv) {
 	fprintf(stderr,"Input reads file: %s, in %s format\n",reads_filename,reads_fastq ? "FASTQ" : "FASTA");
 	fprintf(stderr,"Output file: %s\n",output_filename);
 	//print out output filter
-	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n",
-		of.number_outputs, of.max_alignments, of.strata ? "Yes" : "No", of.unaligned ? "Yes" : "No" , of.half_paired ? "Yes" : "No" );
+	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n\tUse isize: %s\tisize: %d\n",
+		of.number_outputs, of.max_alignments, of.strata ? "Yes" : "No", of.unaligned ? "Yes" : "No" , of.half_paired ? "Yes" : "No",of.use_isize ?  "Yes" : "No",of.isize );
 	//print out mapq info
 	fprintf(stderr,"MAPQ Info:\n\tCompute MAPQ:\t%s\n\tScoreMatrixLambda:\t%e\tSW-ScaleConstant:\t%e\n\t#TopHits:\t%d\tStrata:\t%s\n",
 		mqi.calculate ? "Yes" : "No" , mqi.score_matrix_lambda, mqi.sw_scale_constant, mqi.top_hits, mqi.strata ? "Yes" : "No");

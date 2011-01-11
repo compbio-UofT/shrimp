@@ -28,9 +28,11 @@ popd
 rm -rf ${SHRiMP_FOLDER}/bin
 rm -f ${TAR_FILENAME}
 tar -hcf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}
-cp -r ../bin ${SHRiMP_FOLDER}/bin
-cp ../utils/splitcontigs ${SHRiMP_FOLDER}/utils/
+mkdir ${SHRiMP_FOLDER}/bin
+cp ../bin/* ${SHRiMP_FOLDER}/bin/
 tar -rf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}/bin
+cp ../utils/split-contigs ${SHRiMP_FOLDER}/utils/
+tar -rf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}/utils/split-contigs
 rm -f ${GZ_FILENAME}
 gzip -9 ${TAR_FILENAME}
 
@@ -51,9 +53,11 @@ popd
 rm -rf ${SHRiMP_FOLDER}/bin
 rm -f ${TAR_FILENAME}
 tar -hcf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}
-cp -r ../bin ${SHRiMP_FOLDER}/bin
-cp ../utils/splitcontigs ${SHRiMP_FOLDER}/utils/
+mkdir ${SHRiMP_FOLDER}/bin
+cp ../bin/* ${SHRiMP_FOLDER}/bin/
 tar -rf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}/bin
+cp ../utils/split-contigs ${SHRiMP_FOLDER}/utils/
+tar -rf ${TAR_FILENAME} ${SHRiMP_LOCAL_FOLDER}/utils/split-contigs
 rm -f ${GZ_FILENAME}
 gzip -9 ${TAR_FILENAME}
 

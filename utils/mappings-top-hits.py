@@ -81,7 +81,7 @@ if __name__=='__main__':
 	shrimp_folder=os.environ.get("SHRIMP_FOLDER","")
 	#Parse options
 	try:
-		opts, args = getopt.getopt(sys.argv[1:], "o:", ["unpaired","strata", "paired","sam-unaligned","half-paired","","max-alignments="])
+		opts, args = getopt.getopt(sys.argv[1:], "o:", ["unpaired","strata", "paired","sam-unaligned","half-paired","report=","max-alignments="])
 	except getopt.GetoptError, err:
 		print str(err)
 		usage(shrimp_folder)

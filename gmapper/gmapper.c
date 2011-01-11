@@ -1290,36 +1290,50 @@ read_pass1(struct read_entry * re, bool only_paired) {
 static void
 readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
   int st1, st2, i, j, k, l;
-  int64_t delta_min, delta_max; // add to re1->g_off
 
   for (st1 = 0; st1 < 2; st1++) {
     st2 = 1 - st1; // opposite strand
-    if (st1 == 0) {
-      delta_min = (int64_t)re1->window_len + (int64_t)min_insert_size;
-      delta_max = (int64_t)re1->window_len + (int64_t)max_insert_size;
-    } else {
-      delta_min = - (int64_t)max_insert_size - (int64_t)re2->window_len;
-      delta_max = - (int64_t)min_insert_size - (int64_t)re2->window_len;
-    }
+    int re1_strand = pair_reverse[pair_mode][0] ? 1-st1 : st1;
+    int re2_strand = pair_reverse[pair_mode][1] ? 1-st2 : st2;
+    int re1_correction = re1->window_len-re1->read_len;
+    int re2_correction = re2->window_len-re2->read_len;
 
+    int max_correction = 0;
+    int min_correction = 0;
+    if (pair_mode==PAIR_OPP_IN) {
+	max_correction = re1_correction + re2_correction;
+    } else if (pair_mode==PAIR_OPP_OUT) {
+	min_correction = - re1_correction - re2_correction;
+    } else if (pair_mode==PAIR_COL_FW) {
+	max_correction = re2_correction;
+	min_correction = -re1_correction;
+    }
+   
+    
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
-	//printf("HIT %d\n",i);
+      int64_t fivep = re1->hits[st1][i].g_off + ((re1_strand==1) ? re1->window_len : 0);
+      int64_t min_fivep_mp = (int64_t)(min_insert_size+min_correction+fivep);
+      int64_t max_fivep_mp = (int64_t)(max_insert_size+max_correction+fivep);
       // find matching hit, if any
       while (j < re2->n_hits[st2]
 	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
 		 || (re2->hits[st2][j].cn == re1->hits[st1][i].cn // same contig, but too close
-		     && (int64_t)re2->hits[st2][j].g_off < (int64_t)re1->hits[st1][i].g_off + delta_min
+		     && (int64_t)(re2->hits[st2][j].g_off + ((re2_strand==1) ? re2->window_len : 0)) < min_fivep_mp //five_mp < min_fivep_mp
 		     )
 		 )
-	     )
+	     ) {
+	//printf("skipping g_off %lld, %d, translated %ld, min_fivep_mp %ld\n",re2->hits[st2][j].g_off,(re2_strand==1) ? re2->window_len : 0,(int64_t)(re2->hits[st2][j].g_off + ((re2_strand==1) ? re2->window_len : 0)),min_fivep_mp);
 	j++;
+      }
 
       k = j;
       while (k < re2->n_hits[st2]
 	     && re2->hits[st2][k].cn == re1->hits[st1][i].cn
-	     && (int64_t)re2->hits[st2][k].g_off <= (int64_t)re1->hits[st1][i].g_off + delta_max)
+	     && (int64_t)(re2->hits[st2][k].g_off + ((re2_strand==1) ? re2->window_len : 0)) <= max_fivep_mp) {
+	//printf("taking g_off %d, translated %d, max_fivep_mp %d\n",re2->hits[st2][k].g_off,(int64_t)(re2->hits[st2][k].g_off + ((re2_strand==1) ? re2->window_len : 0)),max_fivep_mp);
 	k++;
+      }
 	//printf("Bounding between g_off %d and %d\n",(int64_t)re1->hits[st1][i].g_off + delta_min,(int64_t)re1->hits[st1][i].g_off + delta_max);
       if (j == k) // no paired hit
 	continue;
@@ -3027,7 +3041,14 @@ launch_scan_threads(){
 	if (re_buffer[i].max_n_kmers<0) {
 		fprintf(stderr,"warning: Read smaller then any seed, skipping read!\n");
 		re_buffer[i].max_n_kmers=1;
-		read_free_full(&re_buffer[i]);
+		if (pair_mode==PAIR_NONE) {
+			read_free_full(&re_buffer[i]);
+		} else if (i%2==1) {
+			read_free_full(&re_buffer[i-1]);
+			read_free_full(&re_buffer[i]);
+		} else {
+			re_buffer[i].ignore=true;
+		}
 		continue;	
 	}
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);

@@ -6,6 +6,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <zlib.h>
+#include <limits.h>
 #include "merge_sam.h"
 #include "merge_sam_heap.h"
 #include "sam2pretty_lib.h"
@@ -53,7 +54,7 @@ pretty *** file_pa;
 pretty ** master_pa;
 char ** read_names;
 uint64_t read_names_size;
-uint64_t read_names_filled;
+int64_t read_names_filled;
 
 
 static int phred_scale(double p_value) {
@@ -97,6 +98,12 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 				pretty_print_sam(stdout,pa);
 				exit(1);
 			}
+			if (pa->isize!=-pa->mate_pair->isize) {
+				fprintf(stderr,"merge_sam : process_read, pairs insert sizes are not right!\n");
+				pretty_print_sam(stdout,pa);
+				pretty_print_sam(stderr,pa->mate_pair);
+				exit(1);	
+			}	
 			//check reference name too? too complicated for check at this point
 			//leave to user	
 			if (pa->mate_genome_start_unpadded!=pa->mate_pair->genome_start_unpadded ||
@@ -118,6 +125,7 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 	int top_score=-100; //TODO
 	bool has_mapping=false;
 	int best_alignments=0;
+	int best_isize=INT_MAX;
 	while (pa!=NULL) {
 		bool look_at_hit=true;
 		if ( !of->half_paired && pa->mapped && pa->mate_pair!=NULL && !pa->mate_pair->mapped) {
@@ -135,16 +143,18 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 		if (look_at_hit) {
 			heap_pa_elem tmp;
 			tmp.rest=pa;
-			tmp.key=pa->score;
+			tmp.score=pa->score;
+			tmp.isize=of->use_isize ? abs(abs(pa->isize)-of->isize) : 0;
 			has_mapping=has_mapping || pa->mapped;	
 			if (pa->mate_pair!=NULL && pa->mate_pair->has_score) {
-				tmp.key+=pa->mate_pair->score;
+				tmp.score+=pa->mate_pair->score;
 				has_mapping=has_mapping || pa->mate_pair->mapped;
 			}
-			if (tmp.key>top_score) {
-				top_score=tmp.key;
+			if (tmp.score>top_score || (tmp.score==top_score && tmp.isize<best_isize)) {
+				top_score=tmp.score;
+				best_isize=tmp.isize;
 				best_alignments=1;
-			} else if (tmp.key==top_score) {
+			} else if (tmp.score==top_score && tmp.isize==best_isize) {
 				best_alignments++;
 			}
 			heap_pa_insert(&hpa, &tmp);
@@ -174,7 +184,7 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 				heap_pa_elem tmp;
 				heap_pa_extract_max(&mapq_heap,&tmp);
 				pa=tmp.rest;
-				if (!mqi->strata || tmp.key==top_score) {
+				if (!mqi->strata || (tmp.score==top_score && tmp.isize==best_isize)) {
 					if (pa->paired_sequencing && pa->mapped && pa->mate_pair->mapped) {
 						pretty * pa_first = pa; 
 						pretty * pa_second = pa->mate_pair;
@@ -205,7 +215,7 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 				heap_pa_elem tmp;
 				heap_pa_extract_max(&mapq_heap,&tmp);
 				pa=tmp.rest;
-				if (!mqi->strata || tmp.key==top_score) {
+				if (!mqi->strata || (tmp.score==top_score && tmp.isize==best_isize)) {
 					if (pa->paired_sequencing && pa->mapped && pa->mate_pair->mapped) {
 						pretty * pa_first = pa; 
 						pretty * pa_second = pa->mate_pair;
@@ -231,7 +241,7 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 				heap_pa_elem tmp;
 				heap_pa_extract_max(&mapq_heap,&tmp);
 				pa=tmp.rest;
-				if (!mqi->strata || tmp.key==top_score) {
+				if (!mqi->strata || (tmp.score==top_score && tmp.isize==best_isize)) {
 					if (pa->paired_sequencing && pa->mapped && pa->mate_pair->mapped) {
 						pretty * pa_first = pa; 
 						pretty * pa_second = pa->mate_pair;
@@ -259,7 +269,7 @@ static void process_read(pretty ** ppa, output_filter * of, mapq_info * mqi) {
 			heap_pa_elem tmp;
 			heap_pa_extract_max(&hpa,&tmp);
 			pa=tmp.rest;
-			if (!of->strata || tmp.key==top_score) {
+			if (!of->strata || (tmp.score==top_score && tmp.isize==best_isize)) {
 				if (pa->paired_sequencing && !of->half_paired && (!pa->mapped || !pa->mate_pair->mapped)) {
 					continue;
 				}
@@ -414,7 +424,7 @@ static int get_sam_entries_read(file_buffer * fb, pretty ** pas,int * last_used)
 					fprintf(stderr,"A fatal error has occured in parsing the following SAM line, \n%s\n",line);
 					exit(1);
 				}	
-				uint64_t j; int found=0;
+				int j; int found=0;
 				//since alignments are in same order as reads, no need to compare to previous,
 				//just resume where we left of last time
 				for (j=*last_used; found==0 && j<read_names_filled; j++) {
@@ -557,7 +567,7 @@ static int index_new_read_names(bool fastq_reads,bool colour_space) {
 
 static int find_last_read(bool fastq_reads,bool colour_space)  {
 	index_new_read_names(fastq_reads,colour_space);
-	size_t i; int new_index=0;
+	int64_t i; int new_index=0;
 	//fprintf(stderr,"have %d names filled \n",read_names_filled);
 	if (read_names_filled==0) {
 		return 0;
@@ -674,7 +684,7 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		//}
 		//exit(1);
 		#pragma omp parallel for schedule(static,1) num_threads(read_threads)
-		for (i=0; i<(unsigned int)number_of_files; i++) {
+		for (i=0; i<number_of_files; i++) {
 			//fprintf(stderr,"%d: with file %d\n",omp_get_thread_num(),i);
 			file_pa[i]=(pretty**)malloc(sizeof(pretty*)*read_names_filled);
 			if (file_pa[i]==NULL) {
@@ -724,7 +734,7 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 				pa=tmp;
 			}
 		}
-		for (i=0; i<(unsigned int)number_of_files; i++) {
+		for (i=0; i<number_of_files; i++) {
 			free(file_pa[i]);
 			file_pa[i]=NULL;
 		}

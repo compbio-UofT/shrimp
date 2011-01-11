@@ -6,6 +6,21 @@
 #include "sam2pretty_lib.h"
 #include "merge_sam_heap.h"
 
+
+static bool e_compare(heap_pa_elem * a, heap_pa_elem * b) {
+	if (a->score>b->score) {
+		return true;
+	} else if (a->score==b->score) {
+		if (a->isize<b->isize) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+	return false;
+}
+
+
 void heap_pa_init(struct heap_pa * h, uint32_t capacity) {
 	assert(h != NULL);
 	h->array = (struct heap_pa_elem *)malloc(capacity * sizeof(struct heap_pa_elem)); 
@@ -28,7 +43,7 @@ void heap_pa_percolate_up(struct heap_pa * h, uint32_t node) {
 	uint32_t parent;
 
 	parent = node / 2;
-	while (node > 1 && h->array[node-1].key > h->array[parent-1].key) {
+	while (node > 1 && e_compare(h->array+node-1,h->array+parent-1)) {
 		tmp = h->array[parent-1];
 		h->array[parent-1] = h->array[node-1];
 		h->array[node-1] = tmp;
@@ -47,10 +62,10 @@ void heap_pa_percolate_down(struct heap_pa * h, uint32_t node) {
 		right = left + 1;
 		max = node;
 
-		if (left <= h->load && h->array[left-1].key > h->array[node-1].key) 
+		if (left <= h->load && e_compare(h->array+left-1,h->array+node-1)) 
 		max = left;
 
-		if (right <= h->load && h->array[right-1].key > h->array[max-1].key) 
+		if (right <= h->load && e_compare(h->array+right-1,h->array+max-1)) 
 		max = right;
 
 		if (max == node)

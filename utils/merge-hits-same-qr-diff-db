@@ -5,6 +5,7 @@ STRATA=""
 UNALIGNED=""
 HALFPAIRED=""
 OUTPUT=10
+MAX_ALIGNMENTS=0
 TMP_DIR="/tmp/$$"
 SUFFIX=':[^:]*$'
 PROGRAM_NAME=$0
@@ -39,9 +40,13 @@ Parameters:
         is only used when neither --paired nor --unpaired is given, and only if
         shrimp output format is detected (and not sam). Defaults to ":[^:]*$".
 
---output <amount>
+--report <amount>
 	Output maximum amount alignments per read. If more alignments then this
-	reported, then supress all alignments for this read.
+	reported, then report only the top hits.
+
+--max-alignments <amount>
+	If there are more then amount hits per read, suppress all output for this
+	read.
 
 --strata
 	If strata is enabled only output alignments with highest score for a read
@@ -78,13 +83,16 @@ until [ -z "$1" ]; do
       UNALIGNED="--sam-unaligned";;
     "--half-paired")
       shift
-      PAIRED="--half-paired";;
+      HALF_PAIRED="--half-paired";;
     "--unpaired")
       shift
       PAIRED="--unpaired";;
-    "--output")
+    "--report")
       shift
       OUTPUT=$1; shift;;
+    "--max-alignments")
+      shift
+      MAX_ALIGNMENTS=$1; shift;;
     "--strata")
       shift
       STRATA="--strata";;
@@ -145,9 +153,9 @@ echo 1>&2 "Detected format: $FORMAT"
 # if pairing is unspecified, detect it with script
 if [ -z "$PAIRED" ]; then
   if head -n 10000 $1 | awk -v SUFFIX=${SUFFIX} -f ${SHRIMP_FOLDER}/utils/test-unpaired-${FORMAT}.awk ; then
-    PAIRED="no"
+    PAIRED="--unpaired"
   else
-    PAIRED="yes"
+    PAIRED="--paired"
   fi
   echo 1>&2 "Detected pairing: $PAIRED"
 fi
@@ -163,7 +171,7 @@ while [ "$#" -gt 0 ]; do
     exit 1
   fi
 
-  if [ "$PAIRED" = "yes" ]; then
+  if [ "$PAIRED" = "--paired" ]; then
     $SHRIMP_FOLDER/utils/mappings-extract-body $1 2>/dev/null \
       | $SHRIMP_FOLDER/utils/mappings-collapse-pairs - 2>/dev/null \
       | sort -T ${TMP_DIR} \
@@ -177,7 +185,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 # merge into destination
-if [ "$PAIRED" = "yes" ]; then
+if [ "$PAIRED" = "--paired" ]; then
   sort -T ${TMP_DIR} -m $TMP_DIR/*.sort \
     | $SHRIMP_FOLDER/utils/mappings-expand-pairs - 2>/dev/null \
     >> ${TMP_DIR}/merged.tmp
@@ -187,8 +195,8 @@ else
 fi
 
 #grab strata or -o options
-echo $SHRIMP_FOLDER/utils/mappings-top-hits.py -o $OUTPUT $STRATA $PAIRED $UNALIGNED $HALF_PAIRED ${TMP_DIR}/merged.tmp
-$SHRIMP_FOLDER/utils/mappings-top-hits.py -o $OUTPUT $STRATA $PAIRED $UNALIGNED $HALF_PAIRED ${TMP_DIR}/merged.tmp >> $DEST_FILE
+echo $SHRIMP_FOLDER/utils/mappings-top-hits.py $STRATA $UNALIGNED $PAIRED $HALF_PAIRED --max-alignments $MAX_ALIGNMENTS --report $OUTPUT ${TMP_DIR}/merged.tmp
+$SHRIMP_FOLDER/utils/mappings-top-hits.py $STRATA $UNALIGNED $PAIRED $HALF_PAIRED --max-alignments $MAX_ALIGNMENTS --report $OUTPUT ${TMP_DIR}/merged.tmp > $DEST_FILE
 
 # clean up
-#rm -rf $TMP_DIR
+rm -rf $TMP_DIR

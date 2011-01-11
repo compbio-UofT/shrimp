@@ -24,7 +24,9 @@ struct output_filter {
 	int max_alignments;
 	bool strata;
 	bool unaligned;
-	bool half_paired;	
+	bool half_paired;
+	int isize;
+	bool use_isize;	
 };
 
 typedef struct mapq_info mapq_info;
