@@ -8,6 +8,9 @@
 #include "sam2pretty_lib.h"
 #include "merge_sam.h"
 
+
+#define DEF_MAX_ISIZE 50000
+
 void usage(char * s , int e) {
 	FILE * f = stderr;
 	fprintf(f,"mergesam [%s] - usage\n",s);
@@ -30,6 +33,9 @@ void usage(char * s , int e) {
 	fprintf(f,"   --mapq-hits       MAPQ based on top this many hits  Default: (report)+1\n");
 	fprintf(f,"   --mapq-strata     MAPQ based on strata hits         Default: No\n");
 	fprintf(f,"-i/--insert-size     Insert size for score tie-break   Default: Off\n");
+        fprintf(f,"-d/--detect-isize    Detect the insert size and exit   Default: Off\n");
+	fprintf(f,"   --read-isize      Read isize from file              Default: Off\n");
+	fprintf(f,"   --max-isize       When detecting use this as max    Default: %d\n",DEF_MAX_ISIZE);
 	fprintf(f,"-- Runtime Settings----------------------\n");
 	fprintf(f,"-R/--read-threads    Should be less then #SAM files    Default: 1\n");
 	fprintf(f,"-C/--compute-threads Should be low, try 1,2,3          Default: 1\n");
@@ -73,6 +79,9 @@ struct option long_op[] =
 		{"buffer-size",1,0,'M'},
 		{"output",1,0,'o'},
 		{"insert-size",1,0,'i'},
+		{"detect-isize",0,0,'d'},
+		{"max-isize",1,0,11},
+		{"read-isize",1,0,12},
 		{0,0,0,0}
 	};
 		
@@ -87,6 +96,7 @@ int main(int argc, char** argv) {
 	FILE * output_file=stdout;
 	output_filter of;
 	memset(&of,0,sizeof(output_filter));
+	of.max_isize=DEF_MAX_ISIZE; 
 	mapq_info mqi;
 	mqi.score_matrix_lambda = 0.1824502;
 	mqi.sw_scale_constant = 0.5;
@@ -97,7 +107,7 @@ int main(int argc, char** argv) {
 	int compute_threads=1;
 	int buffer_size=10;
 	int op_id;
-	char short_op[] = "r:hvN:O:X:Qi:C:R:M:o:";
+	char short_op[] = "r:hvN:O:X:Qi:C:R:M:o:d";
 	char c = getopt_long(argc, argv, short_op, long_op, &op_id);
 	while (c != EOF) {
 		switch (c) {
@@ -119,6 +129,9 @@ int main(int argc, char** argv) {
 		case 'i':
 			of.isize=atoi(optarg);
 			of.use_isize=true;
+			break;
+		case 'd':
+			of.detect_isize=true;
 			break;
 		case 3:
 			of.strata=true;
@@ -153,6 +166,9 @@ int main(int argc, char** argv) {
 		case 10:
 			letter_space=true;
 			break;
+		case 11:
+			of.max_isize=atoi(optarg);
+			break;
 		case 'C':
 			compute_threads=atoi(optarg);
 			break;
@@ -169,6 +185,24 @@ int main(int argc, char** argv) {
 				fprintf(stderr,"There has been an error opening output file %s\n",output_filename);
 				perror("");
 				exit(1);
+			}	
+			break;
+		case 12:
+			{
+			FILE * fptr = fopen(optarg,"r");
+			if (fptr==NULL) {
+				fprintf(stderr,"Failed to open file %s for reading!\n",optarg);
+				perror("");
+				exit(1);
+			}
+			double mean;
+			int ret=fscanf(fptr,"Mean: %lf,",&mean);
+			if (ret!=1) {
+				fprintf(stderr,"Failed to read mean from file %s!\n",optarg);
+				exit(1);
+			}
+			of.isize=(int)mean;
+			fclose(fptr);
 			}	
 			break;
 		default:

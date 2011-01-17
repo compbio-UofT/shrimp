@@ -18,30 +18,30 @@ static int qsort_sam_header_strcmp(const void *a, const void *b)  {
     const char *s = *ia;
     const char *t = *ib;
     if (s[1]=='H' && s[2]=='D' && (t[1]!='H' && t[2]!='D')) {
-	return 1;
+	return -1;
     }
     if (t[1]=='H' && t[2]=='D' && (s[1]!='H' && s[2]!='D')) {
-	return -1;
+	return 1;
     }
     if (s[1]=='S' && s[2]=='Q' && (t[1]!='S' && t[2]!='Q')) {
-	return 1;
+	return -1;
     }
     if (t[1]=='S' && t[2]=='Q' && (s[1]!='S' && s[2]!='Q')) {
-	return -1;
+	return 1;
     }
     if (s[1]=='R' && s[2]=='G' && (t[1]!='R' && t[2]!='G')) {
-	return 1;
+	return -1;
     }
     if (t[1]=='R' && t[2]=='G' && (s[1]!='R' && s[2]!='G')) {
-	return -1;
-    }
-    if (s[1]=='P' && s[2]=='G' && (t[1]!='P' && t[2]!='G')) {
 	return 1;
     }
-    if (t[1]=='P' && t[2]=='G' && (s[1]!='P' && s[2]!='G')) {
+    if (s[1]=='P' && s[2]=='G' && (t[1]!='P' && t[2]!='G')) {
 	return -1;
     }
-    return strcmp(s, t);
+    if (t[1]=='P' && t[2]=='G' && (s[1]!='P' && s[2]!='G')) {
+	return 1;
+    }
+    return -strcmp(s, t);
 } 
 
 
@@ -508,7 +508,7 @@ static int index_new_read_names(bool fastq_reads,bool colour_space) {
 				}
 			}
 			if (in_header==0) {
-				read_names[read_names_filled++]=read_names[line++]+1;
+				read_names[read_names_filled]=read_names[line++]+1;
 				//fprintf(stderr,"Found read %s\n",read_names[read_names_filled-1]);	
 				//get the sequence
 				int seq_length=0;
@@ -528,11 +528,12 @@ static int index_new_read_names(bool fastq_reads,bool colour_space) {
 				}
 				if (qual_length==0 || seq_length==0 || (line>=index && !(qual_length==seq_length || (colour_space && qual_length+1==seq_length)) )) {
 					//didn't get all of last read
-					read_names_filled--;
 					reads_file_buffer.left_over=reads_file_buffer.filled - (read_names[read_names_filled]-1-reads_file_buffer.buffer);
 					return 0;
 				} else {
 					//got this read keep going
+					while((*read_names[read_names_filled]==' ' || *read_names[read_names_filled]=='\t') && *read_names[read_names_filled]!='\n') { read_names[read_names_filled]++; };
+					read_names_filled++;
 					in_header=1;	
 				}
 			}
@@ -548,15 +549,16 @@ static int index_new_read_names(bool fastq_reads,bool colour_space) {
 				}
 			}
 			if (in_header==0) {
-				read_names[read_names_filled++]=read_names[line++]+1;
+				read_names[read_names_filled]=read_names[line++]+1;
 				while (line<index && read_names[line][0]!='>' && read_names[line][0]!='\n') { line++; };
 				if (line>=index && reads_file_buffer.eof!=1) {
 					//didn't get all of last read
-					read_names_filled--;
 					reads_file_buffer.left_over=reads_file_buffer.filled - (read_names[read_names_filled]-1-reads_file_buffer.buffer);
 					return 0;
 				} else {
 					//got this read keep going
+					while((*read_names[read_names_filled]==' ' || *read_names[read_names_filled]=='\t') && *read_names[read_names_filled]!='\n') { read_names[read_names_filled]++; };
+					read_names_filled++;
 					in_header=1;	
 				}
 			}
@@ -626,11 +628,13 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 				pa=tmp;
 			}	
 		}
-		qsort(sam_headers,headers_found,sizeof(char*),qsort_sam_header_strcmp);
-		fprintf(output_file,"%s\n",sam_headers[0]);
-		for (i=1; i<headers_found; i++) {
-			if (strcmp(sam_headers[i-1],sam_headers[i])!=0) {
-				fprintf(output_file,"%s\n",sam_headers[i]);
+		if (!of.detect_isize) {
+			qsort(sam_headers,headers_found,sizeof(char*),qsort_sam_header_strcmp);
+			fprintf(output_file,"%s\n",sam_headers[0]);
+			for (i=1; i<headers_found; i++) {
+				if (strcmp(sam_headers[i-1],sam_headers[i])!=0) {
+					fprintf(output_file,"%s\n",sam_headers[i]);
+				}
 			}
 		}
 		for (i=0; i<headers_found; i++) {
@@ -670,6 +674,13 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		exit(1);
 	}
 	memset(file_pa,0,sizeof(pretty*)*number_of_files);
+	//allocate space for histogram if needed
+	uint64_t * isizes = (uint64_t*)malloc(sizeof(uint64_t)*of.max_isize);
+	if (isizes==NULL) {
+		fprintf(stderr,"Failed to allocate memory for isizes buffer\n");
+		exit(1);
+	}
+	memset(isizes,0,sizeof(uint64_t)*of.max_isize);
 	long long reads_processed=0;
 	//Keep processing until no more reads avaliable to process!
 	while (read_more(&reads_file_buffer)) {
@@ -683,6 +694,7 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		//	fprintf(stderr,"%d R:%s\n",read_names_filled,read_names[i]);
 		//}
 		//exit(1);
+		fprintf(stderr,"Processed %ld reads so far\n",reads_processed);
 		#pragma omp parallel for schedule(static,1) num_threads(read_threads)
 		for (i=0; i<number_of_files; i++) {
 			//fprintf(stderr,"%d: with file %d\n",omp_get_thread_num(),i);
@@ -724,10 +736,17 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		for (i=0; i<read_names_filled; i++) {
 			pretty * pa = master_pa[i];
 			while (pa!=NULL) {
-				fprintf(output_file,"%s",pa->sam_string);
-				if (pa->mate_pair!=NULL) {
-					fprintf(output_file,"%s",pa->mate_pair->sam_string);
-					pretty_free(pa->mate_pair);
+				if (of.detect_isize) {
+					isizes[abs(pa->isize)]++;
+					if (pa->mate_pair!=NULL) {
+						pretty_free(pa->mate_pair);
+					}
+				} else { 
+					fprintf(output_file,"%s",pa->sam_string);
+					if (pa->mate_pair!=NULL) {
+						fprintf(output_file,"%s",pa->mate_pair->sam_string);
+						pretty_free(pa->mate_pair);
+					}	
 				}
 				pretty * tmp = pa->next; 
 				pretty_free(pa);
@@ -744,11 +763,27 @@ void merge_sam(char * reads_filename, bool fastq_reads, bool colour_space, int r
 		free(file_buffers[i].buffer);
 		gzclose(file_buffers[i].file);	
 	}
-	fprintf(stderr,"Processed %lld reads, %d\n",reads_processed,reads_file_buffer.eof);
+	fprintf(stderr,"Processed %lld reads, reached-eof: %s\n",reads_processed,reads_file_buffer.eof==1 ? "Yes" : "No");
 	free(file_pa);
 	free(file_buffers);	
 	gzclose(reads_file_buffer.file);
 	free(reads_file_buffer.buffer);
 	free(read_names);
+	if (of.detect_isize) {
+		uint64_t sum=0;
+		uint64_t entries=0;
+		uint64_t i;
+		for (i=0; i<of.max_isize; i++) {
+			sum+=i*isizes[i];
+			entries+=isizes[i];
+		}
+		double mean = ((double)sum)/((double)entries);
+		double std_sum=0.0;
+		for (i=0; i<of.max_isize; i++) {
+			std_sum+=isizes[i]*(i-mean)*(i-mean);
+		}
+		double stddev=sqrt(std_sum/entries);
+		printf("Mean: %.5e,\tStandard-Deviation: %.5e\n",mean,stddev);
+	}
 	return;
 }

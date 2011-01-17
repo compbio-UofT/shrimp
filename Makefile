@@ -5,10 +5,11 @@
 
 #CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
-CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-#CXXFLAGS=-g -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
+#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
+#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG -DDEBUG_KMERS -DDEBUG_HIT_LIST_PASS1
+CXXFLAGS=-g -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
 #CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
-#CXXFLAGS=-p -fopenmp -g -O1 -Wall -DNDEBUG
+#CXXFLAGS=-fopenmp -g -O1 -Wall -DNDEBUG
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 #CXX=/opt/intel/cce/10.1.015/bin/icc
@@ -19,7 +20,7 @@ LDFLAGS=-lm -lz -lstdc++
 LN=ln
 
 all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
-    bin/shrimp_var bin/shrimp2sam utils/split-contigs
+    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam
 
 #
 # mapper /

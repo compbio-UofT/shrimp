@@ -1234,10 +1234,18 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
 
   f1_hash_tag++;
   j = -1; // last good hit
-
+  //fprintf(stderr,"read %s, found %d hits on strand %d\n",re->name,re->n_hits[st],st);
+  //int vsws=0;
   for (i = 0; i < re->n_hits[st]; i++) {
-    if (only_paired && re->hits[st][i].pair_min < 0)
+    if (only_paired && re->hits[st][i].pair_min < 0) {
       continue;
+    }
+    //TODO make this tunable?
+    if (pair_mode!=PAIR_NONE && !only_paired && re->hits[st][i].matches<2 && sam_half_paired) {
+      re->hits[st][i].score_vector=0;
+      re->hits[st][i].pct_score_vector=0;
+      continue;
+    }
 
     // check window overlap
     if (j >= 0
@@ -1245,9 +1253,11 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
 	&& re->hits[st][i].g_off <= re->hits[st][j].g_off + re->window_len
 	  - (int)abs_or_pct(window_overlap, re->window_len)) {
       re->hits[st][i].score_vector = 0;
+      re->hits[st][i].pct_score_vector = 0;
       continue;
     }
-
+    //fprintf(stderr,"running vector with %d matches, %lld \n",re->hits[st][i].matches,re->hits[st][i].g_off);
+    //vsws++;
     if (shrimp_mode == MODE_COLOUR_SPACE)
       re->hits[st][i].score_vector = f1_run(genome_cs_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
 					    re->hits[st][i].g_off, re->hits[st][i].w_len,
@@ -1268,6 +1278,7 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
       j = i;
     }
   }
+  //fprintf(stderr,"Ran %d vec sw's\n",vsws);
 }
 
 
@@ -1309,12 +1320,20 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 	min_correction = -re1_correction;
     }
    
-    
+    //printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
       int64_t fivep = re1->hits[st1][i].g_off + ((re1_strand==1) ? re1->window_len : 0);
-      int64_t min_fivep_mp = (int64_t)(min_insert_size+min_correction+fivep);
-      int64_t max_fivep_mp = (int64_t)(max_insert_size+max_correction+fivep);
+      int64_t min_fivep_mp=0;
+      int64_t max_fivep_mp=0;
+      if (re1_strand==0) {
+          min_fivep_mp = (int64_t)(fivep+min_insert_size+min_correction);
+          max_fivep_mp = (int64_t)(fivep+max_insert_size+max_correction);
+      } else {
+          max_fivep_mp = (int64_t)(fivep-min_insert_size-min_correction);
+          min_fivep_mp = (int64_t)(fivep-max_insert_size-max_correction);
+      }
+      //printf("MAX %ld, MIN %ld\n",max_fivep_mp,min_fivep_mp);
       // find matching hit, if any
       while (j < re2->n_hits[st2]
 	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
@@ -1334,7 +1353,6 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 	//printf("taking g_off %d, translated %d, max_fivep_mp %d\n",re2->hits[st2][k].g_off,(int64_t)(re2->hits[st2][k].g_off + ((re2_strand==1) ? re2->window_len : 0)),max_fivep_mp);
 	k++;
       }
-	//printf("Bounding between g_off %d and %d\n",(int64_t)re1->hits[st1][i].g_off + delta_min,(int64_t)re1->hits[st1][i].g_off + delta_max);
       if (j == k) // no paired hit
 	continue;
 
@@ -1382,6 +1400,7 @@ read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
 		    && re->hits[st][i].score_vector > (int)h->array[0].key)
 		   || (!IS_ABSOLUTE(sw_vect_threshold)
 		       && re->hits[st][i].pct_score_vector > (int)h->array[0].key)))) {
+        //fprintf(stderr,"%d matches\n",re->hits[st][i].matches);
 	tmp.key = (IS_ABSOLUTE(sw_vect_threshold)? re->hits[st][i].score_vector : re->hits[st][i].pct_score_vector);
 	tmp.rest.hit = &re->hits[st][i];
 
@@ -1432,6 +1451,7 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 		     : (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2);
 	  tmp.rest.hit[0] = &re1->hits[st1][i];
 	  tmp.rest.hit[1] = &re2->hits[st2][j];
+	//TODO HISTORGRAM IS OFF! NOT SAM
 	  tmp.rest.insert_size = (int)(st1 == 0?
 				       re2->hits[st2][j].g_off - (re1->hits[st1][i].g_off + re1->hits[st1][i].w_len) :
 				       re1->hits[st1][i].g_off - (re2->hits[st2][j].g_off + re2->hits[st2][j].w_len));
@@ -2676,11 +2696,22 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	}
     }
   }
+  /* Done; free read entry */
+  for (i = 0; i < h.load; i++) {
+    hit_free_sfrp(h.array[i].rest.hit[0]);
+    hit_free_sfrp(h.array[i].rest.hit[1]);
+  }
+
+  heap_paired_destroy(&h);
   if (found_alignments==0) {
 	if (sam_half_paired) {
+		//fprintf(stderr,"in half paired mode\n");
   		heap_unpaired h;
 		unsigned int i;
-		
+
+		free(re1->hits[0]);
+		free(re1->hits[1]);
+		read_get_hit_list(re1, (num_matches>1? 2 : 1));
   		read_pass1(re1, false);
   		heap_unpaired_init(&h, num_tmp_outputs);
   		read_get_vector_hits(re1, &h);
@@ -2692,6 +2723,9 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 		  hit_free_sfrp(h.array[i].rest.hit);
 		heap_unpaired_destroy(&h);
  
+		free(re2->hits[0]);
+		free(re2->hits[1]);
+		read_get_hit_list(re2, (num_matches>1? 2 : 1));
  		read_pass1(re2, false);
   		heap_unpaired_init(&h, num_tmp_outputs);
   		read_get_vector_hits(re2, &h);
@@ -2726,13 +2760,6 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	}
   }
 
-  /* Done; free read entry */
-  for (i = 0; i < h.load; i++) {
-    hit_free_sfrp(h.array[i].rest.hit[0]);
-    hit_free_sfrp(h.array[i].rest.hit[1]);
-  }
-
-  heap_paired_destroy(&h);
 
   read_free_full(re1);
   read_free_full(re2);
@@ -4035,8 +4062,8 @@ int main(int argc, char **argv){
 			Gflag = true;
 			break;
 		case 17:
-			sam_read_group_name=optarg;
-			sam_sample_name = strchr(optarg,',');
+			sam_read_group_name=strdup(optarg);
+			sam_sample_name = strchr(sam_read_group_name,',');
 			if (sam_sample_name==NULL) {
 				fprintf(stderr,"error: sam read group needs to be two values, delimited by commas.\n");
 				fprintf(stderr,"       the first value is unique read group identifier\n");
@@ -4270,7 +4297,7 @@ int main(int argc, char **argv){
 		  }
 		  break;
 		case 'I':
-		  c = strtok(optarg, ",");
+		  c = strtok(strdup(optarg), ",");
 		  if (c == NULL) {
 		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
 		    exit(1);

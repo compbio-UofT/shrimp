@@ -33,7 +33,7 @@ for f in sys.argv[1:]:
 				print >> sys.stderr, 'Error. Are you mixing sam and shrimp output?'
 				print >> sys.stderr, 'Offending file: %s' % (f)
 				exit(1)
-			elif not line in header:
+			elif not line in header and not line[0:3] == '@PG':
 				print >> sys.stderr, 'Error. Are you mixing output from two different databases?'
 				print >> sys.stderr, 'Offending file: %s' % (f)
 				exit(1)

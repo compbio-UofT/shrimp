@@ -27,6 +27,8 @@ struct output_filter {
 	bool half_paired;
 	int isize;
 	bool use_isize;	
+	bool detect_isize;
+	size_t max_isize;
 };
 
 typedef struct mapq_info mapq_info;

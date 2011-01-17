@@ -70,6 +70,8 @@ void pretty_match(pretty * pa) {
 		char gc = g[i]>90 ? g[i]-32 : g[i];
 		if (g[i]=='-' || r[i]=='-' || gc!=rc) {
 			m[i]=' ';
+		} else if (pa->has_cs_edit_string && pa->cs_edit_string[i]>96) {
+			m[i]='X';
 		} else {
 			m[i]='|';
 		} 
@@ -128,7 +130,7 @@ void pretty_print(pretty * pa) {
 	}
 	}
 	if (pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)		
-		printf("> %s%s\t%s\t%c\t%lu\t%lu\t%d\t%d\t%d\n",pa->read_name,suffix,pa->reference_name,strand,
+		printf("> %s%s\t%s\t%c\t%d\t%d\t%d\t%d\t%d\n",pa->read_name,suffix,pa->reference_name,strand,
 			pa->genome_start_padded,pa->genome_end_padded,pa->clipped_read_start,pa->clipped_read_end,
 			pa->unclipped_read_length);	
 	//pa->paired_sequencing = ((entry->core.flag & 0x0001) != 0) ? true : false ;
@@ -514,6 +516,10 @@ void pretty_ls(pretty * pa) {
 	//	fprintf(stderr,"%d%c",pa->cigar_lengths[i],pa->cigar_ops[i]);
 	//}
 	//fprintf(stderr,"\n");
+	char * source_string = strdup(pa->has_cs_edit_string ? pa->cs_edit_string : pa->read_string);
+	if (pa->has_cs_edit_string && pa->reverse) {
+		reverse_complement(source_string);
+	}
 	for (i=0; i<pa->num_cigar; i++) {
 		int length=pa->cigar_lengths[i];
 		switch (pa->cigar_ops[i]) {
@@ -539,12 +545,16 @@ void pretty_ls(pretty * pa) {
 			case 'I':
 				insertions+=length;
 			case 'M':
+				{
+				//char * source_string=pa->has_cs_edit_string ? pa->cs_edit_string : pa->read_string;
+				//char * source_string= pa->read_string;
 				for (j=0; j<length; j++) {
 					//if (current_read_string_index>=pa->clipped_read_length+deletions) {
 					//	fprintf(stderr,"A5 offending read %s\n",pa->read_name);
 					//	exit(1);
-					//}
-					pa->pretty_read_string[current_pretty_read_string_index++]=pa->read_string[current_read_string_index++];
+					//
+					pa->pretty_read_string[current_pretty_read_string_index++]=source_string[current_read_string_index++];
+				}
 				}
 				break;
 			case 'N':
@@ -791,8 +801,8 @@ char * pretty_reformat_cigar_string(pretty * pa) {
 
 
 void shift_string(char* s, int d) {
-	size_t i;
-	for (i=0; i<strlen(s)-d; i++){
+	int i;
+	for (i=0; i<(int)strlen(s)-d; i++){
 		s[i]=s[i+d];
 	}
 	s[i]='\0';
@@ -944,8 +954,29 @@ void pretty_print_sam_update(pretty * pa) {
 	size_t buffer_size=strlen(pa->read_name) + 10 + strlen(pa->reference_name) + 
 		10 + 10 + strlen(pa->cigar) + strlen(pa->mate_reference_name) + 10 + 
 		10 + strlen(pa->read_string)*5 + strlen(pa->read_qualities)*5 + 50;
+	if (pa->has_score) {
+		buffer_size+=10;
+	}
+	if (pa->has_edit_distance) {
+		buffer_size+=10;
+	}
+	if (pa->colour_space) {
+		if (pa->has_cs_qualities) {
+			buffer_size+=strlen(pa->cs_qualities)+7;
+		}
+		buffer_size+=strlen(pa->cs_string)+7;
+	}
+	if (pa->has_cs_mismatches) {
+		buffer_size+=10;
+	}
+	if (pa->has_cs_edit_string) {
+		buffer_size+=strlen(pa->cs_edit_string)+7;
+	}
+	if (pa->has_read_group) {
+		buffer_size+=strlen(pa->read_group)+7;
+	}
 	char buffer[buffer_size];
-	size_t position = sprintf(buffer,"%s\t%d\t%s\t%lu\t%d\t%s\t%s\t%lu\t%d\t%s\t%s",
+	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
 		pa->flags,
 		pa->reference_name,
@@ -958,29 +989,33 @@ void pretty_print_sam_update(pretty * pa) {
 		pa->read_string,
 		pa->read_qualities);
 	if (pa->has_score) {
-		position+=sprintf(buffer+position,"\tAS:i:%d",pa->score);
+		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
 	}	 
 	if (pa->has_edit_distance) {
-		position+=sprintf(buffer+position,"\tNM:i:%d",pa->edit_distance);
+		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
 	}	 
 	if (pa->colour_space) {
 		if (pa->has_cs_qualities) {
-			position+=sprintf(buffer+position,"\tCQ:Z:%s",pa->cs_qualities);
+			position+=snprintf(buffer+position,buffer_size-position,"\tCQ:Z:%s",pa->cs_qualities);
 		}
-		position+=sprintf(buffer+position,"\tCS:Z:%s",pa->cs_string);
+		position+=snprintf(buffer+position,buffer_size-position,"\tCS:Z:%s",pa->cs_string);
 	}
 	if (pa->has_cs_mismatches) {
-		position+=sprintf(buffer+position,"\tCM:i:%d",pa->cs_mismatches);
+		position+=snprintf(buffer+position,buffer_size-position,"\tCM:i:%d",pa->cs_mismatches);
 	}
 	if (pa->has_cs_edit_string) {
-		position+=sprintf(buffer+position,"\tXX:Z:%s",pa->cs_edit_string);
+		position+=snprintf(buffer+position,buffer_size-position,"\tXX:Z:%s",pa->cs_edit_string);
 	}
 	if (pa->has_read_group) {
-		position+=sprintf(buffer+position,"\tRG:Z:%s",pa->read_group);
+		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
 	}
-	position+=sprintf(buffer+position,"\n");
+	position+=snprintf(buffer+position,buffer_size-position,"\n");
 	if (pa->sam_string!=NULL) {
 		free(pa->sam_string);
+	}
+	if (buffer_size<position) {
+		fprintf(stderr,"Failed to properly bound memory needed for updated sam alignment\n");
+		exit(1);
 	}
 	pa->sam_string=(char*)malloc(sizeof(char)*(position+1));
 	if (pa->sam_string==NULL) {
@@ -990,7 +1025,7 @@ void pretty_print_sam_update(pretty * pa) {
 	strcpy(pa->sam_string,buffer);
 }
 void pretty_print_sam(FILE * f, pretty * pa) {
-	fprintf(f,"%s\t%d\t%s\t%lu\t%d\t%s\t%s\t%lu\t%d\t%s\t%s",
+	fprintf(f,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
 		pa->flags,
 		pa->reference_name,
@@ -1320,8 +1355,8 @@ int pretty_remap(pretty * pa, unsigned long offset_start, unsigned long offset_e
 				break;
 		}
 	}
-	size_t genome_start = pa->genome_start_unpadded;
-	size_t genome_end = pa->genome_start_unpadded+genome_alignment_length-1;
+	unsigned long genome_start = pa->genome_start_unpadded;
+	unsigned long genome_end = pa->genome_start_unpadded+genome_alignment_length-1;
 	if (genome_end < offset_start || genome_start > offset_end) {
 		return 0;
 	}

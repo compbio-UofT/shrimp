@@ -46,7 +46,6 @@
 ./utils/findseq.py
 ./utils/project-db.py
 ./utils/test-unpaired-sam.awk
-./utils/merge-hits-diff-qr-same-db.py
 ./utils/PROJECT-DB
 ./utils/mappings-collapse-pairs
 ./utils/extractunmapped.py
@@ -77,11 +76,13 @@
 ./utils/cs2ls.py
 ./utils/split-contigs.c
 ./utils/get_clipped_mappings.py
-./utils/merge-hits-same-qr-diff-db
 ./utils/mappings-top-hits.py
 ./utils/MAPPINGS-TOP-HITS
 ./utils/split-db.py
 ./utils/findpairs.py
+./utils/merge-hits-same-qr-diff-db
+./utils/z
+./utils/merge-hits-diff-qr-same-db.py
 ./prettyprint/prettyprint.c
 ./bin/README
 ./shrimp_var/shrimp_var.h
@@ -94,10 +95,10 @@
 ./HISTORY
 ./README
 ./Makefile
-./mergesam/merge_sam_heap.c
-./mergesam/merge_sam_heap.h
-./mergesam/merge_sam.h
 ./mergesam/sam2pretty_lib.h
+./mergesam/merge_sam_heap.c
+./mergesam/merge_sam.h
 ./mergesam/merge_sam_main.c
-./mergesam/sam2pretty_lib.c
+./mergesam/merge_sam_heap.h
 ./mergesam/merge_sam.c
+./mergesam/sam2pretty_lib.c

@@ -1029,11 +1029,11 @@ Output Control
 
     Include in the same output the corresponding read_group and pool_name.
 
-  [ -un <filename> ]
+  [ --un <filename> ]
 
     Print unaligned reads to target file.
 
-  [ -al <filename> ]
+  [ --al <filename> ]
 
     Print aligned reads to target file.
 

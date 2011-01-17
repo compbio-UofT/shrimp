@@ -23,11 +23,11 @@ struct pretty {
 	uint32_t* cigar_lengths;
 	//for colour space
 	bool colour_space;
-	size_t genome_start_padded;
-	size_t genome_end_padded;
-	size_t genome_start_unpadded;
-	size_t mate_genome_start_unpadded;
-	size_t genome_end_unpadded;
+	unsigned long genome_start_padded;
+	unsigned long genome_end_padded;
+	unsigned long genome_start_unpadded;
+	unsigned long mate_genome_start_unpadded;
+	unsigned long genome_end_unpadded;
 	int clipped_read_start;
 	int clipped_read_end;
 	int pretty_clipped_read_start;

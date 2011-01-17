@@ -151,6 +151,10 @@ complement_base(int base, bool is_rna)
 static inline int
 cstols(int first_letter, int colour, bool is_rna)
 {
+	//TODO NOT SURE IF THIS IS CORRECT WAY TO HANDLE
+	if (first_letter==BASE_N || !(colour>=0 && colour<=3)) {
+		return BASE_N;
+	}
 	assert((first_letter >= 0 && first_letter <= 3 && !is_rna) ||
 	       (first_letter >= 0 && first_letter <= 4 &&  is_rna));
 	assert(colour >= 0 && colour <= 3);
