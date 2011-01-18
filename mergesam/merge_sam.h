@@ -25,10 +25,11 @@ struct output_filter {
 	bool strata;
 	bool unaligned;
 	bool half_paired;
-	int isize;
+	double isize;
 	bool use_isize;	
 	bool detect_isize;
 	size_t max_isize;
+	bool header_provided;
 };
 
 typedef struct mapq_info mapq_info;

@@ -36,6 +36,7 @@ void usage(char * s , int e) {
         fprintf(f,"-d/--detect-isize    Detect the insert size and exit   Default: Off\n");
 	fprintf(f,"   --read-isize      Read isize from file              Default: Off\n");
 	fprintf(f,"   --max-isize       When detecting use this as max    Default: %d\n",DEF_MAX_ISIZE);
+	fprintf(f,"   --sam-header      Use this file for SAM header      Default: Off\n");
 	fprintf(f,"-- Runtime Settings----------------------\n");
 	fprintf(f,"-R/--read-threads    Should be less then #SAM files    Default: 1\n");
 	fprintf(f,"-C/--compute-threads Should be low, try 1,2,3          Default: 1\n");
@@ -82,6 +83,7 @@ struct option long_op[] =
 		{"detect-isize",0,0,'d'},
 		{"max-isize",1,0,11},
 		{"read-isize",1,0,12},
+		{"sam-header",1,0,13},
 		{0,0,0,0}
 	};
 		
@@ -127,7 +129,7 @@ int main(int argc, char** argv) {
 			}
 			break;
 		case 'i':
-			of.isize=atoi(optarg);
+			of.isize=atof(optarg);
 			of.use_isize=true;
 			break;
 		case 'd':
@@ -205,6 +207,32 @@ int main(int argc, char** argv) {
 			fclose(fptr);
 			}	
 			break;
+		case 13:
+			{
+			char * sam_header_filename=optarg;
+                        FILE * sam_header_file = fopen(sam_header_filename,"r");
+                        if (sam_header_file==NULL) {
+                                perror("Failed to open sam header file ");
+                                exit(1);
+                        }
+                        size_t buffer_size=2046;
+                        char buffer[buffer_size];
+                        size_t read; bool ends_in_newline=true;
+                        while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
+                                buffer[read]='\0';
+                                fprintf(stdout,"%s",buffer);
+                                if (buffer[read-1]=='\n') {
+                                        ends_in_newline=true;
+                                } else {
+                                        ends_in_newline=false;
+                                }
+                        }
+                        if (!ends_in_newline) {
+                                fprintf(stdout,"\n");
+                        }
+			}
+			of.header_provided=true;
+			break;
 		default:
 			fprintf(stderr,"invalid argument!\n");
 			usage(argv[0],1);
@@ -243,7 +271,7 @@ int main(int argc, char** argv) {
 	fprintf(stderr,"Input reads file: %s, in %s format\n",reads_filename,reads_fastq ? "FASTQ" : "FASTA");
 	fprintf(stderr,"Output file: %s\n",output_filename);
 	//print out output filter
-	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n\tUse isize: %s\tisize: %d\n",
+	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n\tUse isize: %s\tisize: %e\n",
 		of.number_outputs, of.max_alignments, of.strata ? "Yes" : "No", of.unaligned ? "Yes" : "No" , of.half_paired ? "Yes" : "No",of.use_isize ?  "Yes" : "No",of.isize );
 	//print out mapq info
 	fprintf(stderr,"MAPQ Info:\n\tCompute MAPQ:\t%s\n\tScoreMatrixLambda:\t%e\tSW-ScaleConstant:\t%e\n\t#TopHits:\t%d\tStrata:\t%s\n",

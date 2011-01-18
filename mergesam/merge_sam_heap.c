@@ -11,7 +11,7 @@ static bool e_compare(heap_pa_elem * a, heap_pa_elem * b) {
 	if (a->score>b->score) {
 		return true;
 	} else if (a->score==b->score) {
-		if (a->isize<b->isize) {
+		if (a->idist<b->idist) {
 			return true;
 		} else {
 			return false;

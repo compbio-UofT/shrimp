@@ -1227,6 +1227,22 @@ read_get_hit_list(struct read_entry * re, int match_mode) {
 #endif
 }
 
+/*
+ * Reverse read hit.
+ *
+ * The 'st' strand of the read matches the 'gen_st' strand of the genome. Negate both.
+ */
+static inline void
+reverse_hit(struct read_entry * re, struct read_hit * rh)
+{
+  assert(re != NULL && rh != NULL);
+
+  rh->g_off = genome_len[rh->cn] - rh->g_off - rh->w_len;
+  anchor_reverse(&rh->anchor, rh->w_len, re->read_len);
+  rh->gen_st = 1 - rh->gen_st;
+  rh->st = 1 - rh->st;
+}
+
 
 static void
 read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
@@ -1241,10 +1257,24 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st) {
       continue;
     }
     //TODO make this tunable?
-    if (pair_mode!=PAIR_NONE && !only_paired && re->hits[st][i].matches<2 && sam_half_paired) {
-      re->hits[st][i].score_vector=0;
-      re->hits[st][i].pct_score_vector=0;
-      continue;
+    if (sam_half_paired && !only_paired && pair_mode!=PAIR_NONE) {
+	    if (re->hits[st][i].gen_st!=0) {
+		reverse_hit(re,&re->hits[st][i]);	
+            }
+	    if (re->hits[st][i].matches<2) {
+	      re->hits[st][i].score_vector=0;
+	      re->hits[st][i].pct_score_vector=0;
+	      continue;
+	    }
+            int32_t w_len = re->window_len;
+            if ((uint32_t)w_len > genome_len[re->hits[st][i].cn])
+              w_len = (int)genome_len[re->hits[st][i].cn];
+            if (re->hits[st][i].score_window_gen < (int)abs_or_pct(window_gen_threshold,
+                                        (re->read_len < w_len ? re->read_len : w_len) * match_score)) {
+	      re->hits[st][i].score_vector=0;
+	      re->hits[st][i].pct_score_vector=0;
+	      continue;
+	    }
     }
 
     // check window overlap
@@ -1403,7 +1433,7 @@ read_get_vector_hits(struct read_entry * re, struct heap_unpaired * h)
         //fprintf(stderr,"%d matches\n",re->hits[st][i].matches);
 	tmp.key = (IS_ABSOLUTE(sw_vect_threshold)? re->hits[st][i].score_vector : re->hits[st][i].pct_score_vector);
 	tmp.rest.hit = &re->hits[st][i];
-
+        assert(re->hits[st][i].gen_st==0);
 	if (h->load < h->capacity)
 	  heap_unpaired_insert(h, &tmp);
 	else
@@ -1469,22 +1499,6 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 }
 
 
-/*
- * Reverse read hit.
- *
- * The 'st' strand of the read matches the 'gen_st' strand of the genome. Negate both.
- */
-static inline void
-reverse_hit(struct read_entry * re, struct read_hit * rh)
-{
-  assert(re != NULL && rh != NULL);
-
-  rh->g_off = genome_len[rh->cn] - rh->g_off - rh->w_len;
-  anchor_reverse(&rh->anchor, rh->w_len, re->read_len);
-  rh->gen_st = 1 - rh->gen_st;
-  rh->st = 1 - rh->st;
-}
-
 
 /*
 	Get hit stats
@@ -1513,6 +1527,9 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   uint32_t * gen = NULL;
 
   assert(re != NULL && rh != NULL);
+  if (rh->gen_st!=0) {
+	fprintf(stderr,"rh->gen_st is %d\n%d and %d\n",rh->gen_st,min_insert_size,max_insert_size);
+  }
   assert(rh->gen_st == 0);
 
   if (rh->st == re->input_strand) {
@@ -2217,6 +2234,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   for (i = 0; i < (int)h->load; i++) {
     struct read_hit * rh = h->array[i].rest.hit;
     //fprintf(stderr,"g_off is %llu\n",rh->g_off);
+    //assert(rh->gen_st==0);
     hit_run_full_sw(re, rh, (int)abs_or_pct(sw_full_threshold, rh->score_max));
     h->array[i].key = (IS_ABSOLUTE(sw_full_threshold)? rh->score_full : rh->pct_score_full);
   }
@@ -2696,22 +2714,15 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	}
     }
   }
-  /* Done; free read entry */
-  for (i = 0; i < h.load; i++) {
-    hit_free_sfrp(h.array[i].rest.hit[0]);
-    hit_free_sfrp(h.array[i].rest.hit[1]);
-  }
-
-  heap_paired_destroy(&h);
   if (found_alignments==0) {
 	if (sam_half_paired) {
 		//fprintf(stderr,"in half paired mode\n");
   		heap_unpaired h;
 		unsigned int i;
 
-		free(re1->hits[0]);
-		free(re1->hits[1]);
-		read_get_hit_list(re1, (num_matches>1? 2 : 1));
+		//free(re1->hits[0]);
+		//free(re1->hits[1]);
+		//read_get_hit_list(re1, (num_matches>1? 2 : 1));
   		read_pass1(re1, false);
   		heap_unpaired_init(&h, num_tmp_outputs);
   		read_get_vector_hits(re1, &h);
@@ -2723,9 +2734,9 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 		  hit_free_sfrp(h.array[i].rest.hit);
 		heap_unpaired_destroy(&h);
  
-		free(re2->hits[0]);
-		free(re2->hits[1]);
-		read_get_hit_list(re2, (num_matches>1? 2 : 1));
+		//free(re2->hits[0]);
+		//free(re2->hits[1]);
+		//read_get_hit_list(re2, (num_matches>1? 2 : 1));
  		read_pass1(re2, false);
   		heap_unpaired_init(&h, num_tmp_outputs);
   		read_get_vector_hits(re2, &h);
@@ -2760,6 +2771,13 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
 	}
   }
 
+  /* Done; free read entry */
+  for (i = 0; i < h.load; i++) {
+    hit_free_sfrp(h.array[i].rest.hit[0]);
+    hit_free_sfrp(h.array[i].rest.hit[1]);
+  }
+
+  heap_paired_destroy(&h);
 
   read_free_full(re1);
   read_free_full(re2);

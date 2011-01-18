@@ -34,6 +34,9 @@ struct pretty {
 	int pretty_clipped_read_end;
 
 
+	int id;
+
+
 	char* genome_sequence;
 	int genome_length;
 
