@@ -106,10 +106,10 @@
 ../README
 ../Makefile
 ../mergesam
-../mergesam/sam2pretty_lib.h
-../mergesam/merge_sam_heap.c
-../mergesam/merge_sam.h
-../mergesam/merge_sam_main.c
 ../mergesam/merge_sam_heap.h
 ../mergesam/merge_sam.c
 ../mergesam/sam2pretty_lib.c
+../mergesam/merge_sam_main.c
+../mergesam/merge_sam.h
+../mergesam/merge_sam_heap.c
+../mergesam/sam2pretty_lib.h

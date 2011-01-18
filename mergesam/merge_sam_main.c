@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
 			}
 			break;
 		case 'i':
-			of.isize=atof(optarg);
+			of.isize=atoi(optarg);
 			of.use_isize=true;
 			break;
 		case 'd':
@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
 	fprintf(stderr,"Input reads file: %s, in %s format\n",reads_filename,reads_fastq ? "FASTQ" : "FASTA");
 	fprintf(stderr,"Output file: %s\n",output_filename);
 	//print out output filter
-	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n\tUse isize: %s\tisize: %e\n",
+	fprintf(stderr,"Output Filter:\n\tReport:\t%d\tMax-alignments:\t%d\n\tStrata:\t%s\tSam-unaligned:\t%s\tHalf_paired:\t%s\n\tUse isize: %s\tisize: %d\n",
 		of.number_outputs, of.max_alignments, of.strata ? "Yes" : "No", of.unaligned ? "Yes" : "No" , of.half_paired ? "Yes" : "No",of.use_isize ?  "Yes" : "No",of.isize );
 	//print out mapq info
 	fprintf(stderr,"MAPQ Info:\n\tCompute MAPQ:\t%s\n\tScoreMatrixLambda:\t%e\tSW-ScaleConstant:\t%e\n\t#TopHits:\t%d\tStrata:\t%s\n",

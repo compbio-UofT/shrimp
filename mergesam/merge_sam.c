@@ -223,7 +223,7 @@ static void pp_ll_combine(pp_ll * dest, pp_ll * source) {
 	source->tail=NULL;
 }
 
-static void reads_to_heap(heap_pa * hpa, pretty * pa, int * best_score, int * best_alignments, double * best_idist, output_filter * of) {
+static void reads_to_heap(heap_pa * hpa, pretty * pa, int * best_score, int * best_alignments, int * best_idist, output_filter * of) {
 	*best_score=-INT_MAX;
 	*best_alignments=0;
 	*best_idist=INT_MAX;
@@ -231,13 +231,13 @@ static void reads_to_heap(heap_pa * hpa, pretty * pa, int * best_score, int * be
 	while (pa!=NULL) {
 		heap_e.rest=pa;
 		heap_e.score=pa->score + ((pa->mate_pair!=NULL) ? pa->mate_pair->score : 0);
-		heap_e.idist=of->use_isize ? ABS(ABS(pa->isize)-of->isize) : 0.0;
+		heap_e.idist=of->use_isize ? ABS(ABS(pa->isize)-of->isize) : 0;
 		if (heap_e.score>*best_score || (heap_e.score==*best_score && heap_e.idist<*best_idist)) {
 			*best_score=heap_e.score;	
 			*best_idist=heap_e.idist;
 			*best_alignments=1;
 		} else if (heap_e.score==*best_score && heap_e.idist==*best_idist) {
-			*best_alignments++;
+			(*best_alignments)++;
 		}
 		heap_pa_insert(hpa, &heap_e);
 		pa=pa->next;
@@ -395,9 +395,9 @@ static void process_read(pp_ll * ll, output_filter * of, mapq_info * mqi) {
 	}*/	
 	assert(only_first_mapped.length==only_second_mapped.length);
 	//If there is at least one unpaired int sequencing and mapped read
-	int best_score[2];
-	int best_alignments[2];
-	double best_idist[2];
+	int best_score[2]={-INT_MAX,-INT_MAX};
+	int best_alignments[2]={0,0};
+	int best_idist[2]={INT_MAX,INT_MAX};
 	int alignments[2]= {0,0};
 	heap_pa hpa[2];
 	hpa[0].array=NULL; hpa[1].array=NULL;
@@ -417,12 +417,14 @@ static void process_read(pp_ll * ll, output_filter * of, mapq_info * mqi) {
 	} else if (only_first_mapped.length>0) {
 		//first in pair
 		heap_pa_init(hpa+0,only_first_mapped.length);
-		reads_to_heap(hpa+0, only_first_mapped.head, best_score+0, best_alignments+0, best_idist+0, of);
-		alignments[0]=only_first_mapped.length;
 		//second in pair
 		heap_pa_init(hpa+1,only_second_mapped.length);
-		reads_to_heap(hpa+1, only_second_mapped.head, best_score+1, best_alignments+1, best_idist+1, of);
-		alignments[1]=only_second_mapped.length;
+		if (of->half_paired) {
+			reads_to_heap(hpa+0, only_first_mapped.head, best_score+0, best_alignments+0, best_idist+0, of);
+			alignments[0]=only_first_mapped.length;
+			reads_to_heap(hpa+1, only_second_mapped.head, best_score+1, best_alignments+1, best_idist+1, of);
+			alignments[1]=only_second_mapped.length;
+		}
 	} else if (unmapped.length>0) {
 		//unmapped
 		assert(unmapped.length==1);

@@ -7,7 +7,7 @@ typedef struct heap_pa_elem heap_pa_elem;
 typedef struct heap_pa heap_pa;
 struct heap_pa_elem {
         long long score;
-	double idist;
+	int idist;
         pretty * rest;
 };
 

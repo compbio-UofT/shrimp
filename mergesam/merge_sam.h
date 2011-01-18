@@ -25,7 +25,7 @@ struct output_filter {
 	bool strata;
 	bool unaligned;
 	bool half_paired;
-	double isize;
+	int isize;
 	bool use_isize;	
 	bool detect_isize;
 	size_t max_isize;
