@@ -1061,6 +1061,38 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
             }
           }
         }
+#ifdef MARK_NEARBY_REGION
+        if (((genomemap[sn][re->mapidx[st][offset]][j] >> (REGION_BITS - 2)) & 0x3) == 0) {
+          region--;
+          if (region < 0) continue;
+        } else if (((genomemap[sn][re->mapidx[st][offset]][j] >> (REGION_BITS - 2)) & 0x3) == 0x3) {
+          region++;
+          if (region >= N_REGIONS) continue;
+        } else {
+          continue;
+        }
+// copy-paste from above; this is horrible code
+        if (region_map[pair_part][0][region] == read_num) {
+          region_map[pair_part][1][region] = read_num;
+        } else {
+          region_map[pair_part][0][region] = read_num;
+          if (asymm_match_mode && pair_part == 1) {
+            if (st == 0) {
+              for (region_0 = region + region_delta_min; region_0 <= region + region_delta_max; region_0++)
+                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
+                  region_map[1][1][region] = read_num;
+                  break;
+                }
+            } else { // st == 1
+              for (region_0 = region - region_delta_max; region_0 <= region - region_delta_min; region_0++)
+                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
+                  region_map[1][1][region] = read_num;
+                  break;
+                }
+            }
+          }
+        }
+#endif
       }
     }
   }
