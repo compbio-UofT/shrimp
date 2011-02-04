@@ -183,6 +183,24 @@
 	  heap_##_id##_elem_cmp);				\
   }
 
+#define DEF_HEAP_ELEM_CMP_DOUBLE(_id)						\
+  static int								\
+  heap_##_id##_elem_cmp_double(void const * p1, void const * p2)		\
+  {									\
+    double res = (double)((heap_##_id##_elem *)p1)->key -		\
+      (double)((heap_##_id##_elem *)p2)->key;				\
+    return res > 0.0 ? -1 :					\
+      res < 0.0 ? 1 : 0;						\
+  }
+
+#define DEF_HEAP_QSORT_DOUBLE(_id)					\
+  static inline void						\
+  heap_##_id##_qsort_double(struct heap_##_id * h)			\
+  {								\
+    qsort(h->array, h->load, sizeof(struct heap_##_id##_elem),	\
+	  heap_##_id##_elem_cmp_double);				\
+  }
+
 #define DEF_HEAP(_key_t,_rest_t,_id)		\
   DEF_STRUCT_HEAP_ELEM(_key_t,_rest_t,_id)	\
   DEF_STRUCT_HEAP(_id)				\
@@ -195,7 +213,9 @@
   DEF_HEAP_REPLACE_MIN(_id)			\
   DEF_HEAP_INSERT(_id)				\
   DEF_HEAP_ELEM_CMP(_id)			\
-  DEF_HEAP_QSORT(_id)
+  DEF_HEAP_ELEM_CMP_DOUBLE(_id)			\
+  DEF_HEAP_QSORT(_id)				\
+  DEF_HEAP_QSORT_DOUBLE(_id)
   //DEF_HEAP_HEAPIFY(_id)
   //DEF_HEAP_HEAPSORT(_id)
 

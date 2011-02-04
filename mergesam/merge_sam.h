@@ -20,8 +20,8 @@ struct file_buffer {
 
 typedef struct output_filter output_filter;
 struct output_filter {
-	int number_outputs;
-	int max_alignments;
+	unsigned int number_outputs;
+	unsigned int max_alignments;
 	bool strata;
 	bool unaligned;
 	bool half_paired;
@@ -30,6 +30,7 @@ struct output_filter {
 	bool detect_isize;
 	size_t max_isize;
 	bool header_provided;
+	FILE * detect_isize_file;
 };
 
 typedef struct mapq_info mapq_info;

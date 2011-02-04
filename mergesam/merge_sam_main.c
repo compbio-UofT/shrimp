@@ -33,7 +33,7 @@ void usage(char * s , int e) {
 	fprintf(f,"   --mapq-hits       MAPQ based on top this many hits  Default: (report)+1\n");
 	fprintf(f,"   --mapq-strata     MAPQ based on strata hits         Default: No\n");
 	fprintf(f,"-i/--insert-size     Insert size for score tie-break   Default: Off\n");
-        fprintf(f,"-d/--detect-isize    Detect the insert size and exit   Default: Off\n");
+        fprintf(f,"-d/--detect-isize    Detect isize, write to given file Default: Off\n");
 	fprintf(f,"   --read-isize      Read isize from file              Default: Off\n");
 	fprintf(f,"   --max-isize       When detecting use this as max    Default: %d\n",DEF_MAX_ISIZE);
 	fprintf(f,"   --sam-header      Use this file for SAM header      Default: Off\n");
@@ -80,7 +80,7 @@ struct option long_op[] =
 		{"buffer-size",1,0,'M'},
 		{"output",1,0,'o'},
 		{"insert-size",1,0,'i'},
-		{"detect-isize",0,0,'d'},
+		{"detect-isize",1,0,'d'},
 		{"max-isize",1,0,11},
 		{"read-isize",1,0,12},
 		{"sam-header",1,0,13},
@@ -134,6 +134,11 @@ int main(int argc, char** argv) {
 			break;
 		case 'd':
 			of.detect_isize=true;
+			of.detect_isize_file=fopen(optarg,"w");
+			if (of.detect_isize_file==NULL) {
+				fprintf(stderr,"There has been an error opening file %s\n",optarg);
+				exit(1);
+			}
 			break;
 		case 3:
 			of.strata=true;

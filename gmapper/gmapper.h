@@ -76,7 +76,8 @@ struct option standard_options[] =
 	{"trim-front",1,0,200},
 	{"trim-end",1,0,201},
 	{"trim-first",1,0,202},
-	{"trim-second",1,0,203}
+	{"trim-second",1,0,203},
+	{"expected-isize",1,0,204}
 };
 struct option colour_space_options[] = {
 	{"crossover",1,0,'x'},
@@ -221,24 +222,6 @@ struct range_restriction {
 };
 
 
-struct read_hit {
-  struct sw_full_results *	sfrp;
-  struct anchor	anchor;
-  llint		g_off;
-  int		score_window_gen;
-  int		score_vector;
-  int		pct_score_vector;
-  int		score_full;
-  int		pct_score_full;
-  int		score_max;
-  int		matches;
-  int		cn;
-  int		pair_min; // -1 means none
-  int		pair_max;
-  int		w_len;
-  int		st;
-  int		gen_st;
-};
 
 typedef struct {
 	uint32_t * lengths;
@@ -246,14 +229,6 @@ typedef struct {
 	int size;
 } cigar_t;
 
-struct read_hit_pair_holder {
-  struct read_hit *	hit[2];
-  int			insert_size;
-};
-
-struct read_hit_holder {
-  struct read_hit *	hit;
-};
 
 
 #endif

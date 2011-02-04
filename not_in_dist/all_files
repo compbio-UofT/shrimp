@@ -34,10 +34,10 @@
 ./common/sw-full-ls.c
 ./common/input.c
 ./common/util.h
+./common/sw-full-common.h
 ./common/fasta.h
 ./common/sw-vector.c
 ./common/sw-vector.h
-./common/sw-full-common.h
 ./common/sw-full-cs.c
 ./gmapper/gmapper.h
 ./gmapper/gmapper.c
@@ -96,9 +96,10 @@
 ./README
 ./Makefile
 ./mergesam/merge_sam_heap.h
-./mergesam/merge_sam.c
 ./mergesam/sam2pretty_lib.c
 ./mergesam/merge_sam_main.c
 ./mergesam/merge_sam.h
+./mergesam/merge_sam.c
 ./mergesam/merge_sam_heap.c
 ./mergesam/sam2pretty_lib.h
+./-DSAM2PRETTY_DEBUG
