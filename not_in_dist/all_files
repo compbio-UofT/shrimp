@@ -100,11 +100,11 @@
 ./test.c
 ./Makefile
 ./HISTORY
-./mergesam/file_buffer.c
 ./mergesam/mergesam.c
 ./mergesam/mergesam_heap.c
 ./mergesam/sam2pretty_lib.c
 ./mergesam/file_buffer.h
 ./mergesam/mergesam_heap.h
 ./mergesam/sam2pretty_lib.h
+./mergesam/file_buffer.c
 ./README
