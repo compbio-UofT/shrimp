@@ -3778,6 +3778,8 @@ usage(char * progname, bool full_usage){
           "      --trim-first      Trim only first read in pair\n");
   fprintf(stderr,
           "      --trim-second     Trim only second read in pair\n");
+  fprintf(stderr,
+          "      --expected-isize  Use this to tie break for high scoring pairs\n");
 
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
