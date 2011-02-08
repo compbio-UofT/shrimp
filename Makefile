@@ -44,16 +44,16 @@ gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
     common/debug.h common/f1-wrapper.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-bin/mergesam: mergesam/merge_sam.o mergesam/sam2pretty_lib.o mergesam/merge_sam_main.o mergesam/merge_sam_heap.o
+bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
-mergesam/merge_sam.o: mergesam/merge_sam.c mergesam/merge_sam.h 
+mergesam/mergesam.o: mergesam/mergesam.c 
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-mergesam/merge_sam_main.o: mergesam/merge_sam_main.c  
+mergesam/mergesam_heap.o: mergesam/mergesam_heap.c  mergesam/mergesam_heap.h 
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-mergesam/merge_sam_heap.o: mergesam/merge_sam_heap.c mergesam/merge_sam_heap.h
+mergesam/file_buffer.o: mergesam/file_buffer.c mergesam/file_buffer.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h

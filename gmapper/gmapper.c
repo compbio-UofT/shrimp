@@ -2296,6 +2296,7 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
 		|| (!IS_ABSOLUTE(sw_full_threshold) && rh->score_full*100/(double)rh->score_max >= sw_full_threshold) ) {
 	    tmp.score=rh->score_full;
 	    tmp.isize_score=0;
+	    tmp.isize=0;
 	    tmp.max_score=rh->score_max;
 	    tmp.rh[0]=rh;
 	    tmp.rh[1]=NULL;
