@@ -182,10 +182,10 @@ SHRiMP2 uses the OpenMP API to achieve multi-threaded operation.
 ----------------------
 
 Assume we downloaded the linux binary package in
-./SHRiMP_2_1_0.lx26.x86_64.tar.gz
+./SHRiMP_2_1_1.lx26.x86_64.tar.gz
 
-  $ tar xvzf SHRiMP_2_1_0.lx26.x86_64.tar.gz
-  $ cd SHRiMP_2_1_0
+  $ tar xvzf SHRiMP_2_1_1.lx26.x86_64.tar.gz
+  $ cd SHRiMP_2_1_1
   $ file bin/gmapper
   bin/gmapper: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV), for
   GNU/Linux 2.6.9, statically linked, for GNU/Linux 2.6.9, not stripped
@@ -198,10 +198,10 @@ utils/.
 3.2 Compiling SHRiMP2 from source
 ---------------------------------
 
-Assume we downloaded the source package in ./SHRiMP_2_1_0.src.tar.gz
+Assume we downloaded the source package in ./SHRiMP_2_1_1.src.tar.gz
 
-  $ tar xvzf SHRiMP_2_1_0.src.tar.gz
-  $ cd SHRiMP_2_1_0
+  $ tar xvzf SHRiMP_2_1_1.src.tar.gz
+  $ cd SHRiMP_2_1_1
   $ make
   [...warnings, hopefully no errors...]
   $ ls bin/gmapper*
@@ -372,7 +372,7 @@ The options used above have the following meaning:
 
 After the mapping jobs complete, we merge the results with:
 
-  $ $SHRIMP_FOLDER/bin/mergesam -r reads.500kx2.36bp.ls.fa --letter-space -o map.sam map.db?of4.sam
+  $ $SHRIMP_FOLDER/bin/mergesam --letter-space reads.500kx2.36bp.ls.fa map.db?of4.sam > map.sam
 
 Above, the merging script we used corresponds to "same query set" (same reads)
 and "different databases" (disjoint chunks of hg18).
