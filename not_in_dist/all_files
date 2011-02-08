@@ -97,7 +97,6 @@
 ./BUILDING
 ./TODO
 ./SPLITTING_AND_MERGING
-./README
 ./test.c
 ./Makefile
 ./HISTORY
@@ -108,3 +107,4 @@
 ./mergesam/file_buffer.h
 ./mergesam/mergesam_heap.h
 ./mergesam/sam2pretty_lib.h
+./README
