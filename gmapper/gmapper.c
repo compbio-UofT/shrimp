@@ -35,12 +35,6 @@ DEF_HEAP(uint32_t,uint,uu)
 DEF_HEAP(double, struct read_hit_holder, unpaired)
 DEF_HEAP(double, struct read_hit_pair_holder, paired)
 DEF_HEAP(uint32_t,char*,out)
-DEF_HEAP(uint32_t,char*,out)
-
-#ifndef CXXFLAGS
-#define CXXFLAGS "?"
-#endif
-char const *    compile_flags		= CXXFLAGS;
 
 /* Mode */
 static int      mode_mirna              = false;
@@ -150,11 +144,6 @@ static llint	map_usecs;
 
 static count_t mem_genomemap;
 
-/* Progress */
-#ifdef PROGRESS
-static llint    nreads_mod;
-#endif
-
 /* files to use when saving and loading genome maps */
 char *		save_file = NULL;
 char *		load_file = NULL;
@@ -183,66 +172,7 @@ static int	chunk_size = DEF_CHUNK_SIZE;
 
 static llint	scan_ticks[50];
 static llint	wait_ticks[50];
-static llint    anchor_list_ticks[50];
-static llint    hit_list_ticks[50];
-static llint    anchor_list_clearing_ticks[50];
 
-static stat_t   gen_list_size[50];
-static stat_t   gen_list_big_gap[50];
-static stat_t   anchors_discarded[50];
-
-#ifndef BIG_GAP
-#define BIG_GAP 1024
-#endif
-
-#ifdef USE_REGIONS
-#define REGION_BITS 10
-#define N_REGIONS (1 << (32 - REGION_BITS))
-
-/*
- * Semantics of region_map:
- *
- *   region_map[p][0][r] != i
- *     <=> part p of virtual pair i has no kmer in region r
- *
- *   region_map[p][0][r] == i && region_map[p][1][r] != i
- *     <=> part p of virtual pair i has a unique kmer in region r
- *
- *   region_map[p][1][r] == i
- *     <=> part p of virtual pair i has 2 or more kmers in region r
- */
-static uint8_t *	region_map[2][2];
-static uint8_t		read_num, pair_part;
-#pragma omp threadprivate(region_map, read_num, pair_part)
-
-/*
- * Semantics of virtual pairs:
- *
- *   In unpaired mode and symmetric paired mode:
- *     a virtual pair = a single read on 2 strands
- *     p == strand
- *
- *   In asymmetric paired mode:
- *     p == 0 for the hits of the stronger read
- *     p == 1 for the hits of the weaker read
- *     mapping mode opp-in is assumed
- *
- *     For a pair of reads (r1, r2), where r1 is strong and r2 is weak,
- *     call anchor list procedure in this order:
- *       read_get_anchor_list_per_strand(re1, st=0) [p==0]
- *       read_get_anchor_list_per_strand(re2, st=1) [p==1]
- *       read_get_anchor_list_per_strand(re1, st=1) [p==0]
- *       read_get_anchor_list_per_strand(re2, st=0) [p==1]
- *
- *     When a single hit for the weak part (p==1) is found in region r on strand 1,
- *     hits of the stronger part (p==0) in regions r + region_delta_min ... r + region_delta_max on strand 0
- *     are used to support the hit of the weaker part.
- *     When the strands are reversed in the example above (e.g., in the 4th call listed above),
- *     regions r - region_delta_max ... r - region_delta_min are used.
- */
-static int		asymm_match_mode;
-static int		region_delta_min, region_delta_max;
-#endif
 
 /* kmer_to_mapidx function */
 static uint32_t (*kmer_to_mapidx)(uint32_t *, int) = NULL;
@@ -974,20 +904,13 @@ read_get_restricted_anchor_list_per_strand(struct read_entry * re, int st, bool 
 
 static void
 read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
-  uint list_sz = 0;
-  uint n_big_gaps = 0;
+  uint list_sz;
   uint offset;
   int i, sn;
   struct heap_uu h;
   uint * idx;
   struct heap_uu_elem tmp;
   int anchor_cache[re->read_len];
-#ifdef USE_REGIONS
-  uint j;
-  int region, region_0;
-  uint n_anchors_discarded = 0;
-  llint before_clearing;
-#endif
 
   assert(re->mapidx[st] != NULL);
 
@@ -997,11 +920,10 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
     return;
 
   // compute size of anchor list
+  list_sz = 0;
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
-      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
-        continue;
       list_sz += genomemap_len[sn][re->mapidx[st][offset]];
     }
   }
@@ -1009,97 +931,11 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
   // init anchor list
   re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
 
-  stat_add(&gen_list_size[omp_get_thread_num()], list_sz);
-
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
   idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
   for (i = 0; i < re->read_len; i++)
     anchor_cache[i] = -1;
-
-#ifdef USE_REGIONS
-  // check regions, mark those that have at least 2 anchors
-  pair_part ^= 0x1;
-  if (pair_part == 0) read_num++;
-  if (read_num == 0) {
-    read_num++;
-    before_clearing = rdtsc();
-    free(region_map[0][0]);
-    free(region_map[0][1]);
-    free(region_map[1][0]);
-    free(region_map[1][1]);
-    region_map[0][0] = (uint8_t *)xcalloc(N_REGIONS);
-    region_map[0][1] = (uint8_t *)xcalloc(N_REGIONS);
-    region_map[1][0] = (uint8_t *)xcalloc(N_REGIONS);
-    region_map[1][1] = (uint8_t *)xcalloc(N_REGIONS);
-    anchor_list_clearing_ticks[omp_get_thread_num()] += rdtsc() - before_clearing;
-  }
-
-  for (sn = 0; sn < n_seeds; sn++) {
-    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
-      offset = sn*re->max_n_kmers + i;
-
-      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
-        continue;
-
-      for (j = 0; j < genomemap_len[sn][re->mapidx[st][offset]]; j++) {
-        region = (int)(genomemap[sn][re->mapidx[st][offset]][j] >> REGION_BITS);
-        if (region_map[pair_part][0][region] == read_num) {
-          region_map[pair_part][1][region] = read_num;
-        } else {
-          region_map[pair_part][0][region] = read_num;
-          if (asymm_match_mode && pair_part == 1) {
-            if (st == 0) {
-              for (region_0 = region + region_delta_min; region_0 <= region + region_delta_max; region_0++)
-                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
-                  region_map[1][1][region] = read_num;
-                  break;
-                }
-            } else { // st == 1
-              for (region_0 = region - region_delta_max; region_0 <= region - region_delta_min; region_0++)
-                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
-                  region_map[1][1][region] = read_num;
-                  break;
-                }
-            }
-          }
-        }
-#ifdef MARK_NEARBY_REGION
-        if (((genomemap[sn][re->mapidx[st][offset]][j] >> (REGION_BITS - 2)) & 0x3) == 0) {
-          region--;
-          if (region < 0) continue;
-        } else if (((genomemap[sn][re->mapidx[st][offset]][j] >> (REGION_BITS - 2)) & 0x3) == 0x3) {
-          region++;
-          if (region >= N_REGIONS) continue;
-        } else {
-          continue;
-        }
-// copy-paste from above; this is horrible code
-        if (region_map[pair_part][0][region] == read_num) {
-          region_map[pair_part][1][region] = read_num;
-        } else {
-          region_map[pair_part][0][region] = read_num;
-          if (asymm_match_mode && pair_part == 1) {
-            if (st == 0) {
-              for (region_0 = region + region_delta_min; region_0 <= region + region_delta_max; region_0++)
-                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
-                  region_map[1][1][region] = read_num;
-                  break;
-                }
-            } else { // st == 1
-              for (region_0 = region - region_delta_max; region_0 <= region - region_delta_min; region_0++)
-                if (region_0 >= 0 && region_0 < N_REGIONS && region_map[0][1][region_0] == read_num) {
-                  region_map[1][1][region] = read_num;
-                  break;
-                }
-            }
-          }
-        }
-#endif
-      }
-    }
-  }
-#endif
 
   // load inital anchors in min heap
   for (sn = 0; sn < n_seeds; sn++) {
@@ -1109,16 +945,6 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
       if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff) {
 	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
       }
-
-#ifdef USE_REGIONS
-      while (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
-        region = (int)(genomemap[sn][re->mapidx[st][offset]][idx[offset]] >> REGION_BITS);
-        if (region_map[pair_part][1][region] == read_num)
-          break;
-        n_anchors_discarded++;
-        idx[offset]++;
-      }
-#endif
 
       if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
 	tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
@@ -1143,10 +969,6 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
     re->anchors[st][re->n_anchors[st]].width = 1;
     re->anchors[st][re->n_anchors[st]].weight = 1;
     get_contig_num(re->anchors[st][re->n_anchors[st]].x, &re->anchors[st][re->n_anchors[st]].cn);
-
-    if (re->n_anchors[st] > 0 && tmp.key - re->anchors[st][re->n_anchors[st] - 1].x >= BIG_GAP)
-      n_big_gaps++;
-
     re->n_anchors[st]++;
 
     if (collapse) {
@@ -1165,16 +987,6 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
     }
 
     // load next anchor for that seed/mapidx
-#ifdef USE_REGIONS
-    while (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
-      region = (int)(genomemap[sn][re->mapidx[st][offset]][idx[offset]] >> REGION_BITS);
-      if (region_map[pair_part][1][region] == read_num)
-        break;
-      n_anchors_discarded++;
-      idx[offset]++;
-    }
-#endif
-
     if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
       tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
       tmp.rest = offset;
@@ -1187,11 +999,6 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
 
   heap_uu_destroy(&h);
   free(idx);
-
-  stat_add(&gen_list_big_gap[omp_get_thread_num()], n_big_gaps);
-#ifdef USE_REGIONS
-  stat_add(&anchors_discarded[omp_get_thread_num()], n_anchors_discarded);
-#endif
 }
 
 
@@ -1201,86 +1008,31 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse) {
  * Save anchor lists in re->anchors[][] and their sizes in re->n_anchors[]
  */
 static inline void
-readpair_get_anchor_list(struct read_entry * re1, struct read_entry * re2, bool collapse) {
-  uint64_t before = rdtsc();
-
-  if (re2 == NULL) {
-    if (re1->n_ranges == 0) {
-      read_get_anchor_list_per_strand(re1, 0, collapse);
-      read_get_anchor_list_per_strand(re1, 1, collapse);
-    } else {
-      read_get_restricted_anchor_list_per_strand(re1, 0, collapse);
-      read_get_restricted_anchor_list_per_strand(re1, 1, collapse);    
-    }
-#ifdef USE_REGIONS
-  } else if (!asymm_match_mode) {
-#else
+read_get_anchor_list(struct read_entry * re, bool collapse) {
+  if (re->n_ranges == 0) {
+    read_get_anchor_list_per_strand(re, 0, collapse);
+    read_get_anchor_list_per_strand(re, 1, collapse);
   } else {
-#endif
-    if (re1->n_ranges == 0) {
-      read_get_anchor_list_per_strand(re1, 0, collapse);
-      read_get_anchor_list_per_strand(re1, 1, collapse);
-    } else {
-      read_get_restricted_anchor_list_per_strand(re1, 0, collapse);
-      read_get_restricted_anchor_list_per_strand(re1, 1, collapse);
-    }
-
-    if (re2->n_ranges == 0) {
-      read_get_anchor_list_per_strand(re2, 0, collapse);
-      read_get_anchor_list_per_strand(re2, 1, collapse);
-    } else {
-      read_get_restricted_anchor_list_per_strand(re2, 0, collapse);
-      read_get_restricted_anchor_list_per_strand(re2, 1, collapse);
-    }
-#ifndef USE_REGIONS
+    read_get_restricted_anchor_list_per_strand(re, 0, collapse);
+    read_get_restricted_anchor_list_per_strand(re, 1, collapse);    
   }
-#else
-  } else { // asymm_match_mode
-    // assuming re1 is stronger
-    if (re1->n_ranges == 0)
-      read_get_anchor_list_per_strand(re1, 0, collapse);
-    else
-      read_get_restricted_anchor_list_per_strand(re1, 0, collapse);
-
-    if (re1->n_ranges == 0)
-      read_get_anchor_list_per_strand(re2, 1, collapse);
-    else
-      read_get_restricted_anchor_list_per_strand(re2, 1, collapse);
-
-    if (re1->n_ranges == 0)
-      read_get_anchor_list_per_strand(re1, 1, collapse);
-    else
-      read_get_restricted_anchor_list_per_strand(re1, 1, collapse);
-
-    if (re1->n_ranges == 0)
-      read_get_anchor_list_per_strand(re2, 0, collapse);
-    else
-      read_get_restricted_anchor_list_per_strand(re2, 0, collapse);
-  }
-#endif
-
-  anchor_list_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 #ifdef DEBUG_ANCHOR_LIST
   {
-#warning Dumping anchor list
-    int i, st;
+#warning Dumping anchor list.
+    uint i, st;
 
     fprintf(stderr,"Dumping anchors for read:[%s]\n", re->name);
     for (st = 0; st < 2; st++) {
       fprintf(stderr, "st:%u ", st);
       for(i = 0; i < re->n_anchors[st]; i++){
-	fprintf(stderr,"(%lld,%lld,%u,%u)%s", re->anchors[st][i].x, re->anchors[st][i].y,
+	fprintf(stderr,"(%u,%u,%u,%u)%s", re->anchors[st][i].x, re->anchors[st][i].y,
 		re->anchors[st][i].length, re->anchors[st][i].weight,
 		i < re->n_anchors[st]-1? "," : "\n");
       }
     }
   }
 #endif
-}
-static inline void
-read_get_anchor_list(struct read_entry * re1, bool collapse) {
-  readpair_get_anchor_list(re1, NULL, collapse);
 }
 
 
@@ -1467,15 +1219,10 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st) {
  */
 static inline void
 read_get_hit_list(struct read_entry * re, int match_mode) {
-  uint64_t before = rdtsc();
-
   read_get_hit_list_per_strand(re, match_mode, 0);
   read_get_hit_list_per_strand(re, match_mode, 1);
 
-  hit_list_ticks[omp_get_thread_num()] += rdtsc() - before;
-
 #ifdef DEBUG_HIT_LIST_CREATION
-#warning Dumping initial hit list
   fprintf(stderr, "Dumping hit list after creation for read:[%s]\n", re->name);
   dump_hit_list(re, 0, false, false);
   dump_hit_list(re, 1, false, false);
@@ -1576,7 +1323,6 @@ read_pass1(struct read_entry * re, bool only_paired) {
   read_pass1_per_strand(re, only_paired, 1);
 
 #ifdef DEBUG_HIT_LIST_PASS1
-#warning Dumping hit list after pass 1
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
   dump_hit_list(re, 0, only_paired, false);
   dump_hit_list(re, 1, only_paired, false);
@@ -1606,8 +1352,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
 	min_correction = -re1_correction;
     }
    
-    //printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
-
+   // printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
       int64_t fivep = re1->hits[st1][i].g_off + ((re1_strand==1) ? re1->window_len : 0);
@@ -1655,7 +1400,6 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2) {
   }
 
 #ifdef DEBUG_HIT_LIST_PAIR_UP
-#warning Dumping hit list after pairing
   fprintf(stderr, "Dumping hit list after pair-up for read:[%s]\n", re1->name);
   dump_hit_list(re1, 0, false, false);
   dump_hit_list(re1, 1, false, false);
@@ -1802,7 +1546,6 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
 
 #ifdef DEBUG_SW_FULL_CALLS
-#warning Dumping full SW calls
   fprintf(stderr, "SW full call: (name:[%s],cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,anchor:(%lld,%lld,%d,%d))\n",
 	  re->name, rh->cn, rh->st, rh->gen_st, rh->g_off, rh->w_len,
 	  rh->anchor.x, rh->anchor.y, rh->anchor.length, rh->anchor.width);
@@ -2238,32 +1981,23 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 			"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
 			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
 			isize,seq,qual);
-		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
-			"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
-			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-			isize,seq,qual);
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			if (Qflag) {
 				//extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
 				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
 			} else {
 				//extra = extra + sprintf(extra,"\tCQ:Z:%s",qual);
 				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",qual);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",qual);
 			}
 			//extra = extra + sprintf(extra, "\tCS:Z:%s",re->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s",re->seq);
 			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s",re->seq);
 		}
 		if (sam_r2) {
 			if (shrimp_mode == MODE_COLOUR_SPACE) {
 				//extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
 				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
 			} else {
 				//extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 			}
 		}
@@ -2476,9 +2210,6 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
 		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
 		rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
-		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
-		rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -2487,27 +2218,22 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		if (Qflag) {
 			//extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
 			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
 		}
 		//extra = extra + sprintf(extra, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
-		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
 		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
 	} 
 	if (sam_r2) {
 		if (shrimp_mode == MODE_COLOUR_SPACE) {
 			//extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
 			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
 		} else {
 			//extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
 		}
 	}
 	
 	if (sam_read_group_name!=NULL) {
 			//extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
-			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
 			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
 	}
 	if (cigar_binary!=NULL) {
@@ -2564,7 +2290,6 @@ read_pass2(struct read_entry * re, struct heap_unpaired * h) {
   /* compute full alignment scores */
   for (i = 0; i <(int)h->load; i++) {
     struct read_hit * rh = h->array[i].rest.hit;
-    //assert(rh->gen_st==0);
     hit_run_full_sw(re, rh, (int)abs_or_pct(sw_full_threshold, rh->score_max));
     if ( (IS_ABSOLUTE(sw_full_threshold)
 		&& rh->score_full >= abs_or_pct(sw_full_threshold, rh->score_max))
@@ -2840,7 +2565,6 @@ handle_read(read_entry *re){
 
   read_get_mapidxs(re);
 #ifdef DEBUG_KMERS
-#warning Dumping kmers
   {
     uint sn, i, j;
     fprintf(stderr, "max_n_kmers:%u, min_kmer_pos:%u\n",
@@ -2929,9 +2653,8 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2) {
   read_get_mapidxs(re1);
   read_get_mapidxs(re2);
 
-  //read_get_anchor_list(re1, true);
-  //read_get_anchor_list(re2, true);
-  readpair_get_anchor_list(re1, re2, true);
+  read_get_anchor_list(re1, true);
+  read_get_anchor_list(re2, true);
 
   read_get_hit_list(re1, (num_matches >= 4? 2 : 1));
   read_get_hit_list(re2, (num_matches >= 4? 2 : 1));
@@ -3258,12 +2981,6 @@ launch_scan_threads(){
 	  }
 	}
 	nreads += load;
-#ifdef PROGRESS
-	nreads_mod += load;
-        if (nreads_mod >= PROGRESS)
-          fprintf(stderr, "\r%lld", nreads);
-        nreads_mod %= PROGRESS;
-#endif
       } // end critical section
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
@@ -3728,7 +3445,6 @@ print_statistics()
 	double f2_total_secs = 0, f2_total_cellspersec = 0;
 
 	double scan_secs[num_threads], readload_secs[num_threads];
-	double anchor_list_secs[num_threads], hit_list_secs[num_threads], anchor_list_clearing_secs[num_threads];
 	double total_scan_secs = 0, total_wait_secs = 0, total_readload_secs = 0;
 
 	double hz;
@@ -3764,10 +3480,6 @@ print_statistics()
 	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
 	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
-
-          anchor_list_secs[tid] = (double)anchor_list_ticks[tid] / hz;
-          hit_list_secs[tid] = (double)hit_list_ticks[tid] / hz;
-          anchor_list_clearing_secs[tid] = (double)anchor_list_clearing_ticks[tid] / hz;
 	}
 	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
@@ -3800,23 +3512,16 @@ print_statistics()
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Read Load", "Scan", "Anch List", "Anch List", "Hit List", "Vector SW", "Scalar SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Time", "Time", "Clearing", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
+		  "", "Read Load", "Scan", "Vector SW", "Scalar SW", "Wait");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+		  "", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, readload_secs[i], scan_secs[i], anchor_list_secs[i], anchor_list_clearing_secs[i], hit_list_secs[i],
-                    comma_integer(f1_invocs[i]), f1_secs[i], comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
+	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+		    i, readload_secs[i], scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
+		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
 	  }
-
-          for (i = 0; i < num_threads; i++) {
-            fprintf (stderr, "thrd:%d  gen_list_size:(%.2f, %.2f)  gen_list_big_gap:(%.2f, %.2f)  anchors_discarded:(%.2f, %.2f)\n",
-              i, stat_get_mean(&gen_list_size[i]), stat_get_sample_stddev(&gen_list_size[i]),
-              stat_get_mean(&gen_list_big_gap[i]), stat_get_sample_stddev(&gen_list_big_gap[i]),
-              stat_get_mean(&anchors_discarded[i]), stat_get_sample_stddev(&anchors_discarded[i]));
-          }
 	  fprintf(stderr, "\n");
 	}
 
@@ -4271,10 +3976,8 @@ int main(int argc, char **argv){
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
-	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n", get_mode_string(),
-			SHRIMP_VERSION_STRING);
-	if (compile_flags)
-		fprintf(stderr, "[%s, CXXFLAGS=\"%s\"]\n", get_compiler(), compile_flags);
+	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(),
+			SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
 
@@ -5014,20 +4717,6 @@ int main(int argc, char **argv){
 	  //hash_mark = 0;
 	  //window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
 
-#ifdef USE_REGIONS
-          region_map[0][0] = (uint8_t *)xcalloc(N_REGIONS);
-          region_map[0][1] = (uint8_t *)xcalloc(N_REGIONS);
-          region_map[1][0] = (uint8_t *)xcalloc(N_REGIONS);
-          region_map[1][1] = (uint8_t *)xcalloc(N_REGIONS);
-          read_num = 0;
-          pair_part = 1;
-
-          // !!! THIS DOES NOT BELONG HERE; INITIALIZE FROM PAIRING MODE !!!
-          region_delta_min = -2;
-          region_delta_max = 0;
-#endif
-
-
 		if (f1_setup(max_window_len, longest_read_len,
 			     a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 			     match_score, mismatch_score,
@@ -5118,12 +4807,6 @@ int main(int argc, char **argv){
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-#ifdef USE_REGIONS
-          free(region_map[0][0]);
-          free(region_map[0][1]);
-          free(region_map[1][0]);
-          free(region_map[1][1]);
-#endif
 		sw_vector_cleanup();
 		if (shrimp_mode==MODE_COLOUR_SPACE) {
 			sw_full_cs_cleanup();
