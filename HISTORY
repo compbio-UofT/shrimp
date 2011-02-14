@@ -1,3 +1,13 @@
+2.1.1: Feb 8, 2010
+	- Read trimming implemented, on the fly
+	- Mergesam has been re-written from scratch to support faster operations
+	- New heap structure put into place for filtering final alignments - fixed several bugs
+	- Improved half-paired runtime when running in n=3 mode
+	- Fixed a insert size inconsistency, internal insert size calculations were not to SAM specification,
+		cause bounds to be off
+	- Moved percentage score comparisons to double, instead of integer, improved accuracy
+	- Added expected-isize parameter to tie-break among high scoring pairs
+
 2.1.0: Dec 28, 2010
 	- Added new mirna mode
 	- Output of gmapper now in same order as reads in multi-thread mode

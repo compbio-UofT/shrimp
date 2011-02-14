@@ -5,9 +5,10 @@
 
 #CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
-#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
+#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
+CXXFLAGS=-g -O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 #CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG -DDEBUG_KMERS -DDEBUG_HIT_LIST_PASS1
-CXXFLAGS=-g -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
+#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  -DNDEBUG
 #CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
 #CXXFLAGS=-fopenmp -g -O1 -Wall -DNDEBUG
 endif
@@ -33,7 +34,8 @@ mapper/mapper.o: mapper/mapper.c mapper/mapper.h
 #
 bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
-    common/sw-full-ls.o common/output.o common/anchors.o common/input.o
+    common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
+    common/read_hit_heap.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
@@ -42,16 +44,16 @@ gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
     common/debug.h common/f1-wrapper.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
-bin/mergesam: mergesam/merge_sam.o mergesam/sam2pretty_lib.o mergesam/merge_sam_main.o mergesam/merge_sam_heap.o
+bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
-mergesam/merge_sam.o: mergesam/merge_sam.c mergesam/merge_sam.h 
+mergesam/mergesam.o: mergesam/mergesam.c 
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-mergesam/merge_sam_main.o: mergesam/merge_sam_main.c  
+mergesam/mergesam_heap.o: mergesam/mergesam_heap.c  mergesam/mergesam_heap.h 
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-mergesam/merge_sam_heap.o: mergesam/merge_sam_heap.c mergesam/merge_sam_heap.h
+mergesam/file_buffer.o: mergesam/file_buffer.c mergesam/file_buffer.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
@@ -124,6 +126,9 @@ utils/split-contigs.o: utils/split-contigs.c
 #
 # common/
 #
+common/read_hit_heap.o: common/read_hit_heap.c common/read_hit_heap.h gmapper/gmapper.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 common/fasta.o: common/fasta.c common/fasta.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 

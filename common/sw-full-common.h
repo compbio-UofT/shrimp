@@ -2,7 +2,7 @@
 
 #ifndef _SW_FULL_COMMON_H
 #define _SW_FULL_COMMON_H
-
+#include <assert.h>
 
 struct sw_full_results {
 	/* Common fields */
@@ -45,7 +45,6 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 	sfr1->qralign = sfr2->qralign = NULL;
 
 	equal = memcmp(sfr1, sfr2, sizeof(*sfr1)) == 0;
-
 	sfr1->dup=dup1;
 	sfr2->dup=dup2;
 	sfr1->dbalign = dbalign1;
