@@ -42,7 +42,7 @@ bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
 
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
     common/debug.h common/f1-wrapper.h
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
 bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
