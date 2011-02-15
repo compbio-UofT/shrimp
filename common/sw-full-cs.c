@@ -17,12 +17,12 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "../common/util.h"
 #include "../common/fasta.h"
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
-#include "../common/util.h"
 
-struct swcell {
+typedef struct swcell {
   struct {
     int	score_n;
     int	score_w;
@@ -32,7 +32,7 @@ struct swcell {
     int8_t	back_w;
     int8_t	back_nw;
   } from[4];
-};
+} swcell;
 
 #define FROM_A	0x00
 #define FROM_B	0x01 
@@ -108,7 +108,7 @@ static int		anchor_width;
 static uint64_t		swticks, swcells, swinvocs;
 
 #pragma omp threadprivate(initialised,db,qr,dblen,qrlen,gap_open,gap_ext,match,mismatch,xover_penalty,\
-		swmatrix,backtrace,dbalign,qralign,anchor_width,swticks,swcells,swinvocs)
+		swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs)
 
 #define BT_CROSSOVER		0x80
 #define BT_CLIPPED		0xf0

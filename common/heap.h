@@ -7,17 +7,17 @@
 
 
 #define DEF_STRUCT_HEAP_ELEM(_key_t,_rest_t,_id)	\
-  struct heap_##_id##_elem {				\
+  typedef struct heap_##_id##_elem {			\
     _key_t key;						\
     _rest_t rest;					\
-  };
+  } heap_##_id##_elem;
 
 #define DEF_STRUCT_HEAP(_id)						\
-  struct heap_##_id {							\
+  typedef struct heap_##_id {						\
     struct heap_##_id##_elem *	array;					\
     uint		capacity;					\
     uint		load;						\
-  };
+  } heap_##_id;
 
 #define DEF_HEAP_INIT(_id)						\
   static inline void								\

@@ -1,234 +1,270 @@
+/*
+ * This file should contain extern declarations for global variables in gmapper.
+ * This is the only file that should be included by other modules (seeds, mapping, etc).
+ */
+
 #ifndef _GMAPPER_H
 #define _GMAPPER_H
 
-#include <getopt.h>
-#include <stdlib.h>
-#include "../common/bitmap.h"
-#include "../common/sw-full-common.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "../gmapper/gmapper-definitions.h"
 #include "../common/debug.h"
-#include "../common/anchors.h"
-#include "../common/heap.h"
+#include "../common/util.h"
 
-#define DEF_MAX_ALIGNMENTS 0
+#undef EXTERN
+#undef STATIC
+#ifdef _MODULE_GMAPPER
+#include "../gmapper/gmapper-defaults.h"
+#define EXTERN(_type, _id, _init_val) _type _id = _init_val
+#define STATIC(_type, _id, _init_val) static _type _id = _init_val
+#else
+#define EXTERN(_type, _id, _init_val) extern _type _id
+#define STATIC(_type, _id, _init_val)
+#endif
 
-/* pair mode definitions */
-#define PAIR_NONE	0
-#define PAIR_OPP_IN	1
-#define PAIR_OPP_OUT	2
-#define PAIR_COL_FW	3
-#define PAIR_COL_BW	4
 
-#define DEF_LONGEST_READ_LENGTH	1000
+/* shrimp mode */
+EXTERN(shrimp_mode_t,	shrimp_mode,		DEF_SHRIMP_MODE);
 
-struct option standard_options[] =
+EXTERN(shrimp_args_t,	shrimp_args,		{});
+
+
+/* thread control */
+EXTERN(int,			num_threads,		DEF_NUM_THREADS);
+EXTERN(int,			chunk_size,		DEF_CHUNK_SIZE);
+
+
+/* parameters */
+EXTERN(int,		mode_mirna,		false);
+EXTERN(double,		window_len,		DEF_WINDOW_LEN);
+EXTERN(double,		window_overlap,		DEF_WINDOW_OVERLAP);
+EXTERN(int,		num_matches,		DEF_NUM_MATCHES);
+EXTERN(int,		num_outputs,		DEF_NUM_OUTPUTS);
+EXTERN(int,		max_alignments,		DEF_MAX_ALIGNMENTS);
+EXTERN(int,		num_tmp_outputs,	20 + DEF_NUM_OUTPUTS);
+EXTERN(int,		anchor_width,		DEF_ANCHOR_WIDTH);
+EXTERN(uint32_t,	list_cutoff,		DEF_LIST_CUTOFF);
+EXTERN(bool,		gapless_sw,		DEF_GAPLESS_SW);
+EXTERN(bool,		hash_filter_calls,	DEF_HASH_FILTER_CALLS);
+EXTERN(int,		longest_read_len,	DEF_LONGEST_READ_LENGTH);
+EXTERN(bool,		trim,			false);
+EXTERN(int,		trim_front,		0);
+EXTERN(int,		trim_end,		0);
+EXTERN(bool,		trim_first,		true);
+EXTERN(bool,		trim_second,		true);
+EXTERN(char *,		save_file,		NULL);
+EXTERN(char *,		load_file,		NULL);
+
+
+/* Flags */
+EXTERN(bool,		strata_flag,		false);		/* get only top scoring hits */
+EXTERN(bool,		Cflag,			false);		/* do complement only */
+EXTERN(bool,		Fflag,			false);		/* do positive (forward) only */
+EXTERN(bool,		Hflag,			false);		/* use hash table, not lookup */
+EXTERN(bool,		Pflag,			false);		/* pretty print results */
+EXTERN(bool,		Rflag,			false);		/* add read sequence to output*/
+EXTERN(bool,		Tflag,			true);		/* reverse sw full tie breaks */
+EXTERN(bool,		Dflag,			false);		/* print statistics for each thread */
+EXTERN(bool,		Eflag,			false);		/* output sam format */
+EXTERN(bool,		Xflag,			false);		/* print insert histogram */
+EXTERN(bool,		Yflag,			false);		/* print genome projection histogram */
+EXTERN(bool,		Vflag,			true);		/* automatic genome index trimming */
+EXTERN(bool,		Qflag,			false);		/* use fastq reads */
+EXTERN(bool,		Gflag,			false);		/* global alignment flag ! */
+EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
+
+
+/* Scores */
+EXTERN(int,		match_score,		DEF_MATCH_VALUE);
+EXTERN(int,		mismatch_score,		DEF_MISMATCH_VALUE);
+EXTERN(int,		a_gap_open_score,	DEF_A_GAP_OPEN);
+EXTERN(int,		a_gap_extend_score,	DEF_A_GAP_EXTEND);
+EXTERN(int,		b_gap_open_score,	DEF_B_GAP_OPEN);
+EXTERN(int,		b_gap_extend_score,	DEF_B_GAP_EXTEND);
+EXTERN(int,		crossover_score,	DEF_XOVER_PENALTY);
+
+EXTERN(double,		window_gen_threshold,	DEF_WINDOW_GEN_THRESHOLD);
+EXTERN(double,		sw_vect_threshold,	DEF_SW_VECT_THRESHOLD);
+EXTERN(double,		sw_full_threshold,	DEF_SW_FULL_THRESHOLD);
+
+
+/* shrimp parameter/option parsing */
+STATIC(struct option const,	standard_options[],	DEF_STANDARD_OPTIONS);
+STATIC(struct option const,	colour_space_options[],	DEF_COLOUR_SPACE_OPTIONS);
+STATIC(struct option const,	letter_space_options[], DEF_LETTER_SPACE_OPTIONS);
+STATIC(size_t const,		standard_entries,	sizeof(standard_options)/sizeof(struct option));
+STATIC(size_t const,		letter_entries,		sizeof(letter_space_options)/sizeof(struct option));
+STATIC(size_t const,		colour_entries,		sizeof(colour_space_options)/sizeof(struct option));
+
+
+/* pairing mode */
+EXTERN(int,		pair_mode,			DEF_PAIR_MODE);
+EXTERN(int,		min_insert_size,		DEF_MIN_INSERT_SIZE);
+EXTERN(int,		max_insert_size,		DEF_MAX_INSERT_SIZE);
+EXTERN(int,	 	expected_isize,			-1);
+EXTERN(llint,		insert_histogram[100],		{});
+EXTERN(int,		insert_histogram_bucket_size,	1);
+EXTERN(char *,		reads_filename,			NULL);
+EXTERN(char *,	 	left_reads_filename,		NULL);
+EXTERN(char *,		right_reads_filename,		NULL);
+EXTERN(bool,		single_reads_file,		true);
+
+STATIC(char const * const,	pair_mode_string[5],		DEF_PAIR_MODE_STRING);
+EXTERN(bool,			pair_reverse[5][2],		DEF_PAIR_REVERSE);
+
+
+/* seed management */
+EXTERN(int,			n_seeds,		0);
+EXTERN(struct seed_type *,	seed,			NULL);
+EXTERN(uint32_t * *,		seed_hash_mask,		NULL);
+EXTERN(int,			max_seed_span,		0);
+EXTERN(int,			min_seed_span,		MAX_SEED_SPAN);
+EXTERN(int,			avg_seed_span,		0);
+
+
+/* Thread output buffer */
+STATIC(char **,			thread_output_buffer,		NULL);
+STATIC(size_t *,		thread_output_buffer_sizes,	NULL);
+STATIC(char **,			thread_output_buffer_filled,	NULL);
+STATIC(unsigned int *,		thread_output_buffer_chunk,	NULL);
+STATIC(size_t,			thread_output_buffer_initial,	DEF_THREAD_OUTPUT_BUFFER_INITIAL);
+STATIC(size_t,			thread_output_buffer_increment,	DEF_THREAD_OUTPUT_BUFFER_INCREMENT);
+STATIC(size_t,			thread_output_buffer_safety,	DEF_THREAD_OUTPUT_BUFFER_SAFETY);
+STATIC(unsigned int,		thread_output_heap_capacity,	DEF_THREAD_OUTPUT_HEAP_CAPACITY);
+
+
+/* SAM stuff */
+EXTERN(FILE *,		unaligned_reads_file,		NULL);
+EXTERN(FILE *,		aligned_reads_file,		NULL);
+EXTERN(bool,		sam_unaligned,			false);
+EXTERN(bool,		sam_half_paired,		false); //output reads in paired mode that only have one mapping
+EXTERN(bool,		sam_r2,				false);
+EXTERN(char *,		sam_header_filename,		NULL);
+EXTERN(char *,		sam_read_group_name,		NULL);
+EXTERN(char *,		sam_sample_name,		NULL);
+
+
+/* Statistics */
+EXTERN(llint,			nreads,				0);
+EXTERN(llint,			total_reads_matched,		0);
+EXTERN(llint,			total_pairs_matched,		0);
+EXTERN(llint,			total_reads_dropped,		0);
+EXTERN(llint,			total_pairs_dropped,		0);
+EXTERN(llint,			total_single_matches,		0);
+EXTERN(llint,			total_paired_matches,		0);
+EXTERN(llint,			total_dup_single_matches,	0);			/* number of duplicate hits */
+EXTERN(llint,			total_dup_paired_matches,	0);
+EXTERN(llint,			total_work_usecs,		0);
+EXTERN(llint,			map_usecs,			0);
+EXTERN(llint,			scan_ticks[50],			{});
+EXTERN(llint,			wait_ticks[50],			{});
+EXTERN(count_t,			mem_genomemap,			0);
+
+
+/* genome map */
+EXTERN(uint32_t ***,		genomemap,			NULL);
+EXTERN(uint32_t **,		genomemap_len,			NULL);
+EXTERN(uint32_t *,		contig_offsets,			NULL);	/* offset info for genome contigs */
+EXTERN(char **,			contig_names,			NULL);
+EXTERN(int,			num_contigs,			0);
+EXTERN(uint32_t **,		genome_contigs,			NULL);	/* genome -- always in letter */
+EXTERN(uint32_t **,		genome_contigs_rc,		NULL);	/* reverse complemets */
+EXTERN(uint32_t **,		genome_cs_contigs,		NULL);
+EXTERN(int *,			genome_initbp,			NULL);
+EXTERN(uint32_t	*,		genome_len,			NULL);
+EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
+
+/* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
+#include "../common/f1-wrapper.h"
+
+
+void		hit_output(struct read_entry *, struct read_hit *, struct read_hit *, char **, char **, bool, int *, int);
+void		hit_free_sfrp(struct read_hit *);
+void		read_free(struct read_entry *);
+void		read_free_full(struct read_entry *);
+
+
+/* pulled off the web; this may or may not be any good */
+static inline uint32_t
+hash(uint32_t a)
 {
-	{"un",1,0,10},
-	{"al",1,0,11},
-	{"upstream",1,0,'1'},
-	{"downstream",1,0,'2'},
-	{"sam-unaligned",0,0,12},
-	{"longest-read",1,0,13},	
-	{"seeds",1,0,'s'}, 
-	{"report",1,0,'o'},
-	{"match-window",1,0,'w'},
-	{"cmw-mode",1,0,'n'},
-	{"cmw-overlap",1,0,'l'},
-	{"anchor-width",1,0,'a'},
-	{"save",1,0,'S'},
-	{"load",1,0,'L'},
-	{"cutoff",1,0,'z'},
-	{"match",1,0,'m'},
-	{"mismatch",1,0,'i'},
-	{"open-r",1,0,'g'},
-	{"open-q",1,0,'q'},	
-	{"ext-r",1,0,'e'},
-	{"ext-q",1,0,'f'},
-	{"cmv-threshold",1,0,'r'},
-	{"full-threshold",1,0,'h'},
-	{"threads",1,0,'N'},
-	{"thread-chunk",1,0,'K'},
-	{"pair-mode",1,0,'p'},
-	{"isize",1,0,'I'},
-	{"ungapped",0,0,'U'},
-	{"negative",0,0,'C'},
-	{"positive",0,0,'F'},
-	{"pretty",0,0,'P'},
-	{"sam",0,0,'E'},
-	{"fastq",0,0,'Q'},
-	{"print-reads",0,0,'R'},
-	{"rev-tiebreak",0,0,'T'},
-	{"tiebreak-off",0,0,'t'},
-	{"isize-histogram",0,0,'X'},
-	{"proj-histogram",0,0,'Y'},
-	{"cachebypass-off",0,0,'Z'},
-	{"help",0,0,'?'},
-	{"spaced-kmers",0,0,'H'},
-	{"thread-stats",0,0,'D'},
-	{"trim-off",0,0,'V'},
-	{"strata",0,0,9},
-	{"max-alignments",1,0,14},
-	{"global",0,0,15},
-	{"read-group",1,0,17},
-	{"sam-header",1,0,18},
-	{"half-paired",0,0,19},
-	{"sam-r2",0,0,20},
-	{"mode",1,0,'M'},
-	{"trim-front",1,0,200},
-	{"trim-end",1,0,201},
-	{"trim-first",1,0,202},
-	{"trim-second",1,0,203},
-	{"expected-isize",1,0,204}
-};
-struct option colour_space_options[] = {
-	{"crossover",1,0,'x'},
-	{"vec-threshold",1,0,'v'},
-	{"bfast",0,0,16},
-	{0,0,0,0}
-};
-struct option letter_space_options[] = {
-		{0,0,0,0}
-	}; 
-size_t standard_entries = sizeof(standard_options)/sizeof(struct option);
-size_t letter_entries = sizeof(letter_space_options)/sizeof(struct option);
-size_t colour_entries = sizeof(colour_space_options)/sizeof(struct option);
-static char const * const pair_mode_string[5] =
-  { "none", "opposing strands; inwards", "opposing strands; outwards",
-    "same strand; second is forward", "same strand; second is backward" };
-
-static bool const pair_reverse[5][2] =
-  { { 0, 0 }, // PAIR_NONE
-    { 0, 0 }, // PAIR_OPP_IN
-    { 1, 1 }, // PAIR_OPP_OUT
-    { 0, 1 }, // PAIR_COL_FW
-    { 1, 0 }  // PAIR_COL_BW
-  };
-
-/* defaults */
-#define DEF_NUM_THREADS 1
-#define DEF_CHUNK_SIZE 1000
-
-#define DEF_HASH_FILTER_CALLS	true
-#define DEF_GAPLESS_SW		false
-#define DEF_LIST_CUTOFF		4294967295u // 2^32 - 1
-
-#define DEF_PAIR_MODE		PAIR_NONE
-#define DEF_MIN_INSERT_SIZE	50
-#define DEF_MAX_INSERT_SIZE	2000
-
-#define DEF_WINDOW_LEN		140.0
-#define DEF_WINDOW_OVERLAP	20.0
-#define DEF_NUM_MATCHES		2
-#define DEF_NUM_OUTPUTS		10
-#define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
-
-/* SW Scores */
-#define DEF_MATCH_VALUE		10
-#define DEF_MISMATCH_VALUE	-15
-#define DEF_A_GAP_OPEN		-40
-#define DEF_B_GAP_OPEN		 DEF_A_GAP_OPEN
-#define DEF_A_GAP_EXTEND	-7
-#define DEF_B_GAP_EXTEND	 DEF_A_GAP_EXTEND
-#define DEF_XOVER_PENALTY	-14	/* CS only */
-
-/* Score Thresholds */
-#define DEF_WINDOW_GEN_THRESHOLD	55.0	/* Min required to generate match window */
-//SHRiMP v 2.0.1
-//#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
-//#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
-//SHRiMP v 2.0.2
-#define DEF_SW_VECT_THRESHOLD	50.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
-#define DEF_SW_FULL_THRESHOLD	55.0	/* read_length x match_value x .55 */
-
-/*
- * The maximum seed weight (maximum number of 1's in the seed) sets an
- * upper limit on our lookup table allocation size. The memory usage of
- * rmapper corresponds strongly to 4^MAX_SEED_WEIGHT * (sizeof(void *) +
- * sizeof(uint32_t)). At 16, this is 32GB on 32-bit and 48GB on 64-bit
- * architectures.
- */
-#define MAX_SEED_WEIGHT		14
-#define MAX_SEED_SPAN		64
-
-/*
- * For larger seeds we'll just use a hash table. Presently, we're restricted to
- * 128 bytes in kmer_to_mapidx, but it's trivially extended.
- */
-#define MAX_HASH_SEED_WEIGHT	64
-#define MAX_HASH_SEED_SPAN	64
-#define HASH_TABLE_POWER	12	/* 4^HASH_POWER entries in table */
-
-
-#define MAX_ANCHOR_LIST		10000000
-
-
-/*
- * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
- * we'll set them negative to distinguish.
- */
-#define IS_ABSOLUTE(x)	((x) < 0)
-
-static inline double abs_or_pct(double x, double base) {
-  return IS_ABSOLUTE(x) ? -x : base * (x / 100.0);
+  a = (a+0x7ed55d16) + (a<<12);
+  a = (a^0xc761c23c) ^ (a>>19);
+  a = (a+0x165667b1) + (a<<5);
+  a = (a+0xd3a2646c) ^ (a<<9);
+  a = (a+0xfd7046c5) + (a<<3);
+  a = (a^0xb55a4f09) ^ (a>>16);
+  return a;
 }
 
-#define DEF_MAX_N_DEFAULT_SEEDS 5
-typedef char const * const default_seed_array_t[DEF_MAX_N_DEFAULT_SEEDS];
 
-static int const default_min_spaced_seed_weight_cs = 10;
-static int const default_max_spaced_seed_weight_cs = 18;
-static int const default_spaced_seed_weight_cs = 12;
-static int const default_spaced_seeds_cs_cnt[9] = { 4, 4, 4, 0, 0, 0, 4, 0, 4 };
-static default_seed_array_t const default_spaced_seeds_cs[9] = {
-  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
-  { "111110001111111", "111100111001001111", "111001001000111001111", "1111001000010001001001111" },
-  { },
-  { },
-  { },
-  { "111111101110111111", "1111100101101101011111", "11110011001010100011011111", "111101001100000100110011010111" },
-  { },
-  { "11111011111110111111", "11110111011010111011111", "11111100110101101001011111", "11111010101100100010011101111" } };
+/* hash-based version or kmer -> map index function for larger seeds */
+static inline uint32_t
+kmer_to_mapidx_hash(uint32_t *kmerWindow, int sn)
+{
+  static uint32_t maxidx = ((uint32_t)1 << 2*HASH_TABLE_POWER) - 1;
+  uint32_t mapidx = 0;
+  int i;
 
-static int const default_min_spaced_seed_weight_ls = 10;
-static int const default_max_spaced_seed_weight_ls = 18;
-static int const default_spaced_seed_weight_ls = 12;
-static int const default_spaced_seeds_ls_cnt[9] = { 4, 4, 4, 0, 0, 0, 4, 0, 4 };
-static default_seed_array_t const default_spaced_seeds_ls[9] = {
-  { "111110011111", "111100110001111", "111100100100100111", "111001000100001001111" },
-  { "1111001111111", "1111100110001111", "11110010010001001111", "11100110010000100100111" },
-  { "111101101011111", "111010110011001111", "1110110001011010111", "11110010100000100110111" },
-  { },
-  { },
-  { },
-  { "111111101110111111", "1111100101101101011111", "11110011001010100011011111", "111101001100000100110011010111" },
-  { },
-  { "11111011111110111111", "11110111011010111011111", "11111100110101101001011111", "11111010101100100010011101111" } };
+  assert(seed_hash_mask != NULL);
 
-static int const default_spaced_seeds_mirna_cnt = 5;
-static default_seed_array_t const default_spaced_seeds_mirna =
-  { "00111111001111111100", "00111111110011111100", "00111111111100111100", "00111111111111001100", "00111111111111110000" } ;
+  for (i = 0; i < BPTO32BW(max_seed_span); i++)
+    mapidx = hash((kmerWindow[i] & seed_hash_mask[sn][i]) ^ mapidx);
 
-struct seed_type {
-  bitmap_type	mask[1];	/* a bitmask, least significant bit = rightmost match */
-  int		span;		/* max 64 (could be uint8_t) */
-  int		weight;		/* max 64 */
-};
-
-struct range_restriction {
-  int		cn;
-  int		st;
-  llint		g_start;
-  llint		g_end;
-};
+  return mapidx & maxidx;
+}
 
 
+/*
+ * Compress the given kmer into an index in 'readmap' according to the seed.
+ * While not optimal, this is only about 20% of the spaced seed scan time.
+ *
+ * This is the original version for smaller seeds.
+ *
+ * XXX- This algorithm only considers bases 0-3, which implies overlap
+ *      when we have other bases (mainly uracil, but also wobble codes).
+ *      This won't affect sensitivity, but may cause extra S-W calls.
+ */
+static inline uint32_t
+kmer_to_mapidx_orig(uint32_t *kmerWindow, int sn)
+{
+  bitmap_type a = seed[sn].mask[0];
+  uint32_t mapidx = 0;
+  int i = 0;
 
-typedef struct {
-	uint32_t * lengths;
-	char * ops;
-	int size;
-} cigar_t;
+  do {
+    if ((a & 0x1) == 0x1) {
+      mapidx <<= 2;
+      mapidx |= ((kmerWindow[i/8] >> (i%8)*4) & 0x3);
+    }
+    a >>= 1;
+    i++;
+  } while (a != 0x0);
+
+  assert(mapidx < power(4, seed[sn].weight));
+
+  return mapidx;
+}
+
+#define KMER_TO_MAPIDX(kmer, sn) (Hflag? kmer_to_mapidx_hash((kmer), (sn)) : kmer_to_mapidx_orig((kmer), (sn)))
+
+/* get contig number from absolute index */
+static inline void
+get_contig_num(uint32_t idx, int * cn) {
+  *cn = 0;
+  while (*cn < num_contigs - 1
+	 && idx >= contig_offsets[*cn + 1])
+    (*cn)++;
+
+  assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
+}
 
 
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

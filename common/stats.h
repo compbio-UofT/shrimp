@@ -1,18 +1,15 @@
 #ifndef _STATS_H
 #define _STATS_H
 
-#include <stdlib.h>
 #include <inttypes.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <math.h>
-
-#include "../common/util.h"
 
 
 /*
  * Statistics for which we can measure mean, std dev.
  */
-
 typedef struct {
   int64_t	sum;
   int64_t	sum_sq;
@@ -20,8 +17,11 @@ typedef struct {
 } stat_t;
 
 /*
- * Methods
+ * Simple count
  */
+typedef int64_t count_t;
+
+//typedef int32_t count32_t;
 
 /* Constructor */
 static inline stat_t *
@@ -81,12 +81,6 @@ stat_get_sample_stddev(stat_t * a) {
 }
 
 
-/*
- * Simple count
- */
-
-typedef int64_t count_t;
-
 static inline count_t *
 count_init(count_t * c) {
   if (c == NULL)
@@ -113,40 +107,6 @@ count_add(count_t * c, int64_t val) {
 
 static inline int64_t
 count_get_count(count_t * c) {
-  assert(c != NULL);
-
-  return *c;
-}
-
-
-typedef int32_t count32_t;
-
-static inline count32_t *
-count32_init(count32_t * c) {
-  if (c == NULL)
-    c = (count32_t *)calloc(sizeof(count32_t), 1);
-  else
-    *c = 0;
-
-  return c;
-}
-
-static inline void
-count32_increment(count32_t * c) {
-  assert(c != NULL);
-
-  (*c)++;
-}
-
-static inline void
-count32_add(count32_t * c, int32_t val) {
-  assert(c != NULL);
-
-  *c += val;
-}
-
-static inline int32_t
-count32_get_count(count32_t * c) {
   assert(c != NULL);
 
   return *c;

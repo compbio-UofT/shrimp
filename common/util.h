@@ -18,24 +18,10 @@ extern "C" {
 
 #include <sys/types.h>
 #include <sys/stat.h>
-typedef struct {
-	char ** argv;
-	int argc;
-} shrimp_args_t;
-
-typedef enum {
-	MODE_LETTER_SPACE = 1,
-	MODE_COLOUR_SPACE = 2,
-	MODE_HELICOS_SPACE= 3
-} shrimp_mode_t;
-
+#include "../gmapper/gmapper-definitions.h"
 #include "../common/fasta.h"
 #include "../common/stats.h"
 #include "../common/hash.h"
-
-
-extern shrimp_mode_t shrimp_mode;
-extern shrimp_args_t shrimp_args;
 
 #ifdef __GNUC__
 #define __predict_false(_x)	__builtin_expect((_x), 0)
@@ -54,6 +40,20 @@ extern shrimp_args_t shrimp_args;
 #define EXTRACT(_genome, _i) (((_genome)[(_i) / 8] >> (4 * ((_i) % 8))) & 0xf)
 #define BPTO32BW(_x) (((_x) + 7) / 8)
 
+/*
+ * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
+ * we'll set them negative to distinguish.
+ */
+#define IS_ABSOLUTE(x)	((x) < 0)
+
+  //static inline double abs_or_pct(double x, double base) {
+  //return IS_ABSOLUTE(x) ? -x : base * (x / 100.0);
+  //}
+#define abs_or_pct(x, base) (IS_ABSOLUTE(x) ? -(x) : base * ((x) / 100.0))
+
+#define KMER_TO_MAPIDX(kmer, sn) (Hflag? kmer_to_mapidx_hash((kmer), (sn)) : kmer_to_mapidx_orig((kmer), (sn)))
+
+
 struct _strbuf_t {
 	char   *string;
 	u_int	string_length;
@@ -61,10 +61,8 @@ struct _strbuf_t {
 };
 typedef struct _strbuf_t * strbuf_t;
 
-typedef long long int llint;
-
-void		set_mode_from_argv(char **);
-const char     *get_mode_string(void);
+void		set_mode_from_argv(char **, shrimp_mode_t *);
+const char     *get_mode_string(shrimp_mode_t);
 uint64_t	gettimeinusecs(void);
 uint64_t	rdtsc(void);
 double		cpuhz(void);
@@ -88,33 +86,29 @@ void		bitfield_insert(uint32_t *, uint32_t, uint32_t);
 void		bitfield_append(uint32_t *, uint32_t, uint32_t);
 void		progress_bar(FILE *, uint64_t, uint64_t, uint);
 void		reverse_complement(uint32_t *, uint32_t *, uint32_t, bool);
-uint32_t *
-reverse_complement_read_cs(uint32_t * read,int8_t initbp, int8_t initbp_rc, uint32_t len, bool is_rna);
-uint32_t *
-reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna);
-void
-reverse_complement_read_ls_text(char * read, char *ret);
-uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *),
-		    void *);
-uint64_t	file_iterator_n(char **, int,
-		    void (*)(char *, struct stat *, void *), void *);
-char const	*get_compiler(void);
-char	       *strrev(char *);
-char	       *strtrim(char *);
+uint32_t *	reverse_complement_read_cs(uint32_t *, int8_t, int8_t, uint32_t, bool);
+uint32_t *	reverse_complement_read_ls(uint32_t *, uint32_t, bool);
+void		reverse_complement_read_ls_text(char *, char *);
+uint64_t	file_iterator(char *, void (*)(char *, struct stat *, void *), void *);
+uint64_t	file_iterator_n(char **, int, void (*)(char *, struct stat *, void *), void *);
+char const *	get_compiler(void);
+char *		strrev(char *);
+char	*	strtrim(char *);
 strbuf_t	strbuf_create(void);
-char	       *strbuf_string(strbuf_t, int *);
-void	        strbuf_append(strbuf_t, char const *, ...);
+char *		strbuf_string(strbuf_t, int *);
+void		strbuf_append(strbuf_t, char const *, ...);
 void		strbuf_destroy(strbuf_t);
-char	       *fast_gzgets(gzFile, char*, int);
-char	       *fast_gzgets_safe(fasta_t f);
-char	       *comma_integer(uint64_t);
-void xgzwrite(gzFile fp, voidp buf, unsigned len);
-void xgzread(gzFile fp, voidp buf, size_t len);
+char *		fast_gzgets(gzFile, char*, int);
+char *		fast_gzgets_safe(fasta_t);
+char *		comma_integer(uint64_t);
+void		xgzwrite(gzFile, voidp, unsigned);
+void		xgzread(gzFile, voidp, size_t);
+void		edit2cigar(char *, uint16_t, uint16_t, uint16_t, char *);
 
 
 /* for optarg (and to shut up icc) */
-extern char *optarg;
-extern int   optind;
+//extern char *optarg;
+//extern int   optind;
 
 static inline int
 complement_base(int base, bool is_rna)
@@ -255,9 +249,6 @@ power4(int exp) {
   return (llint)1 << (2 * exp);
 }
 
-
-void
-edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_length,char *res);
 
 #ifdef __cplusplus
 } /* extern "C" */

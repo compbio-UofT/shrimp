@@ -24,6 +24,8 @@
 
 #include "probcalc.h"
 
+static shrimp_mode_t shrimp_mode;
+
 static dynhash_t read_list;		/* list of reads and top matches */
 static dynhash_t contig_cache;		/* contig name cache */
 static dynhash_t read_seq_cache;	/* read sequence cache */
@@ -998,7 +1000,7 @@ main(int argc, char **argv)
 	uint64_t total_files;
 	int ch;
 
-	set_mode_from_argv(argv);
+	set_mode_from_argv(argv, &shrimp_mode);
 
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");

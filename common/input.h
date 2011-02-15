@@ -1,5 +1,9 @@
 /*	$Id: input.h,v 1.8 2009/02/06 18:32:59 dalcaadr Exp $	*/
 
+#ifndef _INPUT_H
+#define _INPUT_H
+
+
 struct input {
 	char    *read;				/* read name */
 	char    *genome;			/* genome/contig name */
@@ -48,3 +52,6 @@ input_parse_string(char * buf,struct format_spec *fsp,struct input *inp);
 
 struct format_spec *
 format_get_from_string(char *format);
+
+
+#endif

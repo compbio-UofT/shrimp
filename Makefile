@@ -6,7 +6,7 @@
 #CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
 #CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-CXXFLAGS=-g -O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
+CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
 #CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG -DDEBUG_KMERS -DDEBUG_HIT_LIST_PASS1
 #CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  -DNDEBUG
 #CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
@@ -32,7 +32,8 @@ mapper/mapper.o: mapper/mapper.c mapper/mapper.h
 #
 # gmapper /
 #
-bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
+bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o \
+    common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
     common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
     common/read_hit_heap.o
@@ -58,7 +59,6 @@ mergesam/file_buffer.o: mergesam/file_buffer.c mergesam/file_buffer.h
 
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-	
 
 #
 # probcalc 
@@ -87,7 +87,6 @@ bin/shrimp_var: shrimp_var/shrimp_var.o
 
 shrimp_var/shrimp_var.o: shrimp_var/shrimp_var.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
 
 #
 # prettyprint
@@ -122,6 +121,18 @@ utils/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
 
 utils/split-contigs.o: utils/split-contigs.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# gmapper/
+#
+gmapper/seeds.o: gmapper/seeds.c gmapper/seeds.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/genome.o: gmapper/genome.c gmapper/genome.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/mapping.o: gmapper/mapping.c gmapper/mapping.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 #
 # common/

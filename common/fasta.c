@@ -384,9 +384,9 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 					different for colour space and letter space. Since the first
 					letter in the colour space read does not have a quality value	
 				*/
-				if (quality_length == sequence_length && shrimp_mode==MODE_LETTER_SPACE){
+				if (quality_length == sequence_length && fasta->space==MODE_LETTER_SPACE){
 					break;
-				} else if (quality_length == sequence_length-1 && shrimp_mode==MODE_COLOUR_SPACE) {
+				} else if (quality_length == sequence_length-1 && fasta->space==MODE_COLOUR_SPACE) {
 					break;
 				} else if (quality_length > sequence_length) {
 					fprintf(stderr,"There has been a problem reading in the read \"%s\", the quality length exceeds the sequence length!\n",re->name);
@@ -396,13 +396,13 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 					continue;
 				}
 		}
-		if (quality_length != sequence_length && shrimp_mode==MODE_LETTER_SPACE){
+		if (quality_length != sequence_length && fasta->space==MODE_LETTER_SPACE){
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);
 			total_ticks += (rdtsc() - before);
 			return (false);
-		} else if (quality_length != sequence_length-1 && shrimp_mode==MODE_COLOUR_SPACE) {
+		} else if (quality_length != sequence_length-1 && fasta->space==MODE_COLOUR_SPACE) {
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);

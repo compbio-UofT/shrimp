@@ -3,16 +3,8 @@
 
 #include <stdint.h>
 #include <sys/types.h>
+#include "../gmapper/gmapper-definitions.h"
 #include "util.h"
-
-struct anchor {
-  llint		x;
-  llint		y;
-  int		length;
-  int		width;
-  int		weight;
-  int		cn;
-};
 
 
 void	anchor_join(struct anchor const *, int, struct anchor *);

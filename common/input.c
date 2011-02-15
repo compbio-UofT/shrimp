@@ -82,8 +82,10 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 					free(scratch);
 					return (false);
 				}
+				/*
 				if (shrimp_mode == MODE_COLOUR_SPACE)
 					assert(strspn(scratch, "acgtumrwsykvhdbxn") == 0);
+				*/
 				sfrp->deletions += strlen(scratch);
 				inparen = false;
 				j = 0;

@@ -21,23 +21,24 @@
 #include "../common/fasta.h"
 #include "../common/util.h"
 
-shrimp_args_t shrimp_args;
-shrimp_mode_t shrimp_mode = MODE_LETTER_SPACE;
+//#define IMPORT_INLINES
+//#include "../common/stats.c"
+
 
 void
-set_mode_from_argv(char **argv)
+set_mode_from_argv(char **argv, shrimp_mode_t * shrimp_mode)
 {
 
 	if (strstr(argv[0], "-hs") != NULL || strstr(argv[0], "-HS") != NULL)
-		shrimp_mode = MODE_HELICOS_SPACE;
+		*shrimp_mode = MODE_HELICOS_SPACE;
 	else if (strstr(argv[0], "-cs") != NULL || strstr(argv[0], "-CS") != NULL)
-		shrimp_mode = MODE_COLOUR_SPACE;
+		*shrimp_mode = MODE_COLOUR_SPACE;
 	else
-		shrimp_mode = MODE_LETTER_SPACE;
+		*shrimp_mode = MODE_LETTER_SPACE;
 }
 
 const char *
-get_mode_string()
+get_mode_string(shrimp_mode_t shrimp_mode)
 {
 
 	switch (shrimp_mode) {
