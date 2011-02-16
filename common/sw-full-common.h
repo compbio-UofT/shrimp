@@ -56,4 +56,21 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 }
 
 
+/*
+ * Free sfrp for given hit.
+ */
+static inline void
+free_sfrp(struct sw_full_results * * sfrp)
+{
+  assert(sfrp != NULL);
+
+  if (*sfrp != NULL) {
+    free((*sfrp)->dbalign);
+    free((*sfrp)->qralign);
+    free(*sfrp);
+    *sfrp = NULL;
+  }
+}
+
+
 #endif

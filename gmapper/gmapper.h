@@ -57,6 +57,7 @@ EXTERN(bool,		trim_first,		true);
 EXTERN(bool,		trim_second,		true);
 EXTERN(char *,		save_file,		NULL);
 EXTERN(char *,		load_file,		NULL);
+EXTERN(unsigned int,	progress,		DEF_PROGRESS);
 
 
 /* Flags */
@@ -149,6 +150,7 @@ EXTERN(char *,		sam_sample_name,		NULL);
 
 /* Statistics */
 EXTERN(llint,			nreads,				0);
+EXTERN(llint,			nreads_mod,			0);
 EXTERN(llint,			total_reads_matched,		0);
 EXTERN(llint,			total_pairs_matched,		0);
 EXTERN(llint,			total_reads_dropped,		0);

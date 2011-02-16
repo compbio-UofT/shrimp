@@ -10,6 +10,7 @@
 
 #define DEF_NUM_THREADS		1
 #define DEF_CHUNK_SIZE		1000
+#define DEF_PROGRESS		100000
 
 #define DEF_HASH_FILTER_CALLS	true
 #define DEF_GAPLESS_SW		false

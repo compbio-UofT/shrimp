@@ -692,23 +692,6 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 
 
 /*
- * Free sfrp for given hit.
- */
-void
-hit_free_sfrp(struct read_hit * rh)
-{
-  assert(rh != NULL);
-
-  if (rh->sfrp != NULL) {
-    free(rh->sfrp->dbalign);
-    free(rh->sfrp->qralign);
-  }
-  free(rh->sfrp);
-  rh->sfrp = NULL;
-}
-
-
-/*
  * Free memory allocated by this read.
  */
 void 
@@ -989,6 +972,12 @@ launch_scan_threads(){
 	  }
 	}
 	nreads += load;
+	if (progress > 0) {
+	  nreads_mod += load;
+	  if (nreads_mod >= progress)
+	    fprintf(stderr, "\r%lld", nreads);
+	  nreads_mod %= progress;
+	}
       } // end critical section
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
@@ -1132,6 +1121,8 @@ launch_scan_threads(){
 
     free(re_buffer);
   } // end parallel section
+  if (progress > 0)
+    fprintf(stderr, "\n");
 
 	struct heap_out_elem tmp;
 	while (h.load>0) {

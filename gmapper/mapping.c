@@ -1196,7 +1196,7 @@ handle_read(read_entry *re)
 
   // Done with this read; deallocate memory.
   for (i = 0; i < h.load; i++)
-    hit_free_sfrp(h.array[i].rest.hit);
+    free_sfrp(&h.array[i].rest.hit->sfrp);
   heap_unpaired_destroy(&h);
 
   read_free_full(re);
@@ -1259,7 +1259,7 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2)
       }
       // Done with this read; deallocate memory.
       for (i = 0; i < h.load; i++)
-	hit_free_sfrp(h.array[i].rest.hit);
+	free_sfrp(&h.array[i].rest.hit->sfrp);
       heap_unpaired_destroy(&h);
  
       //free(re2->hits[0]);
@@ -1273,7 +1273,7 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2)
       }
       // Done with this read; deallocate memory.
       for (i = 0; i < h.load; i++)
-	hit_free_sfrp(h.array[i].rest.hit);
+	free_sfrp(&h.array[i].rest.hit->sfrp);
       heap_unpaired_destroy(&h);
     }
     if (Eflag && sam_unaligned && printed_alignments==0) {
@@ -1293,8 +1293,8 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2)
 
   /* Done; free read entry */
   for (i = 0; i < h.load; i++) {
-    hit_free_sfrp(h.array[i].rest.hit[0]);
-    hit_free_sfrp(h.array[i].rest.hit[1]);
+    free_sfrp(&h.array[i].rest.hit[0]->sfrp);
+    free_sfrp(&h.array[i].rest.hit[1]->sfrp);
   }
 
   heap_paired_destroy(&h);
