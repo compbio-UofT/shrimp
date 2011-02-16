@@ -2,7 +2,7 @@
 #define _SEEDS_H
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include "gmapper.h"
@@ -42,7 +42,7 @@ bool		valid_spaced_seeds();
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif

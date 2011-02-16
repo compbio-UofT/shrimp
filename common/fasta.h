@@ -7,7 +7,7 @@
  * Force use of C linking for util.c, even if using g++.
  */
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include <stdio.h>
@@ -108,7 +108,7 @@ fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
 }
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif

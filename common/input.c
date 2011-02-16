@@ -54,11 +54,6 @@ struct _field_table {
 	{ NULL,			0		}
 };
 
-struct format_spec {
-	int nfields;
-	int *fields;
-};
-
 bool
 editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 {
@@ -162,7 +157,7 @@ format_get_from_string(char *format)
 {
 	struct format_spec *fsp;
 	char *field;
-	char * tok_save;
+	char * tok_save = NULL;
 	int i, next;
 
 	fsp = (struct format_spec *)xmalloc(sizeof(*fsp));
@@ -294,7 +289,7 @@ input_parse_string(char * buf,struct format_spec *fsp,struct input *inp){
   }
   char *val;
   int i;
-  char * tok_save;
+  char * tok_save = NULL;
 
   val = strtok_r(buf, "\t", &tok_save);
   for (i = 0; val != NULL; i++) {

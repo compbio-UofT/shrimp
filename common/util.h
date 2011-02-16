@@ -6,7 +6,7 @@
  * Force use of C linking for util.c, even if using g++.
  */
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 
@@ -251,7 +251,7 @@ power4(int exp) {
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif

@@ -28,6 +28,12 @@ struct input {
         
 };
 
+struct format_spec {
+	int nfields;
+	int *fields;
+};
+
+
 #define INPUT_FLAG_IS_REVCMPL	0x00000001
 #define INPUT_FLAG_HAS_PCHANCE	0x00000002
 #define INPUT_FLAG_HAS_PGENOME	0x00000004

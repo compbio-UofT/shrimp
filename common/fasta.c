@@ -410,7 +410,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 			return (false);
 		}
 		re->qual = (char *)xmalloc(quality_length + 17);
-		for (i=0; i<quality_length; i++) {
+		for (i=0; i<(int)quality_length; i++) {
 			re->qual[i]=MAX((char)fasta->parse_buffer[i],'!');
 		}	
 		//memcpy(re->qual, fasta->parse_buffer, quality_length);

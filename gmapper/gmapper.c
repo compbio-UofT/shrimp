@@ -2567,4 +2567,5 @@ int main(int argc, char **argv){
 	free(contig_names);
 	free(contig_offsets);
 	free(seed);
+	return 0;
 }

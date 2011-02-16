@@ -7,7 +7,7 @@
 #define _GMAPPER_H
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include "../gmapper/gmapper-definitions.h"
@@ -264,7 +264,7 @@ get_contig_num(uint32_t idx, int * cn) {
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif

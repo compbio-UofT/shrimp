@@ -13,6 +13,17 @@
 #include "../common/sw-vector.h"
 #include "../common/sw-gapless.h"
 
+#undef EXTERN
+#undef STATIC
+#ifdef _MODULE_GMAPPER
+#include "../gmapper/gmapper-defaults.h"
+#define EXTERN(_type, _id, _init_val) _type _id = _init_val
+#define STATIC(_type, _id, _init_val) static _type _id = _init_val
+#else
+#define EXTERN(_type, _id, _init_val) extern _type _id
+#define STATIC(_type, _id, _init_val)
+#endif
+
 static int const f1_window_cache_size = 1048576;
 
 EXTERN(uint64_t, f1_calls_bypassed, 0);

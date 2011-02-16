@@ -1,9 +1,9 @@
 #ifndef __FILE_BUFFER__
 #define __FILE_BUFFER__
+#include <stdbool.h>
 #include <zlib.h>
 
-typedef struct file_read_buffer file_read_buffer;
-struct file_read_buffer {
+typedef struct file_read_buffer {
         gzFile file;
         char * base;
         size_t size;
@@ -12,10 +12,9 @@ struct file_read_buffer {
 	size_t seen;
         int eof;
 	bool exhausted;
-};
+} file_read_buffer;
 
-typedef struct file_buffer file_buffer;
-struct file_buffer {
+typedef struct file_buffer {
         char * base;
         size_t size;
         size_t unseen_start;
@@ -23,7 +22,7 @@ struct file_buffer {
 	bool changed;
 	bool exhausted;
         file_read_buffer frb;
-};
+} file_buffer;
 
 void fb_close(file_buffer * fb);
 file_buffer * fb_open(char * path,size_t buffer_size,size_t read_size);

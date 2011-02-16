@@ -2,7 +2,7 @@
 #define _GENOME_H
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include "gmapper.h"
@@ -31,7 +31,7 @@ void		trim_genome();
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif

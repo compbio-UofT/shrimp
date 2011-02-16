@@ -2,7 +2,7 @@
 #define _MAPPING_H
 
 #ifdef __cplusplus
-extern "C" {
+//extern "C" {
 #endif
 
 #include "gmapper.h"
@@ -25,7 +25,7 @@ void		handle_readpair(struct read_entry *, struct read_entry *);
 
 
 #ifdef __cplusplus
-} /* extern "C" */
+//} /* extern "C" */
 #endif
 
 #endif
