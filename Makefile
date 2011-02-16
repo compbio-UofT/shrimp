@@ -42,7 +42,7 @@ bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.
 	$(LN) -sf gmapper bin/gmapper-ls
 
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
-    common/debug.h common/f1-wrapper.h
+    common/debug.h common/f1-wrapper.h common/version.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
 bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
@@ -98,7 +98,7 @@ bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
-prettyprint/prettyprint.o: prettyprint/prettyprint.c
+prettyprint/prettyprint.o: prettyprint/prettyprint.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -110,7 +110,7 @@ bin/shrimp2sam: shrimp2sam/shrimp2sam.o common/fasta.o common/dynhash.o \
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
-shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c
+shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
