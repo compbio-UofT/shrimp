@@ -1,5 +1,9 @@
 #define _MODULE_GMAPPER
 
+#ifndef CXXFLAGS
+#define CXXFLAGS "?"
+#endif
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -1711,8 +1715,10 @@ int main(int argc, char **argv){
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
-	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s]\n", get_mode_string(shrimp_mode),
-			SHRIMP_VERSION_STRING, get_compiler());
+	fprintf(stderr, "gmapper: %s.\nSHRiMP %s\n[%s; CXXFLAGS=\"%s\"]\n",
+		get_mode_string(shrimp_mode),
+		SHRIMP_VERSION_STRING,
+		get_compiler(), CXXFLAGS);
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
 
