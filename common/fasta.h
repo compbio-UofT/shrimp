@@ -1,9 +1,19 @@
-#include "util.h"
-
 /*	$Id: fasta.h,v 1.12 2009/06/16 23:26:21 rumble Exp $	*/
 
 #ifndef _FASTA_H_
 #define _FASTA_H_
+
+/*
+ * Force use of C linking for util.c, even if using g++.
+ */
+#ifdef __cplusplus
+//extern "C" {
+#endif
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "../gmapper/gmapper-definitions.h"
+
 
 #define LETTER_SPACE	1
 #define COLOUR_SPACE	2
@@ -68,45 +78,6 @@ typedef struct _fasta_stats_t {
 	uint64_t	total_ticks;
 } * fasta_stats_t;
 
-struct read_entry {
-  char *        name;
-  char *        seq;
-  char *	orig_seq;
-  char *        qual;
-  char *	orig_qual;
-  char *        plus_line; //The '+' line in fastq
-  uint32_t *    read[2];        /* the read as a bitstring */
-
-  uint32_t *    mapidx[2];      /* per-seed list of mapidxs in read */
-
-  struct anchor *       anchors[2];     /* list of anchors */
-
-  struct read_hit *     hits[2];        /* list of hits */
-
-  struct range_restriction * ranges;
-  char *        range_string;
-
-  int           n_anchors[2];
-  int           n_hits[2];
-  int           n_ranges;
-
-  int           final_matches;
-  int           final_dup_matches;
-
-  int           initbp[2];              /* colour space init letter */
-  int           read_len;
-  int           window_len;
-
-  int           max_n_kmers;    /* = read_len - min_seed_span + 1 */
-  int           min_kmer_pos;   /* = 0 in LS; = 1 in CS */
-  int           input_strand;
-  bool          is_rna;
-  bool		ignore;
-  bool		paired;
-  bool		first_in_pair;
-  struct read_entry * mate_pair;
-};
-
 
 fasta_t	  fasta_open(const char *, shrimp_mode_t, bool);
 void	  fasta_close(fasta_t);
@@ -136,5 +107,8 @@ fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
 	
 }
 
+#ifdef __cplusplus
+//} /* extern "C" */
+#endif
 
 #endif

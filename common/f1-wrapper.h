@@ -13,18 +13,29 @@
 #include "../common/sw-vector.h"
 #include "../common/sw-gapless.h"
 
+#undef EXTERN
+#undef STATIC
+#ifdef _MODULE_GMAPPER
+#include "../gmapper/gmapper-defaults.h"
+#define EXTERN(_type, _id, _init_val) _type _id = _init_val
+#define STATIC(_type, _id, _init_val) static _type _id = _init_val
+#else
+#define EXTERN(_type, _id, _init_val) extern _type _id
+#define STATIC(_type, _id, _init_val)
+#endif
+
 static int const f1_window_cache_size = 1048576;
 
-static uint64_t f1_calls_bypassed;
-
+EXTERN(uint64_t, f1_calls_bypassed, 0);
 
 /* Thread-private */
-static uint32_t f1_hash_tag;
-struct f1_window_cache_entry {
+EXTERN(uint32_t, f1_hash_tag, 0);
+
+typedef struct f1_window_cache_entry {
   uint32_t tag;
   uint32_t score;
-};
-static struct f1_window_cache_entry * f1_window_cache;
+} f1_window_cache_entry;
+EXTERN(struct f1_window_cache_entry *, f1_window_cache, NULL);
 
 #pragma omp threadprivate(f1_hash_tag, f1_window_cache)
 

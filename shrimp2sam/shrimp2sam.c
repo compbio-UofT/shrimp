@@ -22,6 +22,10 @@
 #include "../common/util.h"
 #include "../common/version.h"
 
+#include "../gmapper/gmapper-definitions.h"
+
+static shrimp_mode_t shrimp_mode;
+
 static char ** ref_contig_names = NULL;
 static uint32_t * ref_contig_lens = NULL;
 static uint32_t n_ref_contigs = 0;
@@ -246,7 +250,7 @@ main(int argc, char **argv)
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 	fprintf(stderr, "shrimp2sam: %s SPACE.\nSHRiMP %s [%s]\n",
-	    get_mode_string(), SHRIMP_VERSION_STRING, get_compiler());
+	    get_mode_string(shrimp_mode), SHRIMP_VERSION_STRING, get_compiler());
 	fprintf(stderr, "--------------------------------------------------"
 	    "------------------------------\n");
 

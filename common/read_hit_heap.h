@@ -2,38 +2,9 @@
 #define __READ_HIT_HEAP__
 
 #include <stdint.h>
+#include "../gmapper/gmapper.h"
 #include "util.h"
 #include "anchors.h"
-
-struct read_hit {
-  struct sw_full_results *      sfrp;
-  struct anchor anchor;
-  llint         g_off;
-  int           score_window_gen;
-  int           score_vector;
-  int           pct_score_vector;
-  int           score_full;
-  double                pct_score_full;
-  int           score_max;
-  int           matches;
-  int           cn;
-  int           pair_min; // -1 means none
-  int           pair_max;
-  int           w_len;
-  int           st;
-  int           gen_st;
-};
-
-
-struct read_hit_pair_holder {
-  struct read_hit *     hit[2];
-  int                   insert_size;
-};
- 
-struct read_hit_holder {
-  struct read_hit *     hit;
-};
-
 
 typedef struct read_hit_heap_e read_hit_heap_e;
 struct read_hit_heap_e {

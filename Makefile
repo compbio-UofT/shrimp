@@ -1,16 +1,11 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 #CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel
-#CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -static-intel
 #CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
 
-#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
-#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-CXXFLAGS=-g -O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG -DDEBUG_KMERS -DDEBUG_HIT_LIST_PASS1
-#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  -DNDEBUG
-#CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
-#CXXFLAGS=-fopenmp -g -O1 -Wall -DNDEBUG
+#CXXFLAGS=-g -p
+CXXFLAGS=-O3 -DNDEBUG
+override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 #CXX=/opt/intel/cce/10.1.015/bin/icc
@@ -32,7 +27,8 @@ mapper/mapper.o: mapper/mapper.c mapper/mapper.h
 #
 # gmapper /
 #
-bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
+bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o \
+    common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
     common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
     common/read_hit_heap.o
@@ -41,7 +37,7 @@ bin/gmapper: gmapper/gmapper.o common/fasta.o common/util.o \
 	$(LN) -sf gmapper bin/gmapper-ls
 
 gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
-    common/debug.h common/f1-wrapper.h
+    common/debug.h common/f1-wrapper.h common/version.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
 bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
@@ -58,7 +54,6 @@ mergesam/file_buffer.o: mergesam/file_buffer.c mergesam/file_buffer.h
 
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
-	
 
 #
 # probcalc 
@@ -88,7 +83,6 @@ bin/shrimp_var: shrimp_var/shrimp_var.o
 shrimp_var/shrimp_var.o: shrimp_var/shrimp_var.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-
 #
 # prettyprint
 #
@@ -99,7 +93,7 @@ bin/prettyprint: prettyprint/prettyprint.o common/fasta.o common/dynhash.o \
 	$(LN) -sf prettyprint bin/prettyprint-cs
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
-prettyprint/prettyprint.o: prettyprint/prettyprint.c
+prettyprint/prettyprint.o: prettyprint/prettyprint.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -111,7 +105,7 @@ bin/shrimp2sam: shrimp2sam/shrimp2sam.o common/fasta.o common/dynhash.o \
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf prettyprint bin/prettyprint-ls
 
-shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c
+shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -122,6 +116,18 @@ utils/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
 
 utils/split-contigs.o: utils/split-contigs.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# gmapper/
+#
+gmapper/seeds.o: gmapper/seeds.c gmapper/seeds.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/genome.o: gmapper/genome.c gmapper/genome.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/mapping.o: gmapper/mapping.c gmapper/mapping.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 #
 # common/

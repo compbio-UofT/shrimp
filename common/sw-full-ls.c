@@ -22,7 +22,7 @@
 #include "../common/sw-full-ls.h"
 #include "../common/util.h"
 
-struct swcell {
+typedef struct swcell {
 	int	score_north;
 	int	score_west;
 	int	score_northwest;
@@ -30,7 +30,7 @@ struct swcell {
 	int8_t	back_north;
 	int8_t	back_west;
 	int8_t	back_northwest;
-};
+} swcell;
 
 #define FROM_NORTH_NORTH		0x1
 #define FROM_NORTH_NORTHWEST		0x2
