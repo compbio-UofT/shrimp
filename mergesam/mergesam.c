@@ -441,18 +441,18 @@ struct option long_op[] =
 		{"sam",1,0,'E'},
 		{"threads",1,0,'N'},
 		{"report",1,0,'o'},
-		{"max-alignments",1,0,200},
-		{"sam-header",1,0,201},
-		{"colour-space",0,0,202},
-		{"letter-space",0,0,203},
-                {"help", 0, 0, 204},
-		{"buffer-size", 1, 0, 205},
-		{"read-size", 1, 0, 206},
-		{"read-rate",1,0,207},
-		{"expected-isize",1,0,208},
-		{"half-paired",0,0,209},
-		{"sam-unaligned",0,0,210},
-		{"strata",0,0,211},
+		{"max-alignments",1,0,1},
+		{"sam-header",1,0,2},
+		{"colour-space",0,0,3},
+		{"letter-space",0,0,4},
+                {"help", 0, 0, 5},
+		{"buffer-size", 1, 0, 6},
+		{"read-size", 1, 0, 7},
+		{"read-rate",1,0,8},
+		{"expected-isize",1,0,9},
+		{"half-paired",0,0,10},
+		{"sam-unaligned",0,0,11},
+		{"strata",0,0,12},
                 {0,0,0,0}
         };
 
@@ -753,16 +753,16 @@ int main (int argc, char ** argv) {
 		case 'Q':
 			fastq=true;
 			break;
-		case 205:
+		case 6:
 			buffer_size=string_to_byte_size(optarg);
 			break;
-		case 206:
+		case 7:
 			read_size=string_to_byte_size(optarg);
 			break;
-		case 207:
+		case 8:
 			read_rate=atol(optarg);
 			break;
-		case 208:
+		case 9:
 			expected_insert_size=atoi(optarg);
 			if (expected_insert_size<0) {
 				fprintf(stderr,"Please specify a insert size >= 0!\n");
@@ -772,13 +772,13 @@ int main (int argc, char ** argv) {
 		case 'N':
 			threads=atoi(optarg);
 			break;
-		case 209:
+		case 10:
 			half_paired=true;
 			break;
-		case 210:
+		case 11:
 			sam_unaligned=true;
 			break;
-		case 211:
+		case 12:
 			strata=true;
 			break;
 		case 'o':
@@ -788,17 +788,17 @@ int main (int argc, char ** argv) {
 				usage(argv[0]);
 			}
 			break;
-		case 200:
+		case 1:
 			max_alignments=atoi(optarg);
 			if (max_alignments<=0) {
 				fprintf(stderr,"Please specify a max_alignments that is positive!\n");
 				usage(argv[0]);
 			}
 			break;
-		case 204:
+		case 5:
 			usage(argv[0]);
 			break;
-		case 201:
+		case 2:
 			{
 			sam_header_filename=optarg;
 			FILE * sam_header_file = fopen(sam_header_filename,"r");
@@ -825,13 +825,14 @@ int main (int argc, char ** argv) {
 		case 'E':
 			sam_format=true;
 			break;
-		case 202:
+		case 3:
 			colour_space=true;
 			break;
-		case 203:
+		case 4:
 			letter_space=true;
 			break;
 		default:
+			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
 			usage(argv[0]);
 			break;
 		}
