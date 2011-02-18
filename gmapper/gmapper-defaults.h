@@ -101,11 +101,11 @@
 	{"half-paired",0,0,19},\
 	{"sam-r2",0,0,20},\
 	{"mode",1,0,'M'},\
-	{"trim-front",1,0,200},\
-	{"trim-end",1,0,201},\
-	{"trim-first",1,0,202},\
-	{"trim-second",1,0,203},\
-	{"expected-isize",1,0,204}\
+	{"trim-front",1,0,21},\
+	{"trim-end",1,0,22},\
+	{"trim-first",1,0,23},\
+	{"trim-second",1,0,24},\
+	{"expected-isize",1,0,25}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

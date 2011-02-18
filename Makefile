@@ -1,16 +1,11 @@
 # $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
 #CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel
-#CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -static-intel
 #CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
 
-#CXXFLAGS=-fopenmp -Wall -Wno-deprecated -g -DDEBUG_KMERS -DDEBUG_HIT_LIST_CREATION -DDEBUG_HIT_LIST_PASS1 -DDEBUG_SW_FULL_CALLS -DDEBUG_ANCHOR_LIST 
 ifndef CXXFLAGS
-#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-CXXFLAGS=-O3 -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG
-#CXXFLAGS=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated -DNDEBUG -DDEBUG_KMERS -DDEBUG_HIT_LIST_PASS1
-#CXXFLAGS=-g -p -mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  -DNDEBUG
-#CXXFLAGS=-g -fopenmp -Wall -Wno-deprecated 
-#CXXFLAGS=-fopenmp -g -O1 -Wall -DNDEBUG
+#CXXFLAGS=-g -p
+CXXFLAGS=-O3 -DNDEBUG
+override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 #CXX=/opt/intel/cce/10.1.015/bin/icc

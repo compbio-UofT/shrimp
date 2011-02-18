@@ -2050,7 +2050,7 @@ int main(int argc, char **argv){
                           c = strtok(NULL, ",");
                         } while (c != NULL);
                         break;
-		case 200:
+		case 21:
 			trim=true;
 			trim_front=atoi(optarg);
 			if (shrimp_mode == MODE_COLOUR_SPACE) {
@@ -2062,7 +2062,7 @@ int main(int argc, char **argv){
 				exit(1);
 			}
 			break;
-		case 201:
+		case 22:
 			trim=true;
 			trim_end=atoi(optarg);
 			if (trim_end<0) {
@@ -2070,17 +2070,17 @@ int main(int argc, char **argv){
 				exit(1);
 			}
 			break;
-		case 202:
+		case 23:
 			trim=true;
 			trim_first=true;
 			trim_second=false;
 			break;
-		case 203:
+		case 24:
 			trim=true;
 			trim_second=true;
 			trim_first=false;
 			break;
-		case 204:
+		case 25:
 			expected_isize=atoi(optarg);
 			if (expected_isize<0) {
 				fprintf(stderr,"Expected insert size needs to be positive!\n");

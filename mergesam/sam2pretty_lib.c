@@ -1109,7 +1109,7 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_cs_edit_string) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tXX:Z:%s",pa->cs_edit_string);
 	}
-	if (pa->has_read_group) {
+	if (pa->has_r2) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tR2:Z:%s",pa->r2);
 	}
 	if (pa->has_hi) {
@@ -1126,6 +1126,9 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	}
 	if (pa->has_h2) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tH2:i:%d",pa->h2);
+	}
+	if (pa->has_read_group) {
+		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
 	}
 	if (!inplace) {
 		position+=snprintf(buffer+position,buffer_size-position,"\n");
