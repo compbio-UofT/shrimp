@@ -291,7 +291,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//mapq
 	int mapq=255;
 	//cigar
-	char const * cigar="*";
+	char * cigar="*";
 	cigar_t * cigar_binary=NULL;
 	//mrnm
 	const char * mrnm = "*"; //mate reference name
@@ -673,7 +673,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);
-		//free(cigar);
+		free(cigar);
 	}
 	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
 
