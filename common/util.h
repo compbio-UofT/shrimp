@@ -44,12 +44,13 @@
  * If window_len, sw_vect_threshold, sw_full_threshold are absolute values,
  * we'll set them negative to distinguish.
  */
-#define IS_ABSOLUTE(x)	((x) < 0)
+#define IS_ABSOLUTE(x)  ((x) < 0)
 
   //static inline double abs_or_pct(double x, double base) {
   //return IS_ABSOLUTE(x) ? -x : base * (x / 100.0);
   //}
-#define abs_or_pct(x, base) (IS_ABSOLUTE(x) ? -(x) : base * ((x) / 100.0))
+#define abs_or_pct(x, base) (IS_ABSOLUTE(x) ? -(x) : (base) * ((x) / 100.0))
+
 
 #define KMER_TO_MAPIDX(kmer, sn) (Hflag? kmer_to_mapidx_hash((kmer), (sn)) : kmer_to_mapidx_orig((kmer), (sn)))
 
