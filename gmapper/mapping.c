@@ -518,8 +518,10 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st)
     }
     //TODO make this tunable?
     if (sam_half_paired && !only_paired && pair_mode!=PAIR_NONE) {
+      fprintf(stderr, "got here, [%s]\n", re->name);
       if (re->hits[st][i].gen_st!=0) {
-	reverse_hit(re,&re->hits[st][i]);	
+	//reverse_hit(re,&re->hits[st][i]);
+	fprintf(stderr, "reverse_hit??? XXX\n");
       }
       if (re->hits[st][i].matches<2) {
 	re->hits[st][i].score_vector=0;
@@ -601,36 +603,56 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
     int re1_correction = re1->window_len-re1->read_len;
     int re2_correction = re2->window_len-re2->read_len;
 
-    int max_correction = 0;
-    int min_correction = 0;
-    if (pair_mode==PAIR_OPP_IN) {
-	max_correction = re1_correction + re2_correction;
-    } else if (pair_mode==PAIR_OPP_OUT) {
-	min_correction = - re1_correction - re2_correction;
-    } else if (pair_mode==PAIR_COL_FW) {
-	max_correction = re2_correction;
-	min_correction = -re1_correction;
-    }
    
-   // printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
+    //printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
-      int64_t fivep = re1->hits[st1][i].g_off + ((re1_strand==1) ? re1->window_len : 0);
+      int64_t fivep = re1->hits[st1][i].g_off;
+       //+ ((re1_strand==1) ? re1->window_len : 0);
       int64_t min_fivep_mp=0;
       int64_t max_fivep_mp=0;
       if (re1_strand==0) {
-          min_fivep_mp = (int64_t)(fivep+min_insert_size+min_correction);
-          max_fivep_mp = (int64_t)(fivep+max_insert_size+max_correction);
+	if (pair_mode==PAIR_OPP_IN) {
+		min_fivep_mp = (int64_t)(fivep+min_insert_size);
+		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1_correction+re2_correction);
+	} else if (pair_mode==PAIR_OPP_OUT) {
+		min_fivep_mp = (int64_t)(fivep-max_insert_size+re2->window_len);
+		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1_correction-re2->read_len);
+	} else if (pair_mode==PAIR_COL_FW) {
+		min_fivep_mp = (int64_t)(fivep+min_insert_size-re2_correction);
+		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1_correction);
+	} else if (pair_mode==PAIR_COL_BW) {
+		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2_correction);
+		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1_correction);
+	} else {
+		fprintf(stderr,"cannot find paired mode!\n");
+		exit(1);
+	}
       } else {
-          max_fivep_mp = (int64_t)(fivep-min_insert_size-min_correction);
-          min_fivep_mp = (int64_t)(fivep-max_insert_size-max_correction);
+	if (pair_mode==PAIR_OPP_IN) {
+		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2_correction+re1->read_len);
+		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1->window_len);
+	} else if (pair_mode==PAIR_OPP_OUT) {
+		min_fivep_mp = (int64_t)(fivep+min_insert_size+re1->read_len-re2_correction);
+		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1->window_len);
+	} else if (pair_mode==PAIR_COL_FW) {
+		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2->window_len+re1->read_len);
+		max_fivep_mp = (int64_t)(fivep-min_insert_size-re2->read_len+re1->window_len);
+	} else if (pair_mode==PAIR_COL_BW) {
+		min_fivep_mp = (int64_t)(fivep+min_insert_size-re1->read_len-re2->window_len);
+		max_fivep_mp = (int64_t)(fivep+max_insert_size-re1->window_len-re2->read_len);
+	} else {
+		fprintf(stderr,"cannot find paired mode!\n");
+		exit(1);
+	}
       }
-      //printf("MAX %ld, MIN %ld\n",max_fivep_mp,min_fivep_mp);
+      //printf("%ld , %d, %d, MAX %ld, MIN %ld\n",fivep,st1,re1_strand,max_fivep_mp,min_fivep_mp);
+      //printf("first in lin, %ld\n",(int64_t)(re2->hits[st2][0].g_off ));
       // find matching hit, if any
       while (j < re2->n_hits[st2]
 	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
 		 || (re2->hits[st2][j].cn == re1->hits[st1][i].cn // same contig, but too close
-		     && (int64_t)(re2->hits[st2][j].g_off + ((re2_strand==1) ? re2->window_len : 0)) < min_fivep_mp //five_mp < min_fivep_mp
+		     && (int64_t)(re2->hits[st2][j].g_off ) < min_fivep_mp //five_mp < min_fivep_mp
 		     )
 		 )
 	     ) {
@@ -641,12 +663,15 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
       k = j;
       while (k < re2->n_hits[st2]
 	     && re2->hits[st2][k].cn == re1->hits[st1][i].cn
-	     && (int64_t)(re2->hits[st2][k].g_off + ((re2_strand==1) ? re2->window_len : 0)) <= max_fivep_mp) {
-	//printf("taking g_off %d, translated %d, max_fivep_mp %d\n",re2->hits[st2][k].g_off,(int64_t)(re2->hits[st2][k].g_off + ((re2_strand==1) ? re2->window_len : 0)),max_fivep_mp);
+	     && (int64_t)(re2->hits[st2][k].g_off ) <= max_fivep_mp) {
+	//printf("taking g_off %d, max_fivep_mp %d\n",re2->hits[st2][k].g_off,max_fivep_mp);
 	k++;
       }
-      if (j == k) // no paired hit
+      //fprintf(stderr,"DONE\n");
+      if (j == k) {
+	//fprintf(stderr,"no paired hit\n");
 	continue;
+      }
 
       re1->hits[st1][i].pair_min = j;
       re1->hits[st1][i].pair_max = k-1;
@@ -730,7 +755,6 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2, struc
 	    && re1->hits[st1][i].matches == 1
 	    && re2->hits[st2][j].matches == 1)
 	  continue;
-
 	if (re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector
 	    >= (int)abs_or_pct(sw_vect_threshold, re1->hits[st1][i].score_max + re2->hits[st2][j].score_max)
 	    && (h->load < h->capacity
@@ -777,6 +801,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     gen = genome_contigs[rh->cn];
   } else {
     reverse_hit(re, rh);
+    fprintf(stderr, "reverse_hit from hit_run_full_sw [%s]\n", re->name);
     gen = genome_contigs_rc[rh->cn];
   }
 

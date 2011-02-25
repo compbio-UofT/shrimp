@@ -155,7 +155,20 @@ xmalloc(size_t size)
 	}
 
 	return (ptr);
-} 
+}
+
+void * xmalloc_m(size_t size, char const * error_msg)
+{
+  void * p;
+
+  p = malloc(size);
+  if (p == NULL) {
+    fprintf(stderr, "error: malloc failed: %s [%s]\n", strerror(errno), error_msg);
+    exit(1);
+  }
+  return p;
+}
+
 
 void *
 xmalloc_c(size_t size, count_t * c)
@@ -177,6 +190,18 @@ xcalloc(size_t size)
   }
 
   return ptr;
+}
+
+void * xcalloc_m(size_t size, char const * error_msg)
+{
+  void * p;
+
+  p = calloc(size, 1);
+  if (p == NULL) {
+    fprintf(stderr, "error: calloc failed: %s [%s]\n", strerror(errno), error_msg);
+    exit(1);
+  }
+  return p;
 }
 
 void *

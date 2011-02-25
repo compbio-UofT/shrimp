@@ -291,7 +291,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//mapq
 	int mapq=255;
 	//cigar
-	char const * cigar="*";
+	char * cigar="*";
 	cigar_t * cigar_binary=NULL;
 	//mrnm
 	const char * mrnm = "*"; //mate reference name
@@ -673,7 +673,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);
-		//free(cigar);
+		free(cigar);
 	}
 	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
 
@@ -849,70 +849,48 @@ static void trim_read(struct read_entry * re) {
  */
 static bool
 launch_scan_threads(){
-  fasta_t fasta=NULL;
-  fasta_t left_fasta=NULL;
-  fasta_t right_fasta=NULL;
+  fasta_t fasta = NULL, left_fasta = NULL, right_fasta = NULL;
 
   //open the fasta file and check for errors
   if (single_reads_file) {  
-  	fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
-	if (fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
-		return (false);
-	} else {
-		fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
-	}
+    fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
+    if (fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
+      return (false);
+    } else {
+      fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
+    }
   } else {
-	left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
-	if (left_fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
-		return (false);
-	}
-	right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
-	if (right_fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
-		return (false);
-	}
-	if (right_fasta->space != left_fasta->space) {
-		fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
-		return (false);
-	}
-	fasta=left_fasta;
-	fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
+    left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
+    if (left_fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
+      return (false);
+    }
+    right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
+    if (right_fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
+      return (false);
+    }
+    // WHY? the code above sets both ->space to shrimp_mode anyhow
+    //if (right_fasta->space != left_fasta->space) {
+    //  fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
+    //  return (false);
+    //}
+    fasta=left_fasta;
+    fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
   }
 
   if ((pair_mode != PAIR_NONE || !single_reads_file) && (chunk_size%2)!=0) {
-	fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
+    fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
   }
 
-  bool read_more = true;
-  bool more_in_left_file=true; bool more_in_right_file=true;
+  bool read_more = true, more_in_left_file = true, more_in_right_file=true;
 
   /* initiate the thread buffers */
-  thread_output_buffer_sizes = (size_t*)malloc(sizeof(size_t)*num_threads);
-  if (thread_output_buffer_sizes==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_sizes buffer!\n");
-	exit(1);
-  }
-  memset(thread_output_buffer_sizes,0, sizeof(size_t)*num_threads);	 
-  thread_output_buffer_filled = (char**)malloc(sizeof(char*)*num_threads);
-  if (thread_output_buffer_filled==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_filled buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer_filled,0, sizeof(char*)*num_threads);	
-  thread_output_buffer = (char**)malloc(sizeof(char*)*num_threads);
-  if (thread_output_buffer==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer,0, sizeof(char*)*num_threads);	
-  thread_output_buffer_chunk = (unsigned int*)malloc(sizeof(unsigned int)*num_threads);
-  if (thread_output_buffer_chunk==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_chunk buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer_chunk,0, sizeof(unsigned int)*num_threads);	
+  thread_output_buffer_sizes = (size_t *)xcalloc_m(sizeof(size_t) * num_threads, "thread_output_buffer_sizes");
+  thread_output_buffer_filled = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer_filled");
+  thread_output_buffer = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer");
+  thread_output_buffer_chunk = (unsigned int *)xcalloc_m(sizeof(unsigned int) * num_threads, "thread_output_buffer_chunk");
   
   unsigned int current_thread_chunk = 1;
   unsigned int next_chunk_to_print = 1;
@@ -925,11 +903,9 @@ launch_scan_threads(){
     struct read_entry * re_buffer;
     int load, i;
     uint64_t before;
-    re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
-    memset(re_buffer,0,chunk_size * sizeof(re_buffer[0]));
+    re_buffer = (struct read_entry *)xcalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
 
-
-    while (read_more){
+    while (read_more) {
       before = rdtsc();
 
       //Read in this threads 'chunk'
@@ -940,38 +916,41 @@ launch_scan_threads(){
 
 	load = 0;
 	assert(chunk_size>2);
-	while( read_more && ((single_reads_file && load < chunk_size) || (!single_reads_file && load < chunk_size-1))) {
+	while (read_more && ((single_reads_file && load < chunk_size) || (!single_reads_file && load < chunk_size-1))) {
 	  //if (!fasta_get_next_with_range(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna,
-	//				 &re_buffer[load].range_string, &re_buffer[load].qual))
+	  //				 &re_buffer[load].range_string, &re_buffer[load].qual))
 	  if (single_reads_file) { 
 	    if (fasta_get_next_read_with_range(fasta, &re_buffer[load])) {
-		    load++;
-		  } else { 
-		    read_more = false;
-		  }
+	      load++;
+	    } else { 
+	      read_more = false;
+	    }
 	  } else {
-		  //read from the left file
+	    //read from the left file
 	    if (fasta_get_next_read_with_range(left_fasta, &re_buffer[load])) {
-		  	load++;
-		  } else {
-		  	more_in_left_file = false;
-		  }
-		  //read from the right file
+	      load++;
+	    } else {
+	      more_in_left_file = false;
+	    }
+	    //read from the right file
 	    if (fasta_get_next_read_with_range(right_fasta, &re_buffer[load])) {
-		  	load++;
-		  } else {
-		  	more_in_right_file = false;
-		  }
-		  //make sure that one is not smaller then the other
-		  if (more_in_left_file!=more_in_right_file) {
-			fprintf(stderr,"error: when using options -1 and -2, both files specified must have the same number of entries\n");
-			exit(1);
-		  }
-		  //keep reading?
-		  read_more=more_in_left_file && more_in_right_file; 
+	      load++;
+	    } else {
+	      more_in_right_file = false;
+	    }
+	    //make sure that one is not smaller then the other
+	    if (more_in_left_file != more_in_right_file) {
+	      fprintf(stderr,"error: when using options -1 and -2, both files specified must have the same number of entries\n");
+	      exit(1);
+	    }
+	    //keep reading?
+	    read_more = more_in_left_file && more_in_right_file; 
 	  }
 	}
+
 	nreads += load;
+
+	// progress reporting
 	if (progress > 0) {
 	  nreads_mod += load;
 	  if (nreads_mod >= progress)
@@ -979,23 +958,20 @@ launch_scan_threads(){
 	  nreads_mod %= progress;
 	}
       } // end critical section
+
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
 
-      thread_output_buffer_sizes[thread_id]=thread_output_buffer_initial;
-      thread_output_buffer[thread_id]=(char*)malloc(sizeof(char)*thread_output_buffer_sizes[thread_id]);
-      if (thread_output_buffer[thread_id]==NULL) {
-	fprintf(stderr,"Failed to allocate memory for actual thread_buffer!\n");
-	exit(1);
-      }
-      thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id];
-      thread_output_buffer[thread_id][0]='\0';
+      thread_output_buffer_sizes[thread_id] = thread_output_buffer_initial;
+      thread_output_buffer[thread_id] = (char *)xmalloc_m(sizeof(char) * thread_output_buffer_sizes[thread_id], "thread_buffer");
+      thread_output_buffer_filled[thread_id] = thread_output_buffer[thread_id];
+      thread_output_buffer[thread_id][0] = '\0';
 
       for (i = 0; i < load; i++) {
 	// if running in paired mode and first foot is ignored, ignore this one, too
 	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].ignore) {
-	  read_free(re_buffer+i-1);
-	  read_free(re_buffer+i);
+	  read_free(&re_buffer[i-1]);
+	  read_free(&re_buffer[i]);
 	  continue;
 	}
 
@@ -1009,16 +985,16 @@ launch_scan_threads(){
 	
 	//Trim the reads
 	if (trim) {
-		if (pair_mode != PAIR_NONE ) {
-			if (trim_first) {
-				trim_read(re_buffer+i-1);
-			}
-			if (trim_second) {
-				trim_read(re_buffer+i);
-			}
-		} else {
-			trim_read(re_buffer+i);
-		}
+	  if (pair_mode != PAIR_NONE) {
+	    if (trim_first) {
+	      trim_read(&re_buffer[i-1]);
+	    }
+	    if (trim_second) {
+	      trim_read(&re_buffer[i]);
+	    }
+	  } else {
+	    trim_read(&re_buffer[i]);
+	  }
 	}	
 
 	re_buffer[i].ignore = false;
@@ -1032,25 +1008,35 @@ launch_scan_threads(){
 	  re_buffer[i].min_kmer_pos = 1;
 	  re_buffer[i].initbp[0] = fasta_get_initial_base(shrimp_mode,re_buffer[i].seq);
 	  re_buffer[i].initbp[1] = re_buffer[i].initbp[0];
-	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0], (int8_t)re_buffer[i].initbp[1],
+	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0],
+							    (int8_t)re_buffer[i].initbp[1],
 							    re_buffer[i].read_len, re_buffer[i].is_rna);
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
 	}
+
 	//Check if we can actually use this read
-	if (re_buffer[i].max_n_kmers<0) {
-		fprintf(stderr,"warning: Read smaller then any seed, skipping read!\n");
-		re_buffer[i].max_n_kmers=1;
-		if (pair_mode==PAIR_NONE) {
-			read_free_full(&re_buffer[i]);
-		} else if (i%2==1) {
-			read_free_full(&re_buffer[i-1]);
-			read_free_full(&re_buffer[i]);
-		} else {
-			re_buffer[i].ignore=true;
-		}
-		continue;	
+	if (re_buffer[i].max_n_kmers < 0
+	    || re_buffer[i].read_len > longest_read_len) {
+	  if (re_buffer[i].max_n_kmers < 0) {
+	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
+		    re_buffer[i].name);
+	    re_buffer[i].max_n_kmers=1;
+	  } else {
+	    fprintf(stderr, "warning: skipping read [%s]; it has length %d, maximum allowed is %d. Use --longest-read ?\n",
+		    re_buffer[i].name, re_buffer[i].read_len, longest_read_len);
+	  }
+	  if (pair_mode == PAIR_NONE) {
+	    read_free_full(&re_buffer[i]);
+	  } else if (i%2 == 1) {
+	    read_free_full(&re_buffer[i-1]);
+	    read_free_full(&re_buffer[i]);
+	  } else {
+	    re_buffer[i].ignore=true;
+	  }
+	  continue;	
 	}
+
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
 	re_buffer[i].input_strand = 0;
 
@@ -1063,74 +1049,65 @@ launch_scan_threads(){
 	re_buffer[i].ranges = NULL;
 	re_buffer[i].n_ranges = 0;
 	re_buffer[i].final_matches = 0;
-
 	if (re_buffer[i].range_string != NULL) {
 	  read_compute_ranges(&re_buffer[i]);
 	  free(re_buffer[i].range_string);
 	  re_buffer[i].range_string = NULL;
 	}
-
 	//free(re_buffer[i].seq);
+
+	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    if (re_buffer[i].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
-	    } else {
-	    	handle_read(&re_buffer[i]);
-	    }
+	    handle_read(&re_buffer[i]);
 	  }
-	else if (i % 2 == 1) 
+	else if (i % 2 == 1)
 	  {
-	    if (re_buffer[i].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
-	    } else if (re_buffer[i-1].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i-1].name,re_buffer[i-1].read_len,longest_read_len);
-	    } else {
-	
-		    if (pair_reverse[pair_mode][0])
-		      read_reverse(&re_buffer[i-1]);
-		    if (pair_reverse[pair_mode][1])
-		      read_reverse(&re_buffer[i]);
-		    re_buffer[i-1].paired=true;
-		    re_buffer[i-1].first_in_pair=true;
-		    re_buffer[i-1].mate_pair=&re_buffer[i];
-		    re_buffer[i].paired=true;
-		    re_buffer[i].first_in_pair=false;
-		    re_buffer[i].mate_pair=&re_buffer[i-1];
-		    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
-	   }
+	    if (pair_reverse[pair_mode][0])
+	      read_reverse(&re_buffer[i-1]);
+	    if (pair_reverse[pair_mode][1])
+	      read_reverse(&re_buffer[i]);
+	    re_buffer[i-1].paired=true;
+	    re_buffer[i-1].first_in_pair=true;
+	    re_buffer[i-1].mate_pair=&re_buffer[i];
+	    re_buffer[i].paired=true;
+	    re_buffer[i].first_in_pair=false;
+	    re_buffer[i].mate_pair=&re_buffer[i-1];
+	    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
 	  }
       }
+
       //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
-	#pragma omp critical 
-	{
-		struct heap_out_elem tmp;
-		tmp.key=thread_output_buffer_chunk[thread_id];
-		tmp.rest=thread_output_buffer[thread_id];
-		thread_output_buffer[thread_id]=NULL;	
-		heap_out_insert(&h,&tmp);	
-		heap_out_get_min(&h,&tmp);
-		while (h.load>0 && tmp.key==next_chunk_to_print) {
-			heap_out_extract_min(&h,&tmp);
-			fprintf(stdout,"%s",tmp.rest);
-			free(tmp.rest);
-			next_chunk_to_print++;
-		}
+#pragma omp critical
+      {
+	struct heap_out_elem tmp;
+	tmp.key = thread_output_buffer_chunk[thread_id];
+	tmp.rest = thread_output_buffer[thread_id];
+	thread_output_buffer[thread_id] = NULL;	
+	heap_out_insert(&h, &tmp);
+	heap_out_get_min(&h, &tmp);
+	while (h.load > 0 && tmp.key == next_chunk_to_print) {
+	  heap_out_extract_min(&h, &tmp);
+	  fprintf(stdout, "%s", tmp.rest);
+	  free(tmp.rest);
+	  next_chunk_to_print++;
 	}
+      }
     }
 
     free(re_buffer);
   } // end parallel section
+
   if (progress > 0)
     fprintf(stderr, "\n");
 
-	struct heap_out_elem tmp;
-	while (h.load>0) {
-		heap_out_extract_min(&h,&tmp);
-		fprintf(stdout,"%s",tmp.rest);
-		free(tmp.rest);
-	}
-	heap_out_destroy(&h);
+  struct heap_out_elem tmp;
+  while (h.load>0) {
+    heap_out_extract_min(&h,&tmp);
+    fprintf(stdout,"%s",tmp.rest);
+    free(tmp.rest);
+  }
+  heap_out_destroy(&h);
   free(thread_output_buffer_sizes);
   free(thread_output_buffer_filled);
   free(thread_output_buffer);
