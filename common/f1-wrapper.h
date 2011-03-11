@@ -96,7 +96,7 @@ f1_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks, uint64_t *calls_byp
  */
 static inline int
 f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rlen, int g_idx, int r_idx,
-       uint32_t * genome_ls, int init_bp, bool is_rna, uint tag)
+       uint32_t * genome_ls, int init_bp, bool is_rna, uint tag, bool gapless)
 {
   uint32_t hash_val = 0;
   int score;
@@ -115,7 +115,7 @@ f1_run(uint32_t * genome, int glen, int goff, int wlen, uint32_t * read, int rle
 
 
   /* Compute */
-  if (!gapless_sw) {
+  if (gapless) {
 	//fprintf(stderr,"Doing a vector call, %d, %d, %d\n", goff, wlen, rlen);
     score = sw_vector(genome, goff, wlen, read, rlen,
 		      genome_ls, init_bp, is_rna);

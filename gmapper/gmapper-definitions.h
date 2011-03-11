@@ -115,6 +115,8 @@ typedef struct read_hit {
   int           pct_score_vector;
   int           score_full;
   double	pct_score_full;
+  int		pass1_key;
+  int		pass2_key;
   int           score_max;
   int           matches;
   int           cn;
@@ -124,6 +126,13 @@ typedef struct read_hit {
   int           st;
   int           gen_st;
 } read_hit;
+
+typedef struct read_hit_pair {
+  struct read_hit *	rh[2];
+  int			insert_size;
+  int			score;
+  int			max_score;
+}
 
 struct read_hit_pair_holder {
   struct read_hit *     hit[2];
@@ -151,5 +160,81 @@ typedef struct {
 	int size;
 } cigar_t;
 
+
+typedef struct anchor_list_options {
+  bool		recompute;			// whether to recompute anchor list for each read
+  bool		use_region_counts;		// whether to use region counts for each read
+  bool		use_pairing;			// whether to use pair for each read
+  int		min_count[2];
+  int		max_count[2];			// min/max[0]: min/max count for this read; min/max[1]: for mp
+  //int		min_seed;
+  //int		max_seed;			// which seeds to use in creating the anchor list
+} anchor_list_options;
+
+typedef struct hit_list_options {
+  bool		recompute;
+  bool		gapless;
+  int		match_mode;
+  double	threshold;
+} hit_list_options;
+
+typedef struct pass1_options {
+  bool		recompute;
+  bool		recompute_heap;
+  bool		gapless;
+  bool		only_paired;
+  int		num_outputs;
+  double	threshold;
+  double	window_overlap;
+} pass1_options;
+
+typedef struct pass2_options {
+  bool		recompute;
+  bool		strata;
+  int		num_outputs;
+  double	threshold;
+} pass2_options;
+
+
+typedef struct read_mapping_options_t {
+  // anchor list
+  struct anchor_list_options anchor_list;
+
+  // hit list
+  struct hit_list_options hit_list;
+
+  // vector SW
+  struct pass1_options pass1;
+
+  // scalar/full SW
+  struct pass2_options pass2;
+
+  int		stop_count;
+  double	stop_threshold;
+
+} read_mapping_options_t;
+
+typedef struct readpair_mapping_options_t {
+  // initial computation of region counts controlled by global flag
+
+  // handle readpair or each read
+  struct {
+    bool	pair_mode;
+    bool	pair_up_hits;
+    int		min_insert_size;
+    int		max_insert_size;		// for read 1 relative to read 0
+
+    int		pass1_num_outputs;
+    int		pass2_num_outputs;
+    int		stop_count;
+
+    double	pass1_threshold;
+    double	pass2_threshold;		// thresholds for the pair
+    double	stop_threshold;
+  } pairing;
+
+  struct read_mapping_options_t read[2];
+
+} readpair_mapping_options_t;
 
 #endif

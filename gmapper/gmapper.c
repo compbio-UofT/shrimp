@@ -291,7 +291,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//mapq
 	int mapq=255;
 	//cigar
-	char * cigar="*";
+	char * cigar=(char *)"*";
 	cigar_t * cigar_binary=NULL;
 	//mrnm
 	const char * mrnm = "*"; //mate reference name
@@ -713,6 +713,31 @@ read_free(read_entry * re)
   }
 }
 
+
+void
+read_free_hit_list(struct read_entry * re)
+{
+  for (int st = 0; st < 2; st++) {
+    if (re->hits[st] != NULL) {
+      free(re->hits[st]);
+      re->hits[st] = NULL;
+      re->n_hits[st] = 0;
+    }
+  }
+}
+
+
+void
+read_free_anchor_list(struct read_entry * re)
+{
+  for (int st = 0; st < 2; st++) {
+    if (re->anchors[st] != NULL) {
+      free(re->anchors[st]);
+      re->anchors[st] = NULL;
+      re->n_anchors[st] = 0;
+    }
+  }
+}
 
 void
 read_free_full(struct read_entry * re)
@@ -2413,6 +2438,109 @@ int main(int argc, char **argv){
 	  }
 	  exit(1);
 	}
+
+	// set up new options structure
+	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
+	assert(n_unpaired_mapping_options[0] == 0);
+	assert(n_paired_mapping_options == 0);
+	if (pair_mode == PAIR_NONE)
+	  {
+	    n_unpaired_mapping_options[0]++;
+	    unpaired_mapping_options[0] = (struct read_mapping_options_t *)realloc((void *)unpaired_mapping_options[0],
+										   n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+
+	    unpaired_mapping_options[0][0].anchor_list.recompute = true;
+	    unpaired_mapping_options[0][0].anchor_list.use_region_counts = false;
+	    unpaired_mapping_options[0][0].anchor_list.use_pairing = false;
+	    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
+	    unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
+	    unpaired_mapping_options[0][0].hit_list.recompute = true;
+	    unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
+	    unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
+	    unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
+	    unpaired_mapping_options[0][0].pass1.recompute =  true;
+	    unpaired_mapping_options[0][0].pass1.only_paired = false;
+	    unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+	    unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+	    unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+	    unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+	    unpaired_mapping_options[0][0].pass2.recompute = true;
+	    unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+	    unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+	    unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+	    unpaired_mapping_options[0][0].stop_count = 0;
+	  }
+	else
+	  {
+	    n_paired_mapping_options++;
+	    paired_mapping_options = (struct readpair_mapping_options_t *)realloc((void *)paired_mapping_options,
+										  n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+
+	    paired_mapping_options[0].pairing.pair_mode = pair_mode;
+	    paired_mapping_options[0].pairing.pair_up_hits = true;
+	    paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
+	    paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
+	    paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
+	    paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
+	    paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
+	    paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
+
+	    paired_mapping_options[0].read[0].anchor_list.recompute = true;
+	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = false;
+	    paired_mapping_options[0].read[0].anchor_list.use_pairing = true;
+	    paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
+	    paired_mapping_options[0].read[0].anchor_list.min_count[1] = (num_matches == 4? 2 : 1);
+	    paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;
+	    paired_mapping_options[0].read[0].anchor_list.max_count[1] = 0;
+	    paired_mapping_options[0].read[0].hit_list.recompute = true;
+	    paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
+	    paired_mapping_options[0].read[0].hit_list.match_mode = (num_matches == 4? 2 : 1);
+	    paired_mapping_options[0].read[0].hit_list.threshold = window_gen_threshold;
+	    paired_mapping_options[0].read[0].pass1.recompute = true;
+	    paired_mapping_options[0].read[0].pass1.only_paired = true;
+	    paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
+	    //paired_mapping_options[0].read[0].pass1.num_outputs = 0;
+	    paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
+	    paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
+	    paired_mapping_options[0].read[0].pass2.recompute = true;
+	    paired_mapping_options[0].read[0].pass2.strata = strata_flag;
+	    //paired_mapping_options[0].read[0].pass2.num_outputs = 0;
+	    paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold / 3;
+	    paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
+
+	    if (!sam_half_paired)
+	      {
+		paired_mapping_options[0].pairing.stop_count = 0;
+	      }
+	    else // half_paired
+	      {
+		n_unpaired_mapping_options[0]++;
+		n_unpaired_mapping_options[1]++;
+		unpaired_mapping_options[0] = (struct read_mapping_options_t *)realloc((void *)unpaired_mapping_options[0],
+										       n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+		unpaired_mapping_options[1] = (struct read_mapping_options_t *)realloc((void *)unpaired_mapping_options[1],
+										       n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+
+		paired_mapping_options[0].pairing.stop_count = 1;
+		paired_mapping_options[0].pairing.stop_threshold = paired_mapping_options[0].pairing.pass2_threshold;
+
+		unpaired_mapping_options[0][0].anchor_list.recompute = false;
+		unpaired_mapping_options[0][0].hit_list.recompute = false;
+		unpaired_mapping_options[0][0].pass1.recompute = true; /// ??????????
+		unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+		unpaired_mapping_options[0][0].pass1.only_paired = false;
+		unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+		unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+		unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+		unpaired_mapping_options[0][0].pass2.recompute = true;
+		unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+		unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+		unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+		unpaired_mapping_options[0][0].stop_count = 0;
+		unpaired_mapping_options[1][0] = unpaired_mapping_options[0][0];
+
+	      }
+	  }
 
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;

@@ -38,6 +38,11 @@ EXTERN(int,			chunk_size,		DEF_CHUNK_SIZE);
 
 
 /* parameters */
+EXTERN(struct read_mapping_options_t *,		unpaired_mapping_options[2],	{});
+EXTERN(int,					n_unpaired_mapping_options[2],	{});
+EXTERN(struct readpair_mapping_options_t *,	paired_mapping_options,		NULL);
+EXTERN(int,					n_paired_mapping_options,	0);
+
 EXTERN(int,		mode_mirna,		false);
 EXTERN(double,		window_len,		DEF_WINDOW_LEN);
 EXTERN(double,		window_overlap,		DEF_WINDOW_OVERLAP);
@@ -186,6 +191,8 @@ EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 void		hit_output(struct read_entry *, struct read_hit *, struct read_hit *, char **, char **, bool, int *, int);
 void		hit_free_sfrp(struct read_hit *);
 void		read_free(struct read_entry *);
+void		read_free_hit_list(struct read_entry *);
+void		read_free_anchor_list(struct read_entry *);
 void		read_free_full(struct read_entry *);
 
 

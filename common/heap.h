@@ -20,12 +20,12 @@
   } heap_##_id;
 
 #define DEF_HEAP_INIT(_id)						\
-  static inline void								\
+  static inline void							\
   heap_##_id##_init(struct heap_##_id * h, uint capacity)		\
   {									\
     assert(h != NULL);							\
 									\
-    h->array = (struct heap_##_id##_elem *)xmalloc(capacity * sizeof(struct heap_##_id##_elem)); \
+    h->array = (struct heap_##_id##_elem *)xmalloc(h->array, capacity * sizeof(struct heap_##_id##_elem)); \
     h->capacity = capacity;						\
     h->load = 0;							\
   }
@@ -37,6 +37,7 @@
     assert(h != NULL);				\
 						\
     free(h->array);				\
+    h->capacity = 0;				\
   }
 
 #define DEF_HEAP_PERCOLATE_UP(_id)					\
@@ -220,6 +221,111 @@
   //DEF_HEAP_HEAPSORT(_id)
 
 //DEF_HEAP(uint32_t,uint,uu)
+
+
+#define DEF_EXTHEAP_PERCOLATE_UP(_data_t,_id)				\
+  static inline void							\
+  extheap_##_id##_percolate_up(_data_t * a, uint * load, uint node)	\
+  {									\
+    _data_t tmp;							\
+    uint parent;							\
+									\
+    parent = node / 2;							\
+    while (node > 1 && EXTHEAP_##_id##_CMP(a[node-1], a[parent-1])) {	\
+      tmp = a[parent-1];						\
+      a[parent-1] = a[node-1];						\
+      a[node-1] = tmp;							\
+									\
+      node = parent;							\
+      parent = node / 2;						\
+    }									\
+  }
+
+
+#define DEF_EXTHEAP_PERCOLATE_DOWN(_data_t,_id)				\
+  static inline void							\
+  extheap_##_id##_percolate_down(_data_t * a, uint * load, uint node)	\
+  {									\
+    _data_t tmp;							\
+    uint left, right, min;						\
+									\
+    do {								\
+      left = node * 2;							\
+      right = left + 1;							\
+      min = node;							\
+									\
+      if (left <= *load && EXTHEAP_##_id##_CMP(a[left-1], a[node-1]))	\
+	min = left;							\
+									\
+      if (right <= *load && EXTHEAP_##_id##_CMP(a[right-1], a[min-1]))	\
+	min = right;							\
+									\
+      if (min == node)							\
+	break;								\
+									\
+      tmp = a[min-1];							\
+      a[min-1] = a[node-1];						\
+      a[node-1] = tmp;							\
+									\
+      node = min;							\
+    } while (1);							\
+  }
+
+#define DEF_EXTHEAP_DELETE_MIN(_data_t,_id)				\
+  static inline void							\
+  extheap_##_id##_extract_min(_data_t * a, uint * load)			\
+  {									\
+    assert(a != NULL && load != NULL && *load > 0);			\
+									\
+    (*load)--;								\
+    if (*load > 0) {							\
+      a[0] = a[*load];							\
+      extheap_##_id##_percolate_down(a, load, 1);			\
+    }									\
+  }
+
+#define DEF_EXTHEAP_REPLACE_MIN(_data_t,_id)				\
+  static inline void							\
+  extheap_##_id##_replace_min(_data_t * a, uint * load, _data_t e)	\
+  {									\
+    assert(a != NULL && load != NULL && *load > 0);			\
+									\
+    a[0] = e;								\
+    extheap_##_id##_percolate_down(a, load, 1);				\
+  }
+
+
+#define DEF_EXTHEAP_INSERT(_data_t,_id)					\
+  static inline void							\
+  extheap_##_id##_insert(_data_t * a, uint * load, _data_t e)		\
+  {									\
+    assert(a != NULL);							\
+									\
+    a[*load] = e;							\
+    (*load)++;								\
+    extheap_##_id##_percolate_up(a, load, *load);			\
+  }
+
+#define DEF_EXTHEAP_HEAPIFY(_data_t,_id)		\
+  static inline void					\
+  extheap_##_id##_heapify(_data_t * a, uint * load)	\
+  {							\
+    assert(a != NULL);					\
+							\
+    uint node;						\
+    for (node = *load / 2; node >= 1; node--) {		\
+      extheap_##_id##_percolate_down(a, load, node);	\
+    }							\
+  }
+
+#define DEF_EXTHEAP(_data_t,_id)		\
+  DEF_EXTHEAP_PERCOLATE_UP(_data_t,_id)		\
+  DEF_EXTHEAP_PERCOLATE_DOWN(_data_t,_id)	\
+  DEF_EXTHEAP_DELETE_MIN(_data_t,_id)		\
+  DEF_EXTHEAP_REPLACE_MIN(_data_t,_id)		\
+  DEF_EXTHEAP_INSERT(_data_t,_id)		\
+  DEF_EXTHEAP_HEAPIFY(_data_t,_id)
+
 
 
 #endif
