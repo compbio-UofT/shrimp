@@ -41,7 +41,7 @@
 #include "../common/read_hit_heap.h"
 
 /* heaps */
-DEF_HEAP(uint32_t, char*, out)
+DEF_HEAP(uint32_t, char *, out)
 
 
 
@@ -928,16 +928,19 @@ launch_scan_threads(){
     struct read_entry * re_buffer;
     int load, i;
     uint64_t before;
-    re_buffer = (struct read_entry *)xcalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
+    re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
 
     while (read_more) {
+      memset(re_buffer, 0, chunk_size * sizeof(re_buffer[0]));
+
       before = rdtsc();
 
       //Read in this threads 'chunk'
 #pragma omp critical (fill_reads_buffer)
       {
-	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
+
+	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 
 	load = 0;
 	assert(chunk_size>2);
@@ -1022,12 +1025,10 @@ launch_scan_threads(){
 	  }
 	}	
 
-	re_buffer[i].ignore = false;
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
-	re_buffer[i].min_kmer_pos = 0;
-	if (shrimp_mode == MODE_COLOUR_SPACE){
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
 	  re_buffer[i].read_len--;
 	  re_buffer[i].max_n_kmers -= 2; // 1st color always discarded from kmers
 	  re_buffer[i].min_kmer_pos = 1;
@@ -1057,23 +1058,13 @@ launch_scan_threads(){
 	    read_free_full(&re_buffer[i-1]);
 	    read_free_full(&re_buffer[i]);
 	  } else {
-	    re_buffer[i].ignore=true;
+	    re_buffer[i].ignore = true;
 	  }
 	  continue;	
 	}
 
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
-	re_buffer[i].input_strand = 0;
 
-	re_buffer[i].mapidx[0] = NULL;
-	re_buffer[i].mapidx[1] = NULL;
-	re_buffer[i].anchors[0] = NULL;
-	re_buffer[i].anchors[1] = NULL;
-	re_buffer[i].hits[0] = NULL;
-	re_buffer[i].hits[1] = NULL;
-	re_buffer[i].ranges = NULL;
-	re_buffer[i].n_ranges = 0;
-	re_buffer[i].final_matches = 0;
 	if (re_buffer[i].range_string != NULL) {
 	  read_compute_ranges(&re_buffer[i]);
 	  free(re_buffer[i].range_string);
@@ -1084,7 +1075,7 @@ launch_scan_threads(){
 	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    handle_read(&re_buffer[i]);
+	    new_handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
 	  }
 	else if (i % 2 == 1)
 	  {

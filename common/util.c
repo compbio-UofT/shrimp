@@ -1237,14 +1237,15 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 // pre: array is (q)sorted
 size_t removedups(void * a, size_t n, size_t sz, int (*cmp)(void const *, void const *))
 {
+  char * p = (char *)a;
   size_t m = 0;
   size_t i, j;
   i = 0;
   while (i < n) {
     j = i+1;
-    while (j < n && !cmp(a+i*sz, a+j*sz)) j++;
+    while (j < n && !cmp(p+i*sz, p+j*sz)) j++;
     if (m < i)
-      memcpy(a+m*sz, a+i*sz, sz);
+      memcpy(p+m*sz, p+i*sz, sz);
     m++;
     i = j;
   }

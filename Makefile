@@ -3,8 +3,8 @@
 #CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
 
 ifndef CXXFLAGS
-#CXXFLAGS=-g -fopenmp
-CXXFLAGS=-O3 -DNDEBUG
+CXXFLAGS=-g
+#CXXFLAGS=-O3 -DNDEBUG
 override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS

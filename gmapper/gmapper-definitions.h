@@ -131,8 +131,9 @@ typedef struct read_hit_pair {
   struct read_hit *	rh[2];
   int			insert_size;
   int			score;
+  int			pct_score;
   int			max_score;
-}
+} read_hit_pair;
 
 struct read_hit_pair_holder {
   struct read_hit *     hit[2];
@@ -214,11 +215,7 @@ typedef struct read_mapping_options_t {
 
 } read_mapping_options_t;
 
-typedef struct readpair_mapping_options_t {
-  // initial computation of region counts controlled by global flag
-
-  // handle readpair or each read
-  struct {
+typedef struct pairing_options {
     bool	pair_mode;
     bool	pair_up_hits;
     int		min_insert_size;
@@ -231,7 +228,13 @@ typedef struct readpair_mapping_options_t {
     double	pass1_threshold;
     double	pass2_threshold;		// thresholds for the pair
     double	stop_threshold;
-  } pairing;
+} pairing_options;
+
+typedef struct readpair_mapping_options_t {
+  // initial computation of region counts controlled by global flag
+
+  // handle readpair or each read
+  struct pairing_options pairing;
 
   struct read_mapping_options_t read[2];
 

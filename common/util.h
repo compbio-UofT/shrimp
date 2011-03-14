@@ -51,6 +51,8 @@
   //}
 #define abs_or_pct(x, base) (IS_ABSOLUTE(x) ? -(x) : (base) * ((x) / 100.0))
 
+#define PASS_THRESHOLD_1000(abs_val, pct_val_1000, thres) \
+  (IS_ABSOLUTE((thres))? (abs_val) >= (int)(-(thres)) : (pct_val_1000) >= (int)((thres) * 1000))
 
 #define KMER_TO_MAPIDX(kmer, sn) (Hflag? kmer_to_mapidx_hash((kmer), (sn)) : kmer_to_mapidx_orig((kmer), (sn)))
 
