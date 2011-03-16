@@ -1,5 +1,5 @@
-#ifndef _MAPPING_H
-#define _MAPPING_H
+#ifndef _OUTPUT_H
+#define _OUTPUT_H
 
 #ifdef __cplusplus
 //extern "C" {
@@ -11,7 +11,7 @@
 
 #undef EXTERN
 #undef STATIC
-#ifdef _MODULE_MAPPING
+#ifdef _MODULE_OUTPUT
 #define EXTERN(_type, _id, _init_val) _type _id = _init_val
 #define STATIC(_type, _id, _init_val) static _type _id = _init_val
 #else
@@ -20,10 +20,10 @@
 #endif
 
 
-void		handle_read(struct read_entry *);
-void		handle_readpair(struct read_entry *, struct read_entry *);
-void		new_handle_read(struct read_entry *, struct read_mapping_options_t *, int);
-void		new_handle_readpair(struct read_entry *, struct read_entry *, struct readpair_mapping_options_t *, int);
+void	hit_output(struct read_entry *, struct read_hit *, struct read_hit *,
+		   char * *, char * *, bool, int *, int);
+void	new_read_output(struct read_entry *, struct read_hit * *, int *);
+void	new_readpair_output(struct read_entry *, struct read_entry *, struct read_hit_pair *, int *);
 
 
 #ifdef __cplusplus

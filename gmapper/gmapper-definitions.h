@@ -13,6 +13,7 @@
 #ifndef _GMAPPER_DEFINITIONS_H
 #define _GMAPPER_DEFINITIONS_H
 
+#include <stdlib.h>
 #include "../common/bitmap.h"
 #include "../common/heap.h"
 #include "../common/stats.h"
@@ -106,6 +107,7 @@ typedef struct read_entry {
   struct read_entry * mate_pair;
 } read_entry;
 
+
 typedef struct read_hit {
   struct sw_full_results *      sfrp;
   struct anchor anchor;
@@ -132,7 +134,8 @@ typedef struct read_hit_pair {
   int			insert_size;
   int			score;
   int			pct_score;
-  int			max_score;
+  int			score_max;
+  int			key;
 } read_hit_pair;
 
 struct read_hit_pair_holder {
@@ -190,10 +193,11 @@ typedef struct pass1_options {
 } pass1_options;
 
 typedef struct pass2_options {
-  bool		recompute;
   bool		strata;
   int		num_outputs;
+  int		stop_count;
   double	threshold;
+  double	stop_threshold;
 } pass2_options;
 
 
@@ -210,24 +214,23 @@ typedef struct read_mapping_options_t {
   // scalar/full SW
   struct pass2_options pass2;
 
-  int		stop_count;
-  double	stop_threshold;
-
 } read_mapping_options_t;
 
 typedef struct pairing_options {
-    bool	pair_mode;
-    bool	pair_up_hits;
-    int		min_insert_size;
-    int		max_insert_size;		// for read 1 relative to read 0
+  bool	pair_mode;
+  bool	pair_up_hits;
+  int		min_insert_size;
+  int		max_insert_size;		// for read 1 relative to read 0
 
-    int		pass1_num_outputs;
-    int		pass2_num_outputs;
-    int		stop_count;
+  bool		strata;
+  int		min_num_matches;
+  int		pass1_num_outputs;
+  int		pass2_num_outputs;
+  int		stop_count;
 
-    double	pass1_threshold;
-    double	pass2_threshold;		// thresholds for the pair
-    double	stop_threshold;
+  double	pass1_threshold;
+  double	pass2_threshold;		// thresholds for the pair
+  double	stop_threshold;
 } pairing_options;
 
 typedef struct readpair_mapping_options_t {
@@ -239,5 +242,38 @@ typedef struct readpair_mapping_options_t {
   struct read_mapping_options_t read[2];
 
 } readpair_mapping_options_t;
+
+
+static inline void
+read_free_anchor_list(struct read_entry * re)
+{
+  if (re->anchors[0] != NULL) {
+    free(re->anchors[0]);
+    re->anchors[0] = NULL;
+    re->n_anchors[0] = 0;
+  }
+  if (re->anchors[1] != NULL) {
+    free(re->anchors[1]);
+    re->anchors[1] = NULL;
+    re->n_anchors[1] = 0;
+  }
+}
+
+
+static inline void
+read_free_hit_list(struct read_entry * re)
+{
+  if (re->hits[0] != NULL) {
+    free(re->hits[0]);
+    re->hits[0] = NULL;
+    re->n_hits[0] = 0;
+  }
+  if (re->hits[1] != NULL) {
+    free(re->hits[1]);
+    re->hits[1] = NULL;
+    re->n_hits[1] = 0;
+  }
+}
+
 
 #endif

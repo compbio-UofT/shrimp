@@ -132,14 +132,14 @@ EXTERN(int,			avg_seed_span,		0);
 
 
 /* Thread output buffer */
-STATIC(char **,			thread_output_buffer,		NULL);
-STATIC(size_t *,		thread_output_buffer_sizes,	NULL);
-STATIC(char **,			thread_output_buffer_filled,	NULL);
-STATIC(unsigned int *,		thread_output_buffer_chunk,	NULL);
-STATIC(size_t,			thread_output_buffer_initial,	DEF_THREAD_OUTPUT_BUFFER_INITIAL);
-STATIC(size_t,			thread_output_buffer_increment,	DEF_THREAD_OUTPUT_BUFFER_INCREMENT);
-STATIC(size_t,			thread_output_buffer_safety,	DEF_THREAD_OUTPUT_BUFFER_SAFETY);
-STATIC(unsigned int,		thread_output_heap_capacity,	DEF_THREAD_OUTPUT_HEAP_CAPACITY);
+EXTERN(char **,			thread_output_buffer,		NULL);
+EXTERN(size_t *,		thread_output_buffer_sizes,	NULL);
+EXTERN(char **,			thread_output_buffer_filled,	NULL);
+EXTERN(unsigned int *,		thread_output_buffer_chunk,	NULL);
+EXTERN(size_t,			thread_output_buffer_initial,	DEF_THREAD_OUTPUT_BUFFER_INITIAL);
+EXTERN(size_t,			thread_output_buffer_increment,	DEF_THREAD_OUTPUT_BUFFER_INCREMENT);
+EXTERN(size_t,			thread_output_buffer_safety,	DEF_THREAD_OUTPUT_BUFFER_SAFETY);
+EXTERN(unsigned int,		thread_output_heap_capacity,	DEF_THREAD_OUTPUT_HEAP_CAPACITY);
 
 
 /* SAM stuff */
@@ -188,7 +188,6 @@ EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 #include "../common/f1-wrapper.h"
 
 
-void		hit_output(struct read_entry *, struct read_hit *, struct read_hit *, char **, char **, bool, int *, int);
 void		hit_free_sfrp(struct read_hit *);
 void		read_free(struct read_entry *);
 void		read_free_hit_list(struct read_entry *);

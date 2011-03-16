@@ -27,7 +27,7 @@ mapper/mapper.o: mapper/mapper.c mapper/mapper.h
 #
 # gmapper /
 #
-bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o \
+bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o gmapper/output.o \
     common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
     common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
@@ -127,6 +127,9 @@ gmapper/genome.o: gmapper/genome.c gmapper/genome.h gmapper/gmapper.h
 	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 gmapper/mapping.o: gmapper/mapping.c gmapper/mapping.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/output.o: gmapper/output.c gmapper/output.h gmapper/gmapper.h
 	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 #

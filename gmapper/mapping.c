@@ -3,6 +3,7 @@
 #include <omp.h>
 
 #include "mapping.h"
+#include "output.h"
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
 #include "../common/sw-full-ls.h"
@@ -23,6 +24,9 @@ read_get_mapidxs_per_strand(struct read_entry * re, int st)
 {
   int i, sn, load, base, r_idx;
   uint32_t * kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0]) * BPTO32BW(max_seed_span));
+
+  assert(re != NULL);
+  assert(re->mapidx[st] == NULL);
   
   re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
 
@@ -639,7 +643,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
   for (st1 = 0; st1 < 2; st1++) {
     st2 = 1 - st1; // opposite strand
     int re1_strand = pair_reverse[pair_mode][0] ? 1-st1 : st1;
-    int re2_strand = pair_reverse[pair_mode][1] ? 1-st2 : st2;
+    //int re2_strand = pair_reverse[pair_mode][1] ? 1-st2 : st2;
     int re1_correction = re1->window_len-re1->read_len;
     int re2_correction = re2->window_len-re2->read_len;
 
@@ -832,10 +836,13 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   uint32_t * gen = NULL;
 
   assert(re != NULL && rh != NULL);
+
+  /*
   if (rh->gen_st!=0) {
-	fprintf(stderr,"rh->gen_st is %d\n%d and %d\n",rh->gen_st,min_insert_size,max_insert_size);
+    fprintf(stderr,"[%s] rh->gen_st is %d\n%d and %d\n",re->name, rh->gen_st,min_insert_size,max_insert_size);
   }
   assert(rh->gen_st == 0);
+  */
 
   if (rh->st == re->input_strand) {
     gen = genome_contigs[rh->cn];
@@ -845,8 +852,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     gen = genome_contigs_rc[rh->cn];
   }
 
-  assert(rh->st == re->input_strand);
-
+  assert(rh->sfrp == NULL);
   rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
 
 #ifdef DEBUG_SW_FULL_CALLS
@@ -1384,6 +1390,9 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
   struct heap_uu_elem tmp;
   int anchor_cache[re->read_len];
 
+  assert(re != NULL && options != NULL);
+  assert(re->anchors[st] == NULL && re->n_anchors[st] == 0);
+
   if (re->mapidx[st] == NULL)
     return;
 
@@ -1400,9 +1409,7 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
   }
 
   // init anchor list
-  assert(re->anchors[st] == NULL && re->n_anchors[st] == 0);
   re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
-  re->n_anchors[st] = 0;
 
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
@@ -1492,12 +1499,13 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
   int short_len = 0, long_len = 0;
   struct anchor a[3];
 
+  assert(re != NULL && options != NULL);
+  assert(re->hits[st] == NULL && re->n_hits[st] == 0);
+
   if (re->n_anchors[st] == 0)
     return;
 
-  assert(re->hits[st] == NULL && re->n_hits[st] == 0);
   re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
-  re->n_hits[st] = 0;
 
   for (i = 0; i < re->n_anchors[st]; i++) {
     // contig num of crt anchor
@@ -1754,11 +1762,11 @@ new_read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * lo
 }
 
 
-static int
-pass2_read_hit_align_cmp(void const * e1, void const * e2) {
-  struct read_hit * rh1 = *(struct read_hit * *)e1;
-  struct read_hit * rh2 = *(struct read_hit * *)e2;
-
+// don't use this for qsort directly;
+// use it inside another comparator which deals with overlaps
+static inline int
+read_hit_purealign_cmp(struct read_hit * rh1, struct read_hit * rh2)
+{
   if (rh1->cn < rh2->cn) {
     return -1;
   } else if (rh1->cn == rh2->cn) {
@@ -1770,13 +1778,29 @@ pass2_read_hit_align_cmp(void const * e1, void const * e2) {
       } else if (rh2->g_off + rh2->w_len < rh1->g_off) {
 	return 1;
       } else {
-	// overlapping!!
-	// sort by decreasing score
-	return rh2->pass2_key - rh1->pass2_key;
+	// overlapping!
+	return 0;
       }
     }
   }
   return 1;
+}
+
+
+static int
+pass2_read_hit_align_cmp(void const * e1, void const * e2)
+{
+  struct read_hit * rh1 = *(struct read_hit * *)e1;
+  struct read_hit * rh2 = *(struct read_hit * *)e2;
+
+  int tmp = read_hit_purealign_cmp(rh1, rh2);
+
+  if (tmp == 0) {
+    // overlapping!!
+    tmp = rh2->pass2_key - rh1->pass2_key;
+  }
+
+  return tmp;
 }
 
 
@@ -1789,27 +1813,23 @@ pass2_read_hit_score_cmp(void const * e1, void const * e2) {
 /*
  * Do a final pass for given read.
  */
-static void
+static bool
 new_read_pass2(struct read_entry * re,
 	       struct read_hit * * hits_pass1, int * n_hits_pass1,
 	       struct read_hit * * hits_pass2, int * n_hits_pass2,
 	       struct pass2_options * options)
 {
-  int i;
+  int i, cnt;
   assert(re != NULL && hits_pass1 != NULL && hits_pass2 != NULL);
-  assert(pair_mode == PAIR_NONE || sam_half_paired);
 
   /* compute full alignment scores */
   for (i = 0; i < *n_hits_pass1; i++) {
     struct read_hit * rh = hits_pass1[i];
-    if (rh->score_full < 0) {
+    if (rh->score_full < 0 || rh->sfrp == NULL) {
       hit_run_full_sw(re, rh, (int)abs_or_pct(options->threshold, rh->score_max));
       rh->pass2_key = (IS_ABSOLUTE(options->threshold)? rh->score_full : rh->pct_score_full);
     }
-    if ( (IS_ABSOLUTE(options->threshold)
-	  && rh->score_full >= abs_or_pct(options->threshold, rh->score_max))
-	 || (!IS_ABSOLUTE(options->threshold)
-	     && (double)(rh->score_full*100)/(double)rh->score_max >= options->threshold) ) {
+    if (rh->score_full >= abs_or_pct(options->threshold, rh->score_max)) {
       hits_pass2[*n_hits_pass2] = rh;
       (*n_hits_pass2)++;
     } 
@@ -1822,9 +1842,17 @@ new_read_pass2(struct read_entry * re,
   // sort by non-increasing score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_score_cmp);
 
+  // trim excess mappings
   if (*n_hits_pass2 > options->num_outputs)
     *n_hits_pass2 = options->num_outputs;
 
+  // if strata is set, keep only top scoring hits
+  if (options->strata && *n_hits_pass2 > 0) {
+    for (i = 1; i < *n_hits_pass2 && hits_pass2[0]->score_full == hits_pass2[i]->score_full; i++);
+    *n_hits_pass2 = i;
+  }
+
+  // drop reads with too many mappings
   if (*n_hits_pass2 > 0) {
     if (max_alignments == 0 || *n_hits_pass2 <= max_alignments) {
 #pragma omp atomic
@@ -1836,75 +1864,22 @@ new_read_pass2(struct read_entry * re,
     }
   }
 
+  // update counts
   re->final_matches += *n_hits_pass2;
-}
-
-
-static bool
-new_read_output(struct read_entry * re,
-		struct read_hit * * hits_pass2, int * n_hits_pass2,
-		int stop_count, double stop_threshold)
-{
-  int i;
-  int cnt;
-  int hits[] = {0, 0, 0};
-
-  for (i = 0; i < *n_hits_pass2; i++) {
-    struct sw_full_results * sfrp = hits_pass2[i]->sfrp;
-    int edit_distance = sfrp->mismatches + sfrp->insertions + sfrp->deletions;
-    if (0 <= edit_distance && edit_distance < 3) {
-      hits[edit_distance]++;
-    }
-  }
-
-  /* Output sorted list, removing any duplicates. */
-  for (i = 0; i < *n_hits_pass2; i++) {
-    struct read_hit * rh = hits_pass2[i];
-    char * output1 = NULL, * output2 = NULL;
-    if (sam_half_paired) {
-      int other_hits[] = {0, 0, 0};
-      if (re->first_in_pair) {
-	hit_output(re, rh, NULL, &output1, NULL, true, hits, *n_hits_pass2);
-	hit_output(re->mate_pair, NULL, rh, &output2, NULL, false, other_hits, 0);
-      } else {
-	hit_output(re->mate_pair, NULL, rh, &output1, NULL, true, other_hits, 0);
-	hit_output(re, rh, NULL, &output2, NULL, false, hits, *n_hits_pass2);
-      }
-    } else {
-      hit_output(re, rh, NULL,  &output1, &output2, false, hits, *n_hits_pass2);
-    }
-    //legacy support for SHRiMP output
-    if (!Eflag) {
-      if (!Pflag) {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n", output1);
-	}
-      } else {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n\n%s\n", output1, output2);
-	}
-      }
-      free(output1);
-      if (Pflag || sam_half_paired) {
-	free(output2);
-      }
-    }
-
-  }
 #pragma omp atomic
   total_single_matches += re->final_matches;
 
   // check stop condition
+  if (options->stop_count == 0)
+    return true;
+
   for (i = 0, cnt = 0; i < *n_hits_pass2; i++) {
-    if ((IS_ABSOLUTE(stop_threshold) && hits_pass2[i]->score_full >= (int)(-stop_threshold))
-	|| (!IS_ABSOLUTE(stop_threshold) && hits_pass2[i]->pct_score_full >= (int)(stop_threshold * 1000))) {
+    if (hits_pass2[i]->score_full >= (int)abs_or_pct(options->stop_threshold, hits_pass2[i]->score_max)) {
       cnt++;
     }
   }
 
-  return cnt >= stop_count;
+  return cnt >= options->stop_count;
 }
 
 
@@ -1924,7 +1899,9 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
   //if (use_regions)
   //  read_get_region_counts(re);
 
-  read_get_mapidxs(re);
+  if (re->mapidx[0] == NULL) {
+    read_get_mapidxs(re);
+  }
 
   do {
 
@@ -1948,12 +1925,13 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
 
     hits_pass2 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]));
     n_hits_pass2 = 0;
-    new_read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
+    done = new_read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
 
-    done = new_read_output(re, hits_pass2, &n_hits_pass2, options[option_index].stop_count, options[option_index].stop_threshold);
+    new_read_output(re, hits_pass2, &n_hits_pass2);
 
-    for (i = 0; i < n_hits_pass1; i++)
+    for (i = 0; i < n_hits_pass1; i++) {
       free_sfrp(&hits_pass1[i]->sfrp);
+    }
 
     free(hits_pass1);
     free(hits_pass2);
@@ -1964,13 +1942,11 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
     // this read fell through all the option sets
   //}
 
-  read_free_full(re);
-
   scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 
-#define EXTHEAP_paired_pass1_CMP(a, b) ((a).pass1_key < (b).pass1_key)
+#define EXTHEAP_paired_pass1_CMP(a, b) ((a).key < (b).key)
 DEF_EXTHEAP(struct read_hit_pair, paired_pass1)
 
 /*
@@ -1997,16 +1973,13 @@ new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
 	if (re1->hits[st1][i].matches + re2->hits[st2][j].matches < options->min_num_matches)
 	  continue;
 
-	if (re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector
-	    >= (int)abs_or_pct(options->pass1_threshold, re1->hits[st1][i].score_max + re2->hits[st2][j].score_max)
-	    && (*load < options->pass1_num_outputs
-		|| ( (IS_ABSOLUTE(options->pass1_threshold)
-		      && re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector > a[0].score)
-		     || (!IS_ABSOLUTE(options->pass1_threshold)
-			 && (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2 > a[0].pct_score)))) {
-	  tmp.score = re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector;
-	  tmp.pct_score = (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2;
-	  tmp.pass1_key = (IS_ABSOLUTE(options->pass1_threshold)? tmp.score : tmp.pct_score);
+	tmp.score = re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector;
+	tmp.pct_score = (re1->hits[st1][i].pct_score_vector + re2->hits[st2][j].pct_score_vector)/2;
+	tmp.score_max = re1->hits[st1][i].score_max + re2->hits[st2][j].score_max;
+	tmp.key = (IS_ABSOLUTE(options->pass1_threshold)? tmp.score : tmp.pct_score);
+
+	if (tmp.score >= (int)abs_or_pct(options->pass1_threshold, tmp.score_max)
+	    && (*load < options->pass1_num_outputs || tmp.key > a[0].key)) {
 	  tmp.rh[0] = &re1->hits[st1][i];
 	  tmp.rh[1] = &re2->hits[st2][j];
 	  //TODO HISTORGRAM IS OFF! NOT SAM
@@ -2022,6 +1995,119 @@ new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
       }
     }
   }
+}
+
+
+static int
+pass2_read_hit_pair_align_cmp(void const * e1, void const * e2) {
+  struct read_hit_pair * rhp1 = (struct read_hit_pair *)e1;
+  struct read_hit_pair * rhp2 = (struct read_hit_pair *)e2;
+
+  int tmp = read_hit_purealign_cmp(rhp1->rh[0], rhp2->rh[0]);
+  if (tmp == 0) {
+    // overlapping alignments for first read in pair
+    tmp = read_hit_purealign_cmp(rhp1->rh[1], rhp2->rh[1]);
+    if (tmp == 0) {
+      // overlapping alignments for both reads in the pair
+      tmp = rhp2->key - rhp1->key;
+    }
+  }
+
+  return tmp;
+}
+
+
+static int
+pass2_read_hit_pair_score_cmp(void const * e1, void const * e2)
+{
+  return ((struct read_hit_pair *)e2)->key - ((struct read_hit_pair *)e1)->key;
+}
+
+
+/*
+ * Do a final pass for given read.
+ */
+static bool
+new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
+		   struct read_hit_pair * hits_pass1, int * n_hits_pass1,
+		   struct read_hit_pair * hits_pass2, int * n_hits_pass2,
+		   struct pairing_options * options)
+{
+  int i, j, cnt;
+
+  /* compute full alignment scores */
+  for (i = 0; i < *n_hits_pass1; i++) {
+    for (j = 0; j < 2; j++) {
+      struct read_hit * rh = hits_pass1[i].rh[j];
+      struct read_entry * re = (j == 0? re1 : re2);
+
+      if (rh->score_full < 0 || rh->sfrp == NULL) {
+	hit_run_full_sw(re, rh, (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)/3);
+      }
+    }
+
+    if (hits_pass1[i].rh[0]->score_full == 0 || hits_pass1[i].rh[1]->score_full == 0) {
+      continue;
+    }
+
+    if (hits_pass1[i].rh[0]->score_full + hits_pass1[i].rh[1]->score_full
+	>= (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)) {
+      hits_pass2[*n_hits_pass2] = hits_pass1[i];
+      hits_pass2[*n_hits_pass2].score = hits_pass1[i].rh[0]->score_full + hits_pass1[i].rh[1]->score_full;
+      hits_pass2[*n_hits_pass2].pct_score = (hits_pass1[i].rh[0]->pct_score_full + hits_pass1[i].rh[1]->pct_score_full)/2;
+      hits_pass2[*n_hits_pass2].key = IS_ABSOLUTE(options->pass2_threshold)?
+	hits_pass2[*n_hits_pass2].score : hits_pass2[*n_hits_pass2].pct_score;
+      hits_pass2[*n_hits_pass2].insert_size = abs(get_isize(hits_pass1[i].rh[0], hits_pass1[i].rh[1]));
+      //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);	
+      (*n_hits_pass2)++;
+    }
+  }
+
+  // remove duplicates
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_align_cmp);
+  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_align_cmp);
+
+  // sort by score
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_score_cmp);
+
+  // trim excess mappings
+  if (*n_hits_pass2 > options->pass2_num_outputs)
+    *n_hits_pass2 = options->pass2_num_outputs;
+
+  // if strata is set, keep only top scoring hits
+  if (options->strata && *n_hits_pass2 > 0) {
+    for (i = 1; i < *n_hits_pass2 && hits_pass2[0].score == hits_pass2[i].score; i++);
+    *n_hits_pass2 = i;
+  }
+
+  // drop pairs with too many mappings
+  if (*n_hits_pass2 > 0) {
+    if (max_alignments == 0 || *n_hits_pass2 <= max_alignments) {
+#pragma omp atomic
+      total_pairs_matched++;
+    } else {
+#pragma omp atomic
+      total_pairs_dropped++;
+      *n_hits_pass2 = 0;
+    }
+  }
+
+  // update counts
+  re1->final_matches += *n_hits_pass2;
+#pragma omp atomic
+  total_paired_matches += re1->final_matches;
+
+  // check stop condition
+  if (options->stop_count == 0)
+    return true;
+
+  for (i = 0, cnt = 0; i < *n_hits_pass2; i++) {
+    if (hits_pass2[i].score >= (int)abs_or_pct(options->stop_threshold, hits_pass2[i].score_max)) {
+      cnt++;
+    }
+  }
+
+  return cnt >= options->stop_count;
 }
 
 
@@ -2082,10 +2168,9 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
     hits_pass2 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]));
     n_hits_pass2 = 0;
-    new_readpair_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing);
+    done = new_readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing);
 
-    done = new_readpair_output(re, hits_pass2, &n_hits_pass2,
-			       options[option_index].pairing.stop_count, options[option_index].pairing.stop_threshold);
+    new_readpair_output(re1, re2, hits_pass2, &n_hits_pass2);
 
     for (i = 0; i < n_hits_pass1; i++) {
       free_sfrp(&hits_pass1[i].rh[0]->sfrp);
@@ -2097,15 +2182,11 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   } while (!done && ++option_index < n_options);
 
-  if (options_index >= n_options && sam_half_paired) {
+  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
+
+  if (option_index >= n_options && sam_half_paired) {
     // this read pair fell through all the option sets; try unpaired mapping
     new_handle_read(re1, unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
     new_handle_read(re2, unpaired_mapping_options[1], n_unpaired_mapping_options[1]);
-    // the procedures above do their own cleanup
-  } else {
-    read_free_full(re1);
-    read_free_full(re2);
   }
-
-  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
