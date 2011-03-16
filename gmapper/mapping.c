@@ -1805,6 +1805,16 @@ pass2_read_hit_align_cmp(void const * e1, void const * e2)
 
 
 static int
+pass2_read_hit_align_cmp_overlap_eq(void const * e1, void const * e2)
+{
+  struct read_hit * rh1 = *(struct read_hit * *)e1;
+  struct read_hit * rh2 = *(struct read_hit * *)e2;
+
+  return read_hit_purealign_cmp(rh1, rh2);
+}
+
+
+static int
 pass2_read_hit_score_cmp(void const * e1, void const * e2) {
   return (*(struct read_hit * *)e2)->pass2_key - (*(struct read_hit * *)e1)->pass2_key;
 }
@@ -1837,7 +1847,7 @@ new_read_pass2(struct read_entry * re,
 
   // remove duplicate hits
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
-  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
+  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp_overlap_eq);
 
   // sort by non-increasing score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_score_cmp);
@@ -2018,6 +2028,21 @@ pass2_read_hit_pair_align_cmp(void const * e1, void const * e2) {
 
 
 static int
+pass2_read_hit_pair_align_cmp_overlap_eq(void const * e1, void const * e2) {
+  struct read_hit_pair * rhp1 = (struct read_hit_pair *)e1;
+  struct read_hit_pair * rhp2 = (struct read_hit_pair *)e2;
+
+  int tmp = read_hit_purealign_cmp(rhp1->rh[0], rhp2->rh[0]);
+  if (tmp == 0) {
+    // overlapping alignments for first read in pair
+    tmp = read_hit_purealign_cmp(rhp1->rh[1], rhp2->rh[1]);
+  }
+
+  return tmp;
+}
+
+
+static int
 pass2_read_hit_pair_score_cmp(void const * e1, void const * e2)
 {
   return ((struct read_hit_pair *)e2)->key - ((struct read_hit_pair *)e1)->key;
@@ -2065,7 +2090,7 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 
   // remove duplicates
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_align_cmp);
-  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_align_cmp);
+  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_align_cmp_overlap_eq);
 
   // sort by score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_score_cmp);
