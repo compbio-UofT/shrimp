@@ -1380,7 +1380,119 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2)
 
 
 static void
-new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct anchor_list_options * options, bool collapse)
+read_get_region_counts(struct read_entry * re, int st, int number_in_pair,
+		       struct regions_options * options)
+{
+  int sn, i, offset, region;
+  uint j;
+
+  assert(use_regions);
+
+  if (region_map_id == 0) {
+    region_map_id = 1;
+    for (int _nip = 0; _nip < 2; _nip++)
+      for (int _st = 0; _st < 2; _st++) {
+	free(region_map[_nip][_st][0]);
+	region_map[_nip][_st][0] = (uint8_t *)xcalloc(n_regions);
+      }
+  }
+
+  assert(region_map[0][0][0] != NULL && region_map[0][0][1] != NULL);
+
+  for (sn = options->min_seed; sn <= options->max_seed; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+
+      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
+        continue;
+
+      for (j = 0; j < genomemap_len[sn][re->mapidx[st][offset]]; j++) {
+        region = (int)(genomemap[sn][re->mapidx[st][offset]][j] >> region_bits);
+
+        if (region_map[number_in_pair][st][0][region] == region_map_id) {
+	  if (++region_map[number_in_pair][st][1][region] == 0) // don't overflow
+	    region_map[number_in_pair][st][1][region]--;
+	} else {
+	  region_map[number_in_pair][st][0][region] = region_map_id;
+	  region_map[number_in_pair][st][1][region] = 1;
+	}
+      }
+    }
+  }
+
+  re->region_map[st][0] = region_map[number_in_pair][st][0];
+  re->region_map[st][1] = region_map[number_in_pair][st][1];
+  re->region_map[st][2] = region_map[number_in_pair][st][2];
+  re->region_map_id[st] = region_map_id;
+}
+
+
+static void
+read_get_mp_region_counts_per_strand(struct read_entry * re, int st, struct read_entry * re_mp,
+				     struct regions_options * options)
+{
+  int i, first, last, j, max;
+
+  for (i = 0; i < n_regions; i++) {
+    max = 0;
+    first = (st == 0? i + options->delta_min : i - options->delta_max);
+    if (first < 0)
+      first = 0;
+    last = (st == 0? i + options->delta_max : i - options->delta_min);
+    if (last > n_regions - 1)
+      last = n_regions - 1;
+    for (j = first; j <= last; j++) {
+      if (re_mp->region_map[1-st][0][j] == re_mp->region_map_id[1-st]
+	  && re_mp->region_map[1-st][1][j] > max)
+	max = re_mp->region_map[1-st][1][j];
+    }
+    re->region_map[st][2][i] = max;
+  }
+}
+
+
+static inline void
+read_get_mp_region_counts(struct read_entry * re, struct read_entry * re_mp,
+			  struct regions_options * options)
+{
+  read_get_mp_region_counts_per_strand(re, 0, re_mp, options);
+  read_get_mp_region_counts_per_strand(re, 1, re_mp, options);
+}
+
+
+static inline void
+advance_index_in_genomemap(struct read_entry * re, int st,
+			   struct anchor_list_options * options,
+			   uint * idx, uint max_idx, uint32_t * map)
+{
+  while (*idx < max_idx) {
+    int region = (int)(map[*idx] >> region_bits);
+    if (options->use_pairing) {
+
+      if (re->region_map[st][0][region] == re->region_map_id[st]
+	  && (options->min_count[0] == 0 || options->min_count[0] <= re->region_map[st][1][region])
+	  && (options->max_count[0] == 0 || options->max_count[0] >= re->region_map[st][1][region])
+	  && (options->min_count[1] == 0 || options->min_count[1] <= re->region_map[st][2][region])
+	  && (options->max_count[1] == 0 || options->max_count[1] >= re->region_map[st][2][region]))
+	break;
+
+    } else { // no pairing, just region counts
+
+      if (re->region_map[st][0][region] == re->region_map_id[st]
+	  && (options->min_count[0] == 0 || options->min_count[0] <= re->region_map[st][1][region])
+	  && (options->max_count[0] == 0 || options->max_count[0] >= re->region_map[st][1][region]))
+	break;
+
+    }
+    //n_anchors_discarded++;
+    (*idx)++;
+  }
+}
+
+
+static void
+new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
+				    struct anchor_list_options * options)
 {
   uint list_sz;
   uint offset;
@@ -1426,6 +1538,12 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
 	idx[offset] = genomemap_len[sn][re->mapidx[st][offset]];
       }
 
+      if (options->use_region_counts) {
+	advance_index_in_genomemap(re, st, options,
+				   &idx[offset], genomemap_len[sn][re->mapidx[st][offset]],
+				   genomemap[sn][re->mapidx[st][offset]]);
+      }
+
       if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
 	tmp.key = genomemap[sn][re->mapidx[st][offset]][idx[offset]];
 	tmp.rest = offset;
@@ -1451,7 +1569,7 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
     get_contig_num(re->anchors[st][re->n_anchors[st]].x, &re->anchors[st][re->n_anchors[st]].cn);
     re->n_anchors[st]++;
 
-    if (collapse) {
+    if (options->collapse) {
       // check if current anchor intersects the cached one on the same diagonal
       uint diag = (re->anchors[st][re->n_anchors[st]-1].x + re->read_len - re->anchors[st][re->n_anchors[st]-1].y) % re->read_len;
       int j = anchor_cache[diag];
@@ -1464,6 +1582,12 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
       } else {
 	anchor_cache[diag] = re->n_anchors[st]-1;
       }
+    }
+
+    if (options->use_region_counts) {
+      advance_index_in_genomemap(re, st, options,
+				 &idx[offset], genomemap_len[sn][re->mapidx[st][offset]],
+				 genomemap[sn][re->mapidx[st][offset]]);
     }
 
     // load next anchor for that seed/mapidx
@@ -1484,8 +1608,8 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st, struct ancho
 static inline void
 new_read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
 {
-  new_read_get_anchor_list_per_strand(re, 0, options, true);
-  new_read_get_anchor_list_per_strand(re, 1, options, true);
+  new_read_get_anchor_list_per_strand(re, 0, options);
+  new_read_get_anchor_list_per_strand(re, 1, options);
 }
 
 
@@ -1906,14 +2030,17 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
 
   uint64_t before = rdtsc();
 
-  //if (use_regions)
-  //  read_get_region_counts(re);
-
   if (re->mapidx[0] == NULL) {
     read_get_mapidxs(re);
   }
 
   do {
+
+    if (options[option_index].regions.recompute) {
+      region_map_id++;
+      read_get_region_counts(re, 0, 0, &options[option_index].regions);
+      read_get_region_counts(re, 1, 0, &options[option_index].regions);
+    }
 
     if (options[option_index].anchor_list.recompute) {
       read_free_anchor_list(re);
@@ -2150,15 +2277,23 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   uint64_t before = rdtsc();
 
-  //if (use_regions) {
-  //  read_get_region_counts(re1);
-  //  read_get_region_counts(re2);
-  //}
-
   read_get_mapidxs(re1);
   read_get_mapidxs(re2);
 
   do {
+
+    if (options[option_index].read[0].regions.recompute || options[option_index].read[1].regions.recompute) {
+      region_map_id++;
+      read_get_region_counts(re1, 0, 0, &options[option_index].read[0].regions);
+      read_get_region_counts(re1, 1, 0, &options[option_index].read[0].regions);
+      read_get_region_counts(re2, 0, 1, &options[option_index].read[1].regions);
+      read_get_region_counts(re2, 1, 1, &options[option_index].read[1].regions);
+
+      if (options[option_index].read[0].regions.compute_mp_region_counts)
+	read_get_mp_region_counts(re1, re2, &options[option_index].read[0].regions);
+      if (options[option_index].read[1].regions.compute_mp_region_counts)
+	read_get_mp_region_counts(re2, re1, &options[option_index].read[1].regions);
+    }
 
     if (options[option_index].read[0].anchor_list.recompute) {
       read_free_anchor_list(re1);

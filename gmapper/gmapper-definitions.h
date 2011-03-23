@@ -86,6 +86,9 @@ typedef struct read_entry {
   struct range_restriction * ranges;
   char *        range_string;
 
+  uint8_t *	region_map[2][3];
+  uint8_t	region_map_id[2];
+
   int           n_anchors[2];
   int           n_hits[2];
   int           n_ranges;
@@ -165,8 +168,18 @@ typedef struct {
 } cigar_t;
 
 
+typedef struct regions_options {
+  bool		recompute;
+  bool		compute_mp_region_counts;
+  int		min_seed;
+  int		max_seed;
+  int		delta_min; // possible regions for mp
+  int		delta_max;
+} regions_options;
+
 typedef struct anchor_list_options {
   bool		recompute;			// whether to recompute anchor list for each read
+  bool		collapse;
   bool		use_region_counts;		// whether to use region counts for each read
   bool		use_pairing;			// whether to use pair for each read
   int		min_count[2];
@@ -202,6 +215,9 @@ typedef struct pass2_options {
 
 
 typedef struct read_mapping_options_t {
+  // region handling
+  struct regions_options regions;
+
   // anchor list
   struct anchor_list_options anchor_list;
 

@@ -184,6 +184,15 @@ EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 
+/* region handling */
+EXTERN(bool,			use_regions,			DEF_USE_REGIONS);
+EXTERN(int,			region_bits,			DEF_REGION_BITS);
+EXTERN(int,			n_regions,			(1 << (32 - DEF_REGION_BITS)));
+EXTERN(uint8_t *,		region_map[2][2][3],		{});
+EXTERN(uint8_t,			region_map_id,			0);
+#pragma omp threadprivate(region_map, region_map_id)
+
+
 /* contains inlined calls; uses gapless_sw and hash_filter_calls vars */
 #include "../common/f1-wrapper.h"
 

@@ -1788,7 +1788,12 @@ int main(int argc, char **argv){
 	    n_unpaired_mapping_options[0]++;
 	    unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
 
+	    unpaired_mapping_options[0][0].regions.recompute = use_regions;
+	    unpaired_mapping_options[0][0].regions.compute_mp_region_counts = false;
+	    unpaired_mapping_options[0][0].regions.min_seed = 0;
+	    unpaired_mapping_options[0][0].regions.max_seed = n_seeds - 1;
 	    unpaired_mapping_options[0][0].anchor_list.recompute = true;
+	    unpaired_mapping_options[0][0].anchor_list.collapse = true;
 	    unpaired_mapping_options[0][0].anchor_list.use_region_counts = false;
 	    unpaired_mapping_options[0][0].anchor_list.use_pairing = false;
 	    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
@@ -1824,7 +1829,17 @@ int main(int argc, char **argv){
 	    paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
 	    paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
 
+	    paired_mapping_options[0].read[0].regions.recompute = use_regions;
+	    paired_mapping_options[0].read[0].regions.compute_mp_region_counts = true; // ???!!!
+	    paired_mapping_options[0].read[0].regions.min_seed = 0;
+	    paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
+	    paired_mapping_options[0].read[0].regions.delta_min =
+	      (min_insert_size/(1 << region_bits)) + (min_insert_size >= 0? 0 : -1);
+	    paired_mapping_options[0].read[0].regions.delta_max =
+	      (max_insert_size/(1 << region_bits)) + (max_insert_size >= 0? 1 : 0);
+
 	    paired_mapping_options[0].read[0].anchor_list.recompute = true;
+	    paired_mapping_options[0].read[0].anchor_list.collapse = true;
 	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = false;
 	    paired_mapping_options[0].read[0].anchor_list.use_pairing = true;
 	    paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
@@ -1860,6 +1875,7 @@ int main(int argc, char **argv){
 		unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
 		unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
 
+		unpaired_mapping_options[0][0].regions.recompute = false;
 		unpaired_mapping_options[0][0].anchor_list.recompute = false;
 		unpaired_mapping_options[0][0].hit_list.recompute = false;
 		unpaired_mapping_options[0][0].pass1.recompute = true;
@@ -1885,6 +1901,15 @@ int main(int argc, char **argv){
 	{
 	  //hash_mark = 0;
 	  //window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
+
+	  /* region handling */
+	  if (use_regions) {
+	    region_map_id = 0;
+	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
+	      for (int st = 0; st < 2; st++)
+		for (int k = 0; k < 3; k++)
+		  region_map[number_in_pair][st][k] = (uint8_t *)xcalloc(n_regions);
+	  }
 
 		if (f1_setup(max_window_len, longest_read_len,
 			     a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
@@ -1981,7 +2006,14 @@ int main(int argc, char **argv){
 			sw_full_cs_cleanup();
 		}
 		sw_full_ls_cleanup();
-		f1_free();	
+		f1_free();
+
+		if (use_regions) {
+		  for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
+		    for (int st = 0; st < 2; st++)
+		      for (int k = 0; k < 3; k++)
+			free(region_map[number_in_pair][st][k]);
+		}
 	}
 	int i;
 	for (i=0; i<num_contigs; i++){
