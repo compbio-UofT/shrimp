@@ -21,5 +21,8 @@ struct sam_reader {
 void parse_sam(sam_reader * sr,size_t read_amount,fastx_readnames * fxrn);
 void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa * h);
 void grow_sam_pretty(sam_reader * sr);
+int sam_header_sort(const void * a, const void *b);
+void sam_close(sam_reader * sr);
+sam_reader * sam_open(char * sam_filename,fastx_readnames * fxrn);
 extern bool found_sam_headers;
 #endif

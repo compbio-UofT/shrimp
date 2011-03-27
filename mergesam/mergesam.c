@@ -28,95 +28,7 @@ typedef struct sam_reader sam_reader;
 sam_reader ** sam_files;
 char * sam_header_filename=NULL;
 
-//Filtering parameters
 
-
-static inline void revert_sam_string(pretty * pa) {
-	char * nill = (char*)memchr(pa->sam_string,'\0',pa->sam_string_length);
-	while (nill!=NULL) {
-		*nill='\t';
-		nill=(char*)memchr(pa->sam_string,'\0',pa->sam_string_length-(nill-pa->sam_string));
-	}
-}
-
-
-static inline int sam_header_field_sort(char * a , char * b, char * check_for) {
-	bool a_has=(a[1]==check_for[0] && a[2]==check_for[1]);
-	bool b_has=(b[1]==check_for[0] && b[2]==check_for[1]);
-	if (a_has && b_has) {
-		return strcmp(a,b);
-	} else if (a_has) {
-		return -1;
-	} else if (b_has) {
-		return 1;
-	} else {
-		return 0;
-	}
-}
-
-int sam_header_sort(const void * a,const void * b) {
-	char * s1=((char**)a)[0];
-	char * s2=((char**)b)[0];
-	if (strlen(s1)<4 || strlen(s2)<4) {
-		fprintf(stderr,"Failed to sort sam header line!\n");
-		fprintf(stderr,"%s and %s\n",s1,s2);
-		exit(1);
-	}
-	if (s1[0]!='@' || s2[0]!='@') {
-		fprintf(stderr,"These two lines are not sam-header lines! %s and %s\n",s1,s2);
-		exit(1);
-	}
-	int ret=0;
-	//check for HD
-	ret=sam_header_field_sort(s1,s2,"HD");
-	if (ret!=0) { return ret; };
-	//check for SQ
-	ret=sam_header_field_sort(s1,s2,"SQ");
-	if (ret!=0) { return ret; };
-	//check for RG
-	ret=sam_header_field_sort(s1,s2,"RG");
-	if (ret!=0) { return ret; };
-	//check for PG
-	ret=sam_header_field_sort(s1,s2,"PG");
-	if (ret!=0) { return ret; };
-	//check for PG
-	ret=sam_header_field_sort(s1,s2,"CO");
-	return ret;
-	
-	
-	
-}
-
-
-void sam_close(sam_reader * sr) {
-	fb_close(sr->fb);
-	free(sr->pretty_stack);
-	free(sr->pp_lls);
-	free(sr);
-}
-
-sam_reader * sam_open(char * sam_filename) {
-	sam_reader * sr = (sam_reader*)malloc(sizeof(sam_reader));
-	if (sr==NULL) {
-		fprintf(stderr,"thread_open_sam : failed to allocate memory for thread info structure\n");
-		exit(1);
-	}
-	sr->fb=fb_open(sam_filename,options.buffer_size,options.read_size);
-	sr->pretty_stack_filled=0;
-	sr->pretty_stack_size=fxrn.reads_inmem*10;
-	sr->pretty_stack=(pretty*)malloc(sizeof(pretty)*sr->pretty_stack_size);
-	if (sr->pretty_stack==NULL) {
-		fprintf(stderr,"Failed to allocate memory for pretty_stack\n");
-		exit(1);
-	}
-	memset(sr->pretty_stack,0,sizeof(pretty)*sr->pretty_stack_size);
-	sr->pp_lls=(pp_ll*)malloc(sizeof(pp_ll)*LL_ALL*options.read_rate);
-	if (sr->pp_lls==NULL) {
-		fprintf(stderr,"Failed to allocate memory for pp_lls.\n");
-	}
-	memset(sr->pp_lls,0,sizeof(pp_ll)*LL_ALL*options.read_rate);
-	return sr;
-}
 
 void usage(char * s) {
 	fprintf(stderr, 
@@ -390,8 +302,7 @@ int main (int argc, char ** argv) {
 	argv+=optind;
 	
 	//Variables for IO of read names
-	char * reads_filename=NULL; 
-	reads_filename=argv[0];
+	char * reads_filename=argv[0];
 	fprintf(stderr,"Using %s as reads filename\n",reads_filename);
 	argc--;
 	argv++;
@@ -427,7 +338,7 @@ int main (int argc, char ** argv) {
 	}	
 	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
-		sam_files[i]=sam_open(argv[i]);
+		sam_files[i]=sam_open(argv[i],&fxrn);
 		sam_files[i]->sam_headers=sam_headers+i;
 		int j; 
 		for (j=0; j<options.read_rate; j++) {
