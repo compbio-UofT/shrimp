@@ -13,6 +13,7 @@ typedef struct fasta_reader {
 	file_buffer * fb;
 	int i;
 };
-
+void fasta_last_entry(char * base,size_t used, char ** start,char ** end);
 void parse_fasta(fasta_reader * fard);
+size_t fasta_move(file_buffer * fb, char * dest);
 #endif

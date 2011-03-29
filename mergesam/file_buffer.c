@@ -7,17 +7,17 @@
 #include "file_buffer.h"
 
 #define MIN(a,b) (((a) < (b)) ? (a) : (b))
-void * memrchr(const void *s, int c, size_t n) {
+/*void * memrchr(const void *s, int c, size_t n) {
     const unsigned char *cp;
     if (n != 0) {
 	cp = (unsigned char *)s + n;
 	do {
 	    if (*(--cp) == (unsigned char)c)
 		return((void *)cp);
-	} while (--n != 0);
+ 	} while (--n != 0);
     }
     return((void *)0);
-}
+}*/
 
 void fb_close(file_buffer * fb) {
 	free(fb->base);
@@ -109,6 +109,9 @@ void mark_partial_line(file_read_buffer * frb,size_t offset) {
 	if (ptr!=NULL) {
 		size_t offset=(ptr-frb->base)+1;
 		frb->unseen=frb->filled-offset;
+	} else if (frb->eof==1) {	
+		fprintf(stderr,"EOF\n");
+		frb->unseen=0;
 	}
 }
 

@@ -29,4 +29,5 @@ file_buffer * fb_open(char * path,size_t buffer_size,size_t read_size);
 void fill_read_buffer(file_read_buffer * frb);
 void mark_partial_line(file_read_buffer * frb, size_t);
 void add_read_buffer_to_main(file_buffer * fb);
+//void * memrchr(const void *s, int c, size_t n);
 #endif

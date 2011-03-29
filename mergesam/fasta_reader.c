@@ -2,13 +2,68 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include "file_buffer.h"
 #include "fasta_reader.h"
 
+void fasta_last_entry(char * base,size_t used, char ** start,char ** end) {
+	char * ptr=(char*)memrchr(base,'>',used);
+	if (ptr==NULL) {
+		fprintf(stderr,"please make buffer larger!\n");
+		exit(1);
+	}
+	*start=ptr;
+	ptr=(char*)memchr(ptr,'\n',used-(ptr-base+1));
+	if (ptr==NULL) {
+		fprintf(stderr,"Are you sure this is fasta and qual format?\n");	
+		exit(1);
+	}
+	*end=ptr;
+	**end='\0';
+	fprintf(stderr,"last read |%s|\n",*start);
+	return;
+}
 
-void fasta_move(file_buffer * fb, char * dest) {
+size_t fasta_move(file_buffer * fb, char * dest) {
         size_t unseen_end_mod=fb->unseen_end%fb->size;
         size_t unseen_start_mod=fb->unseen_start%fb->size;
-	size_t space=(unseen_start_mod>unseen_end_mod ? unseen_end_mod : fb->size ) - unseen_end_mod;
+	size_t used=0;
+	if (unseen_start_mod >= unseen_end_mod) {
+		size_t to_move=fb->size-unseen_start_mod;
+		void * ptr=memmove(dest+used,fb->base+unseen_start_mod,to_move);
+		if (ptr==NULL) {
+			fprintf(stderr,"failed to move fasta_move!\n");
+			exit(1);
+		}
+		used+=to_move;
+		to_move=unseen_end_mod;
+		ptr=memmove(dest+used,fb->base,to_move);
+		if (ptr==NULL) {
+			fprintf(stderr,"failed to move fasta_move!\n");
+			exit(1);
+		}
+		used+=to_move;
+	} else {
+		size_t to_move=unseen_end_mod - unseen_start_mod;
+		void * ptr=memmove(dest+used,fb->base+unseen_start_mod,to_move);
+		if (ptr==NULL) {
+			fprintf(stderr,"failed to move fasta_move!\n");
+			exit(1);
+		}
+		used+=to_move;
+	}
+	if (fb->frb.eof!=0 && fb->frb.exhausted) {
+		fprintf(stderr,"returning from fasta_move because hit EOF\n");
+		return used;	
+	}
+	//find out where to put the end
+	char * ptr=(char*)memrchr(dest,'>',used);
+	if (ptr==NULL) {
+		fprintf(stderr,"fasta_move failed because not enough memory to fit one fasta entry in the buffer!\n");
+		exit(1);
+	}
+	used=ptr-dest; //how many bytes are part of the full fasta entry , also subtract the '>'
+	fb->unseen_start+=used;
+	return used;
 }
 
 void parse_fasta(fasta_reader * fard) {
