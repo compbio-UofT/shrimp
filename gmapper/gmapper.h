@@ -187,6 +187,7 @@ EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 /* region handling */
 EXTERN(bool,			use_regions,			DEF_USE_REGIONS);
 EXTERN(int,			region_bits,			DEF_REGION_BITS);
+EXTERN(int,			region_overlap,			DEF_REGION_OVERLAP);
 EXTERN(int,			n_regions,			(1 << (32 - DEF_REGION_BITS)));
 EXTERN(uint8_t *,		region_map[2][2][3],		{});
 EXTERN(uint8_t,			region_map_id,			0);

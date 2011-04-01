@@ -1188,7 +1188,7 @@ int main(int argc, char **argv){
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
-			num_tmp_outputs = 30 + num_outputs;
+			num_tmp_outputs = 20 + num_outputs;
 			break;
 		case 'm':
 			match_score = atoi(optarg);
@@ -1911,124 +1911,124 @@ int main(int argc, char **argv){
 		  region_map[number_in_pair][st][k] = (uint8_t *)xcalloc(n_regions);
 	  }
 
-		if (f1_setup(max_window_len, longest_read_len,
-			     a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-			     match_score, mismatch_score,
-			     shrimp_mode == MODE_COLOUR_SPACE, false)) {
-			fprintf(stderr, "failed to initialise vector "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
+	  if (f1_setup(max_window_len, longest_read_len,
+		       a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+		       match_score, mismatch_score,
+		       shrimp_mode == MODE_COLOUR_SPACE, false)) {
+	    fprintf(stderr, "failed to initialise vector "
+		    "Smith-Waterman (%s)\n", strerror(errno));
+	    exit(1);
+	  }
 
-		int ret;
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			/* XXX - a vs. b gap */
-			ret = sw_full_cs_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
-					crossover_score, false, anchor_width);
-		} else {
-			ret = sw_full_ls_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-					match_score, mismatch_score, false, anchor_width);
-		}
-		if (ret) {
-			fprintf(stderr, "failed to initialise scalar "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
+	  int ret;
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
+	    /* XXX - a vs. b gap */
+	    ret = sw_full_cs_setup(max_window_len, longest_read_len,
+				   a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+				   crossover_score, false, anchor_width);
+	  } else {
+	    ret = sw_full_ls_setup(max_window_len, longest_read_len,
+				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				   match_score, mismatch_score, false, anchor_width);
+	  }
+	  if (ret) {
+	    fprintf(stderr, "failed to initialise scalar "
+		    "Smith-Waterman (%s)\n", strerror(errno));
+	    exit(1);
+	  }
 	}
 
 
 	char * output;
 	if (Eflag){
-		int i;
-		if (sam_header_filename!=NULL) {
-			FILE * sam_header_file = fopen(sam_header_filename,"r");
-			if (sam_header_file==NULL) {
-				perror("Failed to open sam header file ");
-				exit(1);
-			}
-			size_t buffer_size=2046;
-			char buffer[buffer_size];
-			size_t read; bool ends_in_newline=true;
-			while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
-				buffer[read]='\0';
-				fprintf(stdout,"%s",buffer);
-				if (buffer[read-1]=='\n') {
-					ends_in_newline=true;
-				} else {
-					ends_in_newline=false;
-				}
-			}
-			if (!ends_in_newline) {
-				fprintf(stdout,"\n");
-			}
-		} else {
-			//Print sam header
-			fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
+	  int i;
+	  if (sam_header_filename!=NULL) {
+	    FILE * sam_header_file = fopen(sam_header_filename,"r");
+	    if (sam_header_file==NULL) {
+	      perror("Failed to open sam header file ");
+	      exit(1);
+	    }
+	    size_t buffer_size=2046;
+	    char buffer[buffer_size];
+	    size_t read; bool ends_in_newline=true;
+	    while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
+	      buffer[read]='\0';
+	      fprintf(stdout,"%s",buffer);
+	      if (buffer[read-1]=='\n') {
+		ends_in_newline=true;
+	      } else {
+		ends_in_newline=false;
+	      }
+	    }
+	    if (!ends_in_newline) {
+	      fprintf(stdout,"\n");
+	    }
+	  } else {
+	    //Print sam header
+	    fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
 
-			for(i = 0; i < num_contigs; i++){
-				fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
-			}
-		}
-		//read group
-		if (sam_read_group_name!=NULL) {
-			fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
-		}
-		//print command line args used to invoke SHRiMP
-		fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
-		for (i=0; i<(shrimp_args.argc-1); i++) {
-			fprintf(stdout,"%s ",shrimp_args.argv[i]);
-		}
-		fprintf(stdout,"%s\n",shrimp_args.argv[i]);
+	    for(i = 0; i < num_contigs; i++){
+	      fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
+	    }
+	  }
+	  //read group
+	  if (sam_read_group_name!=NULL) {
+	    fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
+	  }
+	  //print command line args used to invoke SHRiMP
+	  fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
+	  for (i=0; i<(shrimp_args.argc-1); i++) {
+	    fprintf(stdout,"%s ",shrimp_args.argv[i]);
+	  }
+	  fprintf(stdout,"%s\n",shrimp_args.argv[i]);
 	} else {
-		output = output_format_line(Rflag);
-		puts(output);
-		free(output);
+	  output = output_format_line(Rflag);
+	  puts(output);
+	  free(output);
 	}
 	before = gettimeinusecs();
 	bool launched = launch_scan_threads();
 	if (!launched) {
-		fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
-		exit(1);
+	  fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
+	  exit(1);
 	}
 	total_work_usecs += (gettimeinusecs() - before);
 	
 	//if (load_file==NULL) {
-		free_genome();
+	free_genome();
 	//}
 	print_statistics();
-#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
-		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
+#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,	\
+			    match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-		sw_vector_cleanup();
-		if (shrimp_mode==MODE_COLOUR_SPACE) {
-			sw_full_cs_cleanup();
-		}
-		sw_full_ls_cleanup();
-		f1_free();
+	  sw_vector_cleanup();
+	  if (shrimp_mode==MODE_COLOUR_SPACE) {
+	    sw_full_cs_cleanup();
+	  }
+	  sw_full_ls_cleanup();
+	  f1_free();
 
-		if (use_regions) {
-		  for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
-		    for (int st = 0; st < 2; st++)
-		      for (int k = 0; k < 3; k++)
-			free(region_map[number_in_pair][st][k]);
-		}
+	  if (use_regions) {
+	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
+	      for (int st = 0; st < 2; st++)
+		for (int k = 0; k < 3; k++)
+		  free(region_map[number_in_pair][st][k]);
+	  }
 	}
 	int i;
 	for (i=0; i<num_contigs; i++){
-		free(contig_names[i]);
-		if (i==0 || load_file==NULL) {
-			free(genome_contigs[i]);
-			free(genome_contigs_rc[i]);
-		}
+	  free(contig_names[i]);
+	  if (i==0 || load_file==NULL) {
+	    free(genome_contigs[i]);
+	    free(genome_contigs_rc[i]);
+	  }
 	}
 	if (shrimp_mode==MODE_COLOUR_SPACE) {
-		for (i=0; i<num_contigs && (i==0 || load_file==NULL); i++){
-			free(genome_cs_contigs[i]);
-		}
-		free(genome_cs_contigs);
-		free(genome_initbp);
+	  for (i=0; i<num_contigs && (i==0 || load_file==NULL); i++){
+	    free(genome_cs_contigs[i]);
+	  }
+	  free(genome_cs_contigs);
+	  free(genome_initbp);
 	}
 	free(genome_len);
 	free(genome_contigs_rc);

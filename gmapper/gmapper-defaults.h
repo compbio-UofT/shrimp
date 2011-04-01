@@ -18,6 +18,7 @@
 
 #define DEF_USE_REGIONS		false
 #define DEF_REGION_BITS		10
+#define DEF_REGION_OVERLAP	50
 
 #define DEF_PAIR_MODE		PAIR_NONE
 #define DEF_MIN_INSERT_SIZE	50
