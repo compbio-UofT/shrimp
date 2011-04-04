@@ -2005,7 +2005,7 @@ new_read_pass2(struct read_entry * re,
     struct read_hit * rh = hits_pass1[i];
     if (rh->score_full < 0 || rh->sfrp == NULL) {
       hit_run_full_sw(re, rh, (int)abs_or_pct(options->threshold, rh->score_max));
-      rh->pass2_key = (IS_ABSOLUTE(options->threshold)? rh->score_full : rh->pct_score_full);
+      rh->pass2_key = (IS_ABSOLUTE(options->threshold)? rh->score_full : (int)rh->pct_score_full);
     }
     if (rh->score_full >= abs_or_pct(options->threshold, rh->score_max)) {
       hits_pass2[*n_hits_pass2] = rh;
