@@ -331,8 +331,8 @@ read_get_anchor_list(struct read_entry * re, bool collapse) {
   || defined (DEBUG_HIT_LIST_PASS1) || defined (DEBUG_HIT_LIST_PAIRED_HITS)
 static void
 dump_hit(struct read_hit * hit) {
-  fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(%d,%d,%d),"
-	          "matches:%d,pair_min:%d,pair_max:%d,anchor:(%lld,%lld,%d,%d))\n",
+  fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(wg=%d,vc=%d,fl=%d),"
+	          "matches:%d,pair_min:%d,pair_max:%d,anchor:(x=%lld,y=%lld,ln=%d,wd=%d))\n",
 	  hit->cn, hit->st, hit->gen_st, hit->g_off, hit->w_len,
 	  hit->score_window_gen, hit->score_vector, hit->score_full,
 	  hit->matches, hit->pair_min, hit->pair_max,
@@ -2034,6 +2034,13 @@ new_read_pass2(struct read_entry * re,
       (*n_hits_pass2)++;
     } 
   }
+
+#ifdef DEBUG_HIT_LIST_PASS2
+  fprintf(stderr, "Dumping hit list after pass2 (before duplicates removal and sorting) for read:[%s]\n", re->name);
+  for (i = 0; i < *n_hits_pass1; i++) {
+    dump_hit(hits_pass1[i]);
+  }
+#endif
 
   // remove duplicate hits
   *n_hits_pass2 = read_remove_duplicate_hits(hits_pass2, n_hits_pass2);
