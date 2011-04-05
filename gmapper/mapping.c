@@ -1867,8 +1867,8 @@ new_read_pass1(struct read_entry * re, struct pass1_options * options)
 
 #ifdef DEBUG_HIT_LIST_PASS1
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
-  dump_hit_list(re, 0, only_paired, false);
-  dump_hit_list(re, 1, only_paired, false);
+  dump_hit_list(re, 0, options->only_paired, false);
+  dump_hit_list(re, 1, options->only_paired, false);
 #endif
 }
 
