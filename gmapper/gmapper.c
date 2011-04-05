@@ -598,6 +598,12 @@ print_statistics()
 		    comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
 	  }
+          for (i = 0; i < num_threads; i++) {
+            fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
+              i, stat_get_mean(&anchor_list_init_size[i]), stat_get_sample_stddev(&anchor_list_init_size[i]),
+              stat_get_mean(&n_anchors_discarded[i]), stat_get_sample_stddev(&n_anchors_discarded[i]),
+              stat_get_mean(&n_big_gaps_anchor_list[i]), stat_get_sample_stddev(&n_big_gaps_anchor_list[i]));
+          }
 	  fprintf(stderr, "\n");
 	}
 
@@ -1004,6 +1010,10 @@ print_settings() {
 	  anchor_width == -1? " (disabled)" : "");
   if (list_cutoff < DEF_LIST_CUTOFF) {
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
+  }
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Region Filter:", use_regions? "yes" : "no");
+  if (use_regions) {
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region Overlap:", region_overlap);
   }
 
 }

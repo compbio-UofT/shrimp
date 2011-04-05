@@ -1463,7 +1463,7 @@ read_get_mp_region_counts(struct read_entry * re, struct read_entry * re_mp,
 static inline void
 advance_index_in_genomemap(struct read_entry * re, int st,
 			   struct anchor_list_options * options,
-			   uint * idx, uint max_idx, uint32_t * map)
+			   uint * idx, uint max_idx, uint32_t * map, int * anchors_discarded)
 {
   while (*idx < max_idx) {
     int region = (int)(map[*idx] >> region_bits);
@@ -1487,7 +1487,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 	break;
     }
 
-    //n_anchors_discarded++;
+    (*anchors_discarded)++;
     (*idx)++;
   }
 }
@@ -1504,6 +1504,8 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
   struct heap_uu h;
   struct heap_uu_elem tmp;
   int anchor_cache[re->read_len];
+  int anchors_discarded = 0;
+  int big_gaps = 0;
 
   assert(re != NULL && options != NULL);
   assert(re->anchors[st] == NULL && re->n_anchors[st] == 0);
@@ -1519,9 +1521,12 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
+      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
+        continue;
       list_sz += genomemap_len[sn][re->mapidx[st][offset]];
     }
   }
+  stat_add(&anchor_list_init_size[omp_get_thread_num()], list_sz);
 
   // init anchor list
   re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
@@ -1544,7 +1549,8 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
       if (options->use_region_counts) {
 	advance_index_in_genomemap(re, st, options,
 				   &idx[offset], genomemap_len[sn][re->mapidx[st][offset]],
-				   genomemap[sn][re->mapidx[st][offset]]);
+				   genomemap[sn][re->mapidx[st][offset]],
+				   &anchors_discarded);
       }
 
       if (idx[offset] < genomemap_len[sn][re->mapidx[st][offset]]) {
@@ -1570,6 +1576,10 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
     re->anchors[st][re->n_anchors[st]].width = 1;
     re->anchors[st][re->n_anchors[st]].weight = 1;
     get_contig_num(re->anchors[st][re->n_anchors[st]].x, &re->anchors[st][re->n_anchors[st]].cn);
+
+    if (re->n_anchors[st] > 0 && tmp.key - re->anchors[st][re->n_anchors[st] - 1].x >= anchor_list_big_gap)
+      big_gaps++;
+
     re->n_anchors[st]++;
 
     if (options->collapse) {
@@ -1590,7 +1600,8 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
     if (options->use_region_counts) {
       advance_index_in_genomemap(re, st, options,
 				 &idx[offset], genomemap_len[sn][re->mapidx[st][offset]],
-				 genomemap[sn][re->mapidx[st][offset]]);
+				 genomemap[sn][re->mapidx[st][offset]],
+				 &anchors_discarded);
     }
 
     // load next anchor for that seed/mapidx
@@ -1606,6 +1617,9 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
 
   heap_uu_destroy(&h);
   free(idx);
+
+  stat_add(&n_anchors_discarded[omp_get_thread_num()], anchors_discarded);
+  stat_add(&n_big_gaps_anchor_list[omp_get_thread_num()], big_gaps);
 }
 
 static inline void
