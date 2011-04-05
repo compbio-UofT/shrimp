@@ -1993,7 +1993,7 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
     max = hits_pass2[i]->pass2_key;
     max_idx = i;
     j = i + 1;
-    while (j < *n_hits_pass2 && !pass2_read_hit_overlap_cmp(&hits_pass2[j-1], &hits_pass2[j])) {
+    while (j < *n_hits_pass2 && !pass2_read_hit_overlap_cmp(&hits_pass2[i], &hits_pass2[j])) {
       if (hits_pass2[j]->pass2_key > max) {
 	max = hits_pass2[j]->pass2_key;
 	max_idx = j;
