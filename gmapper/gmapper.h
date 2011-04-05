@@ -168,6 +168,8 @@ EXTERN(llint,			total_work_usecs,		0);
 EXTERN(llint,			map_usecs,			0);
 EXTERN(llint,			scan_ticks[50],			{});
 EXTERN(llint,			wait_ticks[50],			{});
+EXTERN(llint,			anchor_list_ticks[50],		{});
+EXTERN(llint,			hit_list_ticks[50],		{});
 EXTERN(count_t,			mem_genomemap,			0);
 
 

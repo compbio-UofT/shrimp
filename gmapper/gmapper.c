@@ -517,6 +517,7 @@ print_statistics()
 	double f2_total_secs = 0, f2_total_cellspersec = 0;
 
 	double scan_secs[num_threads], readload_secs[num_threads];
+	double anchor_list_secs[num_threads], hit_list_secs[num_threads];
 	double total_scan_secs = 0, total_wait_secs = 0, total_readload_secs = 0;
 
 	double hz;
@@ -552,6 +553,8 @@ print_statistics()
 	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
 	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
+	  anchor_list_secs[tid] = (double)anchor_list_ticks[tid] / hz;
+          hit_list_secs[tid] = (double)hit_list_ticks[tid] / hz;
 	}
 	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
@@ -584,14 +587,15 @@ print_statistics()
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Read Load", "Scan", "Vector SW", "Scalar SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
+		  "", "Read Load", "Scan", "Anch List", "Hit List", "Vector SW", "Scalar SW", "Wait");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+		  "", "Time", "Time", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, readload_secs[i], scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
+	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+		    i, readload_secs[i], scan_secs[i], anchor_list_secs[i], hit_list_secs[i],
+		    comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
 	  }
 	  fprintf(stderr, "\n");

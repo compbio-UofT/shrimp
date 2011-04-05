@@ -1611,8 +1611,12 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
 static inline void
 new_read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
 {
+  llint before = rdtsc();
+
   new_read_get_anchor_list_per_strand(re, 0, options);
   new_read_get_anchor_list_per_strand(re, 1, options);
+
+  anchor_list_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 
@@ -1771,8 +1775,12 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
 static inline void
 new_read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
 {
+  llint before = rdtsc();
+
   new_read_get_hit_list_per_strand(re, 0, options);
   new_read_get_hit_list_per_strand(re, 1, options);
+
+  hit_list_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 #ifdef DEBUG_HIT_LIST_CREATION
   fprintf(stderr, "Dumping hit list after creation for read:[%s]\n", re->name);
