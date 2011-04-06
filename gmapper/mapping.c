@@ -1416,6 +1416,21 @@ read_get_region_counts(struct read_entry * re, int st, int number_in_pair,
 	  region_map[number_in_pair][st][0][region] = region_map_id;
 	  region_map[number_in_pair][st][1][region] = 1;
 	}
+
+	// extend regions by region_overlap
+	if ((genomemap[sn][re->mapidx[st][offset]][j] & ((1 << region_bits) - 1)) < (uint)region_overlap && region > 0) {
+	  region--;
+
+	  // copy-paste from above
+	  if (region_map[number_in_pair][st][0][region] == region_map_id) {
+	    if (++region_map[number_in_pair][st][1][region] == 0) // don't overflow
+	      region_map[number_in_pair][st][1][region]--;
+	  } else {
+	    region_map[number_in_pair][st][0][region] = region_map_id;
+	    region_map[number_in_pair][st][1][region] = 1;
+	  }
+
+	}
       }
     }
   }
@@ -1476,7 +1491,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 	&& (options->max_count[1] == 0 || options->max_count[1] >= re->region_map[st][2][region]))
       break;
 
-    if ((map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+    if ((map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap && region > 0) {
       region--;
 
       // copy-paste from above
