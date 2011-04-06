@@ -2060,6 +2060,9 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
     k++;
     i = j;
   }
+#pragma omp atomic
+  total_dup_single_matches += (*n_hits_pass2) - k;
+
   *n_hits_pass2 = k;
 
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_sfrp_gen_end_cmp);
@@ -2082,6 +2085,9 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
     k++;
     i = j;
   }
+#pragma omp atomic
+  total_dup_single_matches += (*n_hits_pass2) - k;
+
   *n_hits_pass2 = k;
 }
 
