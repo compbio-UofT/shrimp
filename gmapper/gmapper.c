@@ -1443,6 +1443,9 @@ int main(int argc, char **argv){
 				exit(1);
 			}
 			break;
+		case 26:
+		  use_regions = !use_regions;
+		  break;
 		default:
 			usage(progname, false);
 		}

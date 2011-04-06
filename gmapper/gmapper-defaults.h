@@ -111,7 +111,8 @@
 	{"trim-end",1,0,22},\
 	{"trim-first",1,0,23},\
 	{"trim-second",1,0,24},\
-	{"expected-isize",1,0,25}\
+	{"expected-isize",1,0,25},\
+	{"regions",0,0,26}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \
