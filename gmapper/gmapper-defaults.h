@@ -112,7 +112,8 @@
 	{"trim-first",1,0,23},\
 	{"trim-second",1,0,24},\
 	{"expected-isize",1,0,25},\
-	{"regions",0,0,26}\
+	{"use-regions",0,0,26},\
+	{"region-overlap",1,0,27}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

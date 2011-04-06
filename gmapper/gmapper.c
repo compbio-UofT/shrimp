@@ -1446,6 +1446,13 @@ int main(int argc, char **argv){
 		case 26:
 		  use_regions = !use_regions;
 		  break;
+		case 27:
+		  region_overlap = atoi(optarg);
+		  if (region_overlap < 0) {
+		    fprintf(stderr, "region overlap must be non-negative!\n");
+		    exit(1);
+		  }
+		  break;
 		default:
 			usage(progname, false);
 		}
