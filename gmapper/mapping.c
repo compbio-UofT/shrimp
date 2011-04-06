@@ -2532,6 +2532,15 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
     }
   }
 
+#ifdef DEBUG_HIT_LIST_PASS2
+  fprintf(stderr, "Dumping paired hits after pass2 (before duplicates removal and sorting) for reads:[%s,%s]\n",
+	  re1->name, re2->name);
+  for (i = 0; i < *n_hits_pass1; i++) {
+    dump_hit(hits_pass1[i].rh[0]);
+    dump_hit(hits_pass1[i].rh[1]);
+  }
+#endif
+
   // remove duplicates
   readpair_remove_duplicate_hits(hits_pass2, n_hits_pass2, IS_ABSOLUTE(options->pass2_threshold));
 
