@@ -134,11 +134,11 @@ typedef struct read_hit {
 
 typedef struct read_hit_pair {
   struct read_hit *	rh[2];
-  int			insert_size;
+  int			score_max;
   int			score;
   int			pct_score;
-  int			score_max;
   int			key;
+  int			insert_size;
 } read_hit_pair;
 
 struct read_hit_pair_holder {

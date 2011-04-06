@@ -1926,6 +1926,7 @@ new_read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * lo
 }
 
 
+/*
 // don't use this for qsort directly;
 static inline int
 read_hit_purealign_cmp(struct read_hit * rh1, struct read_hit * rh2)
@@ -1986,6 +1987,7 @@ pass2_read_hit_overlap_cmp(void const * e1, void const * e2)
 
   return read_hit_overlap_cmp(rh1, rh2);
 }
+*/
 
 
 // sort by score
@@ -1995,11 +1997,8 @@ pass2_read_hit_score_cmp(void const * e1, void const * e2) {
 }
 
 
-static int
-pass2_read_hit_sfrp_gen_start_cmp(void const * e1, void const * e2) {
-  struct read_hit * rh1 = *(struct read_hit * *)e1;
-  struct read_hit * rh2 = *(struct read_hit * *)e2;
-
+static inline int
+pass2_read_hit_sfrp_gen_start_cmp_base(struct read_hit const * rh1, struct read_hit const * rh2) {
   if (rh1->cn != rh2->cn)
     return rh1->cn - rh2->cn;
 
@@ -2009,11 +2008,8 @@ pass2_read_hit_sfrp_gen_start_cmp(void const * e1, void const * e2) {
   return rh1->sfrp->genome_start - rh2->sfrp->genome_start;
 }
 
-static int
-pass2_read_hit_sfrp_gen_end_cmp(void const * e1, void const * e2) {
-  struct read_hit * rh1 = *(struct read_hit * *)e1;
-  struct read_hit * rh2 = *(struct read_hit * *)e2;
-
+static inline int
+pass2_read_hit_sfrp_gen_end_cmp_base(struct read_hit const * rh1, struct read_hit const * rh2) {
   if (rh1->cn != rh2->cn)
     return rh1->cn - rh2->cn;
 
@@ -2022,6 +2018,16 @@ pass2_read_hit_sfrp_gen_end_cmp(void const * e1, void const * e2) {
 
   return (- rh1->sfrp->genome_start - rh1->sfrp->rmapped + rh1->sfrp->deletions - rh1->sfrp->insertions)
     - (- rh2->sfrp->genome_start - rh2->sfrp->rmapped + rh2->sfrp->deletions - rh2->sfrp->insertions);
+}
+
+static int
+pass2_read_hit_sfrp_gen_start_cmp(void const * e1, void const * e2) {
+  return pass2_read_hit_sfrp_gen_start_cmp_base(*(struct read_hit * *)e1, *(struct read_hit * *)e2);
+}
+
+static int
+pass2_read_hit_sfrp_gen_end_cmp(void const * e1, void const * e2) {
+  return pass2_read_hit_sfrp_gen_end_cmp_base(*(struct read_hit * *)e1, *(struct read_hit * *)e2);
 }
 
 
@@ -2304,6 +2310,7 @@ new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
 }
 
 
+/*
 // sort by: contig number; then strand; then g_off of hit[0]
 static int
 pass2_readpair_hit0_align_cmp(void const * e1, void const * e2) {
@@ -2342,6 +2349,7 @@ pass2_readpair_hit1_overlap_cmp(void const * e1, void const * e2) {
 
   return read_hit_overlap_cmp(rhp1->rh[1], rhp2->rh[1]);
 }
+*/
 
 
 // sort by score
@@ -2351,11 +2359,100 @@ pass2_read_hit_pair_score_cmp(void const * e1, void const * e2)
   return ((struct read_hit_pair *)e2)->key - ((struct read_hit_pair *)e1)->key;
 }
 
+static int
+pass2_readpair_hit0_sfrp_gen_start_cmp(void const * e1, void const * e2)
+{
+  return pass2_read_hit_sfrp_gen_start_cmp_base(((read_hit_pair *)e1)->rh[0], ((read_hit_pair *)e2)->rh[0]);
+}
+
+static int
+pass2_readpair_hit1_sfrp_gen_start_cmp(void const * e1, void const * e2)
+{
+  return pass2_read_hit_sfrp_gen_start_cmp_base(((read_hit_pair *)e1)->rh[1], ((read_hit_pair *)e2)->rh[1]);
+}
+
+static int
+pass2_readpair_hit0_sfrp_gen_end_cmp(void const * e1, void const * e2)
+{
+  return pass2_read_hit_sfrp_gen_end_cmp_base(((read_hit_pair *)e1)->rh[0], ((read_hit_pair *)e2)->rh[0]);
+}
+
+static int
+pass2_readpair_hit1_sfrp_gen_end_cmp(void const * e1, void const * e2)
+{
+  return pass2_read_hit_sfrp_gen_end_cmp_base(((read_hit_pair *)e1)->rh[1], ((read_hit_pair *)e2)->rh[1]);
+}
+
+static int
+pass2_readpair_pointer_cmp(void const * e1, void const * e2)
+{
+  struct read_hit_pair * rhpp1 = (struct read_hit_pair *)e1;
+  struct read_hit_pair * rhpp2 = (struct read_hit_pair *)e2;
+
+  if (rhpp1->rh[0] < rhpp2->rh[0])
+    return -1;
+  else if (rhpp1->rh[0] > rhpp2->rh[0])
+    return 1;
+  else { // equal rh[0]
+    if (rhpp1->rh[1] < rhpp2->rh[1])
+      return -1;
+    else if (rhpp1->rh[1] > rhpp2->rh[1])
+      return 1;
+  }
+  return 0;
+}
+
+
+static inline void
+readpair_compute_paired_hit(struct read_hit * rh1, struct read_hit * rh2, bool threshold_is_absolute,
+			    struct read_hit_pair * dest)
+{ 
+  dest->rh[0] = rh1;
+  dest->rh[1] = rh2;
+  dest->score_max = rh1->score_max + rh2->score_max;
+  dest->score = rh1->score_full + rh2->score_full;
+  dest->pct_score = (1000 * 100 * dest->score)/dest->score_max;
+  dest->key = threshold_is_absolute? dest->score : dest->pct_score;
+  dest->insert_size = abs(get_isize(rh1, rh2));
+  //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);
+}
+
+
+static void
+readpair_push_dominant_single_hits(struct read_hit_pair * hits_pass2, int * n_hits_pass2, bool threshold_is_absolute,
+				   int num_in_pair, int (*cmp)(void const *, void const *))
+{
+  int i, j, k, max, max_idx;
+
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), cmp);
+  i = 0;
+  while (i < *n_hits_pass2) {
+    max = hits_pass2[i].rh[num_in_pair]->score_full;
+    max_idx = i;
+    j = i + 1;
+    while (j < *n_hits_pass2 && !cmp((void *)&hits_pass2[i], (void *)&hits_pass2[j])) {
+      if (hits_pass2[j].rh[num_in_pair]->score_full > max) {
+	max = hits_pass2[j].rh[num_in_pair]->score_full;
+	max_idx = j;
+      }
+      j++;
+    }
+    for (k = i; k < j; k++) {
+      if (k != max_idx) {
+	hits_pass2[k].rh[num_in_pair] = hits_pass2[max_idx].rh[num_in_pair];
+	readpair_compute_paired_hit(hits_pass2[k].rh[0], hits_pass2[k].rh[1], threshold_is_absolute, &hits_pass2[k]);
+      }
+    }
+    i = j;
+  }
+}
+
 
 // remove duplicate hits
-static int
-readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_pass2)
+static void
+readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_pass2, bool threshold_is_absolute)
 {
+  /*
   int i, j, k, l, max, max_idx;
 
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_hit0_align_cmp);
@@ -2389,6 +2486,15 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
     }
   }
   return k;
+  */
+
+  readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_start_cmp);
+  readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_end_cmp);
+  readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 1, pass2_readpair_hit1_sfrp_gen_start_cmp);
+  readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 1, pass2_readpair_hit1_sfrp_gen_end_cmp);
+
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_pointer_cmp);
+  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_pointer_cmp);
 }
 
 
@@ -2420,19 +2526,14 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 
     if (hits_pass1[i].rh[0]->score_full + hits_pass1[i].rh[1]->score_full
 	>= (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)) {
-      hits_pass2[*n_hits_pass2] = hits_pass1[i];
-      hits_pass2[*n_hits_pass2].score = hits_pass1[i].rh[0]->score_full + hits_pass1[i].rh[1]->score_full;
-      hits_pass2[*n_hits_pass2].pct_score = (1000 * 100 * hits_pass2[*n_hits_pass2].score)/hits_pass2[*n_hits_pass2].score_max;
-      hits_pass2[*n_hits_pass2].key = IS_ABSOLUTE(options->pass2_threshold)?
-	hits_pass2[*n_hits_pass2].score : hits_pass2[*n_hits_pass2].pct_score;
-      hits_pass2[*n_hits_pass2].insert_size = abs(get_isize(hits_pass1[i].rh[0], hits_pass1[i].rh[1]));
-      //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);	
+      readpair_compute_paired_hit(hits_pass1[i].rh[0], hits_pass1[i].rh[1], IS_ABSOLUTE(options->pass2_threshold),
+				  &hits_pass2[*n_hits_pass2]);
       (*n_hits_pass2)++;
     }
   }
 
   // remove duplicates
-  *n_hits_pass2 = readpair_remove_duplicate_hits(hits_pass2, n_hits_pass2);
+  readpair_remove_duplicate_hits(hits_pass2, n_hits_pass2, IS_ABSOLUTE(options->pass2_threshold));
 
   // sort by score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_score_cmp);
