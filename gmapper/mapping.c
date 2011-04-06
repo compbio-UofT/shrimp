@@ -1980,12 +1980,43 @@ pass2_read_hit_score_cmp(void const * e1, void const * e2) {
 }
 
 
-// remove duplicate hits
 static int
+pass2_read_hit_sfrp_gen_start_cmp(void const * e1, void const * e2) {
+  struct read_hit * rh1 = *(struct read_hit * *)e1;
+  struct read_hit * rh2 = *(struct read_hit * *)e2;
+
+  if (rh1->cn != rh2->cn)
+    return rh1->cn - rh2->cn;
+
+  if (rh1->gen_st != rh2->gen_st)
+    return rh1->gen_st - rh2->gen_st;
+
+  return rh1->sfrp->genome_start - rh2->sfrp->genome_start;
+}
+
+static int
+pass2_read_hit_sfrp_gen_end_cmp(void const * e1, void const * e2) {
+  struct read_hit * rh1 = *(struct read_hit * *)e1;
+  struct read_hit * rh2 = *(struct read_hit * *)e2;
+
+  if (rh1->cn != rh2->cn)
+    return rh1->cn - rh2->cn;
+
+  if (rh1->gen_st != rh2->gen_st)
+    return rh1->gen_st - rh2->gen_st;
+
+  return (- rh1->sfrp->genome_start - rh1->sfrp->rmapped + rh1->sfrp->deletions - rh1->sfrp->insertions)
+    - (- rh2->sfrp->genome_start - rh2->sfrp->rmapped + rh2->sfrp->deletions - rh2->sfrp->insertions);
+}
+
+
+// remove duplicate hits
+static void
 read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 {
   int i, j, k, max, max_idx;
 
+  /*
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
   i = 0;
   k = 0;
@@ -2007,6 +2038,51 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
     i = j;
   }
   return k;
+  */
+
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_sfrp_gen_start_cmp);
+  i = 0;
+  k = 0;
+  while (i < *n_hits_pass2) {
+    max = hits_pass2[i]->pass2_key;
+    max_idx = i;
+    j = i + 1;
+    while (j < *n_hits_pass2 && !pass2_read_hit_sfrp_gen_start_cmp(&hits_pass2[i], &hits_pass2[j])) {
+      if (hits_pass2[j]->pass2_key > max) {
+	max = hits_pass2[j]->pass2_key;
+	max_idx = j;
+      }
+      j++;
+    }
+    if (max_idx != k) {
+      hits_pass2[k] = hits_pass2[max_idx];
+    }
+    k++;
+    i = j;
+  }
+  *n_hits_pass2 = k;
+
+  qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_sfrp_gen_end_cmp);
+  i = 0;
+  k = 0;
+  while (i < *n_hits_pass2) {
+    max = hits_pass2[i]->pass2_key;
+    max_idx = i;
+    j = i + 1;
+    while (j < *n_hits_pass2 && !pass2_read_hit_sfrp_gen_end_cmp(&hits_pass2[i], &hits_pass2[j])) {
+      if (hits_pass2[j]->pass2_key > max) {
+	max = hits_pass2[j]->pass2_key;
+	max_idx = j;
+      }
+      j++;
+    }
+    if (max_idx != k) {
+      hits_pass2[k] = hits_pass2[max_idx];
+    }
+    k++;
+    i = j;
+  }
+  *n_hits_pass2 = k;
 }
 
 
@@ -2043,7 +2119,7 @@ new_read_pass2(struct read_entry * re,
 #endif
 
   // remove duplicate hits
-  *n_hits_pass2 = read_remove_duplicate_hits(hits_pass2, n_hits_pass2);
+  read_remove_duplicate_hits(hits_pass2, n_hits_pass2);
 
   // sort by non-increasing score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_score_cmp);
