@@ -2443,13 +2443,20 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   return k;
   */
 
+  int tmp;
+
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_start_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_end_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 1, pass2_readpair_hit1_sfrp_gen_start_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 1, pass2_readpair_hit1_sfrp_gen_end_cmp);
 
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_pointer_cmp);
-  *n_hits_pass2 = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_pointer_cmp);
+  tmp = removedups(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_readpair_pointer_cmp);
+
+#pragma omp atomic
+  total_dup_paired_matches += (*n_hits_pass2) - tmp;
+
+  *n_hits_pass2 = tmp;
 }
 
 
