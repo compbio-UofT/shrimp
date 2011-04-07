@@ -1859,10 +1859,6 @@ int main(int argc, char **argv){
 	    paired_mapping_options[0].read[0].regions.compute_mp_region_counts = true; // ???!!!
 	    paired_mapping_options[0].read[0].regions.min_seed = 0;
 	    paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
-	    paired_mapping_options[0].read[0].regions.delta_min =
-	      (min_insert_size/(1 << region_bits)) + (min_insert_size >= 0? 0 : -1);
-	    paired_mapping_options[0].read[0].regions.delta_max =
-	      (max_insert_size/(1 << region_bits)) + (max_insert_size >= 0? 1 : 0);
 
 	    paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	    paired_mapping_options[0].read[0].anchor_list.collapse = true;

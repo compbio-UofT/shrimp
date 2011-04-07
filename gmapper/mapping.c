@@ -642,75 +642,30 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
 
   for (st1 = 0; st1 < 2; st1++) {
     st2 = 1 - st1; // opposite strand
-    int re1_strand = pair_reverse[pair_mode][0] ? 1-st1 : st1;
-    //int re2_strand = pair_reverse[pair_mode][1] ? 1-st2 : st2;
-    int re1_correction = re1->window_len-re1->read_len;
-    int re2_correction = re2->window_len-re2->read_len;
 
-   
-    //printf("%d / %d i, %d , and %d / %d, i , %d\n",re1->n_hits[0],re1->n_hits[1],re1->hits[0][0].matches,re2->n_hits[0],re2->n_hits[1],re2->hits[0][0].matches  );  
     j = 0; // invariant: matching hit at index j or larger
     for (i = 0; i < re1->n_hits[st1]; i++) {
-      int64_t fivep = re1->hits[st1][i].g_off;
-       //+ ((re1_strand==1) ? re1->window_len : 0);
-      int64_t min_fivep_mp=0;
-      int64_t max_fivep_mp=0;
-      if (re1_strand==0) {
-	if (pair_mode==PAIR_OPP_IN) {
-		min_fivep_mp = (int64_t)(fivep+min_insert_size);
-		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1_correction+re2_correction);
-	} else if (pair_mode==PAIR_OPP_OUT) {
-		min_fivep_mp = (int64_t)(fivep-max_insert_size+re2->window_len);
-		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1_correction-re2->read_len);
-	} else if (pair_mode==PAIR_COL_FW) {
-		min_fivep_mp = (int64_t)(fivep+min_insert_size-re2_correction);
-		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1_correction);
-	} else if (pair_mode==PAIR_COL_BW) {
-		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2_correction);
-		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1_correction);
-	} else {
-		fprintf(stderr,"cannot find paired mode!\n");
-		exit(1);
-	}
-      } else {
-	if (pair_mode==PAIR_OPP_IN) {
-		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2_correction+re1->read_len);
-		max_fivep_mp = (int64_t)(fivep-min_insert_size+re1->window_len);
-	} else if (pair_mode==PAIR_OPP_OUT) {
-		min_fivep_mp = (int64_t)(fivep+min_insert_size+re1->read_len-re2_correction);
-		max_fivep_mp = (int64_t)(fivep+max_insert_size+re1->window_len);
-	} else if (pair_mode==PAIR_COL_FW) {
-		min_fivep_mp = (int64_t)(fivep-max_insert_size-re2->window_len+re1->read_len);
-		max_fivep_mp = (int64_t)(fivep-min_insert_size-re2->read_len+re1->window_len);
-	} else if (pair_mode==PAIR_COL_BW) {
-		min_fivep_mp = (int64_t)(fivep+min_insert_size-re1->read_len-re2->window_len);
-		max_fivep_mp = (int64_t)(fivep+max_insert_size-re1->window_len-re2->read_len);
-	} else {
-		fprintf(stderr,"cannot find paired mode!\n");
-		exit(1);
-	}
-      }
-      //printf("%ld , %d, %d, MAX %ld, MIN %ld\n",fivep,st1,re1_strand,max_fivep_mp,min_fivep_mp);
-      //printf("first in lin, %ld\n",(int64_t)(re2->hits[st2][0].g_off ));
+
       // find matching hit, if any
       while (j < re2->n_hits[st2]
 	     && (re2->hits[st2][j].cn < re1->hits[st1][i].cn // prev contig
 		 || (re2->hits[st2][j].cn == re1->hits[st1][i].cn // same contig, but too close
-		     && (int64_t)(re2->hits[st2][j].g_off ) < min_fivep_mp //five_mp < min_fivep_mp
+		     && (int64_t)(re2->hits[st2][j].g_off ) < (int64_t)(re1->hits[st1][i].g_off) + (int64_t)re1->delta_g_off_min[st1]
 		     )
 		 )
-	     ) {
-	//printf("skipping g_off %lld, %d, translated %ld, min_fivep_mp %ld\n",re2->hits[st2][j].g_off,(re2_strand==1) ? re2->window_len : 0,(int64_t)(re2->hits[st2][j].g_off + ((re2_strand==1) ? re2->window_len : 0)),min_fivep_mp);
-	j++;
-      }
+	     )
+	{
+	  j++;
+	}
 
       k = j;
       while (k < re2->n_hits[st2]
 	     && re2->hits[st2][k].cn == re1->hits[st1][i].cn
-	     && (int64_t)(re2->hits[st2][k].g_off ) <= max_fivep_mp) {
-	//printf("taking g_off %d, max_fivep_mp %d\n",re2->hits[st2][k].g_off,max_fivep_mp);
-	k++;
-      }
+	     && (int64_t)(re2->hits[st2][k].g_off) <= (int64_t)(re1->hits[st1][i].g_off) + (int64_t)re1->delta_g_off_max[st1]
+	     )
+	{
+	  k++;
+	}
       //fprintf(stderr,"DONE\n");
       if (j == k) {
 	//fprintf(stderr,"no paired hit\n");
@@ -1450,10 +1405,10 @@ read_get_mp_region_counts_per_strand(struct read_entry * re, int st, struct read
 
   for (i = 0; i < n_regions; i++) {
     max = 0;
-    first = (st == 0? i + options->delta_min : i - options->delta_max);
+    first = i + re->delta_region_min[st];
     if (first < 0)
       first = 0;
-    last = (st == 0? i + options->delta_max : i - options->delta_min);
+    last = i + re->delta_region_max[st];
     if (last > n_regions - 1)
       last = n_regions - 1;
     for (j = first; j <= last; j++) {
@@ -2588,6 +2543,86 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 }
 
 
+static void
+readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2)
+{
+  switch (pair_mode) {
+  case PAIR_OPP_IN:
+    re1->delta_g_off_min[0] =   min_insert_size						- re2->window_len;
+    re1->delta_g_off_max[0] =   max_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
+    re1->delta_g_off_min[1] = - max_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[1] = - min_insert_size + re1->window_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[0];
+    break;
+
+  case PAIR_OPP_OUT:
+    re1->delta_g_off_min[0] = - max_insert_size						- re2->window_len;
+    re1->delta_g_off_max[0] = - min_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
+    re1->delta_g_off_min[1] =   min_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[1] =   max_insert_size + re1->window_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[0];
+    break;
+
+  case PAIR_COL_FW:
+    re1->delta_g_off_min[0] =   min_insert_size						+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[0] =   max_insert_size + (re1->window_len - re1->read_len);
+    re1->delta_g_off_min[1] = - max_insert_size + re1->read_len				- re2->window_len;
+    re1->delta_g_off_max[1] = - min_insert_size + re1->window_len			- re2->read_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
+    break;
+
+  case PAIR_COL_BW:
+    re1->delta_g_off_min[0] = - max_insert_size						+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[0] = - min_insert_size + (re1->window_len - re1->read_len);
+    re1->delta_g_off_min[1] =   min_insert_size + re1->read_len				- re2->window_len;
+    re1->delta_g_off_max[1] =   max_insert_size + re1->window_len			- re2->read_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
+    break;
+
+  default:
+    assert(0);
+    break;
+  }
+
+  re1->delta_region_min[0] = re1->delta_g_off_min[0] >= 0? re1->delta_g_off_min[0]/(1 << region_bits) : - 1 - (- re1->delta_g_off_min[0] - 1)/(1 << region_bits);
+  re1->delta_region_max[0] = re1->delta_g_off_max[0] > 0? 1 + (re1->delta_g_off_max[0] - 1)/(1 << region_bits) : - (- re1->delta_g_off_max[0]/(1 << region_bits));
+  re1->delta_region_min[1] = re1->delta_g_off_min[1] >= 0? re1->delta_g_off_min[1]/(1 << region_bits) : - 1 - (- re1->delta_g_off_min[1] - 1)/(1 << region_bits);
+  re1->delta_region_max[1] = re1->delta_g_off_max[1] > 0? 1 + (re1->delta_g_off_max[1] - 1)/(1 << region_bits) : - (- re1->delta_g_off_max[1]/(1 << region_bits));
+
+  re2->delta_region_min[0] = re2->delta_g_off_min[0] >= 0? re2->delta_g_off_min[0]/(1 << region_bits) : - 1 - (- re2->delta_g_off_min[0] - 1)/(1 << region_bits);
+  re2->delta_region_max[0] = re2->delta_g_off_max[0] > 0? 1 + (re2->delta_g_off_max[0] - 1)/(1 << region_bits) : - (- re2->delta_g_off_max[0]/(1 << region_bits));
+  re2->delta_region_min[1] = re2->delta_g_off_min[1] >= 0? re2->delta_g_off_min[1]/(1 << region_bits) : - 1 - (- re2->delta_g_off_min[1] - 1)/(1 << region_bits);
+  re2->delta_region_max[1] = re2->delta_g_off_max[1] > 0? 1 + (re2->delta_g_off_max[1] - 1)/(1 << region_bits) : - (- re2->delta_g_off_max[1]/(1 << region_bits));
+
+#ifdef DEBUG_DUMP_MP_RANGES
+  fprintf(stderr, "mp_ranges read[%s]: goff_min[0]:%d goff_max[0]:%d goff_min[1]:%d goff_max[1]:%d reg_min[0]:%d reg_max[0]:%d reg_min[1]:%d reg_max[1]:%d\n",
+	  re1->name,
+	  re1->delta_g_off_min[0], re1->delta_g_off_max[0], re1->delta_g_off_min[1], re1->delta_g_off_max[1],
+	  re1->delta_region_min[0], re1->delta_region_max[0], re1->delta_region_min[1], re1->delta_region_max[1]);
+  fprintf(stderr, "mp_ranges read[%s]: goff_min[0]:%d goff_max[0]:%d goff_min[1]:%d goff_max[1]:%d reg_min[0]:%d reg_max[0]:%d reg_min[1]:%d reg_max[1]:%d\n",
+	  re2->name,
+	  re2->delta_g_off_min[0], re2->delta_g_off_max[0], re2->delta_g_off_min[1], re2->delta_g_off_max[1],
+	  re2->delta_region_min[0], re2->delta_region_max[0], re2->delta_region_min[1], re2->delta_region_max[1]);
+#endif
+}
+
+
 void
 new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 		    struct readpair_mapping_options_t * options, int n_options)
@@ -2604,6 +2639,7 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   read_get_mapidxs(re1);
   read_get_mapidxs(re2);
+  readpair_compute_mp_ranges(re1, re2);
 
   do {
 

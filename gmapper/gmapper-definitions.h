@@ -76,16 +76,11 @@ typedef struct read_entry {
   char *	orig_qual;
   char *        plus_line; //The '+' line in fastq
   uint32_t *    read[2];        /* the read as a bitstring */
-
   uint32_t *    mapidx[2];      /* per-seed list of mapidxs in read */
-
   struct anchor *       anchors[2];     /* list of anchors */
-
   struct read_hit *     hits[2];        /* list of hits */
-
   struct range_restriction * ranges;
   char *        range_string;
-
   uint8_t *	region_map[2][3];
   uint8_t	region_map_id[2];
 
@@ -99,6 +94,11 @@ typedef struct read_entry {
   int           initbp[2];              /* colour space init letter */
   int           read_len;
   int           window_len;
+
+  int		delta_g_off_min[2];
+  int		delta_g_off_max[2];
+  int		delta_region_min[2];
+  int		delta_region_max[2];	// where to find the mp; only used for first read in a pair
 
   int           max_n_kmers;    /* = read_len - min_seed_span + 1 */
   int           min_kmer_pos;   /* = 0 in LS; = 1 in CS */
@@ -173,8 +173,6 @@ typedef struct regions_options {
   bool		compute_mp_region_counts;
   int		min_seed;
   int		max_seed;
-  int		delta_min; // possible regions for mp
-  int		delta_max;
 } regions_options;
 
 typedef struct anchor_list_options {
