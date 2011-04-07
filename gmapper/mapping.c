@@ -1335,11 +1335,11 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2)
 
 
 static void
-read_get_region_counts(struct read_entry * re, int st, int number_in_pair,
-		       struct regions_options * options)
+read_get_region_counts(struct read_entry * re, int st, struct regions_options * options)
 {
   int sn, i, offset, region;
   uint j;
+  int number_in_pair = re->first_in_pair? 0 : 1;
 
   assert(use_regions);
 
@@ -1348,7 +1348,9 @@ read_get_region_counts(struct read_entry * re, int st, int number_in_pair,
     for (int _nip = 0; _nip < 2; _nip++)
       for (int _st = 0; _st < 2; _st++) {
 	free(region_map[_nip][_st][0]);
+	free(region_map[_nip][_st][2]);
 	region_map[_nip][_st][0] = (uint8_t *)xcalloc(n_regions);
+	region_map[_nip][_st][2] = (uint8_t *)xcalloc(n_regions);
       }
   }
 
@@ -1389,14 +1391,10 @@ read_get_region_counts(struct read_entry * re, int st, int number_in_pair,
       }
     }
   }
-
-  re->region_map[st][0] = region_map[number_in_pair][st][0];
-  re->region_map[st][1] = region_map[number_in_pair][st][1];
-  re->region_map[st][2] = region_map[number_in_pair][st][2];
-  re->region_map_id[st] = region_map_id;
 }
 
 
+/*
 static void
 read_get_mp_region_counts_per_strand(struct read_entry * re, int st, struct read_entry * re_mp,
 				     struct regions_options * options)
@@ -1412,7 +1410,7 @@ read_get_mp_region_counts_per_strand(struct read_entry * re, int st, struct read
     if (last > n_regions - 1)
       last = n_regions - 1;
     for (j = first; j <= last; j++) {
-      if (re_mp->region_map[1-st][0][j] == re_mp->region_map_id[1-st]
+      if (re_mp->region_map[1-st][0][j] == re_mp->region_map_id
 	  && re_mp->region_map[1-st][1][j] > max)
 	max = re_mp->region_map[1-st][1][j];
     }
@@ -1428,6 +1426,7 @@ read_get_mp_region_counts(struct read_entry * re, struct read_entry * re_mp,
   read_get_mp_region_counts_per_strand(re, 0, re_mp, options);
   read_get_mp_region_counts_per_strand(re, 1, re_mp, options);
 }
+*/
 
 
 static inline void
@@ -1435,26 +1434,63 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 			   struct anchor_list_options * options,
 			   uint * idx, uint max_idx, uint32_t * map, int * anchors_discarded)
 {
+  int first, last, max, k;
+  int nip = re->first_in_pair? 0 : 1;
+
   while (*idx < max_idx) {
     int region = (int)(map[*idx] >> region_bits);
 
-    assert(re->region_map[st][0][region] == re->region_map_id[st]);
+    assert(region_map[nip][st][0][region] == region_map_id);
 
-    if ((options->min_count[0] == 0 || options->min_count[0] <= re->region_map[st][1][region])
-	&& (options->max_count[0] == 0 || options->max_count[0] >= re->region_map[st][1][region])
-	&& (options->min_count[1] == 0 || options->min_count[1] <= re->region_map[st][2][region])
-	&& (options->max_count[1] == 0 || options->max_count[1] >= re->region_map[st][2][region]))
-      break;
+    if ((options->min_count[0] == 0 || options->min_count[0] <= region_map[nip][st][1][region])
+	&& (options->max_count[0] == 0 || options->max_count[0] >= region_map[nip][st][1][region]))
+      {
+	if (options->min_count[1] != 0 && options->max_count[1] != 0)
+	  break;
+	if (region_map[nip][st][2][region] != region_map_id) {
+	  // compute mp counts
+	  first = MAX(0, region + re->delta_region_min[st]);
+	  last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+	  max = 0;
+	  for (k = first; k <= last; k++) {
+	    if (region_map[1-nip][1-st][0][k] == region_map_id && region_map[1-nip][1-st][1][region] > max) {
+	      max = region_map[1-nip][1-st][1][region];
+	    }
+	  }
+	  region_map[nip][st][2][region] = region_map_id;
+	  region_map[nip][st][3][region] = max;
+	}
+	if ((options->min_count[1] == 0 || options->min_count[1] <= region_map[nip][st][3][region])
+	    && (options->max_count[1] == 0 || options->max_count[1] >= region_map[nip][st][3][region]))
+	  break;
+      }
 
     if ((map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap && region > 0) {
       region--;
 
       // copy-paste from above
-      if ((options->min_count[0] == 0 || options->min_count[0] <= re->region_map[st][1][region])
-	  && (options->max_count[0] == 0 || options->max_count[0] >= re->region_map[st][1][region])
-	  && (options->min_count[1] == 0 || options->min_count[1] <= re->region_map[st][2][region])
-	  && (options->max_count[1] == 0 || options->max_count[1] >= re->region_map[st][2][region]))
-	break;
+      if ((options->min_count[0] == 0 || options->min_count[0] <= region_map[nip][st][1][region])
+	  && (options->max_count[0] == 0 || options->max_count[0] >= region_map[nip][st][1][region]))
+	{
+	  if (options->min_count[1] != 0 && options->max_count[1] != 0)
+	    break;
+	  if (region_map[nip][st][2][region] != region_map_id) {
+	    // compute mp counts
+	    first = MAX(0, region + re->delta_region_min[st]);
+	    last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+	    max = 0;
+	    for (k = first; k <= last; k++) {
+	      if (region_map[1-nip][1-st][0][k] == region_map_id && region_map[1-nip][1-st][1][region] > max) {
+		max = region_map[1-nip][1-st][1][region];
+	      }
+	    }
+	    region_map[nip][st][2][region] = region_map_id;
+	    region_map[nip][st][3][region] = max;
+	  }
+	  if ((options->min_count[1] == 0 || options->min_count[1] <= region_map[nip][st][3][region])
+	      && (options->max_count[1] == 0 || options->max_count[1] >= region_map[nip][st][3][region]))
+	    break;
+	}
     }
 
     (*anchors_discarded)++;
@@ -2168,8 +2204,8 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
 
     if (options[option_index].regions.recompute) {
       region_map_id++;
-      read_get_region_counts(re, 0, 0, &options[option_index].regions);
-      read_get_region_counts(re, 1, 0, &options[option_index].regions);
+      read_get_region_counts(re, 0, &options[option_index].regions);
+      read_get_region_counts(re, 1, &options[option_index].regions);
     }
 
     if (options[option_index].anchor_list.recompute) {
@@ -2652,15 +2688,10 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
     if (options[option_index].read[0].regions.recompute || options[option_index].read[1].regions.recompute) {
       region_map_id++;
-      read_get_region_counts(re1, 0, 0, &options[option_index].read[0].regions);
-      read_get_region_counts(re1, 1, 0, &options[option_index].read[0].regions);
-      read_get_region_counts(re2, 0, 1, &options[option_index].read[1].regions);
-      read_get_region_counts(re2, 1, 1, &options[option_index].read[1].regions);
-
-      if (options[option_index].read[0].regions.compute_mp_region_counts)
-	read_get_mp_region_counts(re1, re2, &options[option_index].read[0].regions);
-      if (options[option_index].read[1].regions.compute_mp_region_counts)
-	read_get_mp_region_counts(re2, re1, &options[option_index].read[1].regions);
+      read_get_region_counts(re1, 0, &options[option_index].read[0].regions);
+      read_get_region_counts(re1, 1, &options[option_index].read[0].regions);
+      read_get_region_counts(re2, 0, &options[option_index].read[1].regions);
+      read_get_region_counts(re2, 1, &options[option_index].read[1].regions);
     }
 
     if (options[option_index].read[0].anchor_list.recompute) {

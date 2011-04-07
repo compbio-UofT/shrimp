@@ -81,8 +81,6 @@ typedef struct read_entry {
   struct read_hit *     hits[2];        /* list of hits */
   struct range_restriction * ranges;
   char *        range_string;
-  uint8_t *	region_map[2][3];
-  uint8_t	region_map_id[2];
 
   int           n_anchors[2];
   int           n_hits[2];
@@ -170,7 +168,6 @@ typedef struct {
 
 typedef struct regions_options {
   bool		recompute;
-  bool		compute_mp_region_counts;
   int		min_seed;
   int		max_seed;
 } regions_options;

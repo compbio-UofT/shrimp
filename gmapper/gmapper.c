@@ -1813,7 +1813,6 @@ int main(int argc, char **argv){
 	    unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
 
 	    unpaired_mapping_options[0][0].regions.recompute = use_regions;
-	    unpaired_mapping_options[0][0].regions.compute_mp_region_counts = false;
 	    unpaired_mapping_options[0][0].regions.min_seed = 0;
 	    unpaired_mapping_options[0][0].regions.max_seed = n_seeds - 1;
 	    unpaired_mapping_options[0][0].anchor_list.recompute = true;
@@ -1856,7 +1855,6 @@ int main(int argc, char **argv){
 	    paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
 
 	    paired_mapping_options[0].read[0].regions.recompute = use_regions;
-	    paired_mapping_options[0].read[0].regions.compute_mp_region_counts = true; // ???!!!
 	    paired_mapping_options[0].read[0].regions.min_seed = 0;
 	    paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
 
@@ -1929,7 +1927,7 @@ int main(int argc, char **argv){
 	    region_map_id = 0;
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		for (int k = 0; k < 3; k++)
+		for (int k = 0; k < 4; k++)
 		  region_map[number_in_pair][st][k] = (uint8_t *)xcalloc(n_regions);
 	  }
 
@@ -2033,7 +2031,7 @@ int main(int argc, char **argv){
 	  if (use_regions) {
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		for (int k = 0; k < 3; k++)
+		for (int k = 0; k < 4; k++)
 		  free(region_map[number_in_pair][st][k]);
 	  }
 	}

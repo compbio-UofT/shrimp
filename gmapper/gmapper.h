@@ -195,7 +195,7 @@ EXTERN(bool,			use_regions,			DEF_USE_REGIONS);
 EXTERN(int,			region_bits,			DEF_REGION_BITS);
 EXTERN(int,			region_overlap,			DEF_REGION_OVERLAP);
 EXTERN(int,			n_regions,			(1 << (32 - DEF_REGION_BITS)));
-EXTERN(uint8_t *,		region_map[2][2][3],		{});
+EXTERN(uint8_t *,		region_map[2][2][4],		{});
 EXTERN(uint8_t,			region_map_id,			0);
 #pragma omp threadprivate(region_map, region_map_id)
 
