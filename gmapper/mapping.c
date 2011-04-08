@@ -1349,6 +1349,7 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 {
   int sn, i, offset, region;
   uint j;
+  llint before = rdtsc();
   int number_in_pair = re->first_in_pair? 0 : 1;
 
   assert(use_regions);
@@ -1401,6 +1402,8 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
       }
     }
   }
+
+  anchor_list_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 
@@ -2037,6 +2040,7 @@ static void
 read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 {
   int i, j, k, max, max_idx;
+  llint before = rdtsc();
 
   /*
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
@@ -2111,6 +2115,8 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
   total_dup_single_matches += (*n_hits_pass2) - k;
 
   *n_hits_pass2 = k;
+
+  duplicate_removal_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 
@@ -2490,6 +2496,7 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   */
 
   int tmp;
+  llint before = rdtsc();
 
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_start_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_end_cmp);
@@ -2503,6 +2510,8 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   total_dup_paired_matches += (*n_hits_pass2) - tmp;
 
   *n_hits_pass2 = tmp;
+
+  duplicate_removal_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 

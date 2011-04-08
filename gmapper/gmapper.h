@@ -170,6 +170,7 @@ EXTERN(llint,			scan_ticks[50],			{});
 EXTERN(llint,			wait_ticks[50],			{});
 EXTERN(llint,			anchor_list_ticks[50],		{});
 EXTERN(llint,			hit_list_ticks[50],		{});
+EXTERN(llint,			duplicate_removal_ticks[50],	{});
 EXTERN(stat_t,			anchor_list_init_size[50],	{});
 EXTERN(int,			anchor_list_big_gap,		DEF_ANCHOR_LIST_BIG_GAP);
 EXTERN(stat_t,			n_big_gaps_anchor_list[50],	{});
