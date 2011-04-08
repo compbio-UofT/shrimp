@@ -1468,7 +1468,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
     if ((map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap && region > 0) {
       region--;
 
-      // copy-paste from above
+      // copy-paste from above -- SERIOUSLY
       if ((options->min_count[0] == 0 || options->min_count[0] <= region_map[nip][st][1][region])
 	  && (options->max_count[0] == 0 || options->max_count[0] >= region_map[nip][st][1][region]))
 	{
@@ -1480,8 +1480,8 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 	    last = MIN(n_regions - 1, region + re->delta_region_max[st]);
 	    max = 0;
 	    for (k = first; k <= last; k++) {
-	      if (region_map[1-nip][1-st][0][k] == region_map_id && region_map[1-nip][1-st][1][region] > max) {
-		max = region_map[1-nip][1-st][1][region];
+	      if (region_map[1-nip][1-st][0][k] == region_map_id && region_map[1-nip][1-st][1][k] > max) {
+		max = region_map[1-nip][1-st][1][k];
 	      }
 	    }
 	    region_map[nip][st][2][region] = region_map_id;
