@@ -690,23 +690,23 @@ print_statistics()
 		    "Duplicate Paired Matches Pruned:",
 		    comma_integer(total_dup_paired_matches));
 
-	    /*
-	    fprintf(stderr, "\n");
+	    if (sam_half_paired) {
+	      fprintf(stderr, "\n");
 
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Additional Reads Matched Unpaired:",
-		    comma_integer(total_reads_matched),
-		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Total Single Matches:",
-		    comma_integer(total_single_matches));
-	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
-		    "Avg Matches/Unpaired Matched Read:",
-		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Duplicate Unpaired Matches Pruned:",
-		    comma_integer(total_dup_single_matches));
-	    */
+	      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		      "Additional Reads Matched Unpaired:",
+		      comma_integer(total_reads_matched),
+		      (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+	      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		      "Total Unpaired Matches:",
+		      comma_integer(total_single_matches));
+	      fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+		      "Avg Matches/Unpaired Matched Read:",
+		      (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+	      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+		      "Duplicate Unpaired Matches Pruned:",
+		      comma_integer(total_dup_single_matches));
+	    }
 	  }
 
 	fprintf(stderr, "\n");
@@ -1894,8 +1894,22 @@ int main(int argc, char **argv){
 		unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
 
 		unpaired_mapping_options[0][0].regions.recompute = false;
-		unpaired_mapping_options[0][0].anchor_list.recompute = false;
-		unpaired_mapping_options[0][0].hit_list.recompute = false;
+		if (!use_regions) {
+		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
+		  unpaired_mapping_options[0][0].hit_list.recompute = false;
+		} else {
+		  unpaired_mapping_options[0][0].anchor_list.recompute = true;
+		  unpaired_mapping_options[0][0].anchor_list.collapse = true;
+		  unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
+		  unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
+		  unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
+		  unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
+		  unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
+		  unpaired_mapping_options[0][0].hit_list.recompute = true;
+		  unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
+		  unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
+		  unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
+		}
 		unpaired_mapping_options[0][0].pass1.recompute = true;
 		unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
 		unpaired_mapping_options[0][0].pass1.only_paired = false;
