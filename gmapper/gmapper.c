@@ -1867,7 +1867,7 @@ int main(int argc, char **argv){
 	    paired_mapping_options[0].read[0].anchor_list.collapse = true;
 	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
 	    paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
-	    paired_mapping_options[0].read[0].anchor_list.min_count[1] = (num_matches == 4? 2 : 1);
+	    paired_mapping_options[0].read[0].anchor_list.min_count[1] = 0; //(num_matches == 4? 2 : 1);
 	    paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;
 	    paired_mapping_options[0].read[0].anchor_list.max_count[1] = 0;
 	    paired_mapping_options[0].read[0].hit_list.recompute = true;
@@ -1900,9 +1900,10 @@ int main(int argc, char **argv){
 		unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
 
 		unpaired_mapping_options[0][0].regions.recompute = false;
-		if (!use_regions) {
+		//if (!use_regions) {
 		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
 		  unpaired_mapping_options[0][0].hit_list.recompute = false;
+		/*
 		} else {
 		  unpaired_mapping_options[0][0].anchor_list.recompute = true;
 		  unpaired_mapping_options[0][0].anchor_list.collapse = true;
@@ -1916,6 +1917,7 @@ int main(int argc, char **argv){
 		  unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
 		  unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
 		}
+		*/
 		unpaired_mapping_options[0][0].pass1.recompute = true;
 		unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
 		unpaired_mapping_options[0][0].pass1.only_paired = false;
