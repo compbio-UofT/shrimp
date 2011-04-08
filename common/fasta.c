@@ -40,9 +40,12 @@ fasta_open(const char *file, shrimp_mode_t space, bool fastq)
 			return NULL;
 		}
 		if (!S_ISREG(sb.st_mode)) {
+			fprintf(stderr,"warning: \"%s\" is not a regular file!\n",file);
+			/* why don't we allow named pipes?
 			fprintf(stderr,"error: \"%s\" is not a regular file!\n",file);
 			total_ticks += (rdtsc() - before);
 			return NULL;
+			*/
 		}
 		fp = gzopen(file, "r");
 	}
