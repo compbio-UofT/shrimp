@@ -1462,6 +1462,12 @@ advance_index_in_genomemap(struct read_entry * re, int st,
   int nip = re->first_in_pair? 0 : 1;
 
   while (*idx < max_idx) {
+#ifdef USE_PREFETCH
+    if (*idx + 2 < max_idx) {
+      int region_ahead = (int)(map[*idx + 2] >> region_bits);
+      _mm_prefetch((char *)&region_map[number_in_pair][st][region_ahead], _MM_HINT_T0);
+    }
+#endif
     int region = (int)(map[*idx] >> region_bits);
 
     assert(((region_map[nip][st][region] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id);
