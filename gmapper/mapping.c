@@ -807,10 +807,11 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   }
   */
 
-  if (rh->st != re->input_strand)
+  if (rh->st != re->input_strand) {
     reverse_hit(re, rh);
+  }
 
-  if (rh->gen_st == 0)
+  if (rh->gen_st == 0) {
     gen = genome_contigs[rh->cn];
   } else {
     gen = genome_contigs_rc[rh->cn];
