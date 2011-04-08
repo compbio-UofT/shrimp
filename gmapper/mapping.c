@@ -797,13 +797,22 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     fprintf(stderr,"[%s] rh->gen_st is %d\n%d and %d\n",re->name, rh->gen_st,min_insert_size,max_insert_size);
   }
   assert(rh->gen_st == 0);
-  */
 
   if (rh->st == re->input_strand) {
     gen = genome_contigs[rh->cn];
   } else {
     reverse_hit(re, rh);
     //fprintf(stderr, "reverse_hit from hit_run_full_sw [%s]\n", re->name);
+    gen = genome_contigs_rc[rh->cn];
+  }
+  */
+
+  if (rh->st != re->input_strand)
+    reverse_hit(re, rh);
+
+  if (rh->gen_st == 0)
+    gen = genome_contigs[rh->cn];
+  } else {
     gen = genome_contigs_rc[rh->cn];
   }
 
