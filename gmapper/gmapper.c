@@ -1945,8 +1945,7 @@ int main(int argc, char **argv){
 	    region_map_id = 0;
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		for (int k = 0; k < 4; k++)
-		  region_map[number_in_pair][st][k] = (uint8_t *)xcalloc(n_regions);
+		region_map[number_in_pair][st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
 	  }
 
 	  if (f1_setup(max_window_len, longest_read_len,
@@ -2049,8 +2048,7 @@ int main(int argc, char **argv){
 	  if (use_regions) {
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		for (int k = 0; k < 4; k++)
-		  free(region_map[number_in_pair][st][k]);
+		free(region_map[number_in_pair][st]);
 	  }
 	}
 	int i;
