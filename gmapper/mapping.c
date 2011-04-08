@@ -1,6 +1,7 @@
 #define _MODULE_MAPPING
 
 #include <omp.h>
+#include <xmmintrin.h>
 
 #include "mapping.h"
 #include "output.h"
@@ -1375,6 +1376,13 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
         continue;
 
       for (j = 0; j < genomemap_len[sn][re->mapidx[st][offset]]; j++) {
+
+	if (j + 16 < genomemap_len[sn][re->mapidx[st][offset]]) {
+	  int region_ahead = (int)(genomemap[sn][re->mapidx[st][offset]][j + 16] >> region_bits);
+	  _mm_prefetch((char *)&region_map[number_in_pair][st][0][region_ahead], _MM_HINT_NTA);
+	  _mm_prefetch((char *)&region_map[number_in_pair][st][1][region_ahead], _MM_HINT_NTA);
+	}
+
         region = (int)(genomemap[sn][re->mapidx[st][offset]][j] >> region_bits);
 
         if (region_map[number_in_pair][st][0][region] == region_map_id) {
