@@ -176,7 +176,6 @@ typedef struct anchor_list_options {
   bool		recompute;			// whether to recompute anchor list for each read
   bool		collapse;
   bool		use_region_counts;		// whether to use region counts for each read
-  bool		use_pairing;			// whether to use pair for each read
   int		min_count[2];
   int		max_count[2];			// min/max[0]: min/max count for this read; min/max[1]: for mp
   //int		min_seed;

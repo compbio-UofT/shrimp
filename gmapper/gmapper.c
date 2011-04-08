@@ -1818,7 +1818,6 @@ int main(int argc, char **argv){
 	    unpaired_mapping_options[0][0].anchor_list.recompute = true;
 	    unpaired_mapping_options[0][0].anchor_list.collapse = true;
 	    unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-	    unpaired_mapping_options[0][0].anchor_list.use_pairing = false;
 	    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
 	    unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
 	    unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
@@ -1860,8 +1859,7 @@ int main(int argc, char **argv){
 
 	    paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	    paired_mapping_options[0].read[0].anchor_list.collapse = true;
-	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = false;
-	    paired_mapping_options[0].read[0].anchor_list.use_pairing = true;
+	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
 	    paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
 	    paired_mapping_options[0].read[0].anchor_list.min_count[1] = (num_matches == 4? 2 : 1);
 	    paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;

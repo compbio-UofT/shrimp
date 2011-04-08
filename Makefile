@@ -7,7 +7,10 @@ CXXFLAGS=-g
 #CXXFLAGS=-O3 -DNDEBUG
 override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
-override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
+
+SVN_VERSION=$(shell svn info | grep Revision | cut -d ' ' -f 2)
+override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
+
 #CXX=/opt/intel/cce/10.1.015/bin/icc
 #CXX=/filer/misko/intel_suite/compilerpro-12.0.0.084/bin/intel64/icc
 

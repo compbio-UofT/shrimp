@@ -2587,14 +2587,15 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 
 
 static void
-readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2)
+readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
+			   struct pairing_options * options)
 {
   switch (pair_mode) {
   case PAIR_OPP_IN:
-    re1->delta_g_off_min[0] =   min_insert_size						- re2->window_len;
-    re1->delta_g_off_max[0] =   max_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
-    re1->delta_g_off_min[1] = - max_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
-    re1->delta_g_off_max[1] = - min_insert_size + re1->window_len;
+    re1->delta_g_off_min[0] =   options->min_insert_size						- re2->window_len;
+    re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
+    re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[1] = - options->min_insert_size + re1->window_len;
 
     re2->delta_g_off_min[0] = - re1->delta_g_off_max[1];
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
@@ -2603,10 +2604,10 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2)
     break;
 
   case PAIR_OPP_OUT:
-    re1->delta_g_off_min[0] = - max_insert_size						- re2->window_len;
-    re1->delta_g_off_max[0] = - min_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
-    re1->delta_g_off_min[1] =   min_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
-    re1->delta_g_off_max[1] =   max_insert_size + re1->window_len;
+    re1->delta_g_off_min[0] = - options->max_insert_size						- re2->window_len;
+    re1->delta_g_off_max[0] = - options->min_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
+    re1->delta_g_off_min[1] =   options->min_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[1] =   options->max_insert_size + re1->window_len;
 
     re2->delta_g_off_min[0] = - re1->delta_g_off_max[1];
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
@@ -2615,10 +2616,10 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2)
     break;
 
   case PAIR_COL_FW:
-    re1->delta_g_off_min[0] =   min_insert_size						+ (re2->read_len - re2->window_len);
-    re1->delta_g_off_max[0] =   max_insert_size + (re1->window_len - re1->read_len);
-    re1->delta_g_off_min[1] = - max_insert_size + re1->read_len				- re2->window_len;
-    re1->delta_g_off_max[1] = - min_insert_size + re1->window_len			- re2->read_len;
+    re1->delta_g_off_min[0] =   options->min_insert_size						+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len);
+    re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len				- re2->window_len;
+    re1->delta_g_off_max[1] = - options->min_insert_size + re1->window_len			- re2->read_len;
 
     re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
@@ -2627,10 +2628,10 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2)
     break;
 
   case PAIR_COL_BW:
-    re1->delta_g_off_min[0] = - max_insert_size						+ (re2->read_len - re2->window_len);
-    re1->delta_g_off_max[0] = - min_insert_size + (re1->window_len - re1->read_len);
-    re1->delta_g_off_min[1] =   min_insert_size + re1->read_len				- re2->window_len;
-    re1->delta_g_off_max[1] =   max_insert_size + re1->window_len			- re2->read_len;
+    re1->delta_g_off_min[0] = - options->max_insert_size						+ (re2->read_len - re2->window_len);
+    re1->delta_g_off_max[0] = - options->min_insert_size + (re1->window_len - re1->read_len);
+    re1->delta_g_off_min[1] =   options->min_insert_size + re1->read_len				- re2->window_len;
+    re1->delta_g_off_max[1] =   options->max_insert_size + re1->window_len			- re2->read_len;
 
     re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
@@ -2682,9 +2683,9 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   read_get_mapidxs(re1);
   read_get_mapidxs(re2);
-  readpair_compute_mp_ranges(re1, re2);
 
   do {
+    readpair_compute_mp_ranges(re1, re2, &options[option_index].pairing);
 
     if (options[option_index].read[0].regions.recompute || options[option_index].read[1].regions.recompute) {
       region_map_id++;
