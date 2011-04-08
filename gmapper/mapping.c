@@ -1403,7 +1403,7 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
     }
   }
 
-  anchor_list_ticks[omp_get_thread_num()] += rdtsc() - before;
+  region_counts_ticks[omp_get_thread_num()] += rdtsc() - before;
 }
 
 

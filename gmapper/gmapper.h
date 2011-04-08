@@ -169,6 +169,7 @@ EXTERN(llint,			map_usecs,			0);
 EXTERN(llint,			scan_ticks[50],			{});
 EXTERN(llint,			wait_ticks[50],			{});
 EXTERN(llint,			anchor_list_ticks[50],		{});
+EXTERN(llint,			region_counts_ticks[50],	{});
 EXTERN(llint,			hit_list_ticks[50],		{});
 EXTERN(llint,			duplicate_removal_ticks[50],	{});
 EXTERN(stat_t,			anchor_list_init_size[50],	{});
