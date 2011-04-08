@@ -17,7 +17,7 @@
 #define DEF_GAPLESS_SW		false
 #define DEF_LIST_CUTOFF		4294967295u // 2^32 - 1
 
-#define DEF_USE_REGIONS		false
+#define DEF_USE_REGIONS		true
 #define DEF_REGION_BITS		10
 #define DEF_REGION_OVERLAP	50
 
