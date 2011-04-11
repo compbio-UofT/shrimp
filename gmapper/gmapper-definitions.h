@@ -191,7 +191,6 @@ typedef struct hit_list_options {
 
 typedef struct pass1_options {
   bool		recompute;
-  bool		recompute_heap;
   bool		gapless;
   bool		only_paired;
   int		num_outputs;
@@ -227,12 +226,9 @@ typedef struct read_mapping_options_t {
 } read_mapping_options_t;
 
 typedef struct pairing_options {
-  bool	pair_mode;
-  bool	pair_up_hits;
+  int		pair_mode;
   int		min_insert_size;
   int		max_insert_size;		// for read 1 relative to read 0
-
-  bool		strata;
   int		min_num_matches;
   int		pass1_num_outputs;
   int		pass2_num_outputs;
@@ -241,6 +237,9 @@ typedef struct pairing_options {
   double	pass1_threshold;
   double	pass2_threshold;		// thresholds for the pair
   double	stop_threshold;
+
+  bool		strata;
+  bool		pair_up_hits;
 } pairing_options;
 
 typedef struct readpair_mapping_options_t {

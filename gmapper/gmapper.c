@@ -930,12 +930,95 @@ usage(char * progname, bool full_usage){
   exit(1);
 }
 
+
+static void
+print_pairing_options(struct pairing_options * options)
+{
+  fprintf(stderr, "[\n\tpairing:%s, min_insert:%d, max_insert:%d, pair_up_hits:%s,\n\tmin_num_matches:%d, pass1_num_outputs:%d,",
+	  pair_mode_string[options->pair_mode], options->min_insert_size, options->max_insert_size,
+	  options->pair_up_hits? "true" : "false", options->min_num_matches, options->pass1_num_outputs);
+  if (IS_ABSOLUTE(options->pass1_threshold)) {
+    fprintf(stderr, " pass1_threshold:%u,\n", (uint)-options->pass1_threshold);
+  } else {
+    fprintf(stderr, " pass1_threshold:%.02f%%,\n", options->pass1_threshold);
+  }
+  fprintf(stderr, "\tpass2_num_outputs:%d,", options->pass2_num_outputs);
+  if (IS_ABSOLUTE(options->pass2_threshold)) {
+    fprintf(stderr, " pass2_threshold:%u,", (uint)-options->pass2_threshold);
+  } else {
+    fprintf(stderr, " pass2_threshold:%.02f%%,", options->pass2_threshold);
+  }
+  fprintf(stderr, " strata:%s, stop_count:%d,", options->strata? "true" : "false", options->stop_count);
+  if (IS_ABSOLUTE(options->stop_threshold)) {
+    fprintf(stderr, " stop_threshold:%u", (uint)-options->stop_threshold);
+  } else {
+    fprintf(stderr, " stop_threshold:%.02f%%", options->stop_threshold);
+  }
+  fprintf(stderr, "\n]\n");
+}
+
+
+static void
+print_read_mapping_options(struct read_mapping_options_t * options)
+{
+  fprintf(stderr, "[\n\tregions:[recompute:%s, min_seed:%d, max_seed:%d]\n",
+	  options->regions.recompute? "true" : "false", options->regions.min_seed, options->regions.max_seed);
+  fprintf(stderr, "\tanchor_list:[recompute:%s, collapse:%s, use_region_counts:%s,"
+	  " min_count[0]:%d, max_count[0]:%d, min_count[1]:%d, max_count[1]:%d]\n",
+	  options->anchor_list.recompute? "true" : "false",
+	  options->anchor_list.collapse? "true" : "false",
+	  options->anchor_list.use_region_counts? "true" : "false",
+	  options->anchor_list.min_count[0], options->anchor_list.max_count[0],
+	  options->anchor_list.min_count[1], options->anchor_list.max_count[1]);
+  fprintf(stderr, "\thit_list:[recompute:%s, gapless:%s, match_mode:%d,",
+	  options->hit_list.recompute? "true" : "false",
+	  options->hit_list.gapless? "true" : "false",
+	  options->hit_list.match_mode);
+  if (IS_ABSOLUTE(options->hit_list.threshold)) {
+    fprintf(stderr, " threshold:%u]\n", (uint)-options->hit_list.threshold);
+  } else {
+    fprintf(stderr, " threshold:%.02f%%]\n", options->hit_list.threshold);
+  }
+  fprintf(stderr, "\tpass1:[recompute:%s, gapless:%s, only_paired:%s, num_outputs:%d,",
+	  options->pass1.recompute? "true" : "false",
+	  options->pass1.gapless? "true" : "false",
+	  options->pass1.only_paired? "true" : "false",
+	  options->pass1.num_outputs);
+  if (IS_ABSOLUTE(options->pass1.threshold)) {
+    fprintf(stderr, " threshold:%u,", (uint)-options->pass1.threshold);
+  } else {
+    fprintf(stderr, " threshold:%.02f%%,", options->pass1.threshold);
+  }
+  if (IS_ABSOLUTE(options->pass1.window_overlap)) {
+    fprintf(stderr, " window_overlap:%u]\n", (uint)-options->pass1.window_overlap);
+  } else {
+    fprintf(stderr, " window_overlap:%.02f%%]\n", options->pass1.window_overlap);
+  }
+  fprintf(stderr, "\tpass2:[strata:%d, num_outputs:%d,",
+	  options->pass2.strata, options->pass2.num_outputs);
+  if (IS_ABSOLUTE(options->pass2.threshold)) {
+    fprintf(stderr, " threshold:%u,", (uint)-options->pass2.threshold);
+  } else {
+    fprintf(stderr, " threshold:%.02f%%,", options->pass2.threshold);
+  }
+  fprintf(stderr, " stop_count:%d,", options->pass2.stop_count);
+  if (IS_ABSOLUTE(options->pass2.stop_threshold)) {
+    fprintf(stderr, " stop_threshold:%u]\n", (uint)-options->pass2.stop_threshold);
+  } else {
+    fprintf(stderr, " stop_threshold:%.02f%%]\n", options->pass2.stop_threshold);
+  }
+  fprintf(stderr, "]\n");
+}
+
+
 static void
 print_settings() {
   static char const my_tab[] = "    ";
-  int sn;
+  int sn, i;
 
   fprintf(stderr, "Settings:\n");
+
+  // Seeds
   fprintf(stderr, "%s%-40s%s (%d/%d)\n", my_tab,
 	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
 	  seed_to_string(0), seed[0].weight, seed[0].span);
@@ -943,6 +1026,63 @@ print_settings() {
     fprintf(stderr, "%s%-40s%s (%d/%d)\n", my_tab, "",
 	    seed_to_string(sn), seed[sn].weight, seed[sn].span);
   }
+
+  // Global settings
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
+	  anchor_width == -1? " (disabled)" : "");
+  if (list_cutoff < DEF_LIST_CUTOFF) {
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
+  }
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region Overlap:", region_overlap);
+
+  // Scores
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Mismatch Score:", mismatch_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Ref):", a_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Qry):", b_gap_open_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Ref):", a_gap_extend_score);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Qry):", b_gap_extend_score);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Crossover Score:", crossover_score);
+  }
+
+  fprintf(stderr, "\n");
+  if (n_paired_mapping_options > 0) { // paired mapping
+    for (i = 0; i < n_paired_mapping_options; i++) {
+      fprintf(stderr, "Paired mapping options, set [%d]\n", i);
+      print_pairing_options(&paired_mapping_options[i].pairing);
+      print_read_mapping_options(&paired_mapping_options[i].read[0]);
+      print_read_mapping_options(&paired_mapping_options[i].read[1]);
+    }
+
+    if (n_unpaired_mapping_options[0] > 0) {
+      fprintf(stderr, "\n");
+      for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
+	fprintf(stderr, "Unpaired mapping options for first read in a pair, set [%d]\n", i);
+	print_read_mapping_options(&unpaired_mapping_options[0][i]);
+      }
+    }
+
+    if (n_unpaired_mapping_options[1] > 0) {
+      fprintf(stderr, "\n");
+      for (i = 0; i < n_unpaired_mapping_options[1]; i++) {
+	fprintf(stderr, "Unpaired mapping options for second read in a pair, set [%d]\n", i);
+	print_read_mapping_options(&unpaired_mapping_options[1][i]);
+      }
+    }
+  } else {
+    for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
+      fprintf(stderr, "Unpaired mapping options, set [%d]\n", i);
+      print_read_mapping_options(&unpaired_mapping_options[0][i]);
+    }
+  }
+  fprintf(stderr, "\n");
+  return;
 
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", num_matches);
@@ -957,17 +1097,6 @@ print_settings() {
     fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Overlap Length:", (uint)-window_overlap);
   } else {
     fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Window Overlap Length:", window_overlap);
-  }
-
-  fprintf(stderr, "\n");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Match Score:", match_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Mismatch Score:", mismatch_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Ref):", a_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Qry):", b_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Ref):", a_gap_extend_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Qry):", b_gap_extend_score);
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Crossover Score:", crossover_score);
   }
 
   fprintf(stderr, "\n");
@@ -1009,17 +1138,8 @@ print_settings() {
   fprintf(stderr, "\n");
 
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
-  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
-	  anchor_width == -1? " (disabled)" : "");
-  if (list_cutoff < DEF_LIST_CUTOFF) {
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
-  }
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Region Filter:", use_regions? "yes" : "no");
   if (use_regions) {
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region Overlap:", region_overlap);
   }
 
 }
@@ -1047,13 +1167,180 @@ set_mode_from_string(char const * s) {
 }
 
 
+static void
+get_pair_mode(char * c, int * pair_mode)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid pair mode\n");
+    exit(1);
+  }
+  if (!strcmp(c, "none")) {
+    *pair_mode = PAIR_NONE;
+  } else if (!strcmp(c, "opp-in")) {
+    *pair_mode = PAIR_OPP_IN;
+  } else if (!strcmp(c, "opp-out")) {
+    *pair_mode = PAIR_OPP_OUT;
+  } else if (!strcmp(c, "col-fw")) {
+    *pair_mode = PAIR_COL_FW;
+  } else if (!strcmp(c, "col-bw")) {
+    *pair_mode = PAIR_COL_BW;
+  } else {
+    fprintf(stderr, "error: unrecognized pair mode (%s)\n", c);
+    exit(1);
+  }
+}
+
+
+static void
+get_int(char * c, int * d)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid integer\n");
+    exit(1);
+  }
+  *d = atoi(c);
+}
+
+
+static void
+get_threshold(char * c, double * t)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid threshold\n");
+    exit(1);
+  }
+  *t = atof(c);
+  if (*t < 0.0) {
+    fprintf(stderr, "error: invalid threshold [%s]\n", c);
+    exit(1);
+  }
+  if (strcspn(c, "%.") == strlen(c))
+    *t = -(*t);	//absol.
+}
+
+
+static void
+get_bool(char * c, bool * b)
+{
+  if (!strcmp(c, "true") || !strcmp(c, "1")) {
+    *b = true;
+  } else if (!strcmp(c, "false") || !strcmp(c, "0")) {
+    *b = false;
+  } else {
+    fprintf(stderr, "error: invalid bool\n");
+    exit(1);
+  }
+}
+
+
+static void
+get_pairing_options(char * c, struct pairing_options * options)
+{
+  char * p;
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid pairing options\n");
+    exit(1);
+  }
+  p = strtok(c, ",");
+  get_pair_mode(p, &options->pair_mode);
+  p = strtok(NULL, ",");
+  get_int(p, &options->min_insert_size);
+  p = strtok(NULL, ",");
+  get_int(p, &options->max_insert_size);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->pair_up_hits);
+  p = strtok(NULL, ",");
+  get_int(p, &options->min_num_matches);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass1_num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass1_threshold);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass2_num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass2_threshold);
+  p = strtok(NULL, ",");
+  get_int(p, &options->stop_count);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->stop_threshold);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->strata);  
+}
+
+
+static void
+get_read_mapping_options(char * c, struct read_mapping_options_t * options)
+{
+  char * p;
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid read mapping options\n");
+    exit(1);
+  }
+  // regions
+  p = strtok(c, ",");
+  get_bool(p, &options->regions.recompute);
+  p = strtok(NULL, ",");
+  get_int(p, &options->regions.min_seed);
+  p = strtok(NULL, ",");
+  get_int(p, &options->regions.max_seed);
+  // anchor_list
+  p = strtok(NULL, ",");
+  get_bool(p, &options->anchor_list.recompute);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->anchor_list.collapse);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->anchor_list.use_region_counts);
+  p = strtok(NULL, ",");
+  get_int(p, &options->anchor_list.min_count[0]);
+  p = strtok(NULL, ",");
+  get_int(p, &options->anchor_list.max_count[0]);
+  p = strtok(NULL, ",");
+  get_int(p, &options->anchor_list.min_count[1]);
+  p = strtok(NULL, ",");
+  get_int(p, &options->anchor_list.max_count[1]);
+  // hit_list
+  p = strtok(NULL, ",");
+  get_bool(p, &options->hit_list.recompute);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->hit_list.gapless);
+  p = strtok(NULL, ",");
+  get_int(p, &options->hit_list.match_mode);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->hit_list.threshold);
+  // pass1
+  p = strtok(NULL, ",");
+  get_bool(p, &options->pass1.recompute);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->pass1.gapless);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->pass1.only_paired);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass1.window_overlap);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass1.num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass1.threshold);
+  // pass2
+  p = strtok(NULL, ",");
+  get_bool(p, &options->pass2.strata);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass2.num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass2.threshold);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass2.stop_count);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass2.stop_threshold);
+}
+
+
 int main(int argc, char **argv){
 	char **genome_files = NULL;
 	int ngenome_files = 0;
 
 	char *progname = argv[0];
 	char const * optstr = NULL;
-	char *c;
+	char *c, *save_c;
 	int ch;
 
 	bool a_gap_open_set, b_gap_open_set;
@@ -1459,6 +1746,36 @@ int main(int argc, char **argv){
 		    exit(1);
 		  }
 		  break;
+		case 28:
+		  if (n_unpaired_mapping_options[0] > 0 || n_unpaired_mapping_options[1] > 0) {
+		    fprintf(stderr, "warning: unpaired mapping options set before paired mapping options! the latter take precedence.\n");
+		  }
+		  n_paired_mapping_options++;
+		  paired_mapping_options = (struct readpair_mapping_options_t *)
+		    xrealloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+		  c = strtok_r(optarg, ";", &save_c);
+		  get_pairing_options(c, &paired_mapping_options[n_paired_mapping_options - 1].pairing);
+		  c = strtok_r(NULL, ";", &save_c);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[0]);
+		  c = strtok_r(NULL, ";", &save_c);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[1]);
+		  // HACK SETTINGS
+		  pair_mode = paired_mapping_options[0].pairing.pair_mode;
+		  break;
+		case 29:
+		  int nip;
+		  c = strtok(optarg, ";");
+		  if (c == NULL || (*c != '0' && *c != '1')) {
+		    fprintf(stderr, "error: invalid unpaired mapping options:[%s]\n", optarg);
+		    exit(1);
+		  }
+		  nip = (*c == '0'? 0 : 1);
+		  n_unpaired_mapping_options[nip]++;
+		  unpaired_mapping_options[nip] = (struct read_mapping_options_t *)
+		    xrealloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]));
+		  c = strtok(NULL, ";");
+		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1]);
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -1687,6 +2004,130 @@ int main(int argc, char **argv){
 	  fputc('\n', stderr);
 	}
 
+	// set up new options structure
+	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
+	if (n_unpaired_mapping_options[0] == 0 && n_paired_mapping_options == 0) {
+	  if (pair_mode == PAIR_NONE)
+	    {
+	      n_unpaired_mapping_options[0]++;
+	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+
+	      unpaired_mapping_options[0][0].regions.recompute = use_regions;
+	      unpaired_mapping_options[0][0].regions.min_seed = 0;
+	      unpaired_mapping_options[0][0].regions.max_seed = n_seeds - 1;
+	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
+	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
+	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
+	      unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
+	      unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
+	      unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
+	      unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
+	      unpaired_mapping_options[0][0].hit_list.recompute = true;
+	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
+	      unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
+	      unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
+	      unpaired_mapping_options[0][0].pass1.recompute =  true;
+	      unpaired_mapping_options[0][0].pass1.only_paired = false;
+	      unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+	      unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+	      unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+	      unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+	      unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+	      unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+	      unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+	      unpaired_mapping_options[0][0].pass2.stop_count = 0;
+	    }
+	  else
+	    {
+	      n_paired_mapping_options++;
+	      paired_mapping_options = (struct readpair_mapping_options_t *)malloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+
+	      paired_mapping_options[0].pairing.pair_mode = pair_mode;
+	      paired_mapping_options[0].pairing.pair_up_hits = true;
+	      paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
+	      paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
+	      paired_mapping_options[0].pairing.strata = strata_flag;
+	      paired_mapping_options[0].pairing.min_num_matches = 3;
+	      paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
+	      paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
+	      paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
+	      paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
+
+	      paired_mapping_options[0].read[0].regions.recompute = use_regions;
+	      paired_mapping_options[0].read[0].regions.min_seed = 0;
+	      paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
+
+	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
+	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
+	      paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
+	      paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
+	      paired_mapping_options[0].read[0].anchor_list.min_count[1] = 0; //(num_matches == 4? 2 : 1);
+	      paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;
+	      paired_mapping_options[0].read[0].anchor_list.max_count[1] = 0;
+	      paired_mapping_options[0].read[0].hit_list.recompute = true;
+	      paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
+	      paired_mapping_options[0].read[0].hit_list.match_mode = (num_matches == 4? 2 : 1);
+	      paired_mapping_options[0].read[0].hit_list.threshold = window_gen_threshold;
+	      paired_mapping_options[0].read[0].pass1.recompute = true;
+	      paired_mapping_options[0].read[0].pass1.only_paired = true;
+	      paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
+	      //paired_mapping_options[0].read[0].pass1.num_outputs = 0;
+	      paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
+	      paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
+	      paired_mapping_options[0].read[0].pass2.strata = strata_flag;
+	      //paired_mapping_options[0].read[0].pass2.num_outputs = 0;
+	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold / 3;
+	      paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
+
+	      if (!sam_half_paired)
+		{
+		  paired_mapping_options[0].pairing.stop_count = 0;
+		}
+	      else // half_paired
+		{
+		  paired_mapping_options[0].pairing.stop_count = 1;
+		  paired_mapping_options[0].pairing.stop_threshold = paired_mapping_options[0].pairing.pass2_threshold;
+
+		  n_unpaired_mapping_options[0]++;
+		  n_unpaired_mapping_options[1]++;
+		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+
+		  unpaired_mapping_options[0][0].regions.recompute = false;
+		  //if (!use_regions) {
+		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
+		  unpaired_mapping_options[0][0].hit_list.recompute = false;
+		  /*
+		    } else {
+		    unpaired_mapping_options[0][0].anchor_list.recompute = true;
+		    unpaired_mapping_options[0][0].anchor_list.collapse = true;
+		    unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
+		    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
+		    unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
+		    unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
+		    unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
+		    unpaired_mapping_options[0][0].hit_list.recompute = true;
+		    unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
+		    unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
+		    unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
+		    }
+		  */
+		  unpaired_mapping_options[0][0].pass1.recompute = true;
+		  unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+		  unpaired_mapping_options[0][0].pass1.only_paired = false;
+		  unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+		  unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+		  unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+		  unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+		  unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+		  unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+		  unpaired_mapping_options[0][0].pass2.stop_count = 0;
+		  unpaired_mapping_options[1][0] = unpaired_mapping_options[0][0];
+
+		}
+	    }
+	}
+
 	if(load_file == NULL){
 	  print_settings();
 	}
@@ -1808,130 +2249,6 @@ int main(int argc, char **argv){
 	  }
 	  exit(1);
 	}
-
-	// set up new options structure
-	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
-	assert(n_unpaired_mapping_options[0] == 0);
-	assert(n_paired_mapping_options == 0);
-	if (pair_mode == PAIR_NONE)
-	  {
-	    n_unpaired_mapping_options[0]++;
-	    unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
-
-	    unpaired_mapping_options[0][0].regions.recompute = use_regions;
-	    unpaired_mapping_options[0][0].regions.min_seed = 0;
-	    unpaired_mapping_options[0][0].regions.max_seed = n_seeds - 1;
-	    unpaired_mapping_options[0][0].anchor_list.recompute = true;
-	    unpaired_mapping_options[0][0].anchor_list.collapse = true;
-	    unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-	    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
-	    unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
-	    unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
-	    unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
-	    unpaired_mapping_options[0][0].hit_list.recompute = true;
-	    unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
-	    unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
-	    unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
-	    unpaired_mapping_options[0][0].pass1.recompute =  true;
-	    unpaired_mapping_options[0][0].pass1.only_paired = false;
-	    unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
-	    unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
-	    unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
-	    unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
-	    unpaired_mapping_options[0][0].pass2.strata = strata_flag;
-	    unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
-	    unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
-	    unpaired_mapping_options[0][0].pass2.stop_count = 0;
-	  }
-	else
-	  {
-	    n_paired_mapping_options++;
-	    paired_mapping_options = (struct readpair_mapping_options_t *)malloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
-
-	    paired_mapping_options[0].pairing.pair_mode = pair_mode;
-	    paired_mapping_options[0].pairing.pair_up_hits = true;
-	    paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
-	    paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
-	    paired_mapping_options[0].pairing.strata = strata_flag;
-	    paired_mapping_options[0].pairing.min_num_matches = 3;
-	    paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
-	    paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
-	    paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
-	    paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
-
-	    paired_mapping_options[0].read[0].regions.recompute = use_regions;
-	    paired_mapping_options[0].read[0].regions.min_seed = 0;
-	    paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
-
-	    paired_mapping_options[0].read[0].anchor_list.recompute = true;
-	    paired_mapping_options[0].read[0].anchor_list.collapse = true;
-	    paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
-	    paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
-	    paired_mapping_options[0].read[0].anchor_list.min_count[1] = 0; //(num_matches == 4? 2 : 1);
-	    paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;
-	    paired_mapping_options[0].read[0].anchor_list.max_count[1] = 0;
-	    paired_mapping_options[0].read[0].hit_list.recompute = true;
-	    paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
-	    paired_mapping_options[0].read[0].hit_list.match_mode = (num_matches == 4? 2 : 1);
-	    paired_mapping_options[0].read[0].hit_list.threshold = window_gen_threshold;
-	    paired_mapping_options[0].read[0].pass1.recompute = true;
-	    paired_mapping_options[0].read[0].pass1.only_paired = true;
-	    paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
-	    //paired_mapping_options[0].read[0].pass1.num_outputs = 0;
-	    paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
-	    paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
-	    paired_mapping_options[0].read[0].pass2.strata = strata_flag;
-	    //paired_mapping_options[0].read[0].pass2.num_outputs = 0;
-	    paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold / 3;
-	    paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
-
-	    if (!sam_half_paired)
-	      {
-		paired_mapping_options[0].pairing.stop_count = 0;
-	      }
-	    else // half_paired
-	      {
-		paired_mapping_options[0].pairing.stop_count = 1;
-		paired_mapping_options[0].pairing.stop_threshold = paired_mapping_options[0].pairing.pass2_threshold;
-
-		n_unpaired_mapping_options[0]++;
-		n_unpaired_mapping_options[1]++;
-		unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
-		unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
-
-		unpaired_mapping_options[0][0].regions.recompute = false;
-		//if (!use_regions) {
-		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
-		  unpaired_mapping_options[0][0].hit_list.recompute = false;
-		/*
-		} else {
-		  unpaired_mapping_options[0][0].anchor_list.recompute = true;
-		  unpaired_mapping_options[0][0].anchor_list.collapse = true;
-		  unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-		  unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
-		  unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
-		  unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
-		  unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
-		  unpaired_mapping_options[0][0].hit_list.recompute = true;
-		  unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
-		  unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
-		  unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
-		}
-		*/
-		unpaired_mapping_options[0][0].pass1.recompute = true;
-		unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
-		unpaired_mapping_options[0][0].pass1.only_paired = false;
-		unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
-		unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
-		unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
-		unpaired_mapping_options[0][0].pass2.strata = strata_flag;
-		unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
-		unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
-		unpaired_mapping_options[0][0].pass2.stop_count = 0;
-		unpaired_mapping_options[1][0] = unpaired_mapping_options[0][0];
-
-	      }
-	  }
 
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;

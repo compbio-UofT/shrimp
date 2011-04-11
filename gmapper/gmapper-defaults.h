@@ -114,7 +114,9 @@
 	{"trim-second",1,0,24},\
 	{"expected-isize",1,0,25},\
 	{"use-regions",0,0,26},\
-	{"region-overlap",1,0,27}\
+	{"region-overlap",1,0,27},\
+	{"paired-options",1,0,28},\
+	{"unpaired-options",1,0,29}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \
