@@ -1749,6 +1749,7 @@ int main(int argc, char **argv){
 		case 28:
 		  if (n_unpaired_mapping_options[0] > 0 || n_unpaired_mapping_options[1] > 0) {
 		    fprintf(stderr, "warning: unpaired mapping options set before paired mapping options! the latter take precedence.\n");
+		    sam_half_paired = true;
 		  }
 		  n_paired_mapping_options++;
 		  paired_mapping_options = (struct readpair_mapping_options_t *)
@@ -1769,6 +1770,8 @@ int main(int argc, char **argv){
 		    fprintf(stderr, "error: invalid unpaired mapping options:[%s]\n", optarg);
 		    exit(1);
 		  }
+		  if (n_paired_mapping_options > 0)
+		    sam_half_paired = true;
 		  nip = (*c == '0'? 0 : 1);
 		  n_unpaired_mapping_options[nip]++;
 		  unpaired_mapping_options[nip] = (struct read_mapping_options_t *)
