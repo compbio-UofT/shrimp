@@ -56,6 +56,14 @@ lineindex_table * lineindex_init(size_t size) {
 	return lineindex;	
 }
 
+void lineindex_destroy(lineindex_table * lt) {
+	assert(lt!=NULL);
+	if (lt->size>0) {
+		free(lt->table);
+	}
+	free(lt);
+}
+
 //does not add first as a line!\n
 lineindex_table * add_lineindex_from_memory(lineindex_table * lineindex, char * data, size_t size, char comment_start,bool has_extra_byte) {
 	size_t i;

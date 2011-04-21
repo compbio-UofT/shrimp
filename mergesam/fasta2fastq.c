@@ -252,11 +252,11 @@ int main (int argc, char ** argv) {
 		lines_processed=qual_li->end-qual_li->start;
 		//print lines
 		for (i=0; i<lines_processed; i++) {
-			fprintf(stderr,"%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]);
+			fprintf(stdout,"@%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]+1);
 			char * qual_string=qual_li->table[(qual_li->start+i)%qual_li->size];
 			if (qual_string[0]!='>') {
 				to_ascii_33(qual_li->table[(qual_li->start+i)%qual_li->size]);
-				fprintf(stderr,"%s\n",qual_li->table[(qual_li->start+i)%qual_li->size]);
+				fprintf(stdout,"+\n%s\n",qual_li->table[(qual_li->start+i)%qual_li->size]);
 			}
 		}
 		update_last_line(qual_li,qual_fb,lines_processed);
@@ -266,6 +266,17 @@ int main (int argc, char ** argv) {
 		qual_li->start+=lines_processed;
 		fasta_li->start+=lines_processed;
 	}
+	//free the line-indexes
+	for (i=0; i<options.threads; i++) {
+		lineindex_destroy(qual_thread_lineindexes[i]);
+		lineindex_destroy(fasta_thread_lineindexes[i]);
+	}
+	//free the master index
+	lineindex_destroy(qual_li);
+	lineindex_destroy(fasta_li);
+	//close the file_buffers
+	fb_close(qual_fb);
+	fb_close(fasta_fb);
 	return 0;
 }
 

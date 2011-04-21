@@ -10,4 +10,5 @@ struct lineindex_table {
 };
 lineindex_table * lineindex_init(size_t size);
 size_t add_lineindex_from_memory_threaded(lineindex_table * lineindex, lineindex_table ** thread_lineindexes,char *data, size_t data_size, int threads,char comment_start);
+void lineindex_destroy(lineindex_table * lt);
 #endif
