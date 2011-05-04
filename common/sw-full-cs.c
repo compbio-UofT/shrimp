@@ -115,6 +115,11 @@ static uint64_t		swticks, swcells, swinvocs;
 #define BT_ISCROSSOVER(_x)	((_x) & BT_CROSSOVER)
 #define BT_TYPE(_x)		((_x) & 0x0f)
 
+#ifdef DEBUG_CROSSOVERS
+static int _glen;
+static int _rlen;
+#endif
+
 
 static void print_sw(int lena, int lenb) {
 	printf("len a %d, len b %d\n",lena,lenb);
@@ -926,6 +931,26 @@ pretty_print(int i, int j, int k)
   q = qralign;
 
   for (l = k; l < (dblen + qrlen); l++) {
+
+#ifdef DEBUG_CROSSOVERS
+    int a;
+    if (BT_ISCROSSOVER(backtrace[l])
+	&& (BT_TYPE(backtrace[l]) == BACK_A_DELETION
+	    || BT_TYPE(backtrace[l]) == BACK_B_DELETION
+	    || BT_TYPE(backtrace[l]) == BACK_C_DELETION
+	    || BT_TYPE(backtrace[l]) == BACK_D_DELETION)) {
+      fprintf(stderr, "sw-full-cs: crossover in \"deletion\" (really, insertion):\n");
+      fprintf(stderr, "db:");
+      for (a = 0; a < _glen; a++)
+	fprintf(stderr, "%c", base_translate(db[a]), false);
+      fprintf(stderr, "\n");
+      fprintf(stderr, "qr[0]:");
+      for (a = 0; a < _rlen; a++)
+	fprintf(stderr, "%c", base_translate(qr[0][a], false));
+      fprintf(stderr, "\n");
+    }
+#endif
+
     switch (BT_TYPE(backtrace[l])) {
     case BACK_A_DELETION:
       *d++ = '-';
@@ -1145,6 +1170,11 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
       fprintf(stderr, "%c", base_translate(qr[i][j], false));
     fprintf(stderr, "\n");
   }
+#endif
+
+#ifdef DEBUG_CROSSOVERS
+  _glen = glen;
+  _rlen = rlen;
 #endif
 
   sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt,local_alignment);
