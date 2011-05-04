@@ -101,7 +101,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual,
   for (j = 0; j < sfrp->read_start; j++) {
     prev_run ^= EXTRACT(read, j);
     if (use_read_qvs)
-      min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j] - qual_delta);
+      min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j]);
   }
 
   for (i = 0; sfrp->dbalign[i] != 0; i++) {
@@ -110,7 +110,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual,
 	db[k] = (int8_t)fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]); // => BASE_A/C/G/T
 	qr[k] = EXTRACT(read, j) ^ prev_run;
 	if (use_read_qvs) {
-	  qv[k] = MIN(min_qv, (int)qual[qual_vector_offset+j] - qual_delta);
+	  qv[k] = MIN(min_qv, (int)qual[qual_vector_offset+j]) - qual_delta;
 	  min_qv = 10000;
 	} else {
 	  qv[k] = default_qual;
@@ -121,7 +121,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual,
       } else { // insertion: accumulate bases
 	prev_run ^= EXTRACT(read, j);
 	if (use_read_qvs)
-	  min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j] - qual_delta);
+	  min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j]);
 	j++;
       }
     }
