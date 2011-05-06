@@ -12,7 +12,7 @@
 #include "../common/sw-full-ls.h"
 #include "../common/sw-vector.h"
 #include "../common/read_hit_heap.h"
-
+#include "../common/sw-post.h"
 
 DEF_HEAP(uint32_t, uint, uu)
 DEF_HEAP(double, struct read_hit_holder, unpaired)
@@ -2141,6 +2141,13 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 }
 
 
+static void
+hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
+{
+  post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
+}
+
+
 /*
  * Do a final pass for given read.
  */
@@ -2158,8 +2165,16 @@ new_read_pass2(struct read_entry * re,
     struct read_hit * rh = hits_pass1[i];
     if (rh->score_full < 0 || rh->sfrp == NULL) {
       hit_run_full_sw(re, rh, (int)abs_or_pct(options->threshold, rh->score_max));
+      if (rh->score_full > 0) {
+	hit_run_post_sw(re, rh);
+	fprintf(stderr, "read:%s\tSW-prob:%g\tposterior:%g\n", re->name,
+		pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * match_score)/3.76),
+		rh->sfrp->posterior);
+      }
+
       rh->pass2_key = (IS_ABSOLUTE(options->threshold)? rh->score_full : (int)rh->pct_score_full);
     }
+
     if (rh->score_full >= abs_or_pct(options->threshold, rh->score_max)) {
       hits_pass2[*n_hits_pass2] = rh;
       (*n_hits_pass2)++;
@@ -2558,6 +2573,8 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 	hit_run_full_sw(re, rh, (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)/3);
       }
     }
+
+    //hitpair_run_post_sw(re1, re2, hits_pass1[i].rh[0], hits_pass1[i].rh[1]);
 
     if (hits_pass1[i].rh[0]->score_full == 0 || hits_pass1[i].rh[1]->score_full == 0) {
       continue;

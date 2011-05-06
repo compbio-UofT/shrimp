@@ -32,13 +32,13 @@
 static shrimp_mode_t shrimp_mode;
 
 /* External parameters */
-static int match_value    = DEF_MATCH_VALUE;
-static int mismatch_value = DEF_MISMATCH_VALUE;
-static int a_gap_open	  = DEF_A_GAP_OPEN;
-static int b_gap_open	  = DEF_B_GAP_OPEN;
-static int a_gap_extend   = DEF_A_GAP_EXTEND;
-static int b_gap_extend   = DEF_B_GAP_EXTEND;
-static int xover_penalty  = DEF_XOVER_PENALTY;
+static int match_value    = DEF_LS_MATCH_SCORE;
+static int mismatch_value = DEF_LS_MISMATCH_SCORE;
+static int a_gap_open	  = DEF_LS_A_GAP_OPEN;
+static int b_gap_open	  = DEF_LS_B_GAP_OPEN;
+static int a_gap_extend   = DEF_LS_A_GAP_EXTEND;
+static int b_gap_extend   = DEF_LS_B_GAP_EXTEND;
+static int xover_penalty  = DEF_CS_XOVER_SCORE;
 
 static dynhash_t read_list;		/* cache of reads we need */
 static dynhash_t contig_list;		/* cache of reads per contig list */
@@ -438,11 +438,11 @@ usage(char *progname)
 
 	fprintf(stderr,
 	    "    -m    S-W Match Value                         (default: %d)\n",
-	    DEF_MATCH_VALUE);
+	    DEF_LS_MATCH_SCORE);
 
 	fprintf(stderr,
 	    "    -i    S-W Mismatch Value                      (default: %d)\n",
-	    DEF_MISMATCH_VALUE);
+	    DEF_LS_MISMATCH_SCORE);
 
 	fprintf(stderr,
 	    "    -g    S-W Gap Open Penalty (Reference)        (default: %d)\n",
@@ -463,7 +463,7 @@ usage(char *progname)
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 		fprintf(stderr,
 		    "    -x    S-W Crossover Penalty                   ("
-		    "default: %d)\n", DEF_XOVER_PENALTY);
+		    "default: %d)\n", DEF_CS_XOVER_SCORE);
 	}
 
 	fprintf(stderr, "\nOptions:\n");
@@ -489,6 +489,14 @@ main(int argc, char **argv)
 
 	set_mode_from_argv(argv, &shrimp_mode);
 
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  match_value = DEF_CS_MATCH_SCORE;
+	  mismatch_value = DEF_CS_MISMATCH_SCORE;
+	  a_gap_open = DEF_CS_A_GAP_OPEN;
+	  b_gap_open = DEF_CS_B_GAP_OPEN;
+	  a_gap_extend = DEF_CS_A_GAP_EXTEND;
+	  b_gap_extend = DEF_CS_B_GAP_EXTEND;
+	}
 	/*
 	if (shrimp_mode == MODE_HELICOS_SPACE) {
 		match_value	= DEF_MATCH_VALUE_DAG;
@@ -614,7 +622,7 @@ main(int argc, char **argv)
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 /* XXX - a vs. b gap */
 		ret = sw_full_cs_setup(longest_read_len * 10, longest_read_len,
-		    a_gap_open, a_gap_extend, match_value, mismatch_value,
+		    a_gap_open, a_gap_extend, b_gap_open, b_gap_extend, match_value, mismatch_value,
 		    xover_penalty, false, -1);
 	} else {
 		ret = sw_full_ls_setup(longest_read_len * 10, longest_read_len,

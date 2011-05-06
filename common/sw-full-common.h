@@ -18,6 +18,8 @@ struct sw_full_results {
 
 	char *dbalign;				/* genome align string */
 	char *qralign;				/* read align string */
+  char * qual;	/* base qualities string, used in CS only */
+  double posterior;
 
 	/* Colour space fields */
 	int crossovers;				/* # of mat. xovers */

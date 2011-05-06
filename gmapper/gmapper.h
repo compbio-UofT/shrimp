@@ -84,13 +84,13 @@ EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
 
 
 /* Scores */
-EXTERN(int,		match_score,		DEF_MATCH_VALUE);
-EXTERN(int,		mismatch_score,		DEF_MISMATCH_VALUE);
-EXTERN(int,		a_gap_open_score,	DEF_A_GAP_OPEN);
-EXTERN(int,		a_gap_extend_score,	DEF_A_GAP_EXTEND);
-EXTERN(int,		b_gap_open_score,	DEF_B_GAP_OPEN);
-EXTERN(int,		b_gap_extend_score,	DEF_B_GAP_EXTEND);
-EXTERN(int,		crossover_score,	DEF_XOVER_PENALTY);
+EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);
+EXTERN(int,		mismatch_score,		DEF_LS_MISMATCH_SCORE);
+EXTERN(int,		a_gap_open_score,	DEF_LS_A_GAP_OPEN);
+EXTERN(int,		a_gap_extend_score,	DEF_LS_A_GAP_EXTEND);
+EXTERN(int,		b_gap_open_score,	DEF_LS_B_GAP_OPEN);
+EXTERN(int,		b_gap_extend_score,	DEF_LS_B_GAP_EXTEND);
+EXTERN(int,		crossover_score,	DEF_CS_XOVER_SCORE);
 
 EXTERN(double,		window_gen_threshold,	DEF_WINDOW_GEN_THRESHOLD);
 EXTERN(double,		sw_vect_threshold,	DEF_SW_VECT_THRESHOLD);

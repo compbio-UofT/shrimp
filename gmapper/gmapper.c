@@ -39,6 +39,7 @@
 #include "../common/output.h"
 #include "../common/input.h"
 #include "../common/read_hit_heap.h"
+#include "../common/sw-post.h"
 
 /* heaps */
 DEF_HEAP(uint32_t, char *, out)
@@ -792,26 +793,26 @@ usage(char * progname, bool full_usage){
   fprintf(stderr, "\n");
   fprintf(stderr,
 	  "   -m/--match           SW Match Score                (default: %d)\n",
-	  DEF_MATCH_VALUE);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_MATCH_SCORE : DEF_CS_MATCH_SCORE);
   fprintf(stderr,
 	  "   -i/--mismatch        SW Mismatch Score             (default: %d)\n",
-	  DEF_MISMATCH_VALUE);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_MISMATCH_SCORE : DEF_CS_MISMATCH_SCORE);
   fprintf(stderr,
 	  "   -g/--open-r          SW Gap Open Score (Reference) (default: %d)\n",
-	  DEF_A_GAP_OPEN);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_A_GAP_OPEN : DEF_CS_A_GAP_OPEN);
   fprintf(stderr,
 	  "   -q/--open-q          SW Gap Open Score (Query)     (default: %d)\n",
-	  DEF_B_GAP_OPEN);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_B_GAP_OPEN : DEF_CS_B_GAP_OPEN);
   fprintf(stderr,
 	  "   -e/--ext-r           SW Gap Extend Score(Reference)(default: %d)\n",
-	  DEF_A_GAP_EXTEND);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_A_GAP_EXTEND : DEF_CS_A_GAP_EXTEND);
   fprintf(stderr,
 	  "   -f/--ext-q           SW Gap Extend Score (Query)   (default: %d)\n",
-	  DEF_B_GAP_EXTEND);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_B_GAP_EXTEND : DEF_CS_B_GAP_EXTEND);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
 	  "   -x/--crossover       SW Crossover Score            (default: %d)\n",
-	  DEF_XOVER_PENALTY);
+	  DEF_CS_XOVER_SCORE);
   }
   fprintf(stderr,
 	  "   -r/--cmw-threshold   Window Generation Threshold   (default: %.02f%%)\n",
@@ -1345,6 +1346,7 @@ int main(int argc, char **argv){
 
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
+	bool match_score_set, mismatch_score_set, xover_score_set;
 	bool num_matches_set = false;
 
 	shrimp_args.argc=argc;
@@ -1352,6 +1354,15 @@ int main(int argc, char **argv){
 	set_mode_from_argv(argv, &shrimp_mode);
 
 	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
+	match_score_set = mismatch_score_set = xover_score_set = false;
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  match_score = DEF_CS_MATCH_SCORE;
+	  mismatch_score = DEF_CS_MISMATCH_SCORE;
+	  a_gap_open_score = DEF_CS_A_GAP_OPEN;
+	  b_gap_open_score = DEF_CS_B_GAP_OPEN;
+	  a_gap_extend_score = DEF_CS_A_GAP_EXTEND;
+	  b_gap_extend_score = DEF_CS_B_GAP_EXTEND;
+	}
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
@@ -1499,9 +1510,11 @@ int main(int argc, char **argv){
 			break;
 		case 'm':
 			match_score = atoi(optarg);
+			match_score_set = true;
 			break;
 		case 'i':
 			mismatch_score = atoi(optarg);
+			mismatch_score_set = true;
 			break;
 		case 'g':
 			a_gap_open_score = atoi(optarg);
@@ -1522,6 +1535,7 @@ int main(int argc, char **argv){
 		case 'x':
 			assert(shrimp_mode == MODE_COLOUR_SPACE);
 			crossover_score = atoi(optarg);
+			xover_score_set = true;
 			break;
 		case 'h':
 			sw_full_threshold = atof(optarg);
@@ -2007,6 +2021,7 @@ int main(int argc, char **argv){
 	  fputc('\n', stderr);
 	}
 
+
 	// set up new options structure
 	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
 	if (n_unpaired_mapping_options[0] == 0 && n_paired_mapping_options == 0) {
@@ -2283,7 +2298,8 @@ int main(int argc, char **argv){
 	  if (shrimp_mode == MODE_COLOUR_SPACE) {
 	    /* XXX - a vs. b gap */
 	    ret = sw_full_cs_setup(max_window_len, longest_read_len,
-				   a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
+				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				   match_score, mismatch_score,
 				   crossover_score, false, anchor_width);
 	  } else {
 	    ret = sw_full_ls_setup(max_window_len, longest_read_len,
@@ -2295,6 +2311,12 @@ int main(int argc, char **argv){
 		    "Smith-Waterman (%s)\n", strerror(errno));
 	    exit(1);
 	  }
+
+	  /* post_sw */
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
+	    post_sw_setup(.001, Qflag, max_window_len + longest_read_len, 0, 33);
+	  }
+
 	}
 
 

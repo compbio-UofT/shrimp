@@ -96,7 +96,7 @@ enum {
 static int		initialised;
 static int8_t	       *db, *qr[4];
 static int		dblen, qrlen;
-static int		gap_open, gap_ext;
+static int		a_gap_open, a_gap_ext, b_gap_open, b_gap_ext;
 static int		match, mismatch;
 static int		xover_penalty;
 static struct swcell   *swmatrix;
@@ -107,7 +107,7 @@ static int		anchor_width;
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
-#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,gap_open,gap_ext,match,mismatch,xover_penalty,\
+#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,match,mismatch,xover_penalty,\
 		swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs)
 
 #define BT_CROSSOVER		0x80
@@ -194,17 +194,17 @@ inline static void
 init_cell(int idx, int local_alignment) {
   if (local_alignment) {
 	  swmatrix[idx].from[0].score_nw = 0;
-	  swmatrix[idx].from[0].score_n  = -gap_open;
-	  swmatrix[idx].from[0].score_w  = -gap_open;
+	  swmatrix[idx].from[0].score_n  = -b_gap_open;
+	  swmatrix[idx].from[0].score_w  = -a_gap_open;
 	  swmatrix[idx].from[1].score_nw = xover_penalty;
-	  swmatrix[idx].from[1].score_n  = -gap_open + xover_penalty;
-	  swmatrix[idx].from[1].score_w  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[1].score_n  = -b_gap_open + xover_penalty;
+	  swmatrix[idx].from[1].score_w  = -a_gap_open + xover_penalty;
 	  swmatrix[idx].from[2].score_nw = xover_penalty;
-	  swmatrix[idx].from[2].score_n  = -gap_open + xover_penalty;
-	  swmatrix[idx].from[2].score_w  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[2].score_n  = -b_gap_open + xover_penalty;
+	  swmatrix[idx].from[2].score_w  = -a_gap_open + xover_penalty;
 	  swmatrix[idx].from[3].score_nw = xover_penalty;
-	  swmatrix[idx].from[3].score_n  = -gap_open + xover_penalty;
-	  swmatrix[idx].from[3].score_w  = -gap_open + xover_penalty;
+	  swmatrix[idx].from[3].score_n  = -b_gap_open + xover_penalty;
+	  swmatrix[idx].from[3].score_w  = -a_gap_open + xover_penalty;
   } else {
 	  swmatrix[idx].from[0].score_nw = -INT_MAX/2;
 	  swmatrix[idx].from[0].score_n  = -INT_MAX/2;
@@ -247,7 +247,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	struct anchor * anchors, int anchors_cnt, int local_alignment)
 {
   int i, j, k, l, max_i, max_j, max_k;
-  int score, ms, go, ge, tmp, resetval;
+  int score, ms, tmp, resetval;
+  //int go, ge;
   //int sw_band, ne_band;
   int8_t tmp2;
   struct anchor rectangle;
@@ -257,8 +258,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   max_i = max_j = max_k = j = 0;
 
   score = 0;
-  go = gap_open;
-  ge = gap_ext;
+  //go = gap_open;
+  //ge = gap_ext;
 
   for (j = 0; j < lena + 1; j++) {
     init_cell(j,1);
@@ -434,19 +435,19 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	 * north
 	 */
 	if (!revcmpl) {
-	  tmp  = cell_n->from[k].score_nw - go - ge;
+	  tmp  = cell_n->from[k].score_nw - b_gap_open - b_gap_ext;
 	  tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 
-	  if (cell_n->from[k].score_n - ge > tmp) {
-	    tmp  = cell_n->from[k].score_n - ge;
+	  if (cell_n->from[k].score_n - b_gap_ext > tmp) {
+	    tmp  = cell_n->from[k].score_n - b_gap_ext;
 	    tmp2 = FROM_x(k, FROM_NORTH_NORTH);
 	  }
 	} else {
-	  tmp  = cell_n->from[k].score_n - ge;
+	  tmp  = cell_n->from[k].score_n - b_gap_ext;
 	  tmp2 = FROM_x(k, FROM_NORTH_NORTH);
 
-	  if (cell_n->from[k].score_nw - go - ge > tmp) {
-	    tmp  = cell_n->from[k].score_nw - go - ge;
+	  if (cell_n->from[k].score_nw - b_gap_open - b_gap_ext > tmp) {
+	    tmp  = cell_n->from[k].score_nw - b_gap_open - b_gap_ext;
 	    tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 	  }
 	}
@@ -458,26 +459,26 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 
 	  if (!revcmpl) {
 	    /* northwest */
-	    if (cell_n->from[l].score_nw - go - ge + xover_penalty > tmp) {
-	      tmp  = cell_n->from[l].score_nw - go - ge + xover_penalty;
+	    if (cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
+	      tmp  = cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTHWEST);
 	    }
 
 	    /* north */
-	    if (cell_n->from[l].score_n - ge + xover_penalty > tmp) {
-	      tmp  = cell_n->from[l].score_n - ge + xover_penalty;
+	    if (cell_n->from[l].score_n - b_gap_ext + xover_penalty > tmp) {
+	      tmp  = cell_n->from[l].score_n - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTH);
 	    }
 	  } else {
 	    /* north */
-	    if (cell_n->from[l].score_n - ge + xover_penalty > tmp) {
-	      tmp  = cell_n->from[l].score_n - ge + xover_penalty;
+	    if (cell_n->from[l].score_n - b_gap_ext + xover_penalty > tmp) {
+	      tmp  = cell_n->from[l].score_n - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTH);
 	    }
 
 	    /* northwest */
-	    if (cell_n->from[l].score_nw - go - ge + xover_penalty > tmp) {
-	      tmp  = cell_n->from[l].score_nw - go - ge + xover_penalty;
+	    if (cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
+	      tmp  = cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTHWEST);
 	    }
 	  }
@@ -496,19 +497,19 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	 * west
 	 */
 	if (!revcmpl) {
-	  tmp  = cell_w->from[k].score_nw - go - ge;
+	  tmp  = cell_w->from[k].score_nw - a_gap_open - a_gap_ext;
 	  tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 
-	  if (cell_w->from[k].score_w - ge > tmp) {
-	    tmp  = cell_w->from[k].score_w - ge;
+	  if (cell_w->from[k].score_w - a_gap_ext > tmp) {
+	    tmp  = cell_w->from[k].score_w - a_gap_ext;
 	    tmp2 = FROM_x(k, FROM_WEST_WEST);
 	  }
 	} else {
-	  tmp  = cell_w->from[k].score_w - ge;
+	  tmp  = cell_w->from[k].score_w - a_gap_ext;
 	  tmp2 = FROM_x(k, FROM_WEST_WEST);
 
-	  if (cell_w->from[k].score_nw - go - ge > tmp) {
-	    tmp  = cell_w->from[k].score_nw - go - ge;
+	  if (cell_w->from[k].score_nw - a_gap_open - a_gap_ext > tmp) {
+	    tmp  = cell_w->from[k].score_nw - a_gap_open - a_gap_ext;
 	    tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 	  }
 	}
@@ -1045,7 +1046,7 @@ sw_full_cs_cleanup(void) {
 }
 
 int
-sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
+sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b_gap_open, int _b_gap_ext,
 		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
 		 int _anchor_width)
 {
@@ -1080,8 +1081,10 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _gap_open, int _gap_ext,
   if (qralign == NULL)
     return (1);
 
-  gap_open = -(_gap_open);
-  gap_ext = -(_gap_ext);
+  a_gap_open = -(_a_gap_open);
+  a_gap_ext = -(_a_gap_ext);
+  b_gap_open = -(_b_gap_open);
+  b_gap_ext = -(_b_gap_ext);
   match = _match;
   mismatch = _mismatch;
   xover_penalty = _xover_penalty;
