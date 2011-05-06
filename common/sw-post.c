@@ -44,10 +44,9 @@ static bool	use_read_qvs;
 static bool	use_sanger_qvs;
 static int	default_qual;		// if no qvs, use this instead
 
-static int *	db;
-static int *	qr;
-static int *	qv;
-static int *	tmp;
+//static int *	db;
+//static int *	qr;
+//static int *	qv;
 static int	init_bp;
 static int	len;
 
@@ -81,7 +80,7 @@ typedef struct column{
 struct column *	columns;
 
 
-#pragma omp threadprivate(initialized,pr_snp,pr_error,use_read_qvs,default_qual,db,qr,qv,len,qual_vector_offset,qual_delta,columns)
+#pragma omp threadprivate(initialized,pr_snp,pr_error,use_read_qvs,default_qual,len,qual_vector_offset,qual_delta,columns)
 
 
 /*********************************************************************************
@@ -276,6 +275,7 @@ double do_backwards (states* allstates, int stateslen) {
 
   for (i = stateslen-2; i >=0; i--) {    
     allstates[i].backscale = 999999999;
+    memset(allstates[i].backwards, 0, 16 * sizeof(allstates[i].backwards[0])); // matei: bug fix
     for (j = 0; j < 16; j++) {
       for (k = 0; k < 16; k++) {
 	if (right(j) == left(k)) {
@@ -326,6 +326,7 @@ double do_forwards (states* allstates, int stateslen) {
 
   for (i=1; i < stateslen; i++) {    
     allstates[i].forwscale = 999999999;
+    memset(allstates[i].forwards, 0, 16 * sizeof(allstates[i].forwards[0])); // matei: bug fix
     for (j = 0; j < 16; j++) {
       val = nodePrior(allstates,i,j);
       for (k = 0; k < 16; k++) {
@@ -354,7 +355,7 @@ double forward_backward (states* allstates, int stateslen) {
   double no1, no2;
   no1 = do_forwards(allstates, stateslen);
   no2 = do_backwards(allstates, stateslen);
-  //fprintf (stderr, "SANITY CHECK: no1 == no2 %g %g\n", no1, no2);
+  fprintf (stderr, "SANITY CHECK: no1 == no2 %g %g\n", no1, no2);
   // don't really want a hard assert due to precision issues
   return no1;
 }
@@ -392,10 +393,10 @@ post_sw_setup(double _pr_snp, bool _use_read_qvs, int max_len, int _qual_vector_
   neglogsixteenth = -log(1.0/16.0);
   neglogfourth = -log(1.0/4.0);
 
-  db = (int *)xmalloc(max_len * sizeof(db[0]));
-  qr = (int *)xmalloc(max_len * sizeof(qr[0]));
-  qv = (int *)xmalloc(max_len * sizeof(qv[0]));
-  tmp = (int *)xmalloc(max_len * sizeof(tmp[0]));
+  //db = (int *)xmalloc(max_len * sizeof(db[0]));
+  //qr = (int *)xmalloc(max_len * sizeof(qr[0]));
+  //qv = (int *)xmalloc(max_len * sizeof(qv[0]));
+  //tmp = (int *)xmalloc(max_len * sizeof(tmp[0]));
   columns = (struct column *)xmalloc(max_len * sizeof(columns[0]));
   for (int i = 0; i < max_len; i++) {
     columns[i].lets = (int *)xmalloc(1 * sizeof(columns[i].lets[0]));
@@ -433,37 +434,31 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
 	columns[len].nlets = 1;
 	columns[len].lets[0] = fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]); // => BASE_A/C/G/T
 	columns[len].letserrrate[0] = pr_snp;
-	db[len] = fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]);
+	//db[len] = fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]);
       } else {
 	columns[len].nlets = 0;
-	db[len] = BASE_N;
+	//db[len] = BASE_N;
       }
 
       // MATCH or INSERTION
 
       columns[len].ncols = 1;
       columns[len].cols[0] = EXTRACT(read, j) ^ prev_run;
-      qr[len] = EXTRACT(read, j) ^ prev_run;
+      //qr[len] = EXTRACT(read, j) ^ prev_run;
       columns[len].base_call = fasta_get_initial_base(COLOUR_SPACE, &sfrp->qralign[i]);
 
       if (use_read_qvs) {
 	columns[len].colserrrate[0] = pr_err_from_qv(MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta);
 
-	qv[len] = MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta;
+	//qv[len] = MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta;
 	min_qv = 10000;
       } else {
 	columns[len].colserrrate[0] = pr_err_from_qv(default_qual);
-	qv[len] = default_qual;
+	//qv[len] = default_qual;
       }
       if (!use_sanger_qvs) {
 	columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
       }
-
-      /*
-	prev_run ^= EXTRACT(read, j);
-	if (use_read_qvs)
-	min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j]);
-      */
 
       prev_run = 0;
       len++;
@@ -476,96 +471,35 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
   int _i;
   fprintf(stderr, "db:  ");
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "    %c", base_translate(db[_i], false));
+    fprintf(stderr, "    %c", columns[_i].nlets > 0 ? base_translate(columns[_i].lets[0], false) : '-');
   }
   fprintf(stderr, "\n");
   fprintf(stderr, "qr: %c", base_translate(init_bp, false));
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "  %c  ", base_translate(qr[_i], true));
+    fprintf(stderr, "  %c  ", base_translate(columns[_i].cols[0], true));
   }
   fprintf(stderr, "\n");
   fprintf(stderr, "qv:  ");
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "%3d  ", qv[_i]);
+    fprintf(stderr, "%3d  ", qv_from_pr_err(columns[_i].colserrrate[0]));
   }
   fprintf(stderr, "\n");
 #endif
 }  
 
 
-/*
-static void
-fw_bw_setup()
-{
-  int i;
-
-  for (i = 0; i < len; i++) {
-    columns[i].nlets = 1;
-    columns[i].lets[0] = db[i];
-    columns[i].letserrrate[0] = pr_snp;
-    columns[i].ncols = 1;
-    columns[i].cols[0] = qr[i];
-    columns[i].colserrrate[0] = pow(10.0, -(double)qv[i]/10.0);
-    if (!use_sanger_qvs)
-      columns[i].colserrrate[0] /= (1 + columns[i].colserrrate[0]);
-  }
-}
-*/
-
-
 static void
 put_base_qualities(struct sw_full_results * sfrp)
 {
-  int i, j, k, l, save_l, min;
+  int i, k;
 
   sfrp->qual = (char *)xmalloc(strlen(sfrp->qralign) * sizeof(sfrp->qual[0]));
-  for (i = 0, j = 0, k = 0; sfrp->qralign[i] != 0; ) {
+  for (i = 0, k = 0; sfrp->qralign[i] != 0; i++) {
     if (sfrp->qralign[i] != '-') {
-      /*
-      if (sfrp->dbalign[i] != '-') { // MATCH
-	sfrp->qual[k] = qual_delta + qv_from_pr_corr(columns[j].posterior[columns[j].base_call]);
-	i++;
-	j++;
-	k++;
-      } else {
-	// start of an insertion
-	assert(sfrp->dbalign[i-1] != '-');
-
-	// bases consumed from mapped read: k
-	// bases unmapped: sfrp->read_start
-	// color following at index: (sfrp->read_start + k + 1)
-	l = 0;
-	tmp[l] = sfrp->qual[k-1] - qual_delta;
-	tmp[l] = MIN(tmp[l], qv[sfrp->read_start + k + l]);
-	for (l = 1; sfrp->dbalign[i + l] == '-'; l++) {
-	  tmp[l] = MIN(tmp[l - 1], qv[sfrp->read_start + k + l]);
-	}
-	// l is the number of '-'; l+1 colors considered, plus two endpoints
-	save_l = l;
-
-	// what follows this run? we know dbalign[i+l] != '-'
-	// maybe a deletion, but there must be a following match!
-	assert(j < len);
-	min = qv_from_pr_corr(columns[j].posterior[columns[j].base_call]);
-	for (l-- ; l >= 0; l--) {
-	  min = MIN(min, qv[sfrp->read_start + k + 1 + l]);
-	  // min to the left: tmp[l]; min to the right: min
-
-	  sfrp->qual[k + l] = tmp[l] + min;
-	}
-	k += save_l;
-	i += save_l;
-      }
-      */
-      sfrp->qual[k] = qual_delta + qv_from_pr_corr(columns[j].posterior[columns[j].base_call]);
-      i++;
-      j++;
+      sfrp->qual[k] = qual_delta + qv_from_pr_corr(columns[k].posterior[columns[k].base_call]);
       k++;
-    } else { // DELETION: nothing to report
-      i++;
     }
   }
-  assert(j == len);
 }
 
 
