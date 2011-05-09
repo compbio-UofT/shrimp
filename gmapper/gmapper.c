@@ -2021,6 +2021,31 @@ int main(int argc, char **argv){
 	  fputc('\n', stderr);
 	}
 
+	/* Set probabilities from scores */
+	pr_xover = pr_err_from_qv(15);
+	score_alpha = (double)crossover_score * log(2.0)/log(pr_xover/3);
+	pr_mismatch = 1.0/(1.0 + 1.0/3.0 * pow(2.0, ((double)match_score - (double)mismatch_score)/score_alpha));
+	score_beta = (double)match_score - 2 * score_alpha - score_alpha * log(1 - pr_mismatch)/log(2.0);
+	pr_del_open = pow(2.0, (double)a_gap_open_score/score_alpha);
+	pr_ins_open = pow(2.0, (double)b_gap_open_score/score_alpha);
+	pr_del_extend = pow(2.0, (double)a_gap_extend_score/score_alpha);
+	pr_ins_extend = pow(2.0, ((double)b_gap_extend_score - score_beta)/score_alpha);
+	fprintf(stderr, "probabilities from scores:\talpha=%.9g\tbeta=%.9g\npr_xover=%.9g\npr_mismatch=%.9g\npr_del_open=%.9g\tpr_del_extend=%.9g\t(pr_del1=%.9g)\npr_ins_open=%.9g\tpr_ins_extend=%.9g\t(pr_ins1=%.9g)\n",
+		score_alpha, score_beta, pr_xover, pr_mismatch,
+		pr_del_open, pr_del_extend, pr_del_open*pr_del_extend, 
+		pr_ins_open, pr_ins_extend, pr_ins_open*pr_ins_extend);
+
+	/* sanity check: */
+	fprintf(stderr, "scores from probabilities:\n");
+	fprintf(stderr, "match_score=%g\nmismatch_score=%g\ncrossover_score=%g\na_gap_open_score=%g\ta_gap_extend_score=%g\nb_gap_open_score=%g\tb_gap_extend_score=%g\n",
+		2 * score_alpha + score_beta,
+		2 * score_alpha + score_beta + score_alpha * log(pr_mismatch) / log(2.0),
+		score_alpha * log(pr_xover) / log(2.0),
+		score_alpha * log(pr_del_open) / log(2.0),
+		score_alpha * log(pr_del_extend) / log(2.0),
+		score_alpha * log(pr_ins_open) / log(2.0),
+		score_alpha * log(pr_ins_extend) / log(2.0) + score_beta);
+
 
 	// set up new options structure
 	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
@@ -2314,7 +2339,8 @@ int main(int argc, char **argv){
 
 	  /* post_sw */
 	  if (shrimp_mode == MODE_COLOUR_SPACE) {
-	    post_sw_setup(.001, Qflag, max_window_len + longest_read_len, 0, 33);
+	    post_sw_setup(pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
+			  false, max_window_len + longest_read_len, 0, 33);
 	  }
 
 	}

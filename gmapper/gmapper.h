@@ -92,6 +92,15 @@ EXTERN(int,		b_gap_open_score,	DEF_LS_B_GAP_OPEN);
 EXTERN(int,		b_gap_extend_score,	DEF_LS_B_GAP_EXTEND);
 EXTERN(int,		crossover_score,	DEF_CS_XOVER_SCORE);
 
+EXTERN(double,		score_alpha,		0.0);
+EXTERN(double,		score_beta,		0.0);
+EXTERN(double,		pr_mismatch,		0.0);
+EXTERN(double,		pr_xover,		0.0);
+EXTERN(double,		pr_del_open,		0.0);
+EXTERN(double,		pr_del_extend,		0.0);
+EXTERN(double,		pr_ins_open,		0.0);
+EXTERN(double,		pr_ins_extend,		0.0);
+
 EXTERN(double,		window_gen_threshold,	DEF_WINDOW_GEN_THRESHOLD);
 EXTERN(double,		sw_vect_threshold,	DEF_SW_VECT_THRESHOLD);
 EXTERN(double,		sw_full_threshold,	DEF_SW_FULL_THRESHOLD);

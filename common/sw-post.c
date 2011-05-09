@@ -39,7 +39,12 @@
 static int	initialized;
 
 static double	pr_snp;
-static double	pr_error;
+static double	pr_xover;
+static double	pr_del_open;
+static double	pr_del_extend;
+static double	pr_ins_open;
+static double	pr_ins_extend;
+
 static bool	use_read_qvs;
 static bool	use_sanger_qvs;
 static int	default_qual;		// if no qvs, use this instead
@@ -80,7 +85,7 @@ typedef struct column{
 struct column *	columns;
 
 
-#pragma omp threadprivate(initialized,pr_snp,pr_error,use_read_qvs,default_qual,len,qual_vector_offset,qual_delta,columns)
+#pragma omp threadprivate(initialized,pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,use_read_qvs,default_qual,len,qual_vector_offset,qual_delta,columns)
 
 
 /*********************************************************************************
@@ -114,7 +119,7 @@ double nodePrior(states* allstates, int i, int j) { //i  is state, j is node in 
       val = val - log(errrate/3.0);
     }
   }
-  //fprintf(stdout, "%g\n", val);
+  //fprintf(stderr, "nodeprior: %g", val);
   for (k = 0; k < allstates[i].ncols; k++) {
     col = allstates[i].cols[k];
     errrate = allstates[i].colserrrate[k];
@@ -124,7 +129,7 @@ double nodePrior(states* allstates, int i, int j) { //i  is state, j is node in 
     else {
       val = val - log(errrate/3.0);
     }
-    //fprintf(stdout, "%d %g\n", col, val);
+    //fprintf(stderr, " %g\n", val);
   }
   return val;
 }
@@ -144,13 +149,13 @@ void printStates(states* allstates, int stateslen, FILE* stream) {
   for (i=0; i< stateslen; i++) {
     fprintf(stream, "\nFORWARDSS[%d] ",i);
     for (j=0; j< 16; j++) {
-      fprintf(stream, "%.5g ",allstates[i].forwards[j]);
+      fprintf(stream, "%.5g ",allstates[i].forwards[j] + allstates[i].forwscale);
     }    
   }
   for (i=0; i< stateslen; i++) {
     fprintf(stream, "\nBACKWARDSS[%d] ",i);
     for (j=0; j< 16; j++) {
-      fprintf(stream, "%.5g ",allstates[i].backwards[j]);
+      fprintf(stream, "%.5g ",allstates[i].backwards[j] + allstates[i].backscale);
     }    
   }
 
@@ -285,7 +290,7 @@ double do_backwards (states* allstates, int stateslen) {
       }
       //      fprintf(stdout, "bw was [%d, %d] = %g\n", i, j, allstates[i].backwards[j]); 
 
-      allstates[i].backwards[j] = -log(allstates[i].backwards[j]) + neglogfourth;
+      allstates[i].backwards[j] = -log(allstates[i].backwards[j]); // + neglogfourth;
       allstates[i].backscale = MIN2 (allstates[i].backscale, allstates[i].backwards[j]);
     }
     for (j = 0; j < 16; j++) {
@@ -300,7 +305,7 @@ double do_backwards (states* allstates, int stateslen) {
   i = 0;
   for (j = 0; j < 16; j++) {
     if (left(j) == init_bp) { // matei change: second letter emission
-      val += exp(-1*(allstates[i].backwards[j] + nodePrior(allstates,i,j) + neglogfourth));
+      val += exp(-1*(allstates[i].backwards[j] + nodePrior(allstates,i,j))); // + neglogfourth));
     }
   }
   return -log(val) + allstates[0].backscale;
@@ -314,7 +319,7 @@ double do_forwards (states* allstates, int stateslen) {
   allstates[i].forwscale = 999999999;
   for (j = 0; j < 16; j++) {
     if (left(j) == init_bp) { // matei change: second letter emission
-      allstates[i].forwards[j] = nodePrior(allstates,i,j) + neglogfourth;
+      allstates[i].forwards[j] = nodePrior(allstates,i,j); // + neglogfourth;
       allstates[i].forwscale = MIN2 (allstates[i].forwscale, allstates[i].forwards[j]);
     } else {
       allstates[i].forwards[j] = HUGE_VAL;
@@ -334,7 +339,7 @@ double do_forwards (states* allstates, int stateslen) {
 	  allstates[i].forwards[j] += exp(-1*(allstates[i-1].forwards[k]));
 	}
       }
-      allstates[i].forwards[j] = val + neglogfourth - log(allstates[i].forwards[j]);
+      allstates[i].forwards[j] = val - log(allstates[i].forwards[j]); //+ neglogfourth;
       allstates[i].forwscale = MIN2 (allstates[i].forwscale, allstates[i].forwards[j]);
     }
     for (j = 0; j < 16; j++) {
@@ -369,7 +374,8 @@ double forward_backward (states* allstates, int stateslen) {
 
 
 void
-post_sw_setup(double _pr_snp, bool _use_read_qvs, int max_len, int _qual_vector_offset, int _qual_delta)
+post_sw_setup(double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_del_extend, double _pr_ins_open, double _pr_ins_extend,
+	      bool _use_read_qvs, int max_len, int _qual_vector_offset, int _qual_delta)
 {
   assert(0 == BASE_0);
   assert((BASE_A ^ BASE_C) == BASE_1);
@@ -380,10 +386,17 @@ post_sw_setup(double _pr_snp, bool _use_read_qvs, int max_len, int _qual_vector_
   assert((BASE_G ^ BASE_T) == BASE_1);
 
   pr_snp = _pr_snp;
+  pr_xover = _pr_xover;
+  pr_del_open = _pr_del_open;
+  pr_del_extend = _pr_del_extend;
+  pr_ins_open = _pr_ins_open;
+  pr_ins_extend = _pr_ins_extend;
+
   use_read_qvs = _use_read_qvs;
   if (!use_read_qvs) {
-    pr_error = 0.01;
-    default_qual = 20;
+    default_qual = qv_from_pr_err(pr_xover);
+    qual_delta = _qual_delta;
+    //pr_xover = pr_err_from_qv(default_qual);
   } else {
     qual_vector_offset = _qual_vector_offset;
     qual_delta = _qual_delta;
@@ -453,7 +466,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
 	//qv[len] = MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta;
 	min_qv = 10000;
       } else {
-	columns[len].colserrrate[0] = pr_err_from_qv(default_qual);
+	columns[len].colserrrate[0] = pr_xover;
 	//qv[len] = default_qual;
       }
       if (!use_sanger_qvs) {
@@ -489,7 +502,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
 
 
 static void
-put_base_qualities(struct sw_full_results * sfrp)
+get_base_qualities(struct sw_full_results * sfrp)
 {
   int i, k;
 
@@ -500,6 +513,31 @@ put_base_qualities(struct sw_full_results * sfrp)
       k++;
     }
   }
+}
+
+
+static double
+get_posterior(struct sw_full_results * sfrp, double total_score)
+{
+  int i;
+  double res;
+
+  res = exp(- (total_score)); // - len * neglogfourth));
+  for (i = 0; sfrp->dbalign[i] != 0; i++) {
+    if (sfrp->dbalign[i] == '-') {
+      res *= pr_ins_extend;
+      if (sfrp->dbalign[i-1] != '-') {
+	res *= pr_ins_open;
+      }
+    } else if (sfrp->qralign[i] == '-') {
+      res *= pr_del_extend;
+      if (sfrp->qralign[i-1] != '-') {
+	res *= pr_del_open;
+      }
+    }
+  }
+
+  return res;
 }
 
 
@@ -578,8 +616,8 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
   //fw_bw_setup();
   total_pr = forward_backward(columns, len);
   post_traceback(columns, len, total_pr);
-  put_base_qualities(sfrp);
-  sfrp->posterior = exp(-total_pr);
+  get_base_qualities(sfrp);
+  sfrp->posterior = get_posterior(sfrp, total_pr);
 
 #ifdef DEBUG_POST_SW
   fprintf(stderr, "don: ");

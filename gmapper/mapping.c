@@ -2168,7 +2168,8 @@ new_read_pass2(struct read_entry * re,
       if (rh->score_full > 0) {
 	hit_run_post_sw(re, rh);
 	fprintf(stderr, "read:%s\tSW-prob:%g\tposterior:%g\n", re->name,
-		pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * match_score)/3.76),
+		pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta))/score_alpha)
+		* pow(1.0 - pr_xover, rh->sfrp->rmapped - rh->sfrp->crossovers),
 		rh->sfrp->posterior);
       }
 
