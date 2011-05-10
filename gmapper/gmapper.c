@@ -1145,6 +1145,11 @@ print_settings() {
     }
   }
   fprintf(stderr, "\n");
+
+  if (Qflag) {
+    fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Filter by minimum qv:", min_avg_qv, min_avg_qv < 0? " (disabled)" : "");
+  }
+
   return;
 
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
@@ -1205,9 +1210,6 @@ print_settings() {
   if (use_regions) {
   }
 
-  if(Qflag) {
-    fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Filter by minimum qv:", min_avg_qv, min_avg_qv < 0? " (disabled)" : "");
-  }
 }
 
 static int
