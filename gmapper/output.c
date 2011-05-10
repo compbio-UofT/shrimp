@@ -601,7 +601,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		//MERGESAM DEPENDS ON SCORE BEING FIRST!
 	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
 		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
-				   rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
+				   rh->score_full,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
 	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX0:i:%d", rh->matches); // REMOVE
 	if (!all_contigs) {
 	  *output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tZ0:f:%.5e\tZ1:f:%.5e",
