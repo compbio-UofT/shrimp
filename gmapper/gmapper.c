@@ -372,16 +372,18 @@ launch_scan_threads(){
 	  }
 	}
 	//compute average quality value
+	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	if (Qflag && min_avg_qv >= 0) {
+	  //fprintf(stderr, "read:[%s] qual:[%s]", re_buffer[i].name, re_buffer[i].qual);
 	  re_buffer[i].avg_qv = 0;
 	  for (char * c = re_buffer[i].qual; *c != 0; c++) {
 	    re_buffer[i].avg_qv += (*c - qual_delta);
 	  }
 	  re_buffer[i].avg_qv /= re_buffer[i].read_len;
+	  //fprintf(stderr, " avg_qv:%d\n", re_buffer[i].avg_qv);
 	}
 
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
-	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 	  re_buffer[i].read_len--;
@@ -404,7 +406,7 @@ launch_scan_threads(){
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
 		    re_buffer[i].name);
 	    re_buffer[i].max_n_kmers=1;
-	  } else {
+	  } else if (re_buffer[i].read_len > longest_read_len) {
 	    fprintf(stderr, "warning: skipping read [%s]; it has length %d, maximum allowed is %d. Use --longest-read ?\n",
 		    re_buffer[i].name, re_buffer[i].read_len, longest_read_len);
 	  }
