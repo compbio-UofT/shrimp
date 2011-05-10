@@ -943,7 +943,7 @@ pretty_print(int i, int j, int k)
       fprintf(stderr, "sw-full-cs: crossover in \"deletion\" (really, insertion):\n");
       fprintf(stderr, "db:");
       for (a = 0; a < _glen; a++)
-	fprintf(stderr, "%c", base_translate(db[a]), false);
+	fprintf(stderr, "%c", base_translate(db[a], false));
       fprintf(stderr, "\n");
       fprintf(stderr, "qr[0]:");
       for (a = 0; a < _rlen; a++)
@@ -1192,6 +1192,10 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   } else {
     sfr->score = 0;
   }
+
+#ifdef DEBUG_SW
+  fprintf(stderr, "reported alignment:\n\t%s\n\t%s\n", sfr->dbalign, sfr->qralign);
+#endif
 
   //swcells += (glen * rlen);
   swticks += (rdtsc() - before);

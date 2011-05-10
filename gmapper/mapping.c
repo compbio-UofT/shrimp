@@ -1369,7 +1369,9 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 
   assert(region_map[0][0] != NULL);
 
-  for (sn = options->min_seed; sn <= options->max_seed; sn++) {
+  for (sn = (options->min_seed >= 0? options->min_seed : 0);
+       sn <= (options->max_seed >= 0? options->max_seed: n_seeds - 1);
+       sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
 
