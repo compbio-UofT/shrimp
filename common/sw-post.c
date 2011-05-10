@@ -48,20 +48,14 @@ static double	pr_ins_extend;
 static bool	use_read_qvs;
 static bool	use_sanger_qvs;
 static int	default_qual;		// if no qvs, use this instead
-
-//static int *	db;
-//static int *	qr;
-//static int *	qv;
-static int	init_bp;
-static int	len;
-
 static int	qual_vector_offset;	// i.e. is there a useless qv for the initial base in cs?
 static int	qual_delta;		// how much to subtract from chars to get the int
 
-static double	total_pr;
-static double	neglogsixteenth;
-static double	neglogfourth;
+static int	init_bp;
+static int	len;
 
+//static double	neglogsixteenth;
+//static double	neglogfourth;
 
 typedef struct column{
   double forwards[16]; //we'll misuse this for the viterbi
@@ -84,8 +78,14 @@ typedef struct column{
 
 struct column *	columns;
 
+static uint64_t		ticks, cells, invocs;
 
-#pragma omp threadprivate(initialized,pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,use_read_qvs,default_qual,len,qual_vector_offset,qual_delta,columns)
+
+#pragma omp threadprivate(initialized,\
+			  pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,\
+			  use_read_qvs,use_sanger_qvs,default_qual,qual_vector_offset,qual_delta,\
+			  init_bp,len,columns,\
+			  ticks,cells,invocs)
 
 
 /*********************************************************************************
@@ -360,7 +360,11 @@ double forward_backward (states* allstates, int stateslen) {
   double no1, no2;
   no1 = do_forwards(allstates, stateslen);
   no2 = do_backwards(allstates, stateslen);
+
+#ifdef DEBUG_POST_SW
   fprintf (stderr, "SANITY CHECK: no1 == no2 %g %g\n", no1, no2);
+#endif
+
   // don't really want a hard assert due to precision issues
   return no1;
 }
@@ -373,9 +377,11 @@ double forward_backward (states* allstates, int stateslen) {
  *********************************************************************************/
 
 
-void
-post_sw_setup(double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_del_extend, double _pr_ins_open, double _pr_ins_extend,
-	      bool _use_read_qvs, int max_len, int _qual_vector_offset, int _qual_delta)
+int
+post_sw_setup(int max_len,
+	      double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_del_extend, double _pr_ins_open, double _pr_ins_extend,
+	      bool _use_read_qvs, int _qual_vector_offset, int _qual_delta,
+	      bool reset_stats)
 {
   assert(0 == BASE_0);
   assert((BASE_A ^ BASE_C) == BASE_1);
@@ -392,24 +398,19 @@ post_sw_setup(double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_
   pr_ins_open = _pr_ins_open;
   pr_ins_extend = _pr_ins_extend;
 
+  qual_delta = _qual_delta;
   use_read_qvs = _use_read_qvs;
   if (!use_read_qvs) {
     default_qual = qv_from_pr_err(pr_xover);
-    qual_delta = _qual_delta;
     //pr_xover = pr_err_from_qv(default_qual);
   } else {
     qual_vector_offset = _qual_vector_offset;
-    qual_delta = _qual_delta;
   }
   use_sanger_qvs = true;
 
-  neglogsixteenth = -log(1.0/16.0);
-  neglogfourth = -log(1.0/4.0);
+  //neglogsixteenth = -log(1.0/16.0);
+  //neglogfourth = -log(1.0/4.0);
 
-  //db = (int *)xmalloc(max_len * sizeof(db[0]));
-  //qr = (int *)xmalloc(max_len * sizeof(qr[0]));
-  //qv = (int *)xmalloc(max_len * sizeof(qv[0]));
-  //tmp = (int *)xmalloc(max_len * sizeof(tmp[0]));
   columns = (struct column *)xmalloc(max_len * sizeof(columns[0]));
   for (int i = 0; i < max_len; i++) {
     columns[i].lets = (int *)xmalloc(1 * sizeof(columns[i].lets[0]));
@@ -418,7 +419,34 @@ post_sw_setup(double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_
     columns[i].colserrrate = (double *)xmalloc(1 * sizeof(columns[i].colserrrate[0]));
   }
 
+  if (reset_stats)
+    ticks = cells = invocs = 0;
+
   initialized = 1;
+
+  return 1;
+}
+
+
+int
+post_sw_cleanup()
+{
+  free(columns);
+  return 1;
+}
+
+
+int
+post_sw_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks)
+{
+  if (_invocs != NULL)
+    *_invocs = invocs;
+  if (_cells != NULL)
+    *_cells = cells;
+  if (_ticks != NULL)
+    *_ticks = ticks;
+
+  return 1;
 }
 
 
@@ -447,27 +475,22 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
 	columns[len].nlets = 1;
 	columns[len].lets[0] = fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]); // => BASE_A/C/G/T
 	columns[len].letserrrate[0] = pr_snp;
-	//db[len] = fasta_get_initial_base(COLOUR_SPACE, &sfrp->dbalign[i]);
       } else {
 	columns[len].nlets = 0;
-	//db[len] = BASE_N;
       }
 
       // MATCH or INSERTION
 
       columns[len].ncols = 1;
       columns[len].cols[0] = EXTRACT(read, j) ^ prev_run;
-      //qr[len] = EXTRACT(read, j) ^ prev_run;
       columns[len].base_call = fasta_get_initial_base(COLOUR_SPACE, &sfrp->qralign[i]);
 
       if (use_read_qvs) {
 	columns[len].colserrrate[0] = pr_err_from_qv(MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta);
 
-	//qv[len] = MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta;
 	min_qv = 10000;
       } else {
 	columns[len].colserrrate[0] = pr_xover;
-	//qv[len] = default_qual;
       }
       if (!use_sanger_qvs) {
 	columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
@@ -522,7 +545,7 @@ get_posterior(struct sw_full_results * sfrp, double total_score)
   int i;
   double res;
 
-  res = exp(- (total_score)); // - len * neglogfourth));
+  res = exp(-total_score); // - len * neglogfourth));
   for (i = 0; sfrp->dbalign[i] != 0; i++) {
     if (sfrp->dbalign[i] == '-') {
       res *= pr_ins_extend;
@@ -548,6 +571,12 @@ void
 post_sw(uint32_t * read, int _init_bp, char * qual,
 	struct sw_full_results * sfrp)
 {
+  double total_score;
+  llint before;
+
+  before = rdtsc();
+  invocs++;
+
   assert(sfrp != NULL);
   assert(sfrp->dbalign != NULL);
 
@@ -613,11 +642,10 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 #endif
 
   load_local_vectors(read, _init_bp, qual, sfrp);
-  //fw_bw_setup();
-  total_pr = forward_backward(columns, len);
-  post_traceback(columns, len, total_pr);
+  total_score = forward_backward(columns, len);
+  post_traceback(columns, len, total_score);
   get_base_qualities(sfrp);
-  sfrp->posterior = get_posterior(sfrp, total_pr);
+  sfrp->posterior = get_posterior(sfrp, total_score);
 
 #ifdef DEBUG_POST_SW
   fprintf(stderr, "don: ");
@@ -649,9 +677,9 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
   }
   fprintf(stderr, "\n");
 
-
-
   printStates(columns, len, stderr);
 #endif
 
+  cells += 16*len;
+  ticks += (rdtsc() - before);
 }

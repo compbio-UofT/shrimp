@@ -16,6 +16,9 @@ struct sw_full_results {
 	int deletions;				/* # of deletions */
 	int score;				/* final SW score */
 
+  int	posterior_score;
+  int	pct_posterior_score;
+
 	char *dbalign;				/* genome align string */
 	char *qralign;				/* read align string */
   char * qual;	/* base qualities string, used in CS only */

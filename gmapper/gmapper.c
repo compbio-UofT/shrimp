@@ -517,6 +517,11 @@ print_statistics()
 	uint64_t f2_total_invocs = 0, f2_total_cells = 0;
 	double f2_total_secs = 0, f2_total_cellspersec = 0;
 
+	uint64_t fwbw_invocs[num_threads], fwbw_cells[num_threads], fwbw_ticks[num_threads];
+	double fwbw_secs[num_threads], fwbw_cellspersec[num_threads];
+	uint64_t fwbw_total_invocs = 0, fwbw_total_cells = 0;
+	double fwbw_total_secs = 0, fwbw_total_cellspersec = 0;
+
 	double scan_secs[num_threads], readload_secs[num_threads];
 	double anchor_list_secs[num_threads], hit_list_secs[num_threads];
 	double region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
@@ -542,15 +547,22 @@ print_statistics()
 	  if (isnan(f1_cellspersec[tid]))
 	    f1_cellspersec[tid] = 0;
 
-	  if (shrimp_mode == MODE_COLOUR_SPACE)
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
 	    sw_full_cs_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
-	  else
+	    post_sw_stats(&fwbw_invocs[tid], &fwbw_cells[tid], &fwbw_ticks[tid]);
+	  } else {
 	    sw_full_ls_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
+	  }
 
 	  f2_secs[tid] = (double)f2_ticks[tid] / hz;
 	  f2_cellspersec[tid] = (double)f2_cells[tid] / f2_secs[tid];
 	  if (isnan(f2_cellspersec[tid]))
 	    f2_cellspersec[tid] = 0;
+
+	  fwbw_secs[tid] = (double)fwbw_ticks[tid] / hz;
+	  fwbw_cellspersec[tid] = (double)fwbw_cells[tid] / fwbw_secs[tid];
+	  if (isnan(fwbw_cellspersec[tid]))
+	    fwbw_cellspersec[tid] = 0;
 
 	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
@@ -585,25 +597,32 @@ print_statistics()
 	  f2_total_secs += f2_secs[i];
 	  f2_total_invocs += f2_invocs[i];
 	  f2_total_cells += f2_cells[i];
+
+	  fwbw_total_secs += fwbw_secs[i];
+	  fwbw_total_invocs += fwbw_invocs[i];
+	  fwbw_total_cells += fwbw_cells[i];
 	}
 	f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
 	f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
+	fwbw_total_cellspersec = fwbw_total_secs == 0? 0 : (double)fwbw_total_cells / fwbw_total_secs;
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
 		  "", "Read Load", "Scan", "Reg Cnts", "Anch List", "Hit List", "Dup Remv",
-		  "Vector SW", "Scalar SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+		  "Vector SW", "Scalar SW", "Post SW", "Wait");
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
 		  "", "Time", "Time", "Time", "Time", "Time", "Time",
-		  "Invocs", "Time", "Invocs", "Time", "Time");
+		  "Invocs", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
 		    i, readload_secs[i], scan_secs[i],
 		    region_counts_secs[i], anchor_list_secs[i], hit_list_secs[i], duplicate_removal_secs[i],
 		    comma_integer(f1_invocs[i]), f1_secs[i],
-		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
+		    comma_integer(f2_invocs[i]), f2_secs[i],
+		    comma_integer(fwbw_invocs[i]), fwbw_secs[i],
+		    (double)wait_ticks[i] / hz);
 	  }
           for (i = 0; i < num_threads; i++) {
             fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
@@ -643,6 +662,18 @@ print_statistics()
 		"Cells Computed:", (double)f2_total_cells / 1.0e6);
 	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
 		"Cells per Second:", f2_total_cellspersec / 1.0e6);
+
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "%sForward-Backward:\n", my_tab);
+	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+		"Run-time:", fwbw_total_secs);
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		"Invocations:", comma_integer(fwbw_total_invocs));
+	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+		"Cells Computed:", (double)fwbw_total_cells / 1.0e6);
+	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+		"Cells per Second:", fwbw_total_cellspersec / 1.0e6);
 
 	fprintf(stderr, "\n");
 
@@ -2046,6 +2077,7 @@ int main(int argc, char **argv){
 		score_alpha * log(pr_ins_open) / log(2.0),
 		score_alpha * log(pr_ins_extend) / log(2.0) + score_beta);
 
+	score_difference_mq_cutoff = (int)rint(10.0 * score_alpha);
 
 	// set up new options structure
 	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
@@ -2339,8 +2371,9 @@ int main(int argc, char **argv){
 
 	  /* post_sw */
 	  if (shrimp_mode == MODE_COLOUR_SPACE) {
-	    post_sw_setup(pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
-			  false, max_window_len + longest_read_len, 0, 33);
+	    post_sw_setup(max_window_len + longest_read_len,
+			  pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
+			  Qflag, 0, 33, true);
 	  }
 
 	}
@@ -2411,6 +2444,7 @@ int main(int argc, char **argv){
 	  sw_vector_cleanup();
 	  if (shrimp_mode==MODE_COLOUR_SPACE) {
 	    sw_full_cs_cleanup();
+	    post_sw_cleanup();
 	  }
 	  sw_full_ls_cleanup();
 	  f1_free();

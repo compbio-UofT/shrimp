@@ -334,10 +334,10 @@ read_get_anchor_list(struct read_entry * re, bool collapse) {
   || defined (DEBUG_HIT_LIST_PASS1) || defined (DEBUG_HIT_LIST_PAIRED_HITS)
 static void
 dump_hit(struct read_hit * hit) {
-  fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(wg=%d,vc=%d,fl=%d),"
+  fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(wg=%d,vc=%d,fl=%d,poster=%.5g),"
 	          "matches:%d,pair_min:%d,pair_max:%d,anchor:(x=%lld,y=%lld,ln=%d,wd=%d))\n",
 	  hit->cn, hit->st, hit->gen_st, hit->g_off, hit->w_len,
-	  hit->score_window_gen, hit->score_vector, hit->score_full,
+	  hit->score_window_gen, hit->score_vector, hit->score_full, hit->sfrp != NULL? hit->sfrp->posterior : -1.0,
 	  hit->matches, hit->pair_min, hit->pair_max,
 	  hit->anchor.x, hit->anchor.y, hit->anchor.length, hit->anchor.width);
 }
@@ -1804,6 +1804,7 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
 	re->hits[st][re->n_hits[st]].score_max = (re->read_len < w_len? re->read_len : w_len) * match_score;
 	re->hits[st][re->n_hits[st]].pair_min = -1;
 	re->hits[st][re->n_hits[st]].pair_max = -1;
+	re->hits[st][re->n_hits[st]].mapping_quality = 255;
 	re->n_hits[st]++;
       }
   }
@@ -2145,6 +2146,10 @@ static void
 hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
 {
   post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
+  rh->sfrp->posterior_score = (int)rint(score_alpha * log(rh->sfrp->posterior) / log(2.0) + (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta));
+  rh->sfrp->pct_posterior_score = (1000 * 100 * rh->sfrp->posterior_score)/rh->score_max;
+  rh->score_full = rh->sfrp->posterior_score;
+  rh->pct_score_full = rh->sfrp->pct_posterior_score;
 }
 
 
@@ -2165,12 +2170,14 @@ new_read_pass2(struct read_entry * re,
     struct read_hit * rh = hits_pass1[i];
     if (rh->score_full < 0 || rh->sfrp == NULL) {
       hit_run_full_sw(re, rh, (int)abs_or_pct(options->threshold, rh->score_max));
-      if (rh->score_full > 0) {
+      if (compute_mapping_qualities && rh->score_full > 0) {
 	hit_run_post_sw(re, rh);
+	/*
 	fprintf(stderr, "read:%s\tSW-prob:%g\tposterior:%g\n", re->name,
 		pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta))/score_alpha)
 		* pow(1.0 - pr_xover, rh->sfrp->rmapped - rh->sfrp->crossovers),
 		rh->sfrp->posterior);
+	*/
       }
 
       rh->pass2_key = (IS_ABSOLUTE(options->threshold)? rh->score_full : (int)rh->pct_score_full);
@@ -2194,6 +2201,22 @@ new_read_pass2(struct read_entry * re,
 
   // sort by non-increasing score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_score_cmp);
+
+  if (compute_mapping_qualities && *n_hits_pass2 > 0) {
+    // compute Z
+    re->mq_denominator = hits_pass2[0]->sfrp->posterior;
+    for (i = 1; i < *n_hits_pass2 && hits_pass2[i]->score_full > hits_pass2[0]->score_full - score_difference_mq_cutoff; i++) {
+      re->mq_denominator += hits_pass2[i]->sfrp->posterior;
+    }
+
+    // compute mapping qualities
+    for (i = 0; i < *n_hits_pass2 && hits_pass2[i]->score_full > hits_pass2[0]->score_full - score_difference_mq_cutoff; i++) {
+      hits_pass2[i]->mapping_quality = qv_from_pr_corr(hits_pass2[i]->sfrp->posterior / re->mq_denominator);
+    }
+    for ( ; i < *n_hits_pass2; i++) {
+      hits_pass2[i]->mapping_quality = 0;
+    }
+  }
 
   // trim excess mappings
   if (*n_hits_pass2 > options->num_outputs)

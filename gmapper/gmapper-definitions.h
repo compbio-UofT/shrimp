@@ -82,6 +82,7 @@ typedef struct read_entry {
   struct range_restriction * ranges;
   char *        range_string;
 
+  double	mq_denominator;
   int           n_anchors[2];
   int           n_hits[2];
   int           n_ranges;
@@ -121,6 +122,7 @@ typedef struct read_hit {
   int		pass1_key;
   int		pass2_key;
   int           score_max;
+  int		mapping_quality;
   int           matches;
   int           cn;
   int           pair_min; // -1 means none

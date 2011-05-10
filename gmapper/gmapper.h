@@ -63,6 +63,9 @@ EXTERN(bool,		trim_second,		true);
 EXTERN(char *,		save_file,		NULL);
 EXTERN(char *,		load_file,		NULL);
 EXTERN(unsigned int,	progress,		DEF_PROGRESS);
+EXTERN(int,		score_difference_mq_cutoff,	0);
+EXTERN(bool,		compute_mapping_qualities,	true);
+EXTERN(bool,		all_contigs,		false);
 
 
 /* Flags */
