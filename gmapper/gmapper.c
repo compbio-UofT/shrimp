@@ -1191,6 +1191,9 @@ print_settings() {
   if (use_regions) {
   }
 
+  if(Qflag) {
+    fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Filter by minimum qv:", min_avg_qv, min_avg_qv < 0? " (disabled)" : "");
+  }
 }
 
 static int
@@ -1840,6 +1843,12 @@ int main(int argc, char **argv){
 		    xrealloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]));
 		  c = strtok(NULL, ";");
 		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1]);
+		  break;
+		case 30:
+		  min_avg_qv = atoi(optarg);
+		  if (min_avg_qv < -2 || min_avg_qv > 40) {
+		    fprintf(stderr, "error: invalid minimum average quality value (%s)\n", optarg);
+		  }
 		  break;
 		default:
 			usage(progname, false);
