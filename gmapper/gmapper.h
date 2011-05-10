@@ -70,6 +70,7 @@ EXTERN(bool,		all_contigs,			false);
 EXTERN(bool,		use_sanger_qvs,			true);
 EXTERN(int,		qual_vector_offset,		0);
 EXTERN(int,		qual_delta,			33);
+EXTERN(int,		min_avg_qv,			10);
 
 
 /* Flags */

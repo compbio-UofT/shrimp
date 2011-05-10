@@ -102,6 +102,7 @@ typedef struct read_entry {
   int           max_n_kmers;    /* = read_len - min_seed_span + 1 */
   int           min_kmer_pos;   /* = 0 in LS; = 1 in CS */
   int           input_strand;
+  int		avg_qv;
   bool          is_rna;
   bool		ignore;
   bool		paired;

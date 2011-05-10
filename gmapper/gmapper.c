@@ -370,7 +370,15 @@ launch_scan_threads(){
 	  } else {
 	    trim_read(&re_buffer[i]);
 	  }
-	}	
+	}
+	//compute average quality value
+	if (Qflag && min_avg_qv >= 0) {
+	  re_buffer[i].avg_qv = 0;
+	  for (char * c = re_buffer[i].qual; *c != 0; c++) {
+	    re_buffer[i].avg_qv += (*c - qual_delta);
+	  }
+	  re_buffer[i].avg_qv /= re_buffer[i].read_len;
+	}
 
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
@@ -390,7 +398,8 @@ launch_scan_threads(){
 
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
-	    || re_buffer[i].read_len > longest_read_len) {
+	    || re_buffer[i].read_len > longest_read_len
+	    || (min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv)) { // ignore reads with low avg qv
 	  if (re_buffer[i].max_n_kmers < 0) {
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
 		    re_buffer[i].name);
@@ -400,12 +409,20 @@ launch_scan_threads(){
 		    re_buffer[i].name, re_buffer[i].read_len, longest_read_len);
 	  }
 	  if (pair_mode == PAIR_NONE) {
-	    read_free_full(&re_buffer[i]);
-	  } else if (i%2 == 1) {
-	    read_free_full(&re_buffer[i-1]);
+	    #pragma omp atomic
+	    total_reads_dropped++;
+
 	    read_free_full(&re_buffer[i]);
 	  } else {
-	    re_buffer[i].ignore = true;
+	    #pragma omp atomic
+	    total_pairs_dropped++;
+
+	    if (i%2 == 1) {
+	      read_free_full(&re_buffer[i-1]);
+	      read_free_full(&re_buffer[i]);
+	    } else {
+	      re_buffer[i].ignore = true;
+	    }
 	  }
 	  continue;	
 	}
