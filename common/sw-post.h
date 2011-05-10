@@ -5,7 +5,7 @@
 #include "../common/sw-full-common.h"
 
 
-int	post_sw_setup(int, double, double, double, double, double, double, bool, int, int, bool);
+int	post_sw_setup(int, double, double, double, double, double, double, bool, bool, int, int, bool);
 int	post_sw_cleanup();
 int	post_sw_stats(uint64_t *, uint64_t *, uint64_t *);
 

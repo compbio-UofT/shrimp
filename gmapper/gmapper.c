@@ -1073,14 +1073,14 @@ print_settings() {
 
   // Scores
   fprintf(stderr, "\n");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Match Score:", match_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Mismatch Score:", mismatch_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Ref):", a_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Qry):", b_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Ref):", a_gap_extend_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Qry):", b_gap_extend_score);
+  fprintf(stderr, "%s%-40s%-10d\n", my_tab, "SW Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Mismatch Score [Prob]:", mismatch_score, pr_mismatch);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Del Open Score [Prob]:", a_gap_open_score, pr_del_open);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Ins Open Score [Prob]:", b_gap_open_score, pr_ins_open);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Del Extend Score [Prob]:", a_gap_extend_score, pr_del_extend);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Ins Extend Score [Prob]:", b_gap_extend_score, pr_ins_extend);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Crossover Score:", crossover_score);
+    fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Crossover Score [Prob]:", crossover_score, pr_xover);
   }
 
   fprintf(stderr, "\n");
@@ -2053,31 +2053,46 @@ int main(int argc, char **argv){
 	}
 
 	/* Set probabilities from scores */
-	pr_xover = pr_err_from_qv(15);
-	score_alpha = (double)crossover_score * log(2.0)/log(pr_xover/3);
-	pr_mismatch = 1.0/(1.0 + 1.0/3.0 * pow(2.0, ((double)match_score - (double)mismatch_score)/score_alpha));
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  // CS: pr_xover ~= .03 => alpha => pr_mismatch => rest
+	  pr_xover = .03;
+	  score_alpha = (double)crossover_score / (log(pr_xover/3)/log(2.0));
+	  pr_mismatch = 1.0/(1.0 + 1.0/3.0 * pow(2.0, ((double)match_score - (double)mismatch_score)/score_alpha));
+	} else {
+	  // LS: pr_mismatch ~= .01 => alpha => rest
+	  pr_mismatch = .01;
+	  score_alpha = ((double)match_score - (double)mismatch_score)/(log((1 - pr_mismatch)/(pr_mismatch/3.0))/log(2.0));
+	}
 	score_beta = (double)match_score - 2 * score_alpha - score_alpha * log(1 - pr_mismatch)/log(2.0);
 	pr_del_open = pow(2.0, (double)a_gap_open_score/score_alpha);
 	pr_ins_open = pow(2.0, (double)b_gap_open_score/score_alpha);
 	pr_del_extend = pow(2.0, (double)a_gap_extend_score/score_alpha);
 	pr_ins_extend = pow(2.0, ((double)b_gap_extend_score - score_beta)/score_alpha);
-	fprintf(stderr, "probabilities from scores:\talpha=%.9g\tbeta=%.9g\npr_xover=%.9g\npr_mismatch=%.9g\npr_del_open=%.9g\tpr_del_extend=%.9g\t(pr_del1=%.9g)\npr_ins_open=%.9g\tpr_ins_extend=%.9g\t(pr_ins1=%.9g)\n",
-		score_alpha, score_beta, pr_xover, pr_mismatch,
+
+	score_difference_mq_cutoff = (int)rint(10.0 * score_alpha);
+
+#ifdef DEBUG_SCORES
+	fprintf(stderr, "probabilities from scores:\talpha=%.9g\tbeta=%.9g\n", score_alpha, score_beta);
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+	  fprintf(stderr, "pr_xover=%.9g\n", pr_xover);
+	fprintf(stderr, "pr_mismatch=%.9g\npr_del_open=%.9g\tpr_del_extend=%.9g\t(pr_del1=%.9g)\npr_ins_open=%.9g\tpr_ins_extend=%.9g\t(pr_ins1=%.9g)\n",
+		pr_mismatch,
 		pr_del_open, pr_del_extend, pr_del_open*pr_del_extend, 
 		pr_ins_open, pr_ins_extend, pr_ins_open*pr_ins_extend);
 
-	/* sanity check: */
+	// sanity check:
 	fprintf(stderr, "scores from probabilities:\n");
-	fprintf(stderr, "match_score=%g\nmismatch_score=%g\ncrossover_score=%g\na_gap_open_score=%g\ta_gap_extend_score=%g\nb_gap_open_score=%g\tb_gap_extend_score=%g\n",
-		2 * score_alpha + score_beta,
-		2 * score_alpha + score_beta + score_alpha * log(pr_mismatch) / log(2.0),
-		score_alpha * log(pr_xover) / log(2.0),
+	fprintf(stderr, "match_score=%g\nmismatch_score=%g\n",
+		2 * score_alpha + score_beta + score_alpha * log(1 - pr_mismatch) / log(2.0),
+		2 * score_alpha + score_beta + score_alpha * log(pr_mismatch/3) / log(2.0));
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+	  fprintf(stderr, "crossover_score=%g\n", score_alpha * log(pr_xover/3) / log(2.0));
+	fprintf(stderr, "a_gap_open_score=%g\ta_gap_extend_score=%g\nb_gap_open_score=%g\tb_gap_extend_score=%g\n",
 		score_alpha * log(pr_del_open) / log(2.0),
 		score_alpha * log(pr_del_extend) / log(2.0),
 		score_alpha * log(pr_ins_open) / log(2.0),
 		score_alpha * log(pr_ins_extend) / log(2.0) + score_beta);
-
-	score_difference_mq_cutoff = (int)rint(10.0 * score_alpha);
+#endif
 
 	// set up new options structure
 	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
@@ -2373,7 +2388,7 @@ int main(int argc, char **argv){
 	  if (shrimp_mode == MODE_COLOUR_SPACE) {
 	    post_sw_setup(max_window_len + longest_read_len,
 			  pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
-			  Qflag, 0, 33, true);
+			  Qflag, use_sanger_qvs, qual_vector_offset, qual_delta, true);
 	  }
 
 	}

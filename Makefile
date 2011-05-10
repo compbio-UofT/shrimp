@@ -39,7 +39,7 @@ bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
 
-gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
+gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h gmapper/gmapper-defaults.h \
     common/debug.h common/f1-wrapper.h common/version.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 

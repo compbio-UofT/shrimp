@@ -36,18 +36,18 @@
 /* SW Scores */
 #define DEF_LS_MATCH_SCORE	10
 #define DEF_LS_MISMATCH_SCORE	-15
-#define DEF_LS_A_GAP_OPEN	-40
+#define DEF_LS_A_GAP_OPEN	-33
 #define DEF_LS_B_GAP_OPEN	DEF_LS_A_GAP_OPEN
 #define DEF_LS_A_GAP_EXTEND	-7
-#define DEF_LS_B_GAP_EXTEND	-5
+#define DEF_LS_B_GAP_EXTEND	-3
 
 #define DEF_CS_MATCH_SCORE	10
-#define DEF_CS_MISMATCH_SCORE	-27
-#define DEF_CS_XOVER_SCORE	-19
-#define DEF_CS_A_GAP_OPEN	-40
+#define DEF_CS_MISMATCH_SCORE	-24
+#define DEF_CS_XOVER_SCORE	-20
+#define DEF_CS_A_GAP_OPEN	-33
 #define DEF_CS_B_GAP_OPEN	DEF_CS_A_GAP_OPEN
 #define DEF_CS_A_GAP_EXTEND	-7
-#define DEF_CS_B_GAP_EXTEND	-5
+#define DEF_CS_B_GAP_EXTEND	-3
 
 
 /* Score Thresholds */

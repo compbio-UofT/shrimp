@@ -380,7 +380,7 @@ double forward_backward (states* allstates, int stateslen) {
 int
 post_sw_setup(int max_len,
 	      double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_del_extend, double _pr_ins_open, double _pr_ins_extend,
-	      bool _use_read_qvs, int _qual_vector_offset, int _qual_delta,
+	      bool _use_read_qvs, bool _use_sanger_qvs, int _qual_vector_offset, int _qual_delta,
 	      bool reset_stats)
 {
   assert(0 == BASE_0);
@@ -400,13 +400,13 @@ post_sw_setup(int max_len,
 
   qual_delta = _qual_delta;
   use_read_qvs = _use_read_qvs;
+  use_sanger_qvs = _use_sanger_qvs;
   if (!use_read_qvs) {
     default_qual = qv_from_pr_err(pr_xover);
     //pr_xover = pr_err_from_qv(default_qual);
   } else {
     qual_vector_offset = _qual_vector_offset;
   }
-  use_sanger_qvs = true;
 
   //neglogsixteenth = -log(1.0/16.0);
   //neglogfourth = -log(1.0/4.0);
@@ -532,7 +532,7 @@ get_base_qualities(struct sw_full_results * sfrp)
   sfrp->qual = (char *)xmalloc(strlen(sfrp->qralign) * sizeof(sfrp->qual[0]));
   for (i = 0, k = 0; sfrp->qralign[i] != 0; i++) {
     if (sfrp->qralign[i] != '-') {
-      sfrp->qual[k] = qual_delta + qv_from_pr_corr(columns[k].posterior[columns[k].base_call]);
+      sfrp->qual[k] = 33 + qv_from_pr_corr(columns[k].posterior[columns[k].base_call]); // always 33+ in SAM
       k++;
     }
   }

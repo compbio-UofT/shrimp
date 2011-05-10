@@ -2147,7 +2147,12 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 static void
 hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
 {
-  post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
+  } else { // LS: cheat; reuse SW score to get posterior
+    rh->sfrp->posterior = pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta))/score_alpha);
+  }
+
   rh->sfrp->posterior_score = (int)rint(score_alpha * log(rh->sfrp->posterior) / log(2.0) + (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta));
   rh->sfrp->pct_posterior_score = (1000 * 100 * rh->sfrp->posterior_score)/rh->score_max;
   rh->score_full = rh->sfrp->posterior_score;
