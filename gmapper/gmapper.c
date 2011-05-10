@@ -712,6 +712,10 @@ print_statistics()
 		    comma_integer(total_reads_matched),
 		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
 	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "... with QV >= 10:",
+		    comma_integer(total_reads_matched_conf),
+		    (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
+	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
 		    "Reads Dropped:",
 		    comma_integer(total_reads_dropped),
 		    (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
@@ -731,6 +735,10 @@ print_statistics()
 		    "Pairs Matched:",
 		    comma_integer(total_pairs_matched),
 		    (nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
+	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		    "... with QV >= 10:",
+		    comma_integer(total_pairs_matched_conf),
+		    (nreads == 0) ? 0 : ((double)total_pairs_matched_conf / (double)(nreads/2)) * 100);
 	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
 		    "Pairs Dropped:",
 		    comma_integer(total_pairs_dropped),
@@ -752,6 +760,10 @@ print_statistics()
 		      "Additional Reads Matched Unpaired:",
 		      comma_integer(total_reads_matched),
 		      (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+	      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+		      "... with QV >= 10:",
+		      comma_integer(total_reads_matched_conf),
+		      (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
 	      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
 		      "Total Unpaired Matches:",
 		      comma_integer(total_single_matches));

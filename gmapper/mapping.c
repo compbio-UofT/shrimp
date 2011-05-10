@@ -2219,10 +2219,15 @@ new_read_pass2(struct read_entry * re,
     // compute mapping qualities
     for (i = 0; i < *n_hits_pass2 && hits_pass2[i]->score_full > hits_pass2[0]->score_full - score_difference_mq_cutoff; i++) {
       hits_pass2[i]->mapping_quality = qv_from_pr_corr(hits_pass2[i]->sfrp->posterior / re->mq_denominator);
+      if (hits_pass2[i]->mapping_quality >= 10) {
+	#pragma omp atomic
+	total_reads_matched_conf++;
+      }
     }
     for ( ; i < *n_hits_pass2; i++) {
       hits_pass2[i]->mapping_quality = 0;
     }
+
   }
 
   // trim excess mappings

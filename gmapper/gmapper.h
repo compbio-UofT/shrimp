@@ -175,6 +175,8 @@ EXTERN(llint,			nreads,				0);
 EXTERN(llint,			nreads_mod,			0);
 EXTERN(llint,			total_reads_matched,		0);
 EXTERN(llint,			total_pairs_matched,		0);
+EXTERN(llint,			total_reads_matched_conf,	0);
+EXTERN(llint,			total_pairs_matched_conf,	0);
 EXTERN(llint,			total_reads_dropped,		0);
 EXTERN(llint,			total_pairs_dropped,		0);
 EXTERN(llint,			total_single_matches,		0);
