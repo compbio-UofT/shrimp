@@ -14,6 +14,10 @@ typedef struct fastx_readnames {
 	
 	bool reads_exhausted;	
 	file_buffer * fb;	
+	bool fastq_seen_name;//=false;
+	bool fastq_seen_plus;//=false;
+	int64_t fastq_seen_seq;//=0;
+	int64_t fastq_seen_qual;//=0;  
 };
 void reconsolidate_reads(fastx_readnames  * fxrn);
 void parse_reads(fastx_readnames * fxrn);

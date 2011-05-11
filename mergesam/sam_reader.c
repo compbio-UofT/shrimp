@@ -25,6 +25,7 @@ static inline void pp_ll_append(pp_ll* ll,pretty * pa) {
 		pa->next=NULL;
 		ll->length++;
 	}
+	//fprintf(stderr,"%p length of %lu\n",ll,ll->length);
 }
 
 static inline void pp_ll_set(pp_ll * ll,pretty *  pa) {
@@ -45,6 +46,7 @@ static inline void pp_ll_combine_and_check_single(pp_ll * m_ll,pp_ll ** ll,int o
 		if (local_ll->length>0) {
 			pa = local_ll->head;
 			while (pa!=NULL) {
+				//Add in MAPQ code to grab stats here?
 				e.score=pa->score+(pa->mate_pair!=NULL ? pa->mate_pair->score : 0);
 				e.isize_score=MAX_INT32;
 				e.rest=pa;
@@ -169,6 +171,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 			pretty_print_sam_update(pa, true);
 			//revert_sam_string(pa);
 			if (pa->mate_pair!=NULL) {
+				assert(pa->mate_pair->mate_pair!=NULL);
 				pretty_from_aux_inplace(pa->mate_pair);
 				remove_offending_fields(pa->mate_pair);
 				pretty_print_sam_update(pa->mate_pair, true);
@@ -218,7 +221,9 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 	}
 }
 void grow_sam_pretty(sam_reader * sr) {
-	size_t new_pretty_stack_size=(size_t)(sr->pretty_stack_size*GROWTH_FACTOR+1);
+	fprintf(stderr,"Cannot double size!\n");
+	exit(1);
+	/*size_t new_pretty_stack_size=(size_t)(sr->pretty_stack_size*2);
 	assert(new_pretty_stack_size>sr->pretty_stack_size);
 	fprintf(stderr,"Growing %lu to %lu entries\n",sr->pretty_stack_size,new_pretty_stack_size);
 	size_t old_size = sr->pretty_stack_size;
@@ -228,7 +233,7 @@ void grow_sam_pretty(sam_reader * sr) {
 		fprintf(stderr,"Failed realloc of pretty stack!\n");
 		exit(1);
 	}
-	memset(sr->pretty_stack + old_size , 0, (new_pretty_stack_size-old_size)*sizeof(pretty));
+	//memset(sr->pretty_stack + old_size , 0, (new_pretty_stack_size-old_size)*sizeof(pretty));
 	sr->pretty_stack_size=new_pretty_stack_size;	
 	char * new_p = (char*)sr->pretty_stack;
 	int i;
@@ -250,7 +255,7 @@ void grow_sam_pretty(sam_reader * sr) {
 		if (pa->mate_pair!=NULL) {
 			pa->mate_pair=(pretty*)(((char*)pa->mate_pair)+(new_p-old));
 		}
-	}
+	}*/
 }
 
 static inline void revert_sam_string(pretty * pa) {
@@ -324,8 +329,10 @@ sam_reader * sam_open(char * sam_filename,fastx_readnames * fxrn) {
 		exit(1);
 	}
 	sr->fb=fb_open(sam_filename,options.buffer_size,options.read_size);
-	sr->pretty_stack_filled=0;
-	sr->pretty_stack_size=fxrn->reads_inmem*10;
+	sr->pretty_stack_start=0;
+	sr->pretty_stack_end=0;
+	fprintf(stderr,"Starting a alignments stack with size %lu\n",options.alignments_stack_size);
+	sr->pretty_stack_size=fxrn->reads_inmem*options.alignments_stack_size;
 	sr->pretty_stack=(pretty*)malloc(sizeof(pretty)*sr->pretty_stack_size);
 	if (sr->pretty_stack==NULL) {
 		fprintf(stderr,"Failed to allocate memory for pretty_stack\n");
@@ -337,58 +344,102 @@ sam_reader * sam_open(char * sam_filename,fastx_readnames * fxrn) {
 		fprintf(stderr,"Failed to allocate memory for pp_lls.\n");
 	}
 	memset(sr->pp_lls,0,sizeof(pp_ll)*LL_ALL*options.read_rate);
+	sr->inter_offsets=(size_t*)malloc(sizeof(size_t)*options.read_rate);
+	sr->pretty_stack_ends=(size_t*)malloc(sizeof(size_t)*options.read_rate);
+	fprintf(stderr,"Size of inter_offsets is %d\n",options.read_rate);
+	if (sr->inter_offsets==NULL) {
+		fprintf(stderr,"Failed to allocate memory for inter_offsets\n");
+		exit(1);
+	}
+	sr->last_tested=0;
 	return sr;
 }
-void parse_sam(sam_reader * sr,size_t read_amount,fastx_readnames * fxrn) {
+void parse_sam(sam_reader * sr,fastx_readnames * fxrn) {
 	char * current_newline=NULL;
-	size_t last_tested=0;
-	while (sr->fb->unseen_end!=sr->fb->unseen_start && last_tested<read_amount) {
+	while (sr->fb->unseen_end!=sr->fb->unseen_inter && sr->last_tested<options.read_rate+fxrn->reads_seen) {
+		const size_t pretty_stack_start_mod=sr->pretty_stack_start%sr->pretty_stack_size;
+		const size_t pretty_stack_end_mod=sr->pretty_stack_end%sr->pretty_stack_size;
+		if (sr->pretty_stack_start>sr->pretty_stack_end && pretty_stack_end_mod==pretty_stack_start_mod) {
+			fprintf(stderr,"Stack out of space, need to flush!\n");
+			return;
+		}
         	size_t unseen_end_mod=sr->fb->unseen_end%sr->fb->size;
-        	size_t unseen_start_mod=sr->fb->unseen_start%sr->fb->size;
-		size_t space=(unseen_start_mod>=unseen_end_mod ? sr->fb->size : unseen_end_mod) - unseen_start_mod;
-		current_newline=(char*)memchr(sr->fb->base+unseen_start_mod,'\n',space);
+        	size_t unseen_inter_mod=sr->fb->unseen_inter%sr->fb->size;
+		const size_t space=(unseen_inter_mod>=unseen_end_mod ? sr->fb->size : unseen_end_mod) - unseen_inter_mod;
+		current_newline=(char*)memchr(sr->fb->base+unseen_inter_mod,'\n',space);
 		if (current_newline==NULL) {
-			sr->fb->unseen_start+=space;
+			sr->fb->unseen_inter+=space;
 		} else {
 			size_t current_newline_index=current_newline-sr->fb->base;
 			if (current_newline_index==0 || sr->fb->base[current_newline_index-1]=='\0') {
 				*current_newline='\0';
 				current_newline_index++;
 				for(; current_newline_index<sr->fb->size && sr->fb->base[current_newline_index]=='\0'; current_newline_index++) {sr->fb->base[current_newline_index]='\0';};
-				sr->fb->unseen_start+=current_newline_index-unseen_start_mod;
-				unseen_start_mod=sr->fb->unseen_start%sr->fb->size;
+				sr->fb->unseen_inter+=current_newline_index-unseen_inter_mod;
+				//sr->fb->unseen_start+=current_newline_index-unseen_start_mod;
+				unseen_inter_mod=sr->fb->unseen_inter%sr->fb->size;
 			} else {
 				//fprintf(stderr,"Using %lu\n",unseen_start_mod);
-				char * line=sr->fb->base+unseen_start_mod;
-				assert(sr->pretty_stack_size>sr->pretty_stack_filled);
+				char * const line=sr->fb->base+unseen_inter_mod;
+				//assert(sr->pretty_stack_size>sr->pretty_stack_filled);
 				if (line[0]!='@') {
-					size_t length_of_string = current_newline-line;
-					if (sr->pretty_stack_size==sr->pretty_stack_filled) {	
-						grow_sam_pretty(sr);
-					}
-					for (; last_tested<read_amount; last_tested++) {
-						char * first_tab = (char*)memchr(line,'\t',length_of_string);
+					const size_t length_of_string = current_newline-line;
+					//if (sr->pretty_stack_size==sr->pretty_stack_filled) {	
+					//	grow_sam_pretty(sr);
+					//}
+					for (; sr->last_tested<options.read_rate+fxrn->reads_seen; sr->last_tested++) {
+						if (sr->last_tested==fxrn->reads_filled) {
+							return;
+						}
+						//clear the row before using it!!!!!!!!!!
+						const size_t read_id = sr->last_tested%options.read_rate;
+						//ERRRROROROROROOROROROROROOROROROROORORORRRRR@!!!!
+						char * const first_tab = (char*)memchr(line,'\t',length_of_string);
 						if (first_tab==NULL) {
 							fprintf(stderr,"CANNOT FIND FIRST TAB!\n");
 							exit(1);
 						}
-						size_t compare_length = first_tab-line;
-						char * hit_list_read_name=fxrn->read_names+(last_tested+fxrn->reads_seen)*SIZE_READ_NAME*sizeof(char);
-						
+						const size_t compare_length = first_tab-line;
+						assert(compare_length!=0);
+						char * const hit_list_read_name=fxrn->read_names+(sr->last_tested%fxrn->reads_inmem)*SIZE_READ_NAME*sizeof(char);
+						//char buffer[SIZE_READ_NAME];
+						//strncpy(buffer,hit_list_read_name,compare_length);
+						//buffer[compare_length]='\0';
+						//fprintf(stderr,"%p HL: %s,",sr,buffer);
+						//strncpy(buffer,line,compare_length+15);
+						//buffer[compare_length+15]='\0';
+						//fprintf(stderr,"L: %s, %lu\n",buffer,read_id);
+						//fprintf(stderr,"id: %d name: ||%s|| %lu seen %lu last\n",read_id,buffer,fxrn->reads_seen,sr->last_tested);
+						//fprintf(stderr,"%s vs %s\n",buffer,hit_list_read_name);	
 						if (strncmp(line,hit_list_read_name,compare_length)==0 ) {//&& !isdigit(hit_list_read_name[compare_length])) {	
-							pretty * pa=sr->pretty_stack+sr->pretty_stack_filled++;
-							pa->read_id=last_tested;
-							pa->sam_header=false;
+							//fprintf(stderr,"XXXX %lu END, %lu read id\n",sr->pretty_stack_end,read_id);
+							if (sr->pretty_stack_end-sr->pretty_stack_start>=sr->pretty_stack_size) {
+								if (sr->last_tested==fxrn->reads_seen) {
+									fprintf(stderr,"Alignments stack size is too small! Please use a larger size then '%lu' using '--alignments-stack-size'\n",options.alignments_stack_size);
+									exit(1);
+								}
+								return;	
+							}
+							const size_t pa_index=(sr->pretty_stack_end++%sr->pretty_stack_size);
+							//fprintf(stderr,"Put into index %lu, but read_id %lu\n",pa_index,read_id);
+							pretty * const pa=sr->pretty_stack+pa_index;
+							//pretty from string inplace memsets entry to 0!!! , assign after otherwise gets wiped!
 							pretty_from_string_inplace(line,length_of_string,pa);
-							//fprintf(stderr,"Found a hit for read |%s| vs |%s|\n",sr->pretty_stack[sr->pretty_stack_filled-1].read_name,read_names+(last_tested+reads_offset)*SIZE_READ_NAME*sizeof(char));
-							//check whether paired, unpaired or first or second leg
-							//fprintf(stdout,"FOUND score is %d\n",pa->score);
+							pa->read_id=read_id;
+							pa->sam_header=false;
+							assert(pa->read_name!=NULL);
+							assert(pa->mate_pair==NULL);
 							if (pa->paired_sequencing) {
 								options.paired=true;
-								if (sr->pretty_stack_filled!=1 && !(pa-1)->sam_header && (pa-1)->mate_pair==NULL) {
-									(pa-1)->mate_pair=pa; pa->mate_pair=pa-1;
-									//fprintf(stderr,"Added as pair!\n");
+								pretty * const previous=sr->pretty_stack + (pa_index+sr->pretty_stack_size-1)%sr->pretty_stack_size;
+								//fprintf(stderr,"previous %p\n",previous);
+								if (sr->pretty_stack_start+1!=sr->pretty_stack_end && !previous->sam_header && previous->mate_pair==NULL) {
+									previous->mate_pair=pa; pa->mate_pair=previous;
+									assert(pa->read_name!=NULL);
+									assert(pa->mate_pair->read_name!=NULL);
 									pp_ll_append_and_check(sr->pp_lls+LL_ALL*pa->read_id,pa);
+									assert(pa->read_name!=NULL);
+									assert(pa->mate_pair->read_name!=NULL);
 								} else {
 									pa->mate_pair=NULL;
 								}
@@ -398,27 +449,43 @@ void parse_sam(sam_reader * sr,size_t read_amount,fastx_readnames * fxrn) {
 							}
 							*current_newline='\0';
 							break;
-						} 	
+						} else {	
+							sr->inter_offsets[read_id]=sr->fb->unseen_start;
+							sr->pretty_stack_ends[read_id]=sr->pretty_stack_end;
+							sr->fb->unseen_start=sr->fb->unseen_inter;
+							//fprintf(stderr,"Asign start %lu, %lu\n",read_id,sr->fb->unseen_start);
+							//if ((sr->last_tested+1)<(options.read_rate+fxrn->reads_seen)) {
+							//	const size_t next_read_id=(read_id+1)%options.read_rate;
+							//	memset(sr->pp_lls+LL_ALL*next_read_id,0,sizeof(pp_ll)*LL_ALL);
+							//	fprintf(stderr,"Clearing spot %lu\n",next_read_id);
+							//}
+						}
 					}
 					
 				} else {
 					found_sam_headers=true;
-					pretty * pa=sr->pretty_stack+sr->pretty_stack_filled++;
+					pretty * pa=sr->pretty_stack+sr->pretty_stack_end++%sr->pretty_stack_size;
 					pa->sam_string=line;
 					*current_newline='\0';
 					pp_ll_append(sr->sam_headers,pa);
 					pa->sam_header=true;
 				}
-				if (last_tested!=read_amount) {
-					sr->fb->unseen_start+=current_newline_index-unseen_start_mod+1;
-					unseen_start_mod=sr->fb->unseen_start%sr->fb->size;
+				if (sr->last_tested!=options.read_rate+fxrn->reads_seen) {
+					sr->fb->unseen_inter+=current_newline_index-unseen_inter_mod+1;
+					unseen_inter_mod=sr->fb->unseen_inter%sr->fb->size;
 				}
 			}
 			sr->fb->exhausted=false;
 		}
 	}
-	if (last_tested<read_amount && (sr->fb->frb.eof==0 || sr->fb->unseen_end!=sr->fb->unseen_start)) {
+	//fprintf(stderr,"RETURN GRACE %lu!=%lu,%lu<%d+%lu \n",sr->fb->unseen_end,sr->fb->unseen_inter, sr->last_tested,options.read_rate,fxrn->reads_seen);
+	if (sr->fb->frb.eof==1 && sr->fb->unseen_end==sr->fb->unseen_inter && sr->last_tested==fxrn->reads_seen) {
+		sr->last_tested++;
+		//fprintf(stderr,"EOF\n");
+	}
+		//fprintf(stderr,"RETURN %llu - %llu < %llu \n",sr->last_tested, fxrn->reads_seen, read_amount);
+	/*if (last_tested<read_amount && (sr->fb->frb.eof==0 || sr->fb->unseen_end!=sr->fb->unseen_start)) {
 		fprintf(stderr,"failed to read into buffer, please increase buffer size!\n");
 		exit(1);
-	}
+	}*/
 }

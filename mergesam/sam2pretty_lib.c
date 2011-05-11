@@ -1061,22 +1061,22 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 		buffer_size+=strlen(pa->read_group)+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_r2) {
-		buffer_size+=strlen(pa->r2);
+		buffer_size+=strlen(pa->r2)+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_ih) {
-		buffer_size+=SIZE_32bit;
+		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_hi) {
-		buffer_size+=SIZE_32bit;
+		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_h0) {
-		buffer_size+=SIZE_32bit;
+		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_h1) {
-		buffer_size+=SIZE_32bit;
+		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	if (pa->has_h2) {
-		buffer_size+=SIZE_32bit;
+		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
 	char buffer[buffer_size];
 	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
@@ -1147,7 +1147,7 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 		strcpy(pa->sam_string,buffer);
 	} else {
 		if (position>pa->sam_string_length) {
-			fprintf(stderr,"failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
+			fprintf(stderr,"Failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
 			exit(1);
 		}
 		strcpy(pa->sam_string,buffer);
@@ -1261,6 +1261,7 @@ static inline void switch_and_fill(int32_t k, char * data, pretty * pa) {
 
 
 void pretty_from_aux_inplace(pretty * pa) {
+	assert(pa!=NULL);
 	if (pa->aux==NULL) {
 		return;
 	}
@@ -1283,6 +1284,7 @@ void pretty_from_aux_inplace(pretty * pa) {
 
 
 pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pretty * pa) {
+	memset(pa,0,sizeof(pretty));
 	pa->sam_string=sam_string;
 	pa->sam_string_length=length_of_string;
 	char * start_of_string = sam_string;

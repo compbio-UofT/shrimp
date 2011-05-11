@@ -29,6 +29,43 @@ sam_reader ** sam_files;
 char * sam_header_filename=NULL;
 
 
+void process_sam_headers() {
+	if (found_sam_headers && sam_header_filename==NULL) {
+		int header_entries=0;
+		int i;
+		for (i=0; i<options.number_of_sam_files; i++) {
+			header_entries+=sam_files[i]->sam_headers->length;
+		}
+		//get pointers to each header line
+		char ** sam_lines=(char**)malloc(sizeof(char*)*header_entries);
+		if (sam_lines==NULL) {
+			fprintf(stderr,"Failed to allocate memory for sam_header entries!\n");
+			exit(1);
+		}	
+		int index=0;
+		for (i=0; i<options.number_of_sam_files; i++) {
+			pretty * pa = sam_files[i]->sam_headers->head;
+			while(pa!=NULL) {
+				sam_lines[index++]=pa->sam_string;
+				pa=pa->next;
+			}
+		}
+		//want to sort the headers here
+		qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);	
+		//want to print the headers here
+		assert(index>0);
+		fprintf(stdout,"%s\n",sam_lines[0]);
+		for (i=1; i<index; i++) {
+			int ret=strcmp(sam_lines[i],sam_lines[i-1]);
+			if (ret!=0) {
+				fprintf(stdout,"%s\n",sam_lines[i]);
+			}	
+		}	
+		free(sam_lines);
+		memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
+		found_sam_headers=false;
+	}
+}
 
 void usage(char * s) {
 	fprintf(stderr, 
@@ -43,6 +80,8 @@ void usage(char * s) {
 	"      --buffer-size    File buffer size in memory per file   (Default: %d)\n",DEF_BUFFER_SIZE);
 	fprintf(stderr,
 	"      --read-size      Read size, read into buffer with this (Default: %d)\n",DEF_READ_SIZE);
+	fprintf(stderr, 
+	"   -s/--stack-size     # of input align. per. file per read  (Default: %d)\n",DEF_ALIGNMENTS_STACK_SIZE);
 	fprintf(stderr,
 	"      --read-rate      How many reads to process at once     (Default: %d)\n",DEF_READ_RATE);
 	fprintf(stderr,
@@ -79,7 +118,7 @@ void usage(char * s) {
 struct option long_op[] =
         {
 		{"fastq", 0, 0, 'Q'},
-		{"sam",1,0,'E'},
+		{"sam",0,0,'E'},
 		{"threads",1,0,'N'},
 		{"report",1,0,'o'},
 		{"max-alignments",1,0,1},
@@ -94,6 +133,7 @@ struct option long_op[] =
 		{"half-paired",0,0,10},
 		{"sam-unaligned",0,0,11},
 		{"strata",0,0,12},
+		{"stack-size",1,0,'s'},
                 {0,0,0,0}
         };
 
@@ -174,10 +214,11 @@ int main (int argc, char ** argv) {
 	options.buffer_size=DEF_BUFFER_SIZE;
 	options.read_size=DEF_READ_SIZE;
 	options.read_rate=DEF_READ_RATE;
+	options.alignments_stack_size=DEF_ALIGNMENTS_STACK_SIZE;
 	options.threads=1;
 	found_sam_headers=false;
         int op_id;
-        char short_op[] = "o:QN:E";
+        char short_op[] = "o:QN:Es:";
         char c = getopt_long(argc, argv, short_op, long_op, &op_id);
         while (c != EOF) {
 		switch (c) {
@@ -262,6 +303,10 @@ int main (int argc, char ** argv) {
 		case 4:
 			options.letter_space=true;
 			break;
+		case 's':
+			options.alignments_stack_size=atoi(optarg);
+			assert(options.alignments_stack_size>0);
+			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
 			usage(argv[0]);
@@ -290,12 +335,14 @@ int main (int argc, char ** argv) {
 	}
 
 	fprintf(stderr,"Size of %lu\n",sizeof(pretty));
+	memset(&fxrn,0,sizeof(fastx_readnames));
 	fxrn.reads_inmem=20*options.read_rate;
 	fxrn.read_names=(char*)malloc(sizeof(char)*fxrn.reads_inmem*SIZE_READ_NAME);
 	if (fxrn.read_names==NULL) {
 		fprintf(stderr,"failed to allocate memory for read_names\n");
 		exit(1);
 	}
+	//memset(fxrn.read_names,'Z',sizeof(char)*fxrn.reads_inmem*SIZE_READ_NAME);
 
 
 	argc-=optind;
@@ -320,6 +367,7 @@ int main (int argc, char ** argv) {
 		fprintf(stderr,"Failed to allocate memory for master_ll\n");
 		exit(1);
 	}
+	memset(master_ll,0,sizeof(pp_ll)*options.read_rate);
 
 
 	//allocate memory for sam_headers
@@ -367,66 +415,69 @@ int main (int argc, char ** argv) {
 	fprintf(stderr,"Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
 	while (!fxrn.reads_exhausted) {
+		//fprintf(stderr,"LOOP START\n");
+		//fprintf(stderr,"Reads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//Populate the hitlist to as large as possible
 		while (!fxrn.reads_exhausted) {
 			fill_fb(fxrn.fb);
 			parse_reads(&fxrn);	
 		}
+		//fprintf(stderr,"YReads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//clear the sam_headers memory
 		memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
 	
 		//Hit list in memory start processing!
-		int i;
-		int reads_to_process=0;
-		while (reads_to_process>=0 && fxrn.reads_seen<fxrn.reads_filled) {
+		int i;	
+		while (fxrn.reads_seen<fxrn.reads_filled) {
+			int reads_to_process=options.read_rate;
+
+	
+			//READ IN DATA
+			#pragma omp parallel for 
+			for (i=0; i<options.number_of_sam_files; i++) {
+				fill_fb(sam_files[i]->fb);	
+				parse_sam(sam_files[i],&fxrn);
+			}
+			
+			//find the minimum number of complete read alignments in memory
+			for (i=0; i<options.number_of_sam_files; i++) {
+				//fprintf(stderr,"file %d; %lu, %lu, %lu\n",i,sam_files[i]->last_tested,fxrn.reads_seen,sam_files[i]->last_tested-fxrn.reads_seen);
+				reads_to_process=MIN(reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
+			}
+			//fprintf(stderr,"Processing %d reads entries on this interation..\n",reads_to_process);
+			if (reads_to_process>0) {
+				for (i=0; i<options.number_of_sam_files; i++) {
+					const size_t read_id=(fxrn.reads_seen+reads_to_process-1)%options.read_rate;
+					//fprintf(stderr,"read rate %lu, using read_id %lu %lu\n",options.read_rate,read_id,sam_files[i]->inter_offsets[read_id]);
+					sam_files[i]->fb->unseen_start=sam_files[i]->inter_offsets[read_id];
+					sam_files[i]->pretty_stack_start=sam_files[i]->pretty_stack_ends[read_id];
+				}
+			} else {
+				fprintf(stderr,"AN ERROR HAS OCCURED!\n");
+				exit(1);	
+			}
+	
 			assert(reads_to_process<=options.read_rate);
+
 			if (options.paired && options.unpaired) {
 				fprintf(stderr,"FAIL! can't have both paired and unpaired data in input file!\n");
 				exit(1);
 			}
+			
+			//prepare output
 			#pragma omp parallel for //schedule(static,10)
 			for (i=0; i<reads_to_process; i++) {	
-				pp_ll_combine_and_check(master_ll+i,pp_ll_index+i*options.number_of_sam_files,thread_heaps+omp_get_thread_num());
-			}
-			//one thread - deal with sam headers before the reads themselves
-			if (found_sam_headers && sam_header_filename==NULL) {
-				int header_entries=0;
-				int i;
-				for (i=0; i<options.number_of_sam_files; i++) {
-					header_entries+=sam_files[i]->sam_headers->length;
+				const size_t read_id=(fxrn.reads_seen+i)%options.read_rate;
+				pp_ll_combine_and_check(master_ll+i,pp_ll_index+read_id*options.number_of_sam_files,thread_heaps+omp_get_thread_num());
+				int j;
+				for (j=0; j<options.number_of_sam_files; j++) {
+					memset(pp_ll_index[read_id*options.number_of_sam_files+j],0,sizeof(pp_ll)*LL_ALL);
 				}
-				//get pointers to each header line
-				char ** sam_lines=(char**)malloc(sizeof(char*)*header_entries);
-				if (sam_lines==NULL) {
-					fprintf(stderr,"Failed to allocate memory for sam_header entries!\n");
-					exit(1);
-				}	
-				int index=0;
-				for (i=0; i<options.number_of_sam_files; i++) {
-					pretty * pa = sam_files[i]->sam_headers->head;
-					while(pa!=NULL) {
-						sam_lines[index++]=pa->sam_string;
-						pa=pa->next;
-					}
-				}
-				//want to sort the headers here
-				qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);	
-				//want to print the headers here
-				assert(index>0);
-				fprintf(stdout,"%s\n",sam_lines[0]);
-				for (i=1; i<index; i++) {
-					int ret=strcmp(sam_lines[i],sam_lines[i-1]);
-					if (ret!=0) {
-						fprintf(stdout,"%s\n",sam_lines[i]);
-					}	
-				}	
-				free(sam_lines);
-				memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
-				found_sam_headers=false;
 			}
-			
-			//one thread
-			for (i=0; i<reads_to_process; i++) {	
+
+			//output
+			process_sam_headers();	
+			for (i=0; i<reads_to_process; i++) {
 				pretty * pa=master_ll[i].head;
 				while (pa!=NULL) {
 					if (pa->mate_pair!=NULL) {
@@ -436,33 +487,16 @@ int main (int argc, char ** argv) {
 					pa=pa->next;
 				}
 			}
+			memset(master_ll,0,sizeof(pp_ll)*reads_to_process);
+			//update counters
+			if (reads_to_process>0) {
+				fxrn.reads_exhausted=false;
+				fxrn.reads_seen+=reads_to_process;
+				fxrn.reads_unseen-=reads_to_process;
+			}
 			reads_processed+=reads_to_process;
-			fxrn.reads_seen+=reads_to_process;	
-			memset(master_ll,0,sizeof(pp_ll)*options.read_rate);
-			if (fxrn.reads_seen+options.read_rate<fxrn.reads_filled) {
-				reads_to_process=options.read_rate;
-			} else if (fxrn.fb->frb.eof==1 && fxrn.reads_seen<fxrn.reads_filled) {
-				reads_to_process=fxrn.reads_filled-fxrn.reads_seen;
-			} else {
-				break;
-			}
-			//parallel
-			#pragma omp parallel for 
-			for (i=0; i<options.number_of_sam_files; i++) {
-				memset(sam_files[i]->pretty_stack,0,sizeof(pretty)*sam_files[i]->pretty_stack_filled);
-				sam_files[i]->pretty_stack_filled=0;
-				memset(sam_files[i]->pp_lls,0,sizeof(pp_ll)*LL_ALL*options.read_rate);
-				//fprintf(stderr,"THREAD %d\n",omp_get_thread_num());
-				fill_fb(sam_files[i]->fb);	
-				parse_sam(sam_files[i],reads_to_process,&fxrn);
-			}
+			//fprintf(stderr,"XReads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		}
-		//Should be done processing
-		//keep unseen reads, and do it again
-		fxrn.reads_unseen=fxrn.reads_filled-fxrn.reads_seen;
-		//fxrn.reads_seen=fxrn.reads_offset;
-		//fxrn.reads_offset=0;
-		reconsolidate_reads(&fxrn);
 	}
 	fprintf(stderr,"Processed %lu reads\n",reads_processed);
 	free(master_ll);

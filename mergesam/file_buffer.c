@@ -43,6 +43,7 @@ file_buffer * fb_open(char * path,size_t buffer_size,size_t read_size) {
 	fb->size=buffer_size;
 	fb->unseen_start=0;
 	fb->unseen_end=0;
+	fb->unseen_inter=0;
 	//allocate the read buffer
 	fb->frb.base=(char*)malloc(read_size);
 	if (fb->frb.base==NULL) {

@@ -19,6 +19,7 @@ typedef struct file_buffer {
         size_t size;
         size_t unseen_start;
         size_t unseen_end;
+	size_t unseen_inter;
 	bool changed;
 	bool exhausted;
         file_read_buffer frb;

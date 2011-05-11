@@ -17,14 +17,10 @@ void reconsolidate_reads(fastx_readnames * fxrn) {
 
 
 void parse_reads(fastx_readnames * fxrn) {
-	bool fastq_seen_name=false;
-	bool fastq_seen_plus=false;
-	int64_t fastq_seen_seq=0;
-	int64_t fastq_seen_qual=0;  
 	assert(fxrn->reads_seen+fxrn->reads_unseen==fxrn->reads_filled);
-	reconsolidate_reads(fxrn);
+	//reconsolidate_reads(fxrn);
 	char * current_newline=NULL;
-	while (fxrn->fb->unseen_end!=fxrn->fb->unseen_start && fxrn->reads_filled<fxrn->reads_inmem) {
+	while (fxrn->fb->unseen_end!=fxrn->fb->unseen_start && (fxrn->reads_filled-fxrn->reads_seen)<fxrn->reads_inmem) {
         	size_t unseen_end_mod=fxrn->fb->unseen_end%fxrn->fb->size;
         	size_t unseen_start_mod=fxrn->fb->unseen_start%fxrn->fb->size;
 		size_t space=(unseen_start_mod>=unseen_end_mod ? fxrn->fb->size : unseen_end_mod) - unseen_start_mod;
@@ -42,45 +38,47 @@ void parse_reads(fastx_readnames * fxrn) {
 			} else {
 				char * read_name=fxrn->fb->base+unseen_start_mod;
 				if (options.fastq) {
-					if (!fastq_seen_name) {
+					if (!fxrn->fastq_seen_name) {
 						if (read_name[0]=='@') {
-							size_t read_name_length=strlen(read_name);
-							memmove(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,read_name+1,read_name_length);
-							fxrn->read_names[fxrn->reads_filled*SIZE_READ_NAME+read_name_length]='\0';
-							char * space=strchr(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,' ');
+							const size_t slot=fxrn->reads_filled%fxrn->reads_inmem;
+							const size_t read_name_length=MIN(SIZE_READ_NAME-1,strlen(read_name));
+							memmove(fxrn->read_names+slot*SIZE_READ_NAME,read_name+1,read_name_length);
+							fxrn->read_names[slot*SIZE_READ_NAME+read_name_length]='\0';
+							char * const  space=strchr(fxrn->read_names+slot*SIZE_READ_NAME,' ');
 							if (space!=NULL) {*space='\0';};
-							char * tab=strchr(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,'\t');
+							char * const tab=strchr(fxrn->read_names+slot*SIZE_READ_NAME,'\t');
 							if (tab!=NULL) {*tab='\0';};
 							fxrn->reads_unseen++;
 							fxrn->reads_filled++;
-							fastq_seen_name=true;
-							fastq_seen_seq=options.colour_space ? -1 : 0;
-							fastq_seen_qual=0;
-							fastq_seen_plus=false;
+							fxrn->fastq_seen_name=true;
+							fxrn->fastq_seen_seq=options.colour_space ? -1 : 0;
+							fxrn->fastq_seen_qual=0;
+							fxrn->fastq_seen_plus=false;
 						}
 					} else {
-						if (!fastq_seen_plus) {
+						if (!fxrn->fastq_seen_plus) {
 							if (read_name[0]=='+') {
-								fastq_seen_plus=true;
+								fxrn->fastq_seen_plus=true;
 							} else {
-								fastq_seen_seq+=strlen(read_name)-1;
+								fxrn->fastq_seen_seq+=strlen(read_name)-1;
 							}
 						} else {
-							fastq_seen_qual+=strlen(read_name)-1;
-							assert(fastq_seen_qual<=fastq_seen_seq);
-							if (fastq_seen_qual==fastq_seen_seq) {
-								fastq_seen_name=false;
+							fxrn->fastq_seen_qual+=strlen(read_name)-1;
+							assert(fxrn->fastq_seen_qual<=fxrn->fastq_seen_seq);
+							if (fxrn->fastq_seen_qual==fxrn->fastq_seen_seq) {
+								fxrn->fastq_seen_name=false;
 							}	
 						}
 					}
 				} else {
 					if (read_name[0]=='>') {
-						size_t read_name_length=strlen(read_name);
-						memmove(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,read_name+1,read_name_length);
-						fxrn->read_names[fxrn->reads_filled*SIZE_READ_NAME+read_name_length]='\0';
-						char * space=strchr(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,' ');
+						const size_t slot=fxrn->reads_filled%fxrn->reads_inmem;
+						const size_t read_name_length=MIN(SIZE_READ_NAME-1,strlen(read_name));
+						memmove(fxrn->read_names+slot*SIZE_READ_NAME,read_name+1,read_name_length);
+						fxrn->read_names[slot*SIZE_READ_NAME+read_name_length]='\0';
+						char * space=strchr(fxrn->read_names+slot*SIZE_READ_NAME,' ');
 						if (space!=NULL) {*space='\0';};
-						char * tab=strchr(fxrn->read_names+fxrn->reads_filled*SIZE_READ_NAME,'\t');
+						char * tab=strchr(fxrn->read_names+slot*SIZE_READ_NAME,'\t');
 						if (tab!=NULL) {*tab='\0';};
 						fxrn->reads_unseen++;
 						fxrn->reads_filled++;

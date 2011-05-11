@@ -16,13 +16,15 @@
 #define LL_ALL		5
 
 //IO SETTINGS
-#define DEF_READ_SIZE	1024*1024*5
-#define DEF_BUFFER_SIZE	1024*1024*15
-#define DEF_READ_RATE 10
+#define DEF_READ_SIZE	1024*10
+#define DEF_BUFFER_SIZE	1024*1024*50
+#define DEF_READ_RATE 3000
+#define DEF_ALIGNMENTS_STACK_SIZE 21
 typedef struct runtime_options {
 	//input options
 	size_t buffer_size;
 	size_t read_size;
+	size_t alignments_stack_size;
 	int read_rate;
 	bool fastq;
 	bool colour_space;
