@@ -19,7 +19,7 @@ char const getopt_short_options[] = "b:?";
 FILE * tmp_file, * dest_file;
 char * prog_name;
 char * buffer, * buffer2;
-int block_size = DEF_BLOCK_SIZE;
+size_t block_size = DEF_BLOCK_SIZE;
 size_t total_tmp, total_dest, total_in, total_out, total_out2;
 
 
@@ -93,7 +93,8 @@ int
 main(int argc, char * argv[])
 {
   char ch;
-  int bypass_tmp, test_out;
+  int bypass_tmp;
+  size_t test_out;
 
   prog_name = argv[0];
 
