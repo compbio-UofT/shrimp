@@ -19,7 +19,7 @@ LDFLAGS=-lm -lz -lstdc++
 LN=ln
 
 all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
-    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam
+    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
 
 #
 # mapper /
@@ -112,12 +112,21 @@ shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
-# bin/split-contigs
+# utils/split-contigs
 #
 utils/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 utils/split-contigs.o: utils/split-contigs.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# utils/temp-sink
+#
+utils/temp-sink: utils/temp-sink.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+utils/temp-sink.o: utils/temp-sink.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
