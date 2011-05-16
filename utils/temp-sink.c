@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <string.h>
 
-#define DEF_BLOCK_SIZE (8129)
+#define DEF_BLOCK_SIZE (1048576)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 struct option getopt_long_options[] = {
