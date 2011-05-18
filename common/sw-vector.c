@@ -484,7 +484,7 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	for (int _i = 0; _i < glen; _i++) {
 	  fprintf(stderr, "%c", base_translate(db_ls[_i+7], false));
 	}
-	fprintf(stderr, "\nqr:   ");
+	fprintf(stderr, "\nqr: %c", base_translate(initbp, false));
 	for (int _i = 0; _i < rlen; _i++) {
 	  fprintf(stderr, "%c", base_translate(qr[_i+7], true));
 	}
