@@ -345,7 +345,7 @@ launch_scan_threads(){
       for (i = 0; i < load; i++) {
 	// if running in paired mode and first foot is ignored, ignore this one, too
 	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].ignore) {
-	  read_free(&re_buffer[i-1]);
+	  //read_free(&re_buffer[i-1]);
 	  read_free(&re_buffer[i]);
 	  continue;
 	}
@@ -401,7 +401,7 @@ launch_scan_threads(){
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
 	    || re_buffer[i].read_len > longest_read_len
-	    || (min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv)) { // ignore reads with low avg qv
+	    || (Qflag && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv)) { // ignore reads with low avg qv
 	  if (re_buffer[i].max_n_kmers < 0) {
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
 		    re_buffer[i].name);
@@ -423,6 +423,7 @@ launch_scan_threads(){
 	      read_free_full(&re_buffer[i-1]);
 	      read_free_full(&re_buffer[i]);
 	    } else {
+	      read_free_full(&re_buffer[i]);
 	      re_buffer[i].ignore = true;
 	    }
 	  }
@@ -2142,7 +2143,7 @@ int main(int argc, char **argv){
 	  if (pair_mode == PAIR_NONE)
 	    {
 	      n_unpaired_mapping_options[0]++;
-	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
 
 	      unpaired_mapping_options[0][0].regions.recompute = use_regions;
 	      unpaired_mapping_options[0][0].regions.min_seed = -1;
@@ -2172,7 +2173,7 @@ int main(int argc, char **argv){
 	  else
 	    {
 	      n_paired_mapping_options++;
-	      paired_mapping_options = (struct readpair_mapping_options_t *)malloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+	      paired_mapping_options = (struct readpair_mapping_options_t *)xcalloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
 
 	      paired_mapping_options[0].pairing.pair_mode = pair_mode;
 	      paired_mapping_options[0].pairing.pair_up_hits = true;
@@ -2186,8 +2187,8 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
 
 	      paired_mapping_options[0].read[0].regions.recompute = use_regions;
-	      paired_mapping_options[0].read[0].regions.min_seed = 0;
-	      paired_mapping_options[0].read[0].regions.max_seed = n_seeds - 1;
+	      paired_mapping_options[0].read[0].regions.min_seed = -1;
+	      paired_mapping_options[0].read[0].regions.max_seed = -1;
 
 	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
@@ -2203,17 +2204,18 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].read[0].pass1.recompute = true;
 	      paired_mapping_options[0].read[0].pass1.only_paired = true;
 	      paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
-	      //paired_mapping_options[0].read[0].pass1.num_outputs = 0;
+	      paired_mapping_options[0].read[0].pass1.num_outputs = -1; // not used
 	      paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
 	      paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
 	      paired_mapping_options[0].read[0].pass2.strata = strata_flag;
-	      //paired_mapping_options[0].read[0].pass2.num_outputs = 0;
+	      paired_mapping_options[0].read[0].pass2.num_outputs = -1; // not used
 	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold / 3;
 	      paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
 
 	      if (!sam_half_paired)
 		{
 		  paired_mapping_options[0].pairing.stop_count = 0;
+		  paired_mapping_options[0].pairing.stop_threshold = 0;
 		}
 	      else // half_paired
 		{
@@ -2222,8 +2224,8 @@ int main(int argc, char **argv){
 
 		  n_unpaired_mapping_options[0]++;
 		  n_unpaired_mapping_options[1]++;
-		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
-		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)malloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
 
 		  unpaired_mapping_options[0][0].regions.recompute = false;
 		  //if (!use_regions) {
@@ -2533,5 +2535,8 @@ int main(int argc, char **argv){
 	free(contig_names);
 	free(contig_offsets);
 	free(seed);
+	free(paired_mapping_options);
+	free(unpaired_mapping_options[0]);
+	free(unpaired_mapping_options[1]);
 	return 0;
 }

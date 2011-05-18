@@ -475,6 +475,23 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	for (i = 0; i < rlen; i++)
 		qr[i+7] = (int8_t)EXTRACT(read, i);
 
+#ifdef DEBUG_SW_VECTOR
+	fprintf(stderr, "SW vector call:\ndb cs: ");
+	for (int _i = 0; _i < glen; _i++) {
+	  fprintf(stderr, "%c", base_translate(db[_i+7], true));
+	}
+	fprintf(stderr, "\ndb ls: ");
+	for (int _i = 0; _i < glen; _i++) {
+	  fprintf(stderr, "%c", base_translate(db_ls[_i+7], false));
+	}
+	fprintf(stderr, "\nqr:   ");
+	for (int _i = 0; _i < rlen; _i++) {
+	  fprintf(stderr, "%c", base_translate(qr[_i+7], true));
+	}
+	fprintf(stderr, "\n");
+#endif
+
+
 	if (a_gap_open == b_gap_open && a_gap_ext == b_gap_ext) {
 		score = vect_sw_same_gap(&db[0], glen, &qr[7], rlen,
 		    &db_ls[0], initbp, is_rna);

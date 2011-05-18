@@ -262,8 +262,8 @@ qv_from_pr_err(double pr_err)
 {
   if (pr_err > .99999999)
     return 0;
-  else if (pr_err < .00000001)
-    return 80;
+  else if (pr_err < 1E-25)
+    return 250;
   else
     return (int)(-10.0 * log(pr_err) / log(10.0));
 }
@@ -279,8 +279,8 @@ pr_err_from_qv(int qv)
 {
   if (qv <= 0)
     return .99999999;
-  else if (qv >= 80)
-    return .00000001;
+  else if (qv >= 250)
+    return 1E-25;
   else
     return pow(10.0, -(double)qv/10.0);
 }

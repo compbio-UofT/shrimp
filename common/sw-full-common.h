@@ -72,6 +72,7 @@ free_sfrp(struct sw_full_results * * sfrp)
   if (*sfrp != NULL) {
     free((*sfrp)->dbalign);
     free((*sfrp)->qralign);
+    free((*sfrp)->qual);
     free(*sfrp);
     *sfrp = NULL;
   }

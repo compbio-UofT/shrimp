@@ -203,7 +203,7 @@ common/sw-post.o: common/sw-post.c common/sw-post.h common/util.h common/fasta.h
 clean:
 	rm -f bin/colourise bin/probcalc bin/gmapper* \
 	    bin/prettyprint* bin/probcalc_mp bin/shrimp_var \
-	    bin/shrimp2sam utils/split-contigs bin/mergesam
+	    bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f

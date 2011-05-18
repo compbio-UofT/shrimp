@@ -76,7 +76,8 @@ typedef struct column{
   int base_call;
 } states;
 
-struct column *	columns;
+static struct column *	columns;
+static int max_len;
 
 static uint64_t		ticks, cells, invocs;
 
@@ -84,7 +85,7 @@ static uint64_t		ticks, cells, invocs;
 #pragma omp threadprivate(initialized,\
 			  pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,\
 			  use_read_qvs,use_sanger_qvs,default_qual,qual_vector_offset,qual_delta,\
-			  init_bp,len,columns,\
+			  init_bp,len,columns,max_len,\
 			  ticks,cells,invocs)
 
 
@@ -378,7 +379,7 @@ double forward_backward (states* allstates, int stateslen) {
 
 
 int
-post_sw_setup(int max_len,
+post_sw_setup(int _max_len,
 	      double _pr_snp, double _pr_xover, double _pr_del_open, double _pr_del_extend, double _pr_ins_open, double _pr_ins_extend,
 	      bool _use_read_qvs, bool _use_sanger_qvs, int _qual_vector_offset, int _qual_delta,
 	      bool reset_stats)
@@ -411,6 +412,7 @@ post_sw_setup(int max_len,
   //neglogsixteenth = -log(1.0/16.0);
   //neglogfourth = -log(1.0/4.0);
 
+  max_len = _max_len;
   columns = (struct column *)xmalloc(max_len * sizeof(columns[0]));
   for (int i = 0; i < max_len; i++) {
     columns[i].lets = (int *)xmalloc(1 * sizeof(columns[i].lets[0]));
@@ -431,6 +433,12 @@ post_sw_setup(int max_len,
 int
 post_sw_cleanup()
 {
+  for (int i = 0; i < max_len; i++) {
+    free(columns[i].lets);
+    free(columns[i].cols);
+    free(columns[i].letserrrate);
+    free(columns[i].colserrrate);
+  }
   free(columns);
   return 1;
 }
@@ -529,13 +537,17 @@ get_base_qualities(struct sw_full_results * sfrp)
 {
   int i, k;
 
-  sfrp->qual = (char *)xmalloc(strlen(sfrp->qralign) * sizeof(sfrp->qual[0]));
+  sfrp->qual = (char *)xmalloc((strlen(sfrp->qralign) + 1) * sizeof(sfrp->qual[0]));
   for (i = 0, k = 0; sfrp->qralign[i] != 0; i++) {
     if (sfrp->qralign[i] != '-') {
-      sfrp->qual[k] = 33 + qv_from_pr_corr(columns[k].posterior[columns[k].base_call]); // always 33+ in SAM
+      int tmp = qv_from_pr_corr(columns[k].posterior[columns[k].base_call]);
+      if (tmp > 40)
+	tmp = 40;
+      sfrp->qual[k] = 33 + tmp; // always 33+ in SAM
       k++;
     }
   }
+  sfrp->qual[k] = 0;
 }
 
 

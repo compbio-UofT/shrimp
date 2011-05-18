@@ -246,7 +246,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//pos
 	int pos=0;
 	//mapq
-	int mapq=rh->mapping_quality;
+	int mapq = (rh != NULL ? rh->mapping_quality : 0);
 	//cigar
 	char * cigar=(char *)"*";
 	cigar_t * cigar_binary=NULL;
@@ -505,7 +505,10 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 				cigar_binary->ops[i]='H';
 			}
 		}
-		if (Bflag && Qflag) {
+		if (Qflag && (Bflag || compute_mapping_qualities)) {
+		  if (compute_mapping_qualities) { // REMOVE the !Bflag part!!!!
+		    strcpy(qual, rh->sfrp->qual);
+		  } else {
 			int read_length=(read_end-read_start+1);
 			for (i=0; i<read_length; i++) {
 				qual[i]=re->qual[i+read_start-1];
@@ -530,11 +533,12 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 				base_qual=MIN('`',MAX(base_qual,'"'));
 				qual[i]=base_qual;
 			}
+		  }
 			if (reverse_strand) {
-				for (i=0; i<read_length/2; i++) {
+				for (i = 0; i < rh->sfrp->rmapped/2; i++) {
 					char temp = qual[i];
-					qual[i]=qual[read_length-i-1];
-					qual[read_length-i-1]=temp;
+					qual[i]=qual[rh->sfrp->rmapped-i-1];
+					qual[rh->sfrp->rmapped-i-1]=temp;
 				}
 			}
 		}
@@ -599,14 +603,17 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		isize,seq,qual);
 	//extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
 		//MERGESAM DEPENDS ON SCORE BEING FIRST!
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
-		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
-				   rh->score_full,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX0:i:%d", rh->matches); // REMOVE
+	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tAS:i:%d",
+				   rh->score_full);
 	if (!all_contigs) {
-	  *output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tZ0:f:%.5e\tZ1:f:%.5e",
+	  *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ0:f:%.5e\tZ1:f:%.5e",
 				     rh->sfrp->posterior, re->mq_denominator);
 	}
+	//*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tH0:i:%d\tH1:i:%d\tH2:i:%d",
+	//			   hits[0],hits[1],hits[2]);
+	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tNM:i:%d\tNH:i:%d\tIH:i:%d",
+				   rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
+	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX0:i:%d", rh->matches); // REMOVE
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];

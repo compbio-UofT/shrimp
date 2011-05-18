@@ -2607,6 +2607,9 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 
       if (rh->score_full < 0 || rh->sfrp == NULL) {
 	hit_run_full_sw(re, rh, (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)/3);
+	if (compute_mapping_qualities && rh->score_full > 0) {
+	  hit_run_post_sw(re, rh);
+	}
       }
     }
 
