@@ -2147,6 +2147,7 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 static void
 hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
 {
+  //fprintf(stderr, "running post sw for read: [%s]\n", re->name);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
   } else { // LS: cheat; reuse SW score to get posterior

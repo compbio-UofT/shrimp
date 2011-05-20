@@ -81,12 +81,13 @@ static int max_len;
 
 static uint64_t		ticks, cells, invocs;
 
+static int check;
 
 #pragma omp threadprivate(initialized,\
 			  pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,\
 			  use_read_qvs,use_sanger_qvs,default_qual,qual_vector_offset,qual_delta,\
 			  init_bp,len,columns,max_len,\
-			  ticks,cells,invocs)
+			  ticks,cells,invocs,check)
 
 
 /*********************************************************************************
@@ -392,6 +393,8 @@ post_sw_setup(int _max_len,
   assert((BASE_C ^ BASE_T) == BASE_2);
   assert((BASE_G ^ BASE_T) == BASE_1);
 
+  fprintf(stderr, "post_sw_setup: max_len=%d\n", _max_len);
+
   pr_snp = _pr_snp;
   pr_xover = _pr_xover;
   pr_del_open = _pr_del_open;
@@ -425,6 +428,8 @@ post_sw_setup(int _max_len,
     ticks = cells = invocs = 0;
 
   initialized = 1;
+
+  check = 0;
 
   return 1;
 }
@@ -464,14 +469,21 @@ post_sw_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks)
 static void
 load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_results * sfrp)
 {
-  int prev_run;
+  int start_run, col;
   int min_qv;
   int i, j;
 
-  prev_run = 0;
+  start_run = 0;
   min_qv = 10000;
   for (j = 0; j < sfrp->read_start; j++) {
-    prev_run ^= EXTRACT(read, j);
+    col = EXTRACT(read, j);
+    if (col == BASE_N) {
+      start_run = BASE_N;
+      min_qv = 0;
+      j = sfrp->read_start;
+      break;
+    }
+    start_run ^= col;
     if (use_read_qvs)
       min_qv = MIN(min_qv, (int)qual[qual_vector_offset+j]);
   }
@@ -490,21 +502,24 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
       // MATCH or INSERTION
 
       columns[len].ncols = 1;
-      columns[len].cols[0] = EXTRACT(read, j) ^ prev_run;
-      columns[len].base_call = fasta_get_initial_base(COLOUR_SPACE, &sfrp->qralign[i]);
+      col = EXTRACT(read, j);
+      if ((len == 0 && start_run == BASE_N) || col == BASE_N) {
+	columns[len].ncols = 0; // no emission
+      } else {
+	columns[len].cols[0] = EXTRACT(read, j) ^ (len == 0? start_run : 0);
+      }
+      columns[len].base_call = base_char_to_int(sfrp->qralign[i]);
+      assert(base_int_to_char(columns[len].base_call) == toupper(sfrp->qralign[i]));
 
       if (use_read_qvs) {
 	columns[len].colserrrate[0] = pr_err_from_qv(MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta);
-
-	min_qv = 10000;
+	if (!use_sanger_qvs) {
+	  columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
+	}
       } else {
 	columns[len].colserrrate[0] = pr_xover;
       }
-      if (!use_sanger_qvs) {
-	columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
-      }
 
-      prev_run = 0;
       len++;
       j++;
     }
@@ -520,7 +535,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
   fprintf(stderr, "\n");
   fprintf(stderr, "qr: %c", base_translate(init_bp, false));
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "  %c  ", base_translate(columns[_i].cols[0], true));
+    fprintf(stderr, "  %c  ", (columns[_i].ncols > 0 ? base_translate(columns[_i].cols[0], true) : 'X'));
   }
   fprintf(stderr, "\n");
   fprintf(stderr, "qv:  ");
@@ -529,7 +544,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
   }
   fprintf(stderr, "\n");
 #endif
-}  
+}
 
 
 static void
@@ -540,13 +555,14 @@ get_base_qualities(struct sw_full_results * sfrp)
   sfrp->qual = (char *)xmalloc((strlen(sfrp->qralign) + 1) * sizeof(sfrp->qual[0]));
   for (i = 0, k = 0; sfrp->qralign[i] != 0; i++) {
     if (sfrp->qralign[i] != '-') {
-      int tmp = qv_from_pr_corr(columns[k].posterior[columns[k].base_call]);
+      int tmp = columns[k].base_call != BASE_N ? qv_from_pr_corr(columns[k].posterior[columns[k].base_call]) : 0;
       if (tmp > 40)
 	tmp = 40;
       sfrp->qual[k] = 33 + tmp; // always 33+ in SAM
       k++;
     }
   }
+  assert(k == len);
   sfrp->qual[k] = 0;
 }
 

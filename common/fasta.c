@@ -21,6 +21,30 @@
 
 static uint64_t total_ticks;
 
+int basemap_char_to_int[] = {
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, -1, BASE_N, -1, BASE_0, BASE_1,
+  BASE_2, BASE_3, -1, -1, -1, -1, -1, -1, -1, -1,
+  -1, -1, -1, -1, -1, BASE_A, -1, BASE_C, -1, -1,
+  -1, BASE_G, -1, -1, -1, -1, -1, -1, BASE_N, -1,
+  -1, -1, -1, -1, BASE_T, -1, -1, -1, BASE_X, -1,
+  -1, -1, -1, -1, -1, -1, -1, BASE_A, -1, BASE_C,
+  -1, -1, -1, BASE_G, -1, -1, -1, -1, -1, -1,
+  BASE_N, -1, -1, -1, -1, -1, BASE_T, -1, -1, -1,
+  BASE_X, -1, -1, -1, -1, -1, -1, -1
+};
+
+char basemap_int_to_char[] = {
+  'A', 'C', 'G', 'T',
+  'U', 'M', 'R', 'W',
+  'S', 'Y', 'K', 'V',
+  'H', 'D', 'B', 'N'
+};
+
+
 fasta_t
 fasta_open(const char *file, shrimp_mode_t space, bool fastq)
 {
@@ -591,12 +615,26 @@ base_translate(int base, bool use_colours)
 			   'S', 'Y', 'K', 'V', 'H', 'D', 'B', 'N' };
 
 	if (use_colours) {
-		assert((base >= BASE_CS_MIN && base <= BASE_CS_MAX) ||
-		    (base == BASE_N || base == BASE_X));
+	  assert((base >= BASE_CS_MIN && base <= BASE_CS_MAX) ||
+		 (base == BASE_N || base == BASE_X));
 		return (cstrans[base]);
 	} else {
-		assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
-		    (base == BASE_N || base == BASE_X));
+	  assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) ||
+		 (base == BASE_N || base == BASE_X));
 		return (lstrans[base]);
 	}
+}
+
+
+int
+base_char_to_int(char base)
+{
+  return basemap_char_to_int[(int)base];
+}
+
+
+char
+base_int_to_char(int base)
+{
+  return basemap_int_to_char[base];
 }

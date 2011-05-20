@@ -2,7 +2,10 @@
 
 #ifndef _SW_FULL_COMMON_H
 #define _SW_FULL_COMMON_H
+
 #include <assert.h>
+#include <string.h>
+
 
 struct sw_full_results {
 	/* Common fields */

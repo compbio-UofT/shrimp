@@ -90,6 +90,8 @@ fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);
 void	fasta_write_read(FILE* file, read_entry * re);
 void	fasta_write_fasta(FILE* file, char* seq);
+int	base_char_to_int(char);
+char	base_int_to_char(int);
 
 static inline bool
 fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
