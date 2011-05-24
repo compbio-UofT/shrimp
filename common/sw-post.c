@@ -167,7 +167,7 @@ void printStates(states* allstates, int stateslen, FILE* stream) {
       fprintf(stream, "%d ",allstates[i].lets[k]);
     }
   
-    fprintf(stream, "%c",base_translate(allstates[i].max_posterior, false));
+    fprintf(stream, "%c",base_to_char(allstates[i].max_posterior, LETTER_SPACE));
     fprintf(stream, " %.5g %.5g %.5g %.5g",
 	    allstates[i].posterior[0],allstates[i].posterior[1],allstates[i].posterior[2],allstates[i].posterior[3]);
   }
@@ -506,8 +506,8 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
       } else {
 	columns[len].cols[0] = EXTRACT(read, j) ^ (len == 0? start_run : 0);
       }
-      columns[len].base_call = base_char_to_int(sfrp->qralign[i]);
-      assert(base_int_to_char(columns[len].base_call) == toupper(sfrp->qralign[i]));
+      columns[len].base_call = char_to_base(sfrp->qralign[i]);
+      assert(base_to_char(columns[len].base_call, LETTER_SPACE) == toupper(sfrp->qralign[i]));
 
       if (use_read_qvs) {
 	columns[len].colserrrate[0] = pr_err_from_qv(MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta);
@@ -528,12 +528,12 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
   int _i;
   fprintf(stderr, "db:  ");
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "    %c", columns[_i].nlets > 0 ? base_translate(columns[_i].lets[0], false) : '-');
+    fprintf(stderr, "    %c", columns[_i].nlets > 0 ? base_to_char(columns[_i].lets[0], LETTER_SPACE) : '-');
   }
   fprintf(stderr, "\n");
-  fprintf(stderr, "qr: %c", base_translate(init_bp, false));
+  fprintf(stderr, "qr: %c", base_to_char(init_bp, LETTER_SPACE));
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "  %c  ", (columns[_i].ncols > 0 ? base_translate(columns[_i].cols[0], true) : 'X'));
+    fprintf(stderr, "  %c  ", (columns[_i].ncols > 0 ? base_to_char(columns[_i].cols[0], COLOUR_SPACE) : '-'));
   }
   fprintf(stderr, "\n");
   fprintf(stderr, "qv:  ");
@@ -615,16 +615,16 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
   fprintf(stderr, "Post SW\n");
   fprintf(stderr, "dbalign: %s%s\n", spaces + strlen(spaces) - sfrp->read_start - 1, sfrp->dbalign);
   fprintf(stderr, "qralign: %s%s (offset: %d)\n", spaces + strlen(spaces) - sfrp->read_start - 1, sfrp->qralign, sfrp->read_start);
-  fprintf(stderr, "read cs: %c", base_translate(_init_bp, false));
+  fprintf(stderr, "read cs: %c", base_to_char(_init_bp, LETTER_SPACE));
   for (_i = 0, _j = 0; _i < (int)sfrp->read_start + (int)strlen(sfrp->qralign); _i++) {
     if (_j < sfrp->read_start) {
-      fprintf(stderr, "%c", base_translate(EXTRACT(read, _j), true));
+      fprintf(stderr, "%c", base_to_char(EXTRACT(read, _j), COLOUR_SPACE));
       _j++;
     } else {
       if (sfrp->qralign[_i - sfrp->read_start] == '-') {
 	fprintf(stderr, "-");
       } else {
-	fprintf(stderr, "%c", base_translate(EXTRACT(read, _j), true));
+	fprintf(stderr, "%c", base_to_char(EXTRACT(read, _j), COLOUR_SPACE));
 	_j++;
       }
     }
@@ -635,7 +635,7 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
   for (_i = 0, _j = 0; _i < (int)sfrp->read_start + (int)strlen(sfrp->qralign); _i++) {
     if (_j < sfrp->read_start) {
       _new_base = cstols(_last_base, EXTRACT(read, _j), false);
-      fprintf(stderr, "%c", base_translate(_new_base, false));
+      fprintf(stderr, "%c", base_to_char(_new_base, LETTER_SPACE));
       _last_base = _new_base;
       _j++;
     } else {
@@ -643,7 +643,7 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 	fprintf(stderr, "-");
       } else {
 	_new_base = cstols(_last_base, EXTRACT(read, _j), false);
-	fprintf(stderr, "%c", base_translate(_new_base, false));
+	fprintf(stderr, "%c", base_to_char(_new_base, LETTER_SPACE));
 	_last_base = _new_base;
 	_j++;
       }
@@ -676,7 +676,7 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 #ifdef DEBUG_POST_SW
   fprintf(stderr, "don: ");
   for (_i = 0; _i < len; _i++) {
-    fprintf(stderr, "    %c", base_translate(columns[_i].max_posterior, false));
+    fprintf(stderr, "    %c", base_to_char(columns[_i].max_posterior, LETTER_SPACE));
   }
   fprintf(stderr, "\n");
   fprintf(stderr, "bqv: ");

@@ -21,39 +21,47 @@
 
 static uint64_t total_ticks;
 
-int basemap_char_to_int[] = {
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, -1, BASE_N, -1, BASE_0, BASE_1,
-  BASE_2, BASE_3, -1, -1, -1, -1, -1, -1, -1, -1,
-  -1, -1, -1, -1, -1, BASE_A, -1, BASE_C, -1, -1,
-  -1, BASE_G, -1, -1, -1, -1, -1, -1, BASE_N, -1,
-  -1, -1, -1, -1, BASE_T, -1, -1, -1, BASE_X, -1,
-  -1, -1, -1, -1, -1, -1, -1, BASE_A, -1, BASE_C,
-  -1, -1, -1, BASE_G, -1, -1, -1, -1, -1, -1,
-  BASE_N, -1, -1, -1, -1, -1, BASE_T, -1, -1, -1,
-  BASE_X, -1, -1, -1, -1, -1, -1, -1
+int fasta_basemap_char_to_int[128] = {
+  /*  0 */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  /* 10 */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  /* 20 */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  /* 30 */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+  /* 40 */ -1, -1, -1, -1, -1, -1, BASE_N, -1, BASE_0, BASE_1,
+  /* 50 */ BASE_2, BASE_3, BASE_N, -1, -1, -1, -1, -1, -1, -1,
+  /* 60 */ -1, -1, -1, -1, -1, BASE_A, BASE_B, BASE_C, BASE_D, -1,
+  /* 70 */ -1, BASE_G, BASE_H, -1, -1, BASE_K, -1, BASE_M, BASE_N, -1,
+  /* 80 */ -1, -1, BASE_R, BASE_S, BASE_T, BASE_U, BASE_V, BASE_W, BASE_X, BASE_Y,
+  /* 90 */ -1, -1, -1, -1, -1, -1, -1, BASE_A, BASE_B, BASE_C,
+  /* 100 */ BASE_D, -1, -1, BASE_G, BASE_H, -1, -1, BASE_K, -1, BASE_M,
+  /* 110 */ BASE_N, -1, -1, -1, BASE_R, BASE_S, BASE_T, BASE_U, BASE_V, BASE_W,
+  /* 1200 */ BASE_X, BASE_Y, -1, -1, -1, -1, -1, -1
 };
 
-char basemap_int_to_char[] = {
-  'A', 'C', 'G', 'T',
-  'U', 'M', 'R', 'W',
-  'S', 'Y', 'K', 'V',
-  'H', 'D', 'B', 'N'
+char fasta_basemap_int_to_char[2][16] = {
+  {
+    'A', 'C', 'G', 'T',
+    'U', 'M', 'R', 'W',
+    'S', 'Y', 'K', 'V',
+    'H', 'D', 'B', 'N'
+  },
+  {
+    '0', '1', '2', '3',
+    '!', '@', '#', '$',
+    '%', '^', '&', '*',
+    '?', '~', ';', 'N'
+  }
 };
 
 
 fasta_t
-fasta_open(const char *file, shrimp_mode_t space, bool fastq)
+fasta_open(const char *file, int space, bool fastq)
 {
 	fasta_t fasta = NULL;
 	struct stat sb;
 	gzFile fp;
 	uint64_t before = rdtsc();
 
-	assert(space == MODE_COLOUR_SPACE || space == MODE_LETTER_SPACE);
+	assert(space == COLOUR_SPACE || space == LETTER_SPACE);
 
 	if (strcmp(file,"-")==0) {
 		fp = gzdopen(fileno(stdin),"r");
@@ -104,7 +112,7 @@ fasta_open(const char *file, shrimp_mode_t space, bool fastq)
 	fasta->header=true;
 	memset(fasta->translate, -1, sizeof(fasta->translate));
 
-	if (space == MODE_COLOUR_SPACE) {
+	if (space == COLOUR_SPACE) {
 		fasta->translate[(int)'0'] = BASE_0;
 		fasta->translate[(int)'1'] = BASE_1;
 		fasta->translate[(int)'2'] = BASE_2;
@@ -411,9 +419,9 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 					different for colour space and letter space. Since the first
 					letter in the colour space read does not have a quality value	
 				*/
-				if (quality_length == sequence_length && fasta->space==MODE_LETTER_SPACE){
+				if (quality_length == sequence_length && fasta->space==LETTER_SPACE){
 					break;
-				} else if (quality_length == sequence_length-1 && fasta->space==MODE_COLOUR_SPACE) {
+				} else if (quality_length == sequence_length-1 && fasta->space==COLOUR_SPACE) {
 					break;
 				} else if (quality_length > sequence_length) {
 					fprintf(stderr,"There has been a problem reading in the read \"%s\", the quality length exceeds the sequence length!\n",re->name);
@@ -423,13 +431,13 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 					continue;
 				}
 		}
-		if (quality_length != sequence_length && fasta->space==MODE_LETTER_SPACE){
+		if (quality_length != sequence_length && fasta->space==LETTER_SPACE){
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);
 			total_ticks += (rdtsc() - before);
 			return (false);
-		} else if (quality_length != sequence_length-1 && fasta->space==MODE_COLOUR_SPACE) {
+		} else if (quality_length != sequence_length-1 && fasta->space==COLOUR_SPACE) {
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);
@@ -629,18 +637,4 @@ base_translate(int base, bool use_colours)
 		 (base == BASE_N || base == BASE_X));
 		return (lstrans[base]);
 	}
-}
-
-
-int
-base_char_to_int(char base)
-{
-  return basemap_char_to_int[(int)base];
-}
-
-
-char
-base_int_to_char(int base)
-{
-  return basemap_int_to_char[base];
 }
