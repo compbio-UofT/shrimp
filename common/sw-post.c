@@ -393,8 +393,6 @@ post_sw_setup(int _max_len,
   assert((BASE_C ^ BASE_T) == BASE_2);
   assert((BASE_G ^ BASE_T) == BASE_1);
 
-  fprintf(stderr, "post_sw_setup: max_len=%d\n", _max_len);
-
   pr_snp = _pr_snp;
   pr_xover = _pr_xover;
   pr_del_open = _pr_del_open;

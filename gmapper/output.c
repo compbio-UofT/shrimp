@@ -611,9 +611,10 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	}
 	//*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tH0:i:%d\tH1:i:%d\tH2:i:%d",
 	//			   hits[0],hits[1],hits[2]);
-	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tNM:i:%d\tNH:i:%d\tIH:i:%d",
-				   rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX0:i:%d", rh->matches); // REMOVE
+	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tNM:i:%d",
+				   rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions);
+	//*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tNH:i:%d\tIH:i:%d",
+	//			   satisfying_alignments, stored_alignments);
 	if (shrimp_mode == COLOUR_SPACE){
 		//TODO
 		//int first_bp = re->initbp[0];
@@ -639,6 +640,10 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	if (sam_read_group_name!=NULL) {
 			//extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
 			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
+	}
+	if (extra_sam_fields) {
+	  *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZM:i:%d\tZR:i:%d\tZV:i:%d\tZH:i:%d",
+				     rh->matches, rh->score_window_gen, rh->score_vector, rh->sfrp->score);
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);

@@ -354,6 +354,13 @@ bool load_genome_map(const char *file)
     }
   }
 
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    genome_cs_contigs_rc = (uint32_t **)xmalloc(sizeof(genome_cs_contigs_rc[0]) * num_contigs);
+    for (i = 0; i < num_contigs; i++) {
+      genome_cs_contigs_rc[i] = bitfield_to_colourspace(genome_contigs_rc[i], genome_len[i], false);
+    }
+  }
+
   gzclose(fp);
   return true;
 }
@@ -536,13 +543,15 @@ bool load_genome(char **files, int nfiles)
       if (shrimp_mode == MODE_COLOUR_SPACE){
 	genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
 	genome_cs_contigs[num_contigs-1] = fasta_bitfield_to_colourspace(fasta,genome_contigs[num_contigs -1],seqlen,is_rna);
+	genome_cs_contigs_rc = (uint32_t **)xrealloc(genome_cs_contigs_rc,sizeof(uint32_t *)*num_contigs);
+	genome_cs_contigs_rc[num_contigs - 1] = fasta_bitfield_to_colourspace(fasta, genome_contigs_rc[num_contigs -1], seqlen, is_rna);
       }
       genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
       genome_len[num_contigs -1] = seqlen;
 
       if (shrimp_mode == MODE_COLOUR_SPACE){
 	genome_initbp = (int *)xrealloc(genome_initbp,sizeof(genome_initbp[0])*num_contigs);
-	genome_initbp[num_contigs - 1] = EXTRACT(read,0);
+	genome_initbp[num_contigs - 1] = BASE_T; // EXTRACT(read,0); NOT REALLY NEEDED
 	read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
       }
       kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));

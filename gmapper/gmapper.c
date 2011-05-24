@@ -1867,6 +1867,9 @@ int main(int argc, char **argv){
 		    fprintf(stderr, "error: invalid minimum average quality value (%s)\n", optarg);
 		  }
 		  break;
+		case 31:
+		  extra_sam_fields = true;
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2403,7 +2406,7 @@ int main(int argc, char **argv){
 
 	  if (f1_setup(max_window_len, longest_read_len,
 		       a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-		       match_score, mismatch_score,
+		       match_score, shrimp_mode == MODE_LETTER_SPACE? mismatch_score : crossover_score,
 		       shrimp_mode == MODE_COLOUR_SPACE, false)) {
 	    fprintf(stderr, "failed to initialise vector "
 		    "Smith-Waterman (%s)\n", strerror(errno));
@@ -2523,10 +2526,13 @@ int main(int argc, char **argv){
 	  }
 	}
 	if (shrimp_mode==MODE_COLOUR_SPACE) {
-	  for (i=0; i<num_contigs && (i==0 || load_file==NULL); i++){
-	    free(genome_cs_contigs[i]);
+	  for (i = 0; i < num_contigs; i++) {
+	    if (i == 0 || load_file == NULL)
+	      free(genome_cs_contigs[i]);
+	    free(genome_cs_contigs_rc[i]);
 	  }
 	  free(genome_cs_contigs);
+	  free(genome_cs_contigs_rc);
 	  free(genome_initbp);
 	}
 	free(genome_len);

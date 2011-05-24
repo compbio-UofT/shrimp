@@ -121,6 +121,7 @@ static int _rlen;
 #endif
 
 
+#ifdef DEBUG_SW
 static void print_sw(int lena, int lenb) {
 	printf("len a %d, len b %d\n",lena,lenb);
 	int k;
@@ -153,6 +154,7 @@ static void print_sw(int lena, int lenb) {
 		}
 	}
 }
+#endif
 /*
 static void print_sw_backtrace(int lena, int lenb) {
 	int i,j;

@@ -557,10 +557,12 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st)
     if (only_paired && re->hits[st][i].pair_min < 0) {
       continue;
     }
-    if (re->hits[st][i].score_vector >= 0) {
+    if (re->hits[st][i].score_vector > 0) {
       //fprintf(stderr, "found precomputed sw score for hit [%s]; skipping\n", re->name);
       continue;
     }
+
+    /*
     //TODO make this tunable?
     if (sam_half_paired && !only_paired && pair_mode!=PAIR_NONE) {
       //fprintf(stderr, "got here, [%s]\n", re->name);
@@ -582,6 +584,10 @@ read_pass1_per_strand(struct read_entry * re, bool only_paired, int st)
 	re->hits[st][i].pct_score_vector=0;
 	continue;
       }
+    }
+    */
+    if (re->hits[st][i].gen_st != 0) {
+      reverse_hit(re, &re->hits[st][i]);
     }
 
     // check window overlap
@@ -1861,6 +1867,8 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
     }
 
     // check window overlap
+    if (re->hits[st][i].gen_st != 0)
+      reverse_hit(re, &re->hits[st][i]);
     if (j >= 0
 	&& re->hits[st][i].cn == re->hits[st][j].cn
 	&& re->hits[st][i].g_off <= re->hits[st][j].g_off + re->window_len
@@ -1871,23 +1879,41 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
     }
 
     if (re->hits[st][i].score_vector <= 0) {
-      if (re->hits[st][i].gen_st != 0)
-	reverse_hit(re, &re->hits[st][i]);
 
       if (shrimp_mode == MODE_COLOUR_SPACE)
-	re->hits[st][i].score_vector = f1_run(genome_cs_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
-					      re->hits[st][i].g_off, re->hits[st][i].w_len,
-					      re->read[st], re->read_len,
-					      re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
-					      genome_contigs[re->hits[st][i].cn], re->initbp[st], genome_is_rna, f1_hash_tag,
-					      options->gapless);
+	{
+	  uint32_t ** gen_cs;
+	  uint32_t ** gen_ls;
+	  struct read_hit * rh = &re->hits[st][i];
+
+	  assert(st == rh->st);
+	  if (rh->st != re->input_strand)
+	    reverse_hit(re, &re->hits[st][i]);
+
+	  if (re->hits[st][i].gen_st == 0) {
+	    gen_cs = genome_cs_contigs;
+	    gen_ls = genome_contigs;
+	  } else {
+	    gen_cs = genome_cs_contigs_rc;
+	    gen_ls = genome_contigs_rc;
+	  }
+
+	  re->hits[st][i].score_vector = f1_run(gen_cs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
+						re->hits[st][i].g_off, re->hits[st][i].w_len,
+						re->read[rh->st], re->read_len,
+						re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
+						gen_ls[re->hits[st][i].cn], re->initbp[st], genome_is_rna, f1_hash_tag,
+						options->gapless);
+	}
       else
-	re->hits[st][i].score_vector = f1_run(genome_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
-					      re->hits[st][i].g_off, re->hits[st][i].w_len,
-					      re->read[st], re->read_len,
-					      re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
-					      NULL, -1, genome_is_rna, f1_hash_tag,
-					      options->gapless);
+	{
+	  re->hits[st][i].score_vector = f1_run(genome_contigs[re->hits[st][i].cn], genome_len[re->hits[st][i].cn],
+						re->hits[st][i].g_off, re->hits[st][i].w_len,
+						re->read[st], re->read_len,
+						re->hits[st][i].g_off + re->hits[st][i].anchor.x, re->hits[st][i].anchor.y,
+						NULL, -1, genome_is_rna, f1_hash_tag,
+						options->gapless);
+	}
 
       re->hits[st][i].pct_score_vector = (1000 * 100 * re->hits[st][i].score_vector)/re->hits[st][i].score_max;
     }
@@ -2155,6 +2181,8 @@ hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
   }
 
   rh->sfrp->posterior_score = (int)rint(score_alpha * log(rh->sfrp->posterior) / log(2.0) + (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta));
+  if (rh->sfrp->posterior_score < 0)
+    rh->sfrp->posterior_score = 0;
   rh->sfrp->pct_posterior_score = (1000 * 100 * rh->sfrp->posterior_score)/rh->score_max;
   rh->score_full = rh->sfrp->posterior_score;
   rh->pct_score_full = rh->sfrp->pct_posterior_score;

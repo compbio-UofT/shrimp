@@ -125,7 +125,8 @@
 	{"region-overlap",1,0,27},\
 	{"paired-options",1,0,28},\
 	{"unpaired-options",1,0,29},\
-	{"min-avg-qv",1,0,30}\
+	{"min-avg-qv",1,0,30},\
+	{"extra-sam-fields",0,0,31}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

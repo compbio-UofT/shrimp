@@ -89,7 +89,7 @@ EXTERN(bool,		Vflag,			true);		/* automatic genome index trimming */
 EXTERN(bool,		Qflag,			false);		/* use fastq reads */
 EXTERN(bool,		Gflag,			false);		/* global alignment flag ! */
 EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
-
+EXTERN(bool,		extra_sam_fields,	false);
 
 /* Scores */
 EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);
@@ -207,6 +207,7 @@ EXTERN(int,			num_contigs,			0);
 EXTERN(uint32_t **,		genome_contigs,			NULL);	/* genome -- always in letter */
 EXTERN(uint32_t **,		genome_contigs_rc,		NULL);	/* reverse complemets */
 EXTERN(uint32_t **,		genome_cs_contigs,		NULL);
+EXTERN(uint32_t **,		genome_cs_contigs_rc,		NULL);
 EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/

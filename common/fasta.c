@@ -515,24 +515,30 @@ fasta_get_initial_base(int space, char *sequence)
 uint32_t *
 fasta_bitfield_to_colourspace(fasta_t fasta, uint32_t *source, uint32_t length, bool is_rna)
 {
-	int a, lastbp = BASE_T;
-	uint32_t *dst;
-	uint32_t i;
-	uint64_t before = rdtsc();
+  assert(fasta->space == LETTER_SPACE);
+  return bitfield_to_colourspace(source, length, is_rna);
+}
 
-	assert(fasta->space == LETTER_SPACE);
+uint32_t *
+bitfield_to_colourspace(uint32_t *source, uint32_t length, bool is_rna)
+{
+  int a, lastbp = BASE_T;
+  uint32_t *dst;
+  uint32_t i;
+  uint64_t before = rdtsc();
 
-	dst = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
-	memset(dst, 0, BPTO32BW(length) * sizeof(uint32_t));
 
-	for (i = 0; i < length; i++) {
-		a = EXTRACT(source, i);
-		bitfield_insert(dst, i, lstocs(lastbp, a, is_rna));
-		lastbp = a;
-	}
+  dst = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
+  memset(dst, 0, BPTO32BW(length) * sizeof(uint32_t));
 
-	total_ticks += (rdtsc() - before);
-	return (dst);
+  for (i = 0; i < length; i++) {
+    a = EXTRACT(source, i);
+    bitfield_insert(dst, i, lstocs(lastbp, a, is_rna));
+    lastbp = a;
+  }
+
+  total_ticks += (rdtsc() - before);
+  return (dst);
 }
 
 uint32_t *

@@ -79,6 +79,7 @@ init_cell(int idx, int local_alignment) {
 }
 
 
+#ifdef DEBUG_SW
 static void print_sw(int lena, int lenb) {
 	int i,j;
 	printf("      %5s ","-");
@@ -144,6 +145,8 @@ static void print_sw_backtrace(int lena, int lenb) {
 		printf("\n");
 	}
 }
+#endif
+
 
 static int
 full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret, bool revcmpl,
