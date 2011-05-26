@@ -575,12 +575,12 @@ get_posterior(struct sw_full_results * sfrp, double total_score)
   for (i = 0; sfrp->dbalign[i] != 0; i++) {
     if (sfrp->dbalign[i] == '-') {
       res *= pr_ins_extend;
-      if (sfrp->dbalign[i-1] != '-') {
+      if (i == 0 || sfrp->dbalign[i-1] != '-') {
 	res *= pr_ins_open;
       }
     } else if (sfrp->qralign[i] == '-') {
       res *= pr_del_extend;
-      if (sfrp->qralign[i-1] != '-') {
+      if (i == 0 || sfrp->qralign[i-1] != '-') {
 	res *= pr_del_open;
       }
     }

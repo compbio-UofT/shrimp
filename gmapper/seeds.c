@@ -11,7 +11,10 @@ add_spaced_seed(char const * seed_string)
 {
   int i;
 
-  seed = (struct seed_type *)xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
+  seed = (struct seed_type *)
+    //xrealloc(seed, sizeof(struct seed_type) * (n_seeds + 1));
+    my_realloc(seed, (n_seeds + 1) * sizeof(seed[0]), n_seeds * sizeof(seed[0]),
+	       &mem_small, "seed");
   seed[n_seeds].mask[0] = 0x0;
   seed[n_seeds].span = strlen(seed_string);
   seed[n_seeds].weight = strchrcnt(seed_string, '1');
@@ -82,9 +85,15 @@ init_seed_hash_mask()
 {
   int i, sn;
 
-  seed_hash_mask = (uint32_t **)xmalloc(sizeof(seed_hash_mask[0]) * n_seeds);
+  seed_hash_mask = (uint32_t **)
+    //xmalloc(sizeof(seed_hash_mask[0]) * n_seeds);
+    my_malloc(n_seeds * sizeof(seed_hash_mask[0]),
+	      &mem_small, "seed_hash_mask");
   for (sn = 0; sn < n_seeds; sn++) {
-    seed_hash_mask[sn] = (uint32_t *)xcalloc(sizeof(seed_hash_mask[sn][0]) * BPTO32BW(max_seed_span));
+    seed_hash_mask[sn] = (uint32_t *)
+      //xcalloc(sizeof(seed_hash_mask[sn][0]) * BPTO32BW(max_seed_span));
+      my_calloc(BPTO32BW(max_seed_span) * sizeof(seed_hash_mask[sn][0]),
+		&mem_small, "seed_hash_mask[%d]", sn);
 
     for (i = seed[sn].span - 1; i >= 0; i--)
       bitfield_prepend(seed_hash_mask[sn], max_seed_span,

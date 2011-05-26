@@ -195,7 +195,12 @@ EXTERN(stat_t,			anchor_list_init_size[50],	{});
 EXTERN(int,			anchor_list_big_gap,		DEF_ANCHOR_LIST_BIG_GAP);
 EXTERN(stat_t,			n_big_gaps_anchor_list[50],	{});
 EXTERN(stat_t,			n_anchors_discarded[50],	{});
-EXTERN(count_t,			mem_genomemap,			0);
+
+EXTERN(count_t,			mem_genomemap,			{});
+EXTERN(count_t,			mem_small,			{});
+EXTERN(count_t,			mem_thread_buffer,		{});
+EXTERN(count_t,			mem_mapping,			{});
+EXTERN(count_t,			mem_sw,				{});
 
 
 /* genome map */
@@ -211,6 +216,12 @@ EXTERN(uint32_t **,		genome_cs_contigs_rc,		NULL);
 EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
+
+EXTERN(ptr_and_sz *,		genomemap_block,		NULL);
+EXTERN(ptr_and_sz,		genome_contigs_block,		{});
+EXTERN(ptr_and_sz,		genome_contigs_rc_block,	{});
+EXTERN(ptr_and_sz,		genome_cs_contigs_block,	{});
+
 
 /* region handling */
 EXTERN(bool,			use_regions,			DEF_USE_REGIONS);
@@ -228,7 +239,7 @@ EXTERN(int,			region_map_max_count,		((1 << 8) - 1));
 #include "../common/f1-wrapper.h"
 
 
-void		hit_free_sfrp(struct read_hit *);
+//void		hit_free_sfrp(struct read_hit *);
 void		read_free(struct read_entry *);
 void		read_free_hit_list(struct read_entry *);
 void		read_free_anchor_list(struct read_entry *);

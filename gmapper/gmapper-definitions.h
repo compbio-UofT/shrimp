@@ -33,6 +33,10 @@ typedef enum {
   MODE_HELICOS_SPACE = 3
 } shrimp_mode_t;
 
+typedef struct ptr_and_sz {
+  void * ptr;
+  size_t sz;
+} ptr_and_sz;
 
 /* pair mode */
 #define PAIR_NONE	0
@@ -86,7 +90,6 @@ typedef struct read_entry {
   double	mq_denominator;
   int           n_anchors[2];
   int           n_hits[2];
-  int		list_sz[2];
   int           n_ranges;
 
   int           final_matches;
@@ -181,8 +184,9 @@ typedef struct anchor_list_options {
   bool		recompute;			// whether to recompute anchor list for each read
   bool		collapse;
   bool		use_region_counts;		// whether to use region counts for each read
-  int		min_count[2];
-  int		max_count[2];			// min/max[0]: min/max count for this read; min/max[1]: for mp
+  bool		use_mp_region_counts;
+  //int		min_count[2];
+  //int		max_count[2];			// min/max[0]: min/max count for this read; min/max[1]: for mp
   //int		min_seed;
   //int		max_seed;			// which seeds to use in creating the anchor list
 } anchor_list_options;
@@ -259,17 +263,19 @@ typedef struct readpair_mapping_options_t {
 
 
 static inline void
-read_free_anchor_list(struct read_entry * re)
+read_free_anchor_list(struct read_entry * re, count_t * counter)
 {
   if (re->anchors[0] != NULL) {
     //free(re->anchors[0]);
-    my_free(re->anchors[0], re->list_sz[0] * sizeof(re->anchors[0][0]), NULL);
+    my_free(re->anchors[0], re->n_anchors[0] * sizeof(re->anchors[0][0]),
+	    counter, "anchors [%s]", re->name);
     re->anchors[0] = NULL;
     re->n_anchors[0] = 0;
   }
   if (re->anchors[1] != NULL) {
     //free(re->anchors[1]);
-    my_free(re->anchors[1], re->list_sz[1] * sizeof(re->anchors[0][0]), NULL);
+    my_free(re->anchors[1], re->n_anchors[1] * sizeof(re->anchors[0][0]),
+	    counter, "anchors [%s]", re->name);
     re->anchors[1] = NULL;
     re->n_anchors[1] = 0;
   }
@@ -277,17 +283,19 @@ read_free_anchor_list(struct read_entry * re)
 
 
 static inline void
-read_free_hit_list(struct read_entry * re)
+read_free_hit_list(struct read_entry * re, count_t * counter)
 {
   if (re->hits[0] != NULL) {
     //free(re->hits[0]);
-    my_free(re->hits[0], re->n_anchors[0] * sizeof(re->hits[0][0]), NULL);
+    my_free(re->hits[0], re->n_hits[0] * sizeof(re->hits[0][0]),
+	    counter, "hits [%s]", re->name);
     re->hits[0] = NULL;
     re->n_hits[0] = 0;
   }
   if (re->hits[1] != NULL) {
     //free(re->hits[1]);
-    my_free(re->hits[1], re->n_anchors[1] * sizeof(re->hits[0][0]), NULL);
+    my_free(re->hits[1], re->n_hits[1] * sizeof(re->hits[0][0]),
+	    counter, "hits [%s]", re->name);
     re->hits[1] = NULL;
     re->n_hits[1] = 0;
   }

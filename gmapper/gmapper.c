@@ -42,7 +42,14 @@
 #include "../common/sw-post.h"
 
 /* heaps */
-DEF_HEAP(uint32_t, char *, out)
+/*
+typedef struct ptr_and_sz {
+  void * ptr;
+  size_t sz;
+} ptr_and_sz;
+*/
+//DEF_HEAP(uint32_t, char *, out)
+DEF_HEAP(uint32_t, struct ptr_and_sz, out)
 
 
 
@@ -69,7 +76,7 @@ hit_edit_distance(struct read_hit * rh) {
  * Free memory allocated by this read.
  */
 void 
-read_free(read_entry * re)
+read_free(struct read_entry * re)
 {
   free(re->name);
   free(re->seq);
@@ -89,22 +96,26 @@ read_free(read_entry * re)
 
 
 void
-read_free_full(struct read_entry * re)
+read_free_full(struct read_entry * re, count_t * counter)
 {
-  read_free(re);
-  free(re->read[0]);
-  free(re->read[1]);
-
   //free(re->mapidx[0]);
-  my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), NULL);
+  if (re->mapidx[0] != NULL)
+    my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]),
+	    counter, "mapidx [%s]", re->name);
   //free(re->mapidx[1]);
-  my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), NULL);
-  read_free_anchor_list(re);
-  read_free_hit_list(re);
+  if (re->mapidx[1] != NULL)
+    my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]),
+	    counter, "mapidx [%s]", re->name);
+  read_free_hit_list(re, counter);
+  read_free_anchor_list(re, counter);
 
   if (re->n_ranges > 0) {
     free(re->ranges);
   }
+
+  free(re->read[0]);
+  free(re->read[1]);
+  read_free(re);
 }
 
 
@@ -126,6 +137,7 @@ read_reverse(struct read_entry * re) {
   re->input_strand = 1 - re->input_strand;
 }
 
+/*
 static uint
 get_contig_number_from_name(char const * c)
 {
@@ -139,10 +151,12 @@ get_contig_number_from_name(char const * c)
   }
   return cn;
 }
+*/
 
 /*
  * Compute range limitations for this read.
  */
+/*
 static void
 read_compute_ranges(struct read_entry * re)
 {
@@ -195,6 +209,7 @@ read_compute_ranges(struct read_entry * re)
       re->ranges[re->n_ranges - 1].g_end = g_end;
     }
 }
+*/
 
 /* Trim a read */
 static void trim_read(struct read_entry * re) {
@@ -261,10 +276,22 @@ launch_scan_threads(){
   bool read_more = true, more_in_left_file = true, more_in_right_file=true;
 
   /* initiate the thread buffers */
-  thread_output_buffer_sizes = (size_t *)xcalloc_m(sizeof(size_t) * num_threads, "thread_output_buffer_sizes");
-  thread_output_buffer_filled = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer_filled");
-  thread_output_buffer = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer");
-  thread_output_buffer_chunk = (unsigned int *)xcalloc_m(sizeof(unsigned int) * num_threads, "thread_output_buffer_chunk");
+  //thread_output_buffer_sizes = (size_t *)xcalloc_m(sizeof(size_t) * num_threads, "thread_output_buffer_sizes");
+  thread_output_buffer_sizes = (size_t *)
+    my_calloc(num_threads * sizeof(size_t),
+	      &mem_thread_buffer, "thread_output_buffer_sizes");
+  //thread_output_buffer_filled = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer_filled");
+  thread_output_buffer_filled = (char * *)
+    my_calloc(num_threads * sizeof(char *),
+	      &mem_thread_buffer, "thread_output_buffer_filled");
+  //thread_output_buffer = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer");
+  thread_output_buffer = (char * *)
+    my_calloc(num_threads * sizeof(char *),
+	      &mem_thread_buffer, "thread_output_buffer");
+  //thread_output_buffer_chunk = (unsigned int *)xcalloc_m(sizeof(unsigned int) * num_threads, "thread_output_buffer_chunk");
+  thread_output_buffer_chunk = (unsigned int *)
+    my_calloc(num_threads * sizeof(unsigned int),
+	      &mem_thread_buffer, "thread_output_buffer_chunk");
   
   unsigned int current_thread_chunk = 1;
   unsigned int next_chunk_to_print = 1;
@@ -277,7 +304,10 @@ launch_scan_threads(){
     struct read_entry * re_buffer;
     int load, i;
     uint64_t before;
-    re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
+    //re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
+    re_buffer = (struct read_entry *)
+      my_malloc(chunk_size * sizeof(re_buffer[0]),
+		&mem_thread_buffer, "re_buffer");
 
     while (read_more) {
       memset(re_buffer, 0, chunk_size * sizeof(re_buffer[0]));
@@ -340,7 +370,10 @@ launch_scan_threads(){
 	assert(load % 2 == 0); // read even number of reads
 
       thread_output_buffer_sizes[thread_id] = thread_output_buffer_initial;
-      thread_output_buffer[thread_id] = (char *)xmalloc_m(sizeof(char) * thread_output_buffer_sizes[thread_id], "thread_buffer");
+      //thread_output_buffer[thread_id] = (char *)xmalloc_m(sizeof(char) * thread_output_buffer_sizes[thread_id], "thread_buffer");
+      thread_output_buffer[thread_id] = (char *)
+	my_malloc(thread_output_buffer_sizes[thread_id] * sizeof(char),
+		  &mem_thread_buffer, "thread_output_buffer[]");
       thread_output_buffer_filled[thread_id] = thread_output_buffer[thread_id];
       thread_output_buffer[thread_id][0] = '\0';
 
@@ -416,16 +449,16 @@ launch_scan_threads(){
 	    #pragma omp atomic
 	    total_reads_dropped++;
 
-	    read_free_full(&re_buffer[i]);
+	    read_free_full(&re_buffer[i], &mem_mapping);
 	  } else {
 	    #pragma omp atomic
 	    total_pairs_dropped++;
 
 	    if (i%2 == 1) {
-	      read_free_full(&re_buffer[i-1]);
-	      read_free_full(&re_buffer[i]);
+	      read_free_full(&re_buffer[i-1], &mem_mapping);
+	      read_free_full(&re_buffer[i], &mem_mapping);
 	    } else {
-	      read_free_full(&re_buffer[i]);
+	      read_free_full(&re_buffer[i], &mem_mapping);
 	      re_buffer[i].ignore = true;
 	    }
 	  }
@@ -435,7 +468,8 @@ launch_scan_threads(){
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
 
 	if (re_buffer[i].range_string != NULL) {
-	  read_compute_ranges(&re_buffer[i]);
+	  assert(0); // not maintained
+	  //read_compute_ranges(&re_buffer[i]);
 	  free(re_buffer[i].range_string);
 	  re_buffer[i].range_string = NULL;
 	}
@@ -445,7 +479,7 @@ launch_scan_threads(){
 	if (pair_mode == PAIR_NONE)
 	  {
 	    new_handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
-	    read_free_full(&re_buffer[i]);
+	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
 	else if (i % 2 == 1)
 	  {
@@ -460,8 +494,8 @@ launch_scan_threads(){
 	    re_buffer[i].first_in_pair=false;
 	    re_buffer[i].mate_pair=&re_buffer[i-1];
 	    new_handle_readpair(&re_buffer[i-1], &re_buffer[i], paired_mapping_options, n_paired_mapping_options);
-	    read_free_full(&re_buffer[i-1]);
-	    read_free_full(&re_buffer[i]);	    
+	    read_free_full(&re_buffer[i-1], &mem_mapping);
+	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
       }
 
@@ -470,36 +504,58 @@ launch_scan_threads(){
       {
 	struct heap_out_elem tmp;
 	tmp.key = thread_output_buffer_chunk[thread_id];
-	tmp.rest = thread_output_buffer[thread_id];
+	//tmp.rest = thread_output_buffer[thread_id];
+	tmp.rest.ptr = thread_output_buffer[thread_id];
+	tmp.rest.sz = thread_output_buffer_sizes[thread_id];
 	thread_output_buffer[thread_id] = NULL;	
 	heap_out_insert(&h, &tmp);
 	heap_out_get_min(&h, &tmp);
 	while (h.load > 0 && tmp.key == next_chunk_to_print) {
 	  heap_out_extract_min(&h, &tmp);
-	  fprintf(stdout, "%s", tmp.rest);
-	  free(tmp.rest);
+	  //fprintf(stdout, "%s", tmp.rest);
+	  fprintf(stdout, "%s", (char *)tmp.rest.ptr);
+	  //free(tmp.rest);
+	  my_free(tmp.rest.ptr, tmp.rest.sz,
+		  &mem_thread_buffer, "thread_output_buffer[]");
 	  next_chunk_to_print++;
 	}
       }
     }
 
-    free(re_buffer);
+    //free(re_buffer);
+    my_free(re_buffer, chunk_size * sizeof(re_buffer[0]),
+	    &mem_thread_buffer, "re_buffer");
   } // end parallel section
 
   if (progress > 0)
     fprintf(stderr, "\n");
 
+  //assert(h.load == 0);
+  
   struct heap_out_elem tmp;
   while (h.load>0) {
     heap_out_extract_min(&h,&tmp);
-    fprintf(stdout,"%s",tmp.rest);
-    free(tmp.rest);
+    fprintf(stdout,"%s",(char *)tmp.rest.ptr);
+    //free(tmp.rest);
+    my_free(tmp.rest.ptr, tmp.rest.sz,
+	    &mem_thread_buffer, "thread_output_buffer[]");
   }
+  
   heap_out_destroy(&h);
-  free(thread_output_buffer_sizes);
-  free(thread_output_buffer_filled);
-  free(thread_output_buffer);
-  free(thread_output_buffer_chunk);
+
+  //free(thread_output_buffer_sizes);
+  my_free(thread_output_buffer_sizes, sizeof(size_t) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_sizes");
+  //free(thread_output_buffer_filled);
+  my_free(thread_output_buffer_filled, sizeof(char *) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_filled");
+  //free(thread_output_buffer);
+  my_free(thread_output_buffer, sizeof(char *) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer");
+  //free(thread_output_buffer_chunk);
+  my_free(thread_output_buffer_chunk, sizeof(unsigned int) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_chunk");
+
   if (single_reads_file) {
     fasta_close(fasta);
   } else {
@@ -1029,13 +1085,11 @@ print_read_mapping_options(struct read_mapping_options_t * options)
 {
   fprintf(stderr, "[\n\tregions:[recompute:%s, min_seed:%d, max_seed:%d]\n",
 	  options->regions.recompute? "true" : "false", options->regions.min_seed, options->regions.max_seed);
-  fprintf(stderr, "\tanchor_list:[recompute:%s, collapse:%s, use_region_counts:%s,"
-	  " min_count[0]:%d, max_count[0]:%d, min_count[1]:%d, max_count[1]:%d]\n",
+  fprintf(stderr, "\tanchor_list:[recompute:%s, collapse:%s, use_region_counts:%s, use_mp_region_counts:%s]\n",
 	  options->anchor_list.recompute? "true" : "false",
 	  options->anchor_list.collapse? "true" : "false",
 	  options->anchor_list.use_region_counts? "true" : "false",
-	  options->anchor_list.min_count[0], options->anchor_list.max_count[0],
-	  options->anchor_list.min_count[1], options->anchor_list.max_count[1]);
+	  options->anchor_list.use_mp_region_counts? "true" : "false");
   fprintf(stderr, "\thit_list:[recompute:%s, gapless:%s, match_mode:%d,",
 	  options->hit_list.recompute? "true" : "false",
 	  options->hit_list.gapless? "true" : "false",
@@ -1362,13 +1416,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options)
   p = strtok(NULL, ",");
   get_bool(p, &options->anchor_list.use_region_counts);
   p = strtok(NULL, ",");
-  get_int(p, &options->anchor_list.min_count[0]);
-  p = strtok(NULL, ",");
-  get_int(p, &options->anchor_list.max_count[0]);
-  p = strtok(NULL, ",");
-  get_int(p, &options->anchor_list.min_count[1]);
-  p = strtok(NULL, ",");
-  get_int(p, &options->anchor_list.max_count[1]);
+  get_bool(p, &options->anchor_list.use_mp_region_counts);
   // hit_list
   p = strtok(NULL, ",");
   get_bool(p, &options->hit_list.recompute);
@@ -1418,6 +1466,8 @@ int main(int argc, char **argv){
 	bool a_gap_extend_set, b_gap_extend_set;
 	bool match_score_set, mismatch_score_set, xover_score_set;
 	bool num_matches_set = false;
+
+	my_alloc_init(4l*1024l*1024l*1024l, 100l*1024l*1024l);
 
 	shrimp_args.argc=argc;
 	shrimp_args.argv=argv;
@@ -1837,7 +1887,9 @@ int main(int argc, char **argv){
 		  }
 		  n_paired_mapping_options++;
 		  paired_mapping_options = (struct readpair_mapping_options_t *)
-		    xrealloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+		    //xrealloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+		    my_realloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]), (n_paired_mapping_options - 1) * sizeof(paired_mapping_options[0]),
+			       &mem_small, "paired_mapping_options");
 		  c = strtok_r(optarg, ";", &save_c);
 		  get_pairing_options(c, &paired_mapping_options[n_paired_mapping_options - 1].pairing);
 		  c = strtok_r(NULL, ";", &save_c);
@@ -1859,7 +1911,9 @@ int main(int argc, char **argv){
 		  nip = (*c == '0'? 0 : 1);
 		  n_unpaired_mapping_options[nip]++;
 		  unpaired_mapping_options[nip] = (struct read_mapping_options_t *)
-		    xrealloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]));
+		    //xrealloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]));
+		    my_realloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]), (n_unpaired_mapping_options[nip] - 1) * sizeof(unpaired_mapping_options[nip][0]),
+			       &mem_small, "unpaired_mapping_options[%d]", nip);
 		  c = strtok(NULL, ";");
 		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1]);
 		  break;
@@ -2148,7 +2202,10 @@ int main(int argc, char **argv){
 	  if (pair_mode == PAIR_NONE)
 	    {
 	      n_unpaired_mapping_options[0]++;
-	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+	      //unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)
+		my_calloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+			  &mem_small, "unpaired_mapping_options[0]");
 
 	      unpaired_mapping_options[0][0].regions.recompute = use_regions;
 	      unpaired_mapping_options[0][0].regions.min_seed = -1;
@@ -2156,10 +2213,7 @@ int main(int argc, char **argv){
 	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
 	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
 	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-	      unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
-	      unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
-	      unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
-	      unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
+	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = false;
 	      unpaired_mapping_options[0][0].hit_list.recompute = true;
 	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
 	      unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
@@ -2178,7 +2232,10 @@ int main(int argc, char **argv){
 	  else
 	    {
 	      n_paired_mapping_options++;
-	      paired_mapping_options = (struct readpair_mapping_options_t *)xcalloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+	      //paired_mapping_options = (struct readpair_mapping_options_t *)xcalloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+	      paired_mapping_options = (struct readpair_mapping_options_t *)
+		my_calloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]),
+			  &mem_small, "paired_mapping_options");
 
 	      paired_mapping_options[0].pairing.pair_mode = pair_mode;
 	      paired_mapping_options[0].pairing.pair_up_hits = true;
@@ -2198,10 +2255,7 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
 	      paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
-	      paired_mapping_options[0].read[0].anchor_list.min_count[0] = (num_matches == 4? 2 : 1);
-	      paired_mapping_options[0].read[0].anchor_list.min_count[1] = 0; //(num_matches == 4? 2 : 1);
-	      paired_mapping_options[0].read[0].anchor_list.max_count[0] = 0;
-	      paired_mapping_options[0].read[0].anchor_list.max_count[1] = 0;
+	      paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (num_matches == 3);
 	      paired_mapping_options[0].read[0].hit_list.recompute = true;
 	      paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
 	      paired_mapping_options[0].read[0].hit_list.match_mode = (num_matches == 4? 2 : 1);
@@ -2229,8 +2283,14 @@ int main(int argc, char **argv){
 
 		  n_unpaired_mapping_options[0]++;
 		  n_unpaired_mapping_options[1]++;
-		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
-		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+		  //unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)
+		    my_calloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+			      &mem_small, "unpaired_mapping_options[0]");
+		  //unpaired_mapping_options[1] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)
+		    my_calloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]),
+			      &mem_small, "unpaired_mapping_options[1]");
 
 		  unpaired_mapping_options[0][0].regions.recompute = false;
 		  //if (!use_regions) {
@@ -2241,10 +2301,6 @@ int main(int argc, char **argv){
 		    unpaired_mapping_options[0][0].anchor_list.recompute = true;
 		    unpaired_mapping_options[0][0].anchor_list.collapse = true;
 		    unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-		    unpaired_mapping_options[0][0].anchor_list.min_count[0] = (num_matches == 2? 2 : 1);
-		    unpaired_mapping_options[0][0].anchor_list.max_count[0] = 0;
-		    unpaired_mapping_options[0][0].anchor_list.min_count[1] = 0;
-		    unpaired_mapping_options[0][0].anchor_list.max_count[1] = 0;
 		    unpaired_mapping_options[0][0].hit_list.recompute = true;
 		    unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
 		    unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
@@ -2277,7 +2333,8 @@ int main(int argc, char **argv){
 		if (strchr(load_file, ',') == NULL) {
 			//use prefix
 			int buf_size = strlen(load_file) + 20;
-			char * genome_name = (char *)xmalloc(sizeof(char)*buf_size);
+			//char * genome_name = (char *)xmalloc(sizeof(char)*buf_size);
+			char genome_name[buf_size];
 			strncpy(genome_name,load_file,buf_size);
 			strncat(genome_name,".genome",buf_size);
 			fprintf(stderr,"Loading genome from %s\n",genome_name);
@@ -2285,10 +2342,12 @@ int main(int argc, char **argv){
 				fprintf(stderr, "error: loading from genome file \"%s\"\n", genome_name);
 				exit (1);
 			}
-			free(genome_name);
+			//free(genome_name);
 			int seed_count = 0;
-			char * seed_name = (char *)xmalloc(sizeof(char)*buf_size);
-			char * buff = (char *)xmalloc(sizeof(char)*buf_size);
+			//char * seed_name = (char *)xmalloc(sizeof(char)*buf_size);
+			char seed_name[buf_size];
+			//char * buff = (char *)xmalloc(sizeof(char)*buf_size);
+			char buff[buf_size];
 			strncpy(seed_name,load_file,buf_size);
 			strncat(seed_name,".seed.",buf_size);
 			sprintf(buff,"%d",seed_count);
@@ -2308,8 +2367,8 @@ int main(int argc, char **argv){
 				strncat(seed_name,buff,buf_size);
 				f = fopen(seed_name,"r");
 			}
-			free(seed_name);
-			free(buff);
+			//free(seed_name);
+			//free(buff);
 
 		} else {
 			c = strtok(load_file, ",");
@@ -2392,7 +2451,6 @@ int main(int argc, char **argv){
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;
 	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
-	my_alloc_init(1000000000ll);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
@@ -2404,15 +2462,17 @@ int main(int argc, char **argv){
 	    region_map_id = 0;
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		region_map[number_in_pair][st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
+		//region_map[number_in_pair][st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
+		region_map[number_in_pair][st] = (int32_t *)
+		  my_calloc(n_regions * sizeof(region_map[0][0][0]),
+			    &mem_mapping, "region_map");
 	  }
 
 	  if (f1_setup(max_window_len, longest_read_len,
 		       a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-		       match_score, shrimp_mode == MODE_LETTER_SPACE? mismatch_score : crossover_score,
+		       match_score, shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score,
 		       shrimp_mode == MODE_COLOUR_SPACE, false)) {
-	    fprintf(stderr, "failed to initialise vector "
-		    "Smith-Waterman (%s)\n", strerror(errno));
+	    fprintf(stderr, "failed to initialise vector Smith-Waterman (%s)\n", strerror(errno));
 	    exit(1);
 	  }
 
@@ -2429,8 +2489,7 @@ int main(int argc, char **argv){
 				   match_score, mismatch_score, false, anchor_width);
 	  }
 	  if (ret) {
-	    fprintf(stderr, "failed to initialise scalar "
-		    "Smith-Waterman (%s)\n", strerror(errno));
+	    fprintf(stderr, "failed to initialise scalar Smith-Waterman (%s)\n", strerror(errno));
 	    exit(1);
 	  }
 
@@ -2465,6 +2524,7 @@ int main(int argc, char **argv){
 		ends_in_newline=false;
 	      }
 	    }
+	    fclose(sam_header_file);
 	    if (!ends_in_newline) {
 	      fprintf(stdout,"\n");
 	    }
@@ -2499,9 +2559,6 @@ int main(int argc, char **argv){
 	}
 	total_work_usecs += (gettimeinusecs() - before);
 	
-	//if (load_file==NULL) {
-	free_genome();
-	//}
 	print_statistics();
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,	\
 			    match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
@@ -2517,35 +2574,45 @@ int main(int argc, char **argv){
 	  if (use_regions) {
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
-		free(region_map[number_in_pair][st]);
+		//free(region_map[number_in_pair][st]);
+		my_free(region_map[number_in_pair][st], n_regions * sizeof(region_map[0][0][0]),
+			&mem_mapping, "region_map");
 	  }
 	}
-	int i;
-	for (i=0; i<num_contigs; i++){
-	  free(contig_names[i]);
-	  if (i==0 || load_file==NULL) {
-	    free(genome_contigs[i]);
-	    free(genome_contigs_rc[i]);
+
+	free_genome();
+
+	//free(seed);
+	if (Hflag) {
+	  int sn;
+	  for (sn = 0; sn < n_seeds; sn++) {
+	    my_free(seed_hash_mask[sn], BPTO32BW(max_seed_span) * sizeof(seed_hash_mask[sn][0]),
+		    &mem_small, "seed_hash_mask[%d]", sn);
 	  }
+	  my_free(seed_hash_mask, n_seeds * sizeof(seed_hash_mask[0]),
+		  &mem_small, "seed_hash_mask");
 	}
-	if (shrimp_mode==MODE_COLOUR_SPACE) {
-	  for (i = 0; i < num_contigs; i++) {
-	    if (i == 0 || load_file == NULL)
-	      free(genome_cs_contigs[i]);
-	    free(genome_cs_contigs_rc[i]);
-	  }
-	  free(genome_cs_contigs);
-	  free(genome_cs_contigs_rc);
-	  free(genome_initbp);
-	}
-	free(genome_len);
-	free(genome_contigs_rc);
-	free(genome_contigs);
-	free(contig_names);
-	free(contig_offsets);
-	free(seed);
-	free(paired_mapping_options);
-	free(unpaired_mapping_options[0]);
-	free(unpaired_mapping_options[1]);
+	my_free(seed, n_seeds * sizeof(seed[0]),
+		&mem_small, "seed");
+
+	//free(paired_mapping_options);
+	my_free(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]),
+		&mem_small, "paired_mapping_options");
+	//free(unpaired_mapping_options[0]);
+	my_free(unpaired_mapping_options[0], n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+		&mem_small, "unpaired_mapping_options[0]");
+	//free(unpaired_mapping_options[1]);
+	my_free(unpaired_mapping_options[1], n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[0][0]),
+		&mem_small, "unpaired_mapping_options[1]");
+
+	if (sam_read_group_name != NULL)
+	  free(sam_read_group_name);
+
+	fprintf(stderr, "crt_mem: %lld\n", (long long)crt_mem);
+	fprintf(stderr, "mem_genomemap: max=%lld crt=%lld\n", (long long)count_get_max(&mem_genomemap), (long long)count_get_count(&mem_genomemap));
+	fprintf(stderr, "mem_mapping: max=%lld crt=%lld\n", (long long)count_get_max(&mem_mapping), (long long)count_get_count(&mem_mapping));
+	fprintf(stderr, "mem_thread_buffer: max=%lld crt=%lld\n", (long long)count_get_max(&mem_thread_buffer), (long long)count_get_count(&mem_thread_buffer));
+	fprintf(stderr, "mem_small: max=%lld crt=%lld\n", (long long)count_get_max(&mem_small), (long long)count_get_count(&mem_small));
+	fprintf(stderr, "mem_sw: max=%lld crt=%lld\n", (long long)count_get_max(&mem_sw), (long long)count_get_count(&mem_sw));
 	return 0;
 }

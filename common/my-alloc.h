@@ -6,6 +6,7 @@
 #include <omp.h>
 #include <assert.h>
 #include <stdarg.h>
+#include <string.h>
 #include "../common/stats.h"
 
 
@@ -17,6 +18,7 @@
 
 extern size_t max_mem;
 extern size_t crt_mem;
+extern size_t alert_mem;
 
 extern bool my_alloc_initialized;
 extern bool warned_max;
@@ -24,10 +26,11 @@ extern bool warned_fail;
 
 
 static inline void
-my_alloc_init(size_t _max_mem)
+my_alloc_init(size_t _max_mem, size_t _alert_mem)
 {
   assert(sizeof(size_t) == sizeof(void *));
   max_mem = _max_mem;
+  alert_mem = _alert_mem;
   crt_mem = 0;
   warned_max = false;
   warned_fail = false;
@@ -35,7 +38,7 @@ my_alloc_init(size_t _max_mem)
 }
 
 static inline void *
-my_malloc(size_t size, count_t * counter, int options, char const * msg, ...)
+my_malloc_long(size_t size, count_t * counter, int options, char const * msg, ...)
 {
 #ifndef NDEBUG
   va_list fmtargs;
@@ -121,35 +124,56 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
   void * res;
 
   assert(my_alloc_initialized);
+  //assert(size > 0);
+
+#ifdef DEBUG_MY_ALLOC
+  {
+    fprintf(stderr, "my_malloc: +%lld: ", (long long)size);
+    char new_msg[strlen(msg) + 1 + 200];
+    strcpy(new_msg, msg);
+    strcat(new_msg, "\n");
+    va_start(fmtargs, msg);
+    vfprintf(stderr, new_msg, fmtargs);
+    va_end(fmtargs);
+  }
+#endif
 
 #pragma omp critical (my_alloc)
   {
     if (crt_mem + size > max_mem) {
       if (!warned_max) {
 	warned_max = true;
-	fprintf(stderr, "my-alloc warning: exceeding maximum memory"
 #ifdef NDEBUG
-		"\n");
+	fprintf(stderr, "my_malloc warning: exceeding maximum memory\n");
 #else
-	": ");
+	char new_msg[strlen(msg) + 1 + 200];
+	strcpy(new_msg, "my_malloc warning: exceeding maximum memory: ");
+	strcat(new_msg, msg);
+	strcat(new_msg, "\n");
 	va_start(fmtargs, msg);
-	vfprintf(stderr, msg, fmtargs);
+	vfprintf(stderr, new_msg, fmtargs);
 	va_end(fmtargs);
 #endif
       }
     }
 
+    if (size > alert_mem) {
+      fprintf(stderr, "my_malloc alert: size=%lld\n", (long long)size);
+    }
+
     res = malloc(size);
 
     if (res == NULL) {
-      fprintf(stderr, "my-alloc error: malloc failed"
 #ifdef NDEBUG
-		"\n");
+	fprintf(stderr, "my_malloc error: malloc failed\n");
 #else
-	": ");
-      va_start(fmtargs, msg);
-      vfprintf(stderr, msg, fmtargs);
-      va_end(fmtargs);
+	char new_msg[strlen(msg) + 1 + 200];
+	strcpy(new_msg, "my_malloc warning: malloc failed: ");
+	strcat(new_msg, msg);
+	strcat(new_msg, "\n");
+	va_start(fmtargs, msg);
+	vfprintf(stderr, new_msg, fmtargs);
+	va_end(fmtargs);
 #endif
       exit(1);
     } else {
@@ -173,33 +197,53 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
 
   assert(my_alloc_initialized);
 
+#ifdef DEBUG_MY_ALLOC
+  {
+    fprintf(stderr, "my_calloc: +%lld: ", (long long)size);
+    char new_msg[strlen(msg) + 1 + 200];
+    strcpy(new_msg, msg);
+    strcat(new_msg, "\n");
+    va_start(fmtargs, msg);
+    vfprintf(stderr, new_msg, fmtargs);
+    va_end(fmtargs);
+  }
+#endif
+
 #pragma omp critical (my_alloc)
   {
     if (crt_mem + size > max_mem) {
       if (!warned_max) {
 	warned_max = true;
-	fprintf(stderr, "my-alloc warning: exceeding maximum memory"
 #ifdef NDEBUG
-		"\n");
+	fprintf(stderr, "my_calloc warning: exceeding maximum memory\n");
 #else
-	": ");
+	char new_msg[strlen(msg) + 1 + 200];
+	strcpy(new_msg, "my_calloc warning: exceeding maximum memory: ");
+	strcat(new_msg, msg);
+	strcat(new_msg, "\n");
 	va_start(fmtargs, msg);
-	vfprintf(stderr, msg, fmtargs);
+	vfprintf(stderr, new_msg, fmtargs);
 	va_end(fmtargs);
 #endif
       }
     }
 
-  res = calloc(size, 1);
+    if (size > alert_mem) {
+      fprintf(stderr, "my_calloc alert: size=%lld\n", (long long)size);
+    }
+
+    res = calloc(size, 1);
 
     if (res == NULL) {
-      fprintf(stderr, "my-alloc error: malloc failed"
 #ifdef NDEBUG
-		"\n");
+      fprintf(stderr, "my_calloc error: calloc failed\n");
 #else
-	": ");
+      char new_msg[strlen(msg) + 1 + 200];
+      strcpy(new_msg, "my_calloc warning: calloc failed: ");
+      strcat(new_msg, msg);
+      strcat(new_msg, "\n");
       va_start(fmtargs, msg);
-      vfprintf(stderr, msg, fmtargs);
+      vfprintf(stderr, new_msg, fmtargs);
       va_end(fmtargs);
 #endif
       exit(1);
@@ -224,33 +268,53 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
 
   assert(my_alloc_initialized);
 
+#ifdef DEBUG_MY_ALLOC
+  {
+    fprintf(stderr, "my_realloc: -%lld +%lld: ", (long long)old_size, (long long)size);
+    char new_msg[strlen(msg) + 1 + 200];
+    strcpy(new_msg, msg);
+    strcat(new_msg, "\n");
+    va_start(fmtargs, msg);
+    vfprintf(stderr, new_msg, fmtargs);
+    va_end(fmtargs);
+  }
+#endif
+
 #pragma omp critical (my_alloc)
   {
     if ((crt_mem - old_size) + size > max_mem) {
       if (!warned_max) {
 	warned_max = true;
-	fprintf(stderr, "my-alloc warning: exceeding maximum memory"
 #ifdef NDEBUG
-		"\n");
+	fprintf(stderr, "my_realloc warning: exceeding maximum memory\n");
 #else
-	": ");
+	char new_msg[strlen(msg) + 1 + 200];
+	strcpy(new_msg, "my_realloc warning: exceeding maximum memory: ");
+	strcat(new_msg, msg);
+	strcat(new_msg, "\n");
 	va_start(fmtargs, msg);
-	vfprintf(stderr, msg, fmtargs);
+	vfprintf(stderr, new_msg, fmtargs);
 	va_end(fmtargs);
 #endif
       }
     }
 
-  res = realloc(p, size);
+    if ((long long)size - (long long)old_size > (long long)alert_mem) {
+      fprintf(stderr, "my_realloc alert: size=%lld\n", (long long)size - (long long)old_size);
+    }
 
-    if (res == NULL) {
-      fprintf(stderr, "my-alloc error: malloc failed"
+    res = realloc(p, size);
+
+    if (size > 0 && res == NULL) {
 #ifdef NDEBUG
-		"\n");
+      fprintf(stderr, "my_realloc error: realloc failed\n");
 #else
-	": ");
+      char new_msg[strlen(msg) + 1 + 200];
+      strcpy(new_msg, "my_realloc warning: realloc failed: ");
+      strcat(new_msg, msg);
+      strcat(new_msg, "\n");
       va_start(fmtargs, msg);
-      vfprintf(stderr, msg, fmtargs);
+      vfprintf(stderr, new_msg, fmtargs);
       va_end(fmtargs);
 #endif
       exit(1);
@@ -267,12 +331,40 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
 
 
 static inline void
-my_free(void * p, size_t size, count_t * counter)
+my_free(void * p, size_t size, count_t * counter, char const * msg = NULL, ...)
 {
-#pragma omp critical (myalloc)
+  va_list fmtargs;
+
+#ifdef DEBUG_MY_ALLOC
   {
+    fprintf(stderr, "my_free: -%lld: ", (long long)size);
+    char new_msg[strlen(msg) + 1 + 200];
+    strcpy(new_msg, msg);
+    strcat(new_msg, "\n");
+    va_start(fmtargs, msg);
+    vfprintf(stderr, new_msg, fmtargs);
+    va_end(fmtargs);
+  }
+#endif
+
+#pragma omp critical (my_alloc)
+  {
+#ifndef NDEBUG
+    if (size > crt_mem) {
+      fprintf(stderr, "my_free: crashing: p=%p size=%lld crt_mem=%lld counter.crt=%lld counter.max=%lld: ",
+	      p, (long long)size, (long long)crt_mem, (long long)counter->crt, (long long) counter->max);
+      char new_msg[strlen(msg) + 1 + 200];
+      strcpy(new_msg, msg);
+      strcat(new_msg, "\n");
+      va_start(fmtargs, msg);
+      vfprintf(stderr, new_msg, fmtargs);
+      va_end(fmtargs);
+    }
+#endif
     assert(size <= crt_mem);
+
     free(p);
+
     crt_mem -= size;
     if (counter != NULL)
       count_add(counter, -((int64_t)size));

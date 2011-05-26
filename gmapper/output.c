@@ -222,11 +222,16 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		size_t new_size = thread_output_buffer_sizes[thread_id]+thread_output_buffer_increment;
 		size_t filled = thread_output_buffer_filled[thread_id]-thread_output_buffer[thread_id];
 		//fprintf(stderr, "there are %llu bytes used\n",filled);
-		thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
+		//thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
+		thread_output_buffer[thread_id] = (char *)
+		  my_realloc(thread_output_buffer[thread_id], new_size, thread_output_buffer_sizes[thread_id],
+			     &mem_thread_buffer, "realloc thread_output_buffer");
+		/*
 		if (thread_output_buffer[thread_id]==NULL) {
 			fprintf(stderr,"Hit output : realloc failed!\n");
 			exit(1);
 		}
+		*/
 		thread_output_buffer_sizes[thread_id]=new_size;
 		thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id]+filled;
 		output_buffer = thread_output_buffer_filled+thread_id;

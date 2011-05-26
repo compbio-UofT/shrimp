@@ -41,12 +41,7 @@ bool save_genome_map_seed(const char *file, int sn)
   xgzwrite(fp, &seed[sn], sizeof(seed_type));
 
   // genomemap_len
-  uint32_t capacity;
-  if (Hflag) {
-    capacity = (uint32_t)power4(HASH_TABLE_POWER);
-  } else {
-    capacity = (uint32_t)power4(seed[sn].weight);
-  }
+  uint32_t capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
   xgzwrite(fp, genomemap_len[sn], sizeof(genomemap_len[0][0]) * capacity);
 
   // total
@@ -86,7 +81,7 @@ bool load_genome_map_seed(const char *file)
    */
   int i;
   uint32_t j;
-  uint32_t total;
+  //uint32_t total;
 
   gzFile fp = gzopen(file, "rb");
   if (fp == NULL){
@@ -111,20 +106,25 @@ bool load_genome_map_seed(const char *file)
   // Seed
   int sn = n_seeds;
   n_seeds++;
-  seed = (seed_type *)xrealloc(seed, sizeof(seed_type) * n_seeds);
-  genomemap_len = (uint32_t **)xrealloc_c(genomemap_len,
-					  sizeof(genomemap_len[0]) * n_seeds,
-					  sizeof(genomemap_len[0]) * (n_seeds - 1),
-					  &mem_genomemap);
-  genomemap = (uint32_t ***)xrealloc_c(genomemap,
-				       sizeof(genomemap[0]) * n_seeds,
-				       sizeof(genomemap[0]) * (n_seeds - 1),
-				       &mem_genomemap);
-  xgzread(fp,seed + sn,sizeof(seed_type));
+  seed = (seed_type *)
+    //xrealloc(seed, sizeof(seed_type) * n_seeds);
+    my_realloc(seed, sizeof(seed_type) * n_seeds, (n_seeds - 1) * sizeof(seed_type),
+	       &mem_small, "seed");
+  genomemap_len = (uint32_t **)
+    //xrealloc_c(genomemap_len, sizeof(genomemap_len[0]) * n_seeds, sizeof(genomemap_len[0]) * (n_seeds - 1), &mem_genomemap);
+    my_realloc(genomemap_len, sizeof(genomemap_len[0]) * n_seeds, sizeof(genomemap_len[0]) * (n_seeds - 1),
+	       &mem_genomemap, "genomemap_len");
+  genomemap = (uint32_t ***)
+    //xrealloc_c(genomemap, sizeof(genomemap[0]) * n_seeds, sizeof(genomemap[0]) * (n_seeds - 1), &mem_genomemap);
+    my_realloc(genomemap, sizeof(genomemap[0]) * n_seeds, sizeof(genomemap[0]) * (n_seeds - 1),
+	       &mem_genomemap, "genomemap");
+  genomemap_block = (ptr_and_sz *)
+    my_realloc(genomemap_block, n_seeds * sizeof(genomemap_block[0]), (n_seeds - 1) * sizeof(genomemap_block[0]),
+	       &mem_genomemap, "genomemap_block");
 
+  xgzread(fp,seed + sn,sizeof(seed_type));
   max_seed_span = MAX(max_seed_span, seed[sn].span);
   min_seed_span = MIN(min_seed_span, seed[sn].span);
-
   avg_seed_span = 0;
   for(i = 0; i < n_seeds; i++) {
     avg_seed_span += seed[i].span;
@@ -132,25 +132,33 @@ bool load_genome_map_seed(const char *file)
   avg_seed_span = avg_seed_span/n_seeds;
 
   // genomemap_len
-  uint32_t capacity;
-  if(Hflag) {
-    capacity = (uint32_t)power4(HASH_TABLE_POWER);
-  } else {
-    capacity = (uint32_t)power4(seed[sn].weight);
-  }
-  genomemap_len[sn] = (uint32_t *)xmalloc_c(sizeof(genomemap_len[0][0]) * capacity, &mem_genomemap);
-  genomemap[sn] = (uint32_t **)xmalloc_c(sizeof(genomemap[0][0]) * capacity, &mem_genomemap);
+  uint32_t capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
+  genomemap_len[sn] = (uint32_t *)
+    //xmalloc_c(sizeof(genomemap_len[0][0]) * capacity, &mem_genomemap);
+    my_malloc(sizeof(genomemap_len[0][0]) * capacity,
+	      &mem_genomemap, "genomemap_len[%d]", sn);
+  genomemap[sn] = (uint32_t **)
+    //xmalloc_c(sizeof(genomemap[0][0]) * capacity, &mem_genomemap);
+    my_malloc(sizeof(genomemap[0][0]) * capacity,
+	      &mem_genomemap, "genomemap[%d]", sn);
   xgzread(fp, genomemap_len[sn], sizeof(uint32_t) * capacity);
 
   // total
-  xgzread(fp, &total, sizeof(uint32_t));
+  {
+    uint32_t total;
+    xgzread(fp, &total, sizeof(uint32_t));
+    genomemap_block[sn].sz = (size_t)total * sizeof(uint32_t);
+  }
 
   // genome_map
-  uint32_t * map;
-  map = (uint32_t *)xmalloc_c(sizeof(uint32_t) * total, &mem_genomemap);
-  xgzread(fp,map,sizeof(uint32_t) * total);
+  //uint32_t * map;
+  genomemap_block[sn].ptr =
+    //xmalloc_c(sizeof(uint32_t) * total, &mem_genomemap);
+    my_malloc(genomemap_block[sn].sz,
+	      &mem_genomemap, "genomemap_block[%d].ptr", sn);
+  xgzread(fp, genomemap_block[sn].ptr, genomemap_block[sn].sz);
   uint32_t * ptr;
-  ptr = map;
+  ptr = (uint32_t *)genomemap_block[sn].ptr;
 
   for (j = 0; j < capacity; j++) {
     genomemap[sn][j] = ptr;
@@ -190,8 +198,9 @@ bool save_genome_map(const char *prefix)
    * 			uint32_t * BPTO32BW(contig_len) : genome_cs_cntigs
    * 		uint32_t * num_contigs	: genome_initbp
    */
-  char * name;
-  name = (char *)xmalloc(strlen(prefix) + n_seeds + 10);
+  //char * name;
+  //name = (char *)xmalloc(strlen(prefix) + n_seeds + 10);
+  char name[strlen(prefix) + n_seeds + 10];
 
   int sn;
   for(sn = 0; sn < n_seeds; sn++) {
@@ -244,7 +253,9 @@ bool save_genome_map(const char *prefix)
     for (i = 0; i < num_contigs; i++) {
       xgzwrite(fp, (void *)genome_cs_contigs[i], BPTO32BW(genome_len[i]) * sizeof(uint32_t));
     }
+    /*
     xgzwrite(fp, (void *)genome_initbp, num_contigs * sizeof(uint32_t));
+    */
   }
 
   gzclose(fp);
@@ -301,48 +312,99 @@ bool load_genome_map(const char *file)
   // num_contigs
   xgzread(fp, &num_contigs, sizeof(uint32_t));
 
-  genome_len = (uint32_t *)xmalloc(sizeof(uint32_t) * num_contigs);
-  contig_offsets = (uint32_t *)xmalloc(sizeof(uint32_t) * num_contigs);
-  contig_names = (char **)xmalloc(sizeof(char *) * num_contigs);
-
-  genome_contigs = (uint32_t **)xmalloc(sizeof(uint32_t *) * num_contigs);
-  genome_contigs_rc = (uint32_t **)xmalloc(sizeof(uint32_t *) * num_contigs);
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    genome_cs_contigs = (uint32_t **)xmalloc(sizeof(genome_cs_contigs[0]) * num_contigs);
-    genome_initbp = (int *)xmalloc(sizeof(genome_initbp[0]) * num_contigs);
-  }
-
   //genome_len
-  xgzread(fp, genome_len, sizeof(uint32_t) * num_contigs);
+  genome_len = (uint32_t *)
+    //xmalloc(sizeof(uint32_t) * num_contigs);
+    my_malloc(num_contigs * sizeof(uint32_t),
+	      &mem_genomemap, "genome_len");
+  xgzread(fp, genome_len, num_contigs * sizeof(uint32_t));
 
-  // contig_offfsets
-  xgzread(fp, contig_offsets, sizeof(uint32_t) * num_contigs);
+  // contig_offsets
+  contig_offsets = (uint32_t *)
+    //xmalloc(sizeof(uint32_t) * num_contigs);
+    my_malloc(num_contigs * sizeof(uint32_t),
+	      &mem_genomemap, "contig_offsets");
+  xgzread(fp, contig_offsets, num_contigs * sizeof(uint32_t));
 
   // names / total
+  contig_names = (char **)
+    //xmalloc(sizeof(char *) * num_contigs);
+    my_malloc(num_contigs * sizeof(contig_names[0]),
+	      &mem_genomemap, "contig_names");
   for (i = 0; i < num_contigs; i++) {
     uint32_t len;
-    xgzread(fp, &len,sizeof(uint32_t));
-    contig_names[i] = (char *)xmalloc(sizeof(char) * (len + 1));
+    xgzread(fp, &len, sizeof(uint32_t));
+    contig_names[i] = (char *)
+      //xmalloc(sizeof(char) * (len + 1));
+      my_malloc(sizeof(char) * (len + 1),
+		&mem_genomemap, "contig_names[%d]", i);
     xgzread(fp, contig_names[i], len + 1);
+    assert(len == (uint32_t)strlen(contig_names[i]));
   }
 
-  uint32_t total;
-  xgzread(fp, &total, sizeof(uint32_t));
+  genome_contigs = (uint32_t **)
+    //xmalloc(sizeof(uint32_t *) * num_contigs);
+    my_malloc(num_contigs * sizeof(genome_contigs[0]),
+	      &mem_genomemap, "genome_contigs");
+  genome_contigs_rc = (uint32_t **)
+    //xmalloc(sizeof(uint32_t *) * num_contigs);
+    my_malloc(num_contigs * sizeof(genome_contigs_rc[0]),
+	      &mem_genomemap, "genome_contigs_rc");
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    genome_cs_contigs = (uint32_t **)
+      //xmalloc(sizeof(genome_cs_contigs[0]) * num_contigs);
+      my_malloc(num_contigs * sizeof(genome_cs_contigs[0]),
+		&mem_genomemap, "genome_cs_contigs");
+    genome_cs_contigs_rc = (uint32_t **)
+      //xmalloc(sizeof(genome_cs_contigs_rc[0]) * num_contigs);
+      my_malloc(num_contigs * sizeof(genome_cs_contigs_rc[0]),
+		&mem_genomemap, "genome_cs_contigs_rc");
+    /*
+    genome_initbp = (int *)
+      //xmalloc(sizeof(genome_initbp[0]) * num_contigs);
+      my_malloc(num_contigs * sizeof(genome_initbp[0]),
+	      &mem_genomemap, "genome_initbp[%d]", num_contigs);
+    */
+  }
 
   //genome_contigs / genome_contigs_rc / genome_cs_contigs / genome_initbp
-  uint32_t *gen, *gen_rc, *gen_cs, *ptr1, *ptr2, *ptr3 = NULL;
-  gen = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
-  xgzread(fp, gen, sizeof(uint32_t) * total);
-  ptr1 = gen;
-  gen_rc = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
-  xgzread(fp, gen_rc, sizeof(uint32_t) * total);
-  ptr2 = gen_rc;
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    gen_cs = (uint32_t *)xmalloc(sizeof(uint32_t) * total);
-    xgzread(fp, gen_cs, sizeof(uint32_t) * total);
-    ptr3 = gen_cs;
-    xgzread(fp, genome_initbp, sizeof(uint32_t) * num_contigs);
+  uint32_t *ptr1, *ptr2, *ptr3 = NULL;
+  //total;
+  {
+    uint32_t total;
+    xgzread(fp, &total, sizeof(uint32_t));
+    genome_contigs_block.sz = (size_t)total * sizeof(uint32_t);
   }
+
+  genome_contigs_block.ptr =
+    //xmalloc(sizeof(uint32_t) * total);
+    my_malloc(genome_contigs_block.sz,
+	      &mem_genomemap, "genome_contigs_block.ptr");
+  xgzread(fp, genome_contigs_block.ptr, genome_contigs_block.sz);
+  ptr1 = (uint32_t *)genome_contigs_block.ptr;
+
+  genome_contigs_rc_block.sz = genome_contigs_block.sz;
+  genome_contigs_rc_block.ptr =
+    //xmalloc(sizeof(uint32_t) * total);
+    my_malloc(genome_contigs_rc_block.sz,
+	      &mem_genomemap, "genome_contigs_rc_block.ptr");
+  xgzread(fp, genome_contigs_rc_block.ptr, genome_contigs_rc_block.sz);
+  ptr2 = (uint32_t *)genome_contigs_rc_block.ptr;
+
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    genome_cs_contigs_block.sz = genome_contigs_block.sz;
+    genome_cs_contigs_block.ptr =
+      //xmalloc(sizeof(uint32_t) * total);
+      my_malloc(genome_cs_contigs_block.sz,
+		&mem_genomemap, "genome_cs_contigs_block.ptr");
+    xgzread(fp, genome_cs_contigs_block.ptr, genome_cs_contigs_block.sz);
+    ptr3 = (uint32_t *)genome_cs_contigs_block.ptr;
+
+    /*
+    xgzread(fp, genome_initbp, sizeof(uint32_t) * num_contigs);
+    */
+  }
+
   for (i = 0; i < num_contigs; i++) {
     genome_contigs[i] = ptr1;
     ptr1 += BPTO32BW(genome_len[i]);
@@ -355,7 +417,6 @@ bool load_genome_map(const char *file)
   }
 
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-    genome_cs_contigs_rc = (uint32_t **)xmalloc(sizeof(genome_cs_contigs_rc[0]) * num_contigs);
     for (i = 0; i < num_contigs; i++) {
       genome_cs_contigs_rc[i] = bitfield_to_colourspace(genome_contigs_rc[i], genome_len[i], false);
     }
@@ -382,10 +443,7 @@ void print_genomemap_stats()
   fprintf(stderr, "Genome Map stats:\n");
 
   for (sn = 0; sn < n_seeds; sn++) {
-    if (Hflag)
-      capacity = power(4, HASH_TABLE_POWER);
-    else
-      capacity = power(4, seed[sn].weight);
+    capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
 
     stat_init(&list_size);
     stat_init(&list_size_non0);
@@ -442,25 +500,104 @@ void print_genomemap_stats()
 
 void free_genome(void)
 {
-  int sn, capacity;
+  int i, sn;
+  uint32_t j, capacity;
+
   for (sn = 0; sn < n_seeds; sn++){
-    if (Hflag) {
-      capacity = power(4, HASH_TABLE_POWER);
-    } else {
-      capacity = power(4, seed[sn].weight);
-    }
+    capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
     //uint32_t mapidx = kmer_to_mapidx(kmerWindow, sn);
-    int i;
-    for (i = 0; i < capacity; i++) {
-      if (genomemap[sn][i] != NULL && (i == 0 || load_file == NULL)) {
-	free(genomemap[sn][i]);
+    if (load_file != NULL) {
+      my_free(genomemap_block[sn].ptr, genomemap_block[sn].sz,
+	      &mem_genomemap, "genomemap_block[%d].ptr", sn);
+    } else {
+      for (j = 0; j < capacity; j++) {
+	if (genomemap[sn][j] != NULL) {
+	  //free(genomemap[sn][j]);
+	  my_free(genomemap[sn][j], genomemap_len[sn][j] * sizeof(genomemap[0][0][0]),
+		  &mem_genomemap, "genomemap[%d][%u]", sn, j);
+	}
       }
-    }	
-    free(genomemap[sn]);
-    free(genomemap_len[sn]);
+    }
+    //free(genomemap[sn]);
+    my_free(genomemap[sn], capacity * sizeof(genomemap[0][0]),
+	    &mem_genomemap, "genomemap[%d]", sn);
+    //free(genomemap_len[sn]);
+    my_free(genomemap_len[sn], capacity * sizeof(genomemap_len[0][0]),
+	    &mem_genomemap, "genomemap_len[%d]", sn);
   }
-  free(genomemap);
-  free(genomemap_len);
+  //free(genomemap);
+  my_free(genomemap, n_seeds * sizeof(genomemap[0]),
+	  &mem_genomemap, "genomemap");
+  //free(genomemap_len);
+  my_free(genomemap_len, n_seeds * sizeof(genomemap_len[0]),
+	  &mem_genomemap, "genomemap_len");
+  if (load_file != NULL)
+    my_free(genomemap_block, n_seeds * sizeof(genomemap_block[0]),
+	    &mem_genomemap, "genomemap_block");
+
+  if (load_file != NULL) {
+    my_free(genome_contigs_block.ptr, genome_contigs_block.sz,
+	    &mem_genomemap, "genome_contigs_block.ptr");
+    my_free(genome_contigs_rc_block.ptr, genome_contigs_rc_block.sz,
+	    &mem_genomemap, "genome_contigs_rc_block.ptr");
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      my_free(genome_cs_contigs_block.ptr, genome_cs_contigs_block.sz,
+	      &mem_genomemap, "genome_cs_contigs_block.ptr");
+    }
+  } else {
+    for (i = 0; i < num_contigs; i++) {
+      free(genome_contigs[i]);
+      free(genome_contigs_rc[i]);
+      if (shrimp_mode == MODE_COLOUR_SPACE) {
+	free(genome_cs_contigs[i]);
+      }
+    }
+  }
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    for (i = 0; i < num_contigs; i++) {
+      free(genome_cs_contigs_rc[i]);
+    }
+  }
+
+  // genome_contigs, genome_contigs_rc, genome_cs_contigs, genome_cs_contigs_rc
+  //free(genome_contigs);
+  my_free(genome_contigs, num_contigs * sizeof(genome_contigs[0]),
+	  &mem_genomemap, "genome_contigs");
+  //free(genome_contigs_rc);
+  my_free(genome_contigs_rc, num_contigs * sizeof(genome_contigs_rc[0]),
+	  &mem_genomemap, "genome_contigs_rc");
+  if (shrimp_mode==MODE_COLOUR_SPACE) {
+    //free(genome_cs_contigs);
+    my_free(genome_cs_contigs, num_contigs * sizeof(genome_cs_contigs[0]),
+	    &mem_genomemap, "genome_cs_contigs");
+    //free(genome_cs_contigs_rc);
+    my_free(genome_cs_contigs_rc, num_contigs * sizeof(genome_cs_contigs_rc[0]),
+	    &mem_genomemap, "genome_cs_contigs_rc");
+    /*
+    free(genome_initbp);
+    */
+  }
+
+  // genome_len, contig_offsets
+  //free(genome_len);
+  my_free(genome_len, num_contigs * sizeof(uint32_t),
+	  &mem_genomemap, "genome_len");
+  //free(contig_offsets);
+  my_free(contig_offsets, num_contigs * sizeof(uint32_t),
+	  &mem_genomemap, "contig_offsets");
+
+  // contig_names
+  for (i = 0; i < num_contigs; i++) {
+    if (load_file != NULL) {
+      my_free(contig_names[i], (strlen(contig_names[i]) + 1) * sizeof(char),
+	      &mem_genomemap, "contig_names[%d]", i);
+    } else { // HACK: if no loadfile, names are alloc-ed from fasta_get_next..
+      free(contig_names[i]);
+    }
+  }
+  //free(contig_names);
+  my_free(contig_names, num_contigs * sizeof(contig_names[0]),
+	  &mem_genomemap, "contig_names");
 }
 
 
@@ -474,21 +611,33 @@ bool load_genome(char **files, int nfiles)
   size_t seqlen, capacity;
   uint32_t *read;
   char *seq, *name;
-  uint32_t *kmerWindow;
+  //uint32_t *kmerWindow;
   int sn;
   char *file;
   bool is_rna;
 
   //allocate memory for the genome map
-  genomemap = (uint32_t ***) xmalloc_c(n_seeds * sizeof(genomemap[0]), &mem_genomemap);
-  genomemap_len = (uint32_t **)xmalloc_c(n_seeds * sizeof(genomemap_len[0]), &mem_genomemap);
+  genomemap = (uint32_t ***)
+    //xmalloc_c(n_seeds * sizeof(genomemap[0]), &mem_genomemap);
+    my_malloc(n_seeds * sizeof(genomemap[0]),
+	      &mem_genomemap, "genomemap");
+  genomemap_len = (uint32_t **)
+    //xmalloc_c(n_seeds * sizeof(genomemap_len[0]), &mem_genomemap);
+    my_malloc(n_seeds * sizeof(genomemap_len[0]),
+	      &mem_genomemap, "genomemap_len");
 
   for (sn = 0; sn < n_seeds; sn++) {
-    capacity = power(4, Hflag? HASH_TABLE_POWER : seed[sn].weight);
+    capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
 
-    genomemap[sn] = (uint32_t **)xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
-    memset(genomemap[sn],0,sizeof(uint32_t *) * capacity);
-    genomemap_len[sn] = (uint32_t *)xcalloc_c(sizeof(uint32_t) * capacity, &mem_genomemap);
+    genomemap[sn] = (uint32_t **)
+      //xcalloc_c(sizeof(uint32_t *) * capacity, &mem_genomemap);
+      my_calloc(sizeof(uint32_t *) * capacity,
+		&mem_genomemap, "genomemap[%d]", sn);
+    //memset(genomemap[sn],0,sizeof(uint32_t *) * capacity); //???
+    genomemap_len[sn] = (uint32_t *)
+      //xcalloc_c(sizeof(uint32_t) * capacity, &mem_genomemap);
+      my_calloc(sizeof(uint32_t) * capacity,
+		&mem_genomemap, "genomemap_len[%d]", sn);
 
   }
   num_contigs = 0;
@@ -510,9 +659,15 @@ bool load_genome(char **files, int nfiles)
     while(fasta_get_next_contig(fasta, &name, &seq, &is_rna)){
       genome_is_rna = is_rna;
       num_contigs++;
-      contig_offsets = (uint32_t *)xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+      contig_offsets = (uint32_t *)
+	//xrealloc(contig_offsets,sizeof(uint32_t)*num_contigs);
+	my_realloc(contig_offsets, num_contigs * sizeof(uint32_t), (num_contigs - 1) * sizeof(uint32_t),
+		   &mem_genomemap, "contig_offsets");
       contig_offsets[num_contigs - 1] = i;
-      contig_names = (char **)xrealloc(contig_names,sizeof(char *)*num_contigs);
+      contig_names = (char **)
+	//xrealloc(contig_names,sizeof(char *)*num_contigs);
+	my_realloc(contig_names, num_contigs * sizeof(contig_names[0]), (num_contigs - 1) * sizeof(contig_names[0]),
+		   &mem_genomemap, "contig_names");
       contig_names[num_contigs - 1] = name;
 
       fprintf(stderr,"- Processing contig %s\n",name);
@@ -536,25 +691,48 @@ bool load_genome(char **files, int nfiles)
 	fprintf(stderr, "error: invalid sequence; tag: [%s]\n", name);
 	return false;
       }
-      genome_contigs = (uint32_t **)xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+      genome_contigs = (uint32_t **)
+	//xrealloc(genome_contigs,sizeof(uint32_t *)*num_contigs);
+	my_realloc(genome_contigs, num_contigs * sizeof(genome_contigs[0]), (num_contigs - 1) * sizeof(genome_contigs[0]),
+		   &mem_genomemap, "genome_contigs");
       genome_contigs[num_contigs-1] = read;
-      genome_contigs_rc = (uint32_t **)xrealloc(genome_contigs_rc,sizeof(uint32_t *)*num_contigs);
+      genome_contigs_rc = (uint32_t **)
+	//xrealloc(genome_contigs_rc,sizeof(uint32_t *)*num_contigs);
+	my_realloc(genome_contigs_rc, sizeof(uint32_t *) * num_contigs, (num_contigs - 1) * sizeof(uint32_t *),
+		   &mem_genomemap, "genome_contigs_rc");
       genome_contigs_rc[num_contigs-1] = reverse_complement_read_ls(read,seqlen,is_rna);
       if (shrimp_mode == MODE_COLOUR_SPACE){
-	genome_cs_contigs = (uint32_t **)xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
+	genome_cs_contigs = (uint32_t **)
+	  //xrealloc(genome_cs_contigs,sizeof(uint32_t *)*num_contigs);
+	  my_realloc(genome_cs_contigs, sizeof(uint32_t *) * num_contigs, (num_contigs - 1) * sizeof(uint32_t *),
+		     &mem_genomemap, "genome_cs_contigs");
 	genome_cs_contigs[num_contigs-1] = fasta_bitfield_to_colourspace(fasta,genome_contigs[num_contigs -1],seqlen,is_rna);
-	genome_cs_contigs_rc = (uint32_t **)xrealloc(genome_cs_contigs_rc,sizeof(uint32_t *)*num_contigs);
+	genome_cs_contigs_rc = (uint32_t **)
+	  //xrealloc(genome_cs_contigs_rc,sizeof(uint32_t *)*num_contigs);
+	  my_realloc(genome_cs_contigs_rc, sizeof(uint32_t *) * num_contigs, (num_contigs - 1) * sizeof(uint32_t *),
+		     &mem_genomemap, "genome_cs_contigs_rc");
 	genome_cs_contigs_rc[num_contigs - 1] = fasta_bitfield_to_colourspace(fasta, genome_contigs_rc[num_contigs -1], seqlen, is_rna);
       }
-      genome_len = (uint32_t *)xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
-      genome_len[num_contigs -1] = seqlen;
+      genome_len = (uint32_t *)
+	//xrealloc(genome_len,sizeof(uint32_t)*num_contigs);
+	my_realloc(genome_len, num_contigs * sizeof(uint32_t), (num_contigs - 1) * sizeof(uint32_t),
+		   &mem_genomemap, "genome_len");
+      genome_len[num_contigs - 1] = seqlen;
 
       if (shrimp_mode == MODE_COLOUR_SPACE){
-	genome_initbp = (int *)xrealloc(genome_initbp,sizeof(genome_initbp[0])*num_contigs);
+	/*
+	genome_initbp = (int *)
+	  //xrealloc(genome_initbp,sizeof(genome_initbp[0])*num_contigs);
+	  my_realloc(genome_initbp, sizeof(genome_initbp[0]) * num_contigs, (num_contigs - 1) * sizeof(genome_initbp[0]),
+		     &mem_genomemap, "realloc genomeinitbp[%d]", num_contigs);
 	genome_initbp[num_contigs - 1] = BASE_T; // EXTRACT(read,0); NOT REALLY NEEDED
+	*/
 	read = fasta_bitfield_to_colourspace(fasta,read,seqlen,is_rna);
       }
-      kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+
+      //kmerWindow = (uint32_t *)xcalloc(sizeof(kmerWindow[0])*BPTO32BW(max_seed_span));
+      uint32_t kmerWindow[BPTO32BW(max_seed_span)];
+
       int load = 0;
       for ( ; i < seqlen + contig_offsets[num_contigs-1]; i++) {
 	int base;
@@ -574,10 +752,10 @@ bool load_genome(char **files, int nfiles)
 	  uint32_t mapidx = KMER_TO_MAPIDX(kmerWindow, sn);
 	  //increase the match count and store the location of the match
 	  genomemap_len[sn][mapidx]++;
-	  genomemap[sn][mapidx] = (uint32_t *)xrealloc_c(genomemap[sn][mapidx],
-							 sizeof(uint32_t) * (genomemap_len[sn][mapidx]),
-							 sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
-							 &mem_genomemap);
+	  genomemap[sn][mapidx] = (uint32_t *)
+	    //xrealloc_c(genomemap[sn][mapidx], sizeof(uint32_t) * (genomemap_len[sn][mapidx]), sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1), &mem_genomemap);
+	    my_realloc(genomemap[sn][mapidx], sizeof(uint32_t) * (genomemap_len[sn][mapidx]), sizeof(uint32_t) * (genomemap_len[sn][mapidx] - 1),
+		       &mem_genomemap, "genomemap[%d][%u]", sn, mapidx);
 	  genomemap[sn][mapidx][genomemap_len[sn][mapidx] - 1] = i - seed[sn].span + 1;
 
 	}
@@ -590,7 +768,7 @@ bool load_genome(char **files, int nfiles)
       seq = NULL;
       name = NULL;
 
-      free(kmerWindow);
+      //free(kmerWindow);
     }
     fasta_close(fasta);
   }
@@ -605,18 +783,19 @@ bool load_genome(char **files, int nfiles)
  */
 void trim_genome()
 {
-  uint capacity;
   int sn;
-  uint32_t mapidx;
+  uint32_t mapidx, capacity;
 
   for (sn = 0; sn < n_seeds; sn++) {
-    capacity = power(4, Hflag? HASH_TABLE_POWER : seed[sn].weight);
+    capacity = (uint32_t)power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
 
     for (mapidx = 0; mapidx < capacity; mapidx++) {
       if (genomemap_len[sn][mapidx] > list_cutoff) {
 	genomemap_len[sn][mapidx] = 0;
 	if (load_file == NULL) {
-	  free(genomemap[sn][mapidx]);
+	  //free(genomemap[sn][mapidx]);
+	  my_free(genomemap[sn][mapidx], genomemap_len[sn][mapidx],
+		  &mem_genomemap, "genomemap[%d][%u]", sn, mapidx);
 	} // otherwise, this memory is block-allocated
 	genomemap[sn][mapidx] = NULL;
       }
