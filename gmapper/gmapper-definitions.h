@@ -17,6 +17,7 @@
 #include "../common/bitmap.h"
 #include "../common/heap.h"
 #include "../common/stats.h"
+#include "../common/my-alloc.h"
 
 typedef long long int llint;
 
@@ -85,6 +86,7 @@ typedef struct read_entry {
   double	mq_denominator;
   int           n_anchors[2];
   int           n_hits[2];
+  int		list_sz[2];
   int           n_ranges;
 
   int           final_matches;
@@ -260,12 +262,14 @@ static inline void
 read_free_anchor_list(struct read_entry * re)
 {
   if (re->anchors[0] != NULL) {
-    free(re->anchors[0]);
+    //free(re->anchors[0]);
+    my_free(re->anchors[0], re->list_sz[0] * sizeof(re->anchors[0][0]), NULL);
     re->anchors[0] = NULL;
     re->n_anchors[0] = 0;
   }
   if (re->anchors[1] != NULL) {
-    free(re->anchors[1]);
+    //free(re->anchors[1]);
+    my_free(re->anchors[1], re->list_sz[1] * sizeof(re->anchors[0][0]), NULL);
     re->anchors[1] = NULL;
     re->n_anchors[1] = 0;
   }
@@ -276,12 +280,14 @@ static inline void
 read_free_hit_list(struct read_entry * re)
 {
   if (re->hits[0] != NULL) {
-    free(re->hits[0]);
+    //free(re->hits[0]);
+    my_free(re->hits[0], re->n_anchors[0] * sizeof(re->hits[0][0]), NULL);
     re->hits[0] = NULL;
     re->n_hits[0] = 0;
   }
   if (re->hits[1] != NULL) {
-    free(re->hits[1]);
+    //free(re->hits[1]);
+    my_free(re->hits[1], re->n_anchors[1] * sizeof(re->hits[0][0]), NULL);
     re->hits[1] = NULL;
     re->n_hits[1] = 0;
   }

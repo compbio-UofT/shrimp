@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include "../common/my-alloc.h"
 
 
 struct sw_full_results {
@@ -76,7 +77,8 @@ free_sfrp(struct sw_full_results * * sfrp)
     free((*sfrp)->dbalign);
     free((*sfrp)->qralign);
     free((*sfrp)->qual);
-    free(*sfrp);
+    //free(*sfrp);
+    my_free(*sfrp, sizeof(**sfrp), NULL);
     *sfrp = NULL;
   }
 }

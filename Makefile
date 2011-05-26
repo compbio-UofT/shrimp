@@ -34,7 +34,7 @@ bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.
     common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
     common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
-    common/read_hit_heap.o common/sw-post.o
+    common/read_hit_heap.o common/sw-post.o common/my-alloc.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
@@ -195,6 +195,9 @@ common/bitmap.o: common/bitmap.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 common/sw-post.o: common/sw-post.c common/sw-post.h common/util.h common/fasta.h common/sw-full-common.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/my-alloc.o: common/my-alloc.c common/my-alloc.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #

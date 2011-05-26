@@ -95,8 +95,10 @@ read_free_full(struct read_entry * re)
   free(re->read[0]);
   free(re->read[1]);
 
-  free(re->mapidx[0]);
-  free(re->mapidx[1]);
+  //free(re->mapidx[0]);
+  my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), NULL);
+  //free(re->mapidx[1]);
+  my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), NULL);
   read_free_anchor_list(re);
   read_free_hit_list(re);
 
@@ -2390,6 +2392,7 @@ int main(int argc, char **argv){
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;
 	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
+	my_alloc_init(1000000000ll);
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{

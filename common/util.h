@@ -22,6 +22,7 @@
 #include "../common/fasta.h"
 #include "../common/stats.h"
 #include "../common/hash.h"
+#include "../common/my-alloc.h"
 
 #ifdef __GNUC__
 #define __predict_false(_x)	__builtin_expect((_x), 0)

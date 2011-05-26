@@ -31,7 +31,8 @@ read_get_mapidxs_per_strand(struct read_entry * re, int st)
   assert(re != NULL);
   assert(re->mapidx[st] == NULL);
   
-  re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
+  //re->mapidx[st] = (uint32_t *)xmalloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]));
+  re->mapidx[st] = (uint32_t *)my_malloc(n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), NULL, "mapidx for read [%s]\n", re->name);
 
   load = 0;
   for (i = 0; i < re->read_len; i++) {
@@ -206,6 +207,8 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st, bool collapse)
   struct heap_uu_elem tmp;
   int anchor_cache[re->read_len];
 
+  assert(0);
+
   assert(re->mapidx[st] != NULL);
 
   re->n_anchors[st] = 0;
@@ -371,6 +374,8 @@ read_get_hit_list_per_strand(struct read_entry * re, int match_mode, int st)
   int w_len;
   int short_len = 0, long_len = 0;
   struct anchor a[3];
+
+  assert(0);
 
   re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
   re->n_hits[st] = 0;
@@ -827,7 +832,8 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   }
 
   assert(rh->sfrp == NULL);
-  rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
+  //rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
+  rh->sfrp = (struct sw_full_results *)my_calloc(sizeof(rh->sfrp[0]), NULL, "sfrp for read [%s]\n", re->name);
 
 #ifdef DEBUG_SW_FULL_CALLS
   fprintf(stderr, "SW full call: (name:[%s],cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,anchor:(%lld,%lld,%d,%d))\n",
@@ -1367,8 +1373,10 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
     region_map_id = 1;
     for (int _nip = 0; _nip < 2; _nip++) {
       for (int _st = 0; _st < 2; _st++) {
-	free(region_map[_nip][_st]);
-	region_map[_nip][_st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
+	//free(region_map[_nip][_st]);
+	my_free(region_map[_nip][_st], n_regions * sizeof(region_map[0][0][0]), NULL);
+	//region_map[_nip][_st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
+	region_map[_nip][_st] = (int32_t *)my_calloc(n_regions * sizeof(region_map[0][0][0]), NULL, "region_map for read [%s]\n", re->name);
       }
     }
   }
@@ -1545,7 +1553,7 @@ static void
 new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
 				    struct anchor_list_options * options)
 {
-  uint list_sz;
+  //uint list_sz;
   uint offset;
   int i, sn;
   uint * idx;
@@ -1565,23 +1573,25 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
     return;
 
   // compute estimate size of anchor list
-  list_sz = 0;
+  re->list_sz[st] = 0;
   for (sn = 0; sn < n_seeds; sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
       if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
         continue;
-      list_sz += genomemap_len[sn][re->mapidx[st][offset]];
+      re->list_sz[st] += genomemap_len[sn][re->mapidx[st][offset]];
     }
   }
-  stat_add(&anchor_list_init_size[omp_get_thread_num()], list_sz);
+  stat_add(&anchor_list_init_size[omp_get_thread_num()], re->list_sz[st]);
 
   // init anchor list
-  re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+  //re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
+  re->anchors[st] = (struct anchor *)my_malloc(re->list_sz[st] * sizeof(re->anchors[0][0]), NULL, "anchors for read [%s]\n", re->name);
 
   // init min heap, indices in genomemap lists, and anchor_cache
   heap_uu_init(&h, n_seeds * re->max_n_kmers);
-  idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+  //idx = (uint *)xcalloc(n_seeds * re->max_n_kmers * sizeof(idx[0]));
+  idx = (uint *)my_calloc(n_seeds * re->max_n_kmers * sizeof(idx[0]), NULL, "idx for read [%s]\n", re->name);
   for (i = 0; i < re->read_len; i++)
     anchor_cache[i] = -1;
 
@@ -1664,7 +1674,8 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
   }
 
   heap_uu_destroy(&h);
-  free(idx);
+  //free(idx);
+  my_free(idx, n_seeds * re->max_n_kmers * sizeof(idx[0]), NULL);
 
   stat_add(&n_anchors_discarded[omp_get_thread_num()], anchors_discarded);
   stat_add(&n_big_gaps_anchor_list[omp_get_thread_num()], big_gaps);
@@ -1698,7 +1709,8 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
   if (re->n_anchors[st] == 0)
     return;
 
-  re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
+  //re->hits[st] = (struct read_hit *)xcalloc(re->n_anchors[st] * sizeof(re->hits[0][0]));
+  re->hits[st] = (struct read_hit *)my_calloc(re->n_anchors[st] * sizeof(re->hits[0][0]), NULL, "hits for read [%s]\n", re->name);
 
   for (i = 0; i < re->n_anchors[st]; i++) {
     // contig num of crt anchor
@@ -2340,11 +2352,13 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
       new_read_pass1(re, &options[option_index].pass1);
     }
 
-    hits_pass1 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]));
+    //hits_pass1 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]));
+    hits_pass1 = (struct read_hit * *)my_malloc(options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]), NULL, "hits_pass1 for read [%s]\n", re->name);
     n_hits_pass1 = 0;
     new_read_get_vector_hits(re, hits_pass1, &n_hits_pass1, &options[option_index].pass1);
 
-    hits_pass2 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]));
+    //hits_pass2 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]));
+    hits_pass2 = (struct read_hit * *)my_malloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]), NULL, "hits_pass1 for read [%s]\n", re->name);
     n_hits_pass2 = 0;
     done = new_read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
 
@@ -2354,8 +2368,10 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
       free_sfrp(&hits_pass1[i]->sfrp);
     }
 
-    free(hits_pass1);
-    free(hits_pass2);
+    //free(hits_pass1);
+    my_free(hits_pass1, options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]), NULL);
+    //free(hits_pass2);
+    my_free(hits_pass2, options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]), NULL);
 
   } while (!done && ++option_index < n_options);
 
@@ -2849,11 +2865,13 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
       new_read_pass1(re2, &options[option_index].read[1].pass1);
     }
 
-    hits_pass1 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]));
+    //hits_pass1 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]));
+    hits_pass1 = (struct read_hit_pair *)my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), NULL, "hits_pass1 for readpair [%s,%s]\n", re1->name, re2->name);
     n_hits_pass1 = 0;
     new_readpair_get_vector_hits(re1, re2, hits_pass1, &n_hits_pass1, &options[option_index].pairing);
 
-    hits_pass2 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]));
+    //hits_pass2 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]));
+    hits_pass2 = (struct read_hit_pair *)my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), NULL, "hits_pass2 for readpair [%s,%s]\n", re1->name, re2->name);
     n_hits_pass2 = 0;
     done = new_readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing);
 
@@ -2864,8 +2882,10 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
       free_sfrp(&hits_pass1[i].rh[1]->sfrp);
     }
 
-    free(hits_pass1);
-    free(hits_pass2);
+    //free(hits_pass1);
+    my_free(hits_pass1, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), NULL);
+    //free(hits_pass2);
+    my_free(hits_pass2, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), NULL);
 
   } while (!done && ++option_index < n_options);
 
