@@ -598,9 +598,8 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 	struct sw_full_results * sfrp)
 {
   double total_score;
-  llint before;
 
-  before = rdtsc();
+  llint before = rdtsc(), after;
   invocs++;
 
   assert(sfrp != NULL);
@@ -707,5 +706,6 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 #endif
 
   cells += 16*len;
-  ticks += (rdtsc() - before);
+  after = rdtsc();
+  ticks += MAX(after - before, 0);
 }

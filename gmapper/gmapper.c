@@ -237,7 +237,10 @@ static void trim_read(struct read_entry * re) {
  * Launch the threads that will scan the reads
  */
 static bool
-launch_scan_threads(){
+launch_scan_threads()
+{
+  llint last_nreads, last_time_usecs;
+
   fasta_t fasta = NULL, left_fasta = NULL, right_fasta = NULL;
 
   //open the fasta file and check for errors
@@ -298,12 +301,18 @@ launch_scan_threads(){
   struct heap_out h; 
   heap_out_init(&h, thread_output_heap_capacity );
 
+  if (progress > 0) {
+    fprintf(stderr, "done r/hr r/core-hr\n");
+    last_nreads = 0;
+    last_time_usecs = gettimeinusecs();
+  }
+
 #pragma omp parallel shared(read_more,more_in_left_file,more_in_right_file, fasta) num_threads(num_threads)
   {
     int thread_id = omp_get_thread_num();
     struct read_entry * re_buffer;
     int load, i;
-    uint64_t before;
+    llint before, after;
     //re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
     re_buffer = (struct read_entry *)
       my_malloc(chunk_size * sizeof(re_buffer[0]),
@@ -317,7 +326,8 @@ launch_scan_threads(){
       //Read in this threads 'chunk'
 #pragma omp critical (fill_reads_buffer)
       {
-	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
+	after = rdtsc();
+	wait_ticks[omp_get_thread_num()] += MAX(after - before, 0);
 
 	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 
@@ -360,8 +370,14 @@ launch_scan_threads(){
 	// progress reporting
 	if (progress > 0) {
 	  nreads_mod += load;
-	  if (nreads_mod >= progress)
-	    fprintf(stderr, "\r%lld", nreads);
+	  if (nreads_mod >= progress) {
+	    llint time_usecs = gettimeinusecs();
+	    fprintf(stderr, "\r%lld %d %d", nreads,
+		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6),
+		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6 * (1/(double)num_threads)) );
+	    last_nreads = nreads;
+	    last_time_usecs = time_usecs;
+	  }
 	  nreads_mod %= progress;
 	}
       } // end critical section
@@ -612,10 +628,10 @@ print_statistics()
 	uint64_t fwbw_total_invocs = 0, fwbw_total_cells = 0;
 	double fwbw_total_secs = 0, fwbw_total_cellspersec = 0;
 
-	double scan_secs[num_threads], readload_secs[num_threads];
+	double scan_secs[num_threads], readparse_secs[num_threads], read_handle_overhead_secs[num_threads];
 	double anchor_list_secs[num_threads], hit_list_secs[num_threads];
 	double region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
-	double total_scan_secs = 0, total_wait_secs = 0, total_readload_secs = 0;
+	double total_scan_secs = 0, total_wait_secs = 0, total_readparse_secs = 0;
 
 	double hz;
 	uint64_t fasta_load_ticks;
@@ -654,13 +670,24 @@ print_statistics()
 	  if (isnan(fwbw_cellspersec[tid]))
 	    fwbw_cellspersec[tid] = 0;
 
-	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
+	  readparse_secs[tid] = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)read_handle_usecs[tid] / 1.0e6) - ((double)wait_ticks[tid] / hz);
+
+	  scan_secs[tid] = ((double)read_handle_usecs[tid] / 1.0e6) - f1_secs[tid] - f2_secs[tid] - fwbw_secs[tid];
 	  scan_secs[tid] = MAX(0, scan_secs[tid]);
-	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
+
 	  anchor_list_secs[tid] = (double)anchor_list_ticks[tid] / hz;
           hit_list_secs[tid] = (double)hit_list_ticks[tid] / hz;
           duplicate_removal_secs[tid] = (double)duplicate_removal_ticks[tid] / hz;
           region_counts_secs[tid] = (double)region_counts_ticks[tid] / hz;
+	  /*
+	  anchor_list_secs[tid] = (double)anchor_list_usecs[tid] / 1.0e6;
+          hit_list_secs[tid] = (double)hit_list_usecs[tid] / 1.0e6;
+          duplicate_removal_secs[tid] = (double)duplicate_removal_usecs[tid] / 1.0e6;
+          region_counts_secs[tid] = (double)region_counts_usecs[tid] / 1.0e6;
+	  */
+
+	  read_handle_overhead_secs[tid] = scan_secs[tid]
+	    - region_counts_secs[tid] - anchor_list_secs[tid] - hit_list_secs[tid] - duplicate_removal_secs[tid];
 	}
 	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
@@ -668,16 +695,20 @@ print_statistics()
 
 	fprintf(stderr, "%sOverall:\n", my_tab);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Load Genome Time:", (double)map_usecs / 1.0e6);
+		"Load Genome Time:", (double)load_genome_usecs / 1.0e6);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Mapping Time:", (double)total_work_usecs / 1.0e6);
+		"Read Mapping Time:", (double)mapping_wallclock_usecs / 1.0e6);
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		"Reads per hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6)));
+	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+		"Reads per core-hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6 * (1/(double)num_threads))));
 
 	fprintf(stderr, "\n");
 
 	int i;
 	for(i = 0; i < num_threads; i++){
 	  total_scan_secs += scan_secs[i];
-	  total_readload_secs += readload_secs[i];
+	  total_readparse_secs += readparse_secs[i];
 	  total_wait_secs += (double)wait_ticks[i] / hz;
 
 	  f1_total_secs += f1_secs[i];
@@ -699,7 +730,7 @@ print_statistics()
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
 	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Read Load", "Scan", "Reg Cnts", "Anch List", "Hit List", "Dup Remv",
+		  "", "ReadParse", "Scan", "Reg Cnts", "Anch List", "Hit List", "Dup Remv",
 		  "Vector SW", "Scalar SW", "Post SW", "Wait");
 	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
 		  "", "Time", "Time", "Time", "Time", "Time", "Time",
@@ -707,7 +738,7 @@ print_statistics()
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < num_threads; i++) {
 	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, readload_secs[i], scan_secs[i],
+		    i, readparse_secs[i], scan_secs[i],
 		    region_counts_secs[i], anchor_list_secs[i], hit_list_secs[i], duplicate_removal_secs[i],
 		    comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i],
@@ -771,7 +802,7 @@ print_statistics()
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
 		"Fasta Lib Time:", (double)fasta_load_ticks / hz);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Load Time:", total_readload_secs);
+		"Read Load Time:", total_readparse_secs);
 	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
 		"Wait Time:", total_wait_secs);
 
@@ -903,8 +934,8 @@ usage(char * progname, bool full_usage){
 	  "   -w/--match-window    Match Window Length           (default: %.02f%%)\n",
 	  DEF_WINDOW_LEN);
   fprintf(stderr,
-	  "   -n/--cmw-mode        Seed Matches per Window       (default: %d)\n",
-	  DEF_NUM_MATCHES);
+	  "   -n/--cmw-mode        Match Mode                    (default: unpaired:%d paired:%d)\n",
+	  DEF_MATCH_MODE_UNPAIRED, DEF_MATCH_MODE_PAIRED);
   if (full_usage) {
   fprintf(stderr,
 	  "   -l/--cmw-overlap     Match Window Overlap Length   (default: %.02f%%)\n",
@@ -1100,6 +1131,8 @@ print_pairing_options(struct pairing_options * options)
 static void
 print_read_mapping_options(struct read_mapping_options_t * options, bool is_paired)
 {
+  char buff[2][100];
+
   fprintf(stderr, "[\n");
 
   fprintf(stderr, "\tregions:[recompute:%s", options->regions.recompute? "true" : "false");
@@ -1109,44 +1142,33 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
   //  fprintf(stderr, ", min_seed:%d, max_seed:%d]\n",
   //    options->regions.min_seed, options->regions.max_seed);
 
-  fprintf(stderr, "\tanchor_list:[recompute:%s", options->anchor_list.recompute? "true" : "false");
-  if (!options->anchor_list.recompute)
-    fprintf(stderr, "]\n");
-  else
-    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%s]\n",
+  fprintf(stderr, "\tanchor_list:[recompute:%s",
+	  options->anchor_list.recompute? "true" : "false");
+  if (options->anchor_list.recompute) {
+    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%s",
 	    options->anchor_list.collapse? "true" : "false",
 	    options->anchor_list.use_region_counts? "true" : "false",
 	    options->anchor_list.use_mp_region_counts? "true" : "false");
-
-  fprintf(stderr, "\thit_list:[recompute:%s", options->hit_list.recompute? "true" : "false");
-  if (!options->hit_list.recompute)
-    fprintf(stderr, "]\n");
-  else {
-    fprintf(stderr, ", gapless:%s, match_mode:%d,",
-	    options->hit_list.gapless? "true" : "false",
-	    options->hit_list.match_mode);
-    if (IS_ABSOLUTE(options->hit_list.threshold)) {
-      fprintf(stderr, " threshold:%u]\n", (uint)-options->hit_list.threshold);
-    } else {
-      fprintf(stderr, " threshold:%.02f%%]\n", options->hit_list.threshold);
-    }
   }
-
-  fprintf(stderr, "\tpass1:[recompute:%s", options->pass1.recompute? "true" : "false");
-  if (!options->pass1.recompute)
   fprintf(stderr, "]\n");
-  else {
-    if (IS_ABSOLUTE(options->pass1.threshold)) {
-      fprintf(stderr, ", threshold:%u", (uint)-options->pass1.threshold);
-    } else {
-      fprintf(stderr, ", threshold:%.02f%%", options->pass1.threshold);
-    }
-    if (IS_ABSOLUTE(options->pass1.window_overlap)) {
-      fprintf(stderr, ", window_overlap:%u", (uint)-options->pass1.window_overlap);
-    } else {
-      fprintf(stderr, ", window_overlap:%.02f%%", options->pass1.window_overlap);
-    }
-    fprintf(stderr, ", gapless:%s",
+
+  fprintf(stderr, "\thit_list:[recompute:%s",
+	  options->hit_list.recompute? "true" : "false");
+  if (options->hit_list.recompute) {
+    fprintf(stderr, ", gapless:%s, match_mode:%d, threshold:%s",
+	    options->hit_list.gapless? "true" : "false",
+	    options->hit_list.match_mode,
+	    thres_to_buff(buff[0], &options->hit_list.threshold));
+  }
+  fprintf(stderr, "]\n");
+
+  fprintf(stderr, "\tpass1:[recompute:%s",
+	  options->pass1.recompute? "true" : "false");
+  if (options->pass1.recompute) {
+    fprintf(stderr, ", threshold:%s, window_overlap:%s, min_matches:%d, gapless:%s",
+	    thres_to_buff(buff[0], &options->pass1.threshold),
+	    thres_to_buff(buff[1], &options->pass1.window_overlap),
+	    options->pass1.min_matches,
 	    options->pass1.gapless? "true" : "false");
     if (is_paired) {
       fprintf(stderr, ", only_paired:%s",
@@ -1156,19 +1178,16 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
       fprintf(stderr, ", num_outputs:%d",
 	      options->pass1.num_outputs);
     }
-    fprintf(stderr, "]\n");
   }
+  fprintf(stderr, "]\n");
 
   fprintf(stderr, "\tpass2:[");
-  if (IS_ABSOLUTE(options->pass2.threshold)) {
-    fprintf(stderr, "threshold:%u", (uint)-options->pass2.threshold);
-  } else {
-    fprintf(stderr, "threshold:%.02f%%", options->pass2.threshold);
-  }
-
+  fprintf(stderr, "threshold:%s",
+	  thres_to_buff(buff[0], &options->pass2.threshold));
   if (!is_paired) {
     fprintf(stderr, ", strata:%d, num_outputs:%d",
-	    options->pass2.strata, options->pass2.num_outputs);
+	    options->pass2.strata,
+	    options->pass2.num_outputs);
   }
   fprintf(stderr, "]\n");
 
@@ -1176,15 +1195,13 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
     fprintf(stderr, "\tstop:[stop_count:%d",
 	    options->pass2.stop_count);
     if (options->pass2.stop_count > 0) {
-      if (IS_ABSOLUTE(options->pass2.stop_threshold)) {
-	fprintf(stderr, ", stop_threshold:%u", (uint)-options->pass2.stop_threshold);
-      } else {
-	fprintf(stderr, ", stop_threshold:%.02f%%", options->pass2.stop_threshold);
-      }
+      fprintf(stderr, ", stop_threshold:%s",
+	      thres_to_buff(buff[0], &options->pass2.stop_threshold));
     }
     fprintf(stderr, "]\n");
   }
 
+  fprintf(stderr, "]\n");
 }
 
 
@@ -1208,13 +1225,21 @@ print_settings() {
   fprintf(stderr, "\n");
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
-  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash filter calls:", hash_filter_calls? "yes" : "no");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
   if (list_cutoff < DEF_LIST_CUTOFF) {
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index list cutoff length:", list_cutoff);
   }
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region Overlap:", region_overlap);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Region filter:", use_regions? "yes" : "no");
+  if (use_regions) {
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region size:", (1 << region_bits));
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region overlap:", region_overlap);
+  }
+  if (Qflag) {
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
+  }
 
   // Scores
   fprintf(stderr, "\n");
@@ -1260,14 +1285,10 @@ print_settings() {
   }
   fprintf(stderr, "\n");
 
-  if (Qflag) {
-    fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Filter by minimum qv:", min_avg_qv, min_avg_qv < 0? " (disabled)" : "");
-  }
-
   return;
 
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", num_matches);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", match_mode);
 
   if (IS_ABSOLUTE(window_len)) {
     fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Length:", (uint)-window_len);
@@ -1319,11 +1340,6 @@ print_settings() {
 
   fprintf(stderr, "\n");
 
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Region Filter:", use_regions? "yes" : "no");
-  if (use_regions) {
-  }
-
 }
 
 static int
@@ -1339,7 +1355,7 @@ set_mode_from_string(char const * s) {
     a_gap_open_score = -255;
     b_gap_open_score = -255;
     hash_filter_calls = false;
-    num_matches = 1;
+    match_mode = 1;
     window_len = 100.0;
 
     return 1;
@@ -1458,6 +1474,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   fprintf(stderr, "parsing read_mapping_options [%s] (%s)\n", c, is_paired? "paired" : "unpaired");
   // regions
   q = strtok_r(c, "/", &save_ptr);
+  logit(0, "parsing region options: %s", q);
   p = strtok(q, ",");
   get_bool(p, &options->regions.recompute);
   //if (options->regions.recompute) {
@@ -1468,6 +1485,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   //}
   // anchor_list
   q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing anchor_list options: %s", q);
   p = strtok(q, ",");
   get_bool(p, &options->anchor_list.recompute);
   if (options->anchor_list.recompute) {
@@ -1480,6 +1498,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   }
   // hit_list
   q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing hit_list options: %s", q);
   p = strtok(q, ",");
   get_bool(p, &options->hit_list.recompute);
   if (options->hit_list.recompute) {
@@ -1492,6 +1511,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   }
   // pass1
   q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing pass1 options: %s", q);
   p = strtok(q, ",");
   get_bool(p, &options->pass1.recompute);
   if (options->pass1.recompute) {
@@ -1499,6 +1519,8 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
     get_threshold(p, &options->pass1.threshold);
     p = strtok(NULL, ",");
     get_threshold(p, &options->pass1.window_overlap);
+    p = strtok(NULL, ",");
+    get_int(p, &options->pass1.min_matches);
     p = strtok(NULL, ",");
     get_bool(p, &options->pass1.gapless);
     if (is_paired) {
@@ -1512,6 +1534,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   }
   // pass2
   q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing pass2 options: %s", q);
   p = strtok(q, ",");
   get_threshold(p, &options->pass2.threshold);
   if (!is_paired) {
@@ -1523,6 +1546,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   // stop
   if (!is_paired) {
     q = strtok_r(NULL, "/", &save_ptr);
+    logit(0, "parsing stop options: %s", q);
     p = strtok(q, ",");
     get_int(p, &options->pass2.stop_count);
     if (options->pass2.stop_count > 0) {
@@ -1542,10 +1566,12 @@ int main(int argc, char **argv){
 	char *c, *save_c;
 	int ch;
 
+	llint before;
+
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
 	bool match_score_set, mismatch_score_set, xover_score_set;
-	bool num_matches_set = false;
+	bool match_mode_set = false;
 
 	my_alloc_init(4l*1024l*1024l*1024l, 100l*1024l*1024l);
 
@@ -1691,8 +1717,8 @@ int main(int argc, char **argv){
 			}
 			break;
 		case 'n':
-			num_matches = atoi(optarg);
-			num_matches_set = true;
+			match_mode = atoi(optarg);
+			match_mode_set = true;
 			break;
 		case 'w':
 			window_len = atof(optarg);
@@ -2006,6 +2032,16 @@ int main(int argc, char **argv){
 		case 31:
 		  extra_sam_fields = true;
 		  break;
+		case 32:
+		  region_bits = atoi(optarg);
+		  if (region_bits < 8 || region_bits > 20) {
+		    crash(1, 0, "invalid number of region bits: %s; must be between 8 and 20", optarg);
+		  }
+		  n_regions = (1 << (32 - region_bits));
+		  break;
+		case 33:
+		  progress = atoi(optarg);
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2035,8 +2071,8 @@ int main(int argc, char **argv){
 			usage(progname,false);
 		}
 	}
-	if (pair_mode != PAIR_NONE && !num_matches_set) {
-	  num_matches = 4;
+	if (!match_mode_set) {
+	  match_mode = (pair_mode == PAIR_NONE? DEF_MATCH_MODE_UNPAIRED : DEF_MATCH_MODE_PAIRED);
 	}
 	if (pair_mode == PAIR_NONE && (!trim_first || !trim_second)) {
 		fprintf(stderr,"error: cannot use --trim-first or --trim-second in unpaired mode\n");
@@ -2173,8 +2209,9 @@ int main(int argc, char **argv){
 	  window_overlap = 100.0;
 	}
 
-	if (num_matches < 1) {
-	  fprintf(stderr, "error: invalid number of matches\n");
+	if ((pair_mode == PAIR_NONE && (match_mode < 1 || match_mode > 2))
+	    || (pair_mode != PAIR_NONE && (match_mode < 3 || match_mode > 4))) {
+	  fprintf(stderr, "error: invalid match mode\n");
 	  exit(1);
 	}
 
@@ -2296,11 +2333,12 @@ int main(int argc, char **argv){
 	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = false;
 	      unpaired_mapping_options[0][0].hit_list.recompute = true;
 	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
-	      unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
+	      unpaired_mapping_options[0][0].hit_list.match_mode = match_mode;
 	      unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
 	      unpaired_mapping_options[0][0].pass1.recompute =  true;
 	      unpaired_mapping_options[0][0].pass1.only_paired = false;
 	      unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+	      unpaired_mapping_options[0][0].pass1.min_matches = match_mode; // this is 1 or 2 in unpaired mode
 	      unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
 	      unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
 	      unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
@@ -2329,35 +2367,32 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].read[0].regions.recompute = use_regions;
 	      //paired_mapping_options[0].read[0].regions.min_seed = -1;
 	      //paired_mapping_options[0].read[0].regions.max_seed = -1;
-
 	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
 	      paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
-	      paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (num_matches == 3);
+	      paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (use_regions && (match_mode == 3));
 	      paired_mapping_options[0].read[0].hit_list.recompute = true;
 	      paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
-	      paired_mapping_options[0].read[0].hit_list.match_mode = (num_matches == 4? 2 : 1);
+	      paired_mapping_options[0].read[0].hit_list.match_mode = (match_mode == 4? 2 : 3);
 	      paired_mapping_options[0].read[0].hit_list.threshold = window_gen_threshold;
 	      paired_mapping_options[0].read[0].pass1.recompute = true;
 	      paired_mapping_options[0].read[0].pass1.only_paired = true;
 	      paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
-	      paired_mapping_options[0].read[0].pass1.num_outputs = -1; // not used
+	      paired_mapping_options[0].read[0].pass1.min_matches = (match_mode == 4? 2 : 1);
 	      paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
 	      paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
 	      paired_mapping_options[0].read[0].pass2.strata = strata_flag;
-	      paired_mapping_options[0].read[0].pass2.num_outputs = -1; // not used
-	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold / 3;
+	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold * 0.75;
 	      paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
 
 	      if (!sam_half_paired)
 		{
 		  paired_mapping_options[0].pairing.stop_count = 0;
-		  paired_mapping_options[0].pairing.stop_threshold = 0;
 		}
 	      else // half_paired
 		{
 		  paired_mapping_options[0].pairing.stop_count = 1;
-		  paired_mapping_options[0].pairing.stop_threshold = paired_mapping_options[0].pairing.pass2_threshold;
+		  paired_mapping_options[0].pairing.stop_threshold = 101.0; //paired_mapping_options[0].pairing.pass2_threshold;
 
 		  n_unpaired_mapping_options[0]++;
 		  n_unpaired_mapping_options[1]++;
@@ -2371,22 +2406,11 @@ int main(int argc, char **argv){
 			      &mem_small, "unpaired_mapping_options[1]");
 
 		  unpaired_mapping_options[0][0].regions.recompute = false;
-		  //if (!use_regions) {
 		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
 		  unpaired_mapping_options[0][0].hit_list.recompute = false;
-		  /*
-		    } else {
-		    unpaired_mapping_options[0][0].anchor_list.recompute = true;
-		    unpaired_mapping_options[0][0].anchor_list.collapse = true;
-		    unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-		    unpaired_mapping_options[0][0].hit_list.recompute = true;
-		    unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
-		    unpaired_mapping_options[0][0].hit_list.match_mode = num_matches;
-		    unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
-		    }
-		  */
 		  unpaired_mapping_options[0][0].pass1.recompute = true;
 		  unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+		  unpaired_mapping_options[0][0].pass1.min_matches = 2;
 		  unpaired_mapping_options[0][0].pass1.only_paired = false;
 		  unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
 		  unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
@@ -2395,6 +2419,7 @@ int main(int argc, char **argv){
 		  unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
 		  unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
 		  unpaired_mapping_options[0][0].pass2.stop_count = 0;
+
 		  unpaired_mapping_options[1][0] = unpaired_mapping_options[0][0];
 
 		}
@@ -2405,7 +2430,6 @@ int main(int argc, char **argv){
 	  print_settings();
 	}
 
-	uint64_t before;
 	before = gettimeinusecs();
 	if (load_file != NULL){
 		if (strchr(load_file, ',') == NULL) {
@@ -2470,14 +2494,14 @@ int main(int argc, char **argv){
 		  init_seed_hash_mask();
 		}
 
-		print_settings();
+		//print_settings();
 	} else {
 		if (!load_genome(genome_files,ngenome_files)){
 			exit(1);
 		}
 	}
 
-	map_usecs += (gettimeinusecs() - before);
+	load_genome_usecs += (gettimeinusecs() - before);
 
 	//
 	// Automatic genome index trimming
@@ -2507,7 +2531,12 @@ int main(int argc, char **argv){
 	  if ((uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight)) > list_cutoff) {
 	    list_cutoff = (uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight));
 	  }
-	  fprintf(stderr, "Automatically trimming genome index lists longer than: %u\n", list_cutoff);
+	  //fprintf(stderr, "    %-40s%d\n", "Trimming index lists longer than:", list_cutoff);
+	  //fprintf(stderr, "\n");
+	}
+
+	if (load_file != NULL) {
+	  print_settings();
 	}
 
 	if (Yflag)
@@ -2515,7 +2544,7 @@ int main(int argc, char **argv){
 
 	if (save_file != NULL) {
 	  if (list_cutoff != DEF_LIST_CUTOFF) {
-	    fprintf(stderr, "Trimming genome map lists longer than %u\n", list_cutoff);
+	    fprintf(stderr, "\nTrimming index lists longer than: %u\n", list_cutoff);
 	    trim_genome();
 	  }
 
@@ -2635,7 +2664,7 @@ int main(int argc, char **argv){
 	  fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
 	  exit(1);
 	}
-	total_work_usecs += (gettimeinusecs() - before);
+	mapping_wallclock_usecs += (gettimeinusecs() - before);
 	
 	print_statistics();
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,	\

@@ -58,12 +58,11 @@ int
 sw_gapless(uint32_t * genome, int glen, uint32_t * read, int rlen, int g_idx, int r_idx,
 	   uint32_t * genome_ls, int init_bp, bool is_rna)
 {
-  int64_t before;
   int score;
   int g_left, g_right, r_left, r_right;
   int max_score;
 
-  before = rdtsc();
+  llint before = rdtsc(), after;
 
   if (!initialised)
     abort();
@@ -111,7 +110,8 @@ sw_gapless(uint32_t * genome, int glen, uint32_t * read, int rlen, int g_idx, in
   }
 
   count_add(&cells, rlen);
-  count_add(&ticks, rdtsc() - before);
+  after = rdtsc();
+  count_add(&ticks, MAX(after - before, 0));
 
   return max_score;
 }

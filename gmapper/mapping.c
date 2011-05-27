@@ -470,7 +470,8 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 {
   int sn, i, offset, region;
   uint j;
-  llint before = rdtsc();
+  llint before = rdtsc(), after;
+  //llint before = gettimeinusecs();
   int number_in_pair = re->first_in_pair? 0 : 1;
 
   assert(use_regions);
@@ -539,7 +540,9 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
     }
   }
 
-  region_counts_ticks[omp_get_thread_num()] += rdtsc() - before;
+  after = rdtsc();
+  region_counts_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  //region_counts_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
 
@@ -857,12 +860,15 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
 static inline void
 new_read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
 {
-  llint before = rdtsc();
+  llint before = rdtsc(), after;
+  //llint before = gettimeinusecs();
 
   new_read_get_anchor_list_per_strand(re, 0, options);
   new_read_get_anchor_list_per_strand(re, 1, options);
 
-  anchor_list_ticks[omp_get_thread_num()] += rdtsc() - before;
+  after = rdtsc();
+  anchor_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  //anchor_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
 
@@ -1037,12 +1043,15 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
 static inline void
 new_read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
 {
-  llint before = rdtsc();
+  llint before = rdtsc(), after;
+  //llint before = gettimeinusecs();
 
   new_read_get_hit_list_per_strand(re, 0, options);
   new_read_get_hit_list_per_strand(re, 1, options);
 
-  hit_list_ticks[omp_get_thread_num()] += rdtsc() - before;
+  after = rdtsc();
+  hit_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  //hit_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 
 #ifdef DEBUG_HIT_LIST_CREATION
   fprintf(stderr, "Dumping hit list after creation for read:[%s]\n", re->name);
@@ -1064,6 +1073,10 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
 
   for (i = 0; i < re->n_hits[st]; i++) {
     if (options->only_paired && re->hits[st][i].pair_min < 0) {
+      continue;
+    }
+
+    if (re->hits[st][i].matches < options->min_matches) {
       continue;
     }
 
@@ -1291,7 +1304,8 @@ static void
 read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 {
   int i, j, k, max, max_idx;
-  llint before = rdtsc();
+  llint before = rdtsc(), after;
+  //llint before = gettimeinusecs();
 
   /*
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
@@ -1367,7 +1381,9 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 
   *n_hits_pass2 = k;
 
-  duplicate_removal_ticks[omp_get_thread_num()] += rdtsc() - before;
+  after = rdtsc();
+  duplicate_removal_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
 
@@ -1512,7 +1528,7 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
   int n_hits_pass1;
   int n_hits_pass2;
 
-  uint64_t before = rdtsc();
+  llint before = gettimeinusecs();
 
   if (re->mapidx[0] == NULL) {
     read_get_mapidxs(re);
@@ -1574,7 +1590,7 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
     // this read fell through all the option sets
   //}
 
-  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
+  read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
 
@@ -1809,7 +1825,8 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   */
 
   int tmp;
-  llint before = rdtsc();
+  llint before = rdtsc(), after;
+  //llint before = gettimeinusecs();
 
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_start_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_end_cmp);
@@ -1824,7 +1841,9 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
 
   *n_hits_pass2 = tmp;
 
-  duplicate_removal_ticks[omp_get_thread_num()] += rdtsc() - before;
+  after = rdtsc();
+  duplicate_removal_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
 
@@ -2016,7 +2035,7 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
   int n_hits_pass1;
   int n_hits_pass2;
 
-  uint64_t before = rdtsc();
+  llint before = gettimeinusecs();
 
   read_get_mapidxs(re1);
   read_get_mapidxs(re2);
@@ -2090,7 +2109,7 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   } while (!done && ++option_index < n_options);
 
-  scan_ticks[omp_get_thread_num()] += rdtsc() - before;
+  read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 
   if (option_index >= n_options && sam_half_paired) {
     // this read pair fell through all the option sets; try unpaired mapping

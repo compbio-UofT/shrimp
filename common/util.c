@@ -1251,3 +1251,45 @@ size_t removedups(void * a, size_t n, size_t sz, int (*cmp)(void const *, void c
   }
   return m;
 }
+
+
+void
+crash(int exit_code, int display_errno, char * msg, ...)
+{
+  va_list fmtargs;
+  char new_msg[strlen(msg) + 1000];
+
+  strcpy(new_msg, "error: ");
+  if (display_errno) {
+    strcat(new_msg, strerror(errno));
+    strcat(new_msg, ": ");
+  }
+  strcat(new_msg, msg);
+  strcat(new_msg, "\n");
+
+  va_start(fmtargs, msg);
+  vfprintf(stderr, new_msg, fmtargs);
+  va_end(fmtargs);
+
+  exit(exit_code);
+}
+
+
+void
+logit(int display_errno, char * msg, ...)
+{
+  va_list fmtargs;
+  char new_msg[strlen(msg) + 1000];
+
+  strcpy(new_msg, "logit: ");
+  if (display_errno) {
+    strcat(new_msg, strerror(errno));
+    strcat(new_msg, ": ");
+  }
+  strcat(new_msg, msg);
+  strcat(new_msg, "\n");
+
+  va_start(fmtargs, msg);
+  vfprintf(stderr, new_msg, fmtargs);
+  va_end(fmtargs);
+}

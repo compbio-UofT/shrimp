@@ -30,7 +30,8 @@
 
 #define DEF_WINDOW_LEN		140.0
 #define DEF_WINDOW_OVERLAP	20.0
-#define DEF_NUM_MATCHES		2
+#define DEF_MATCH_MODE_PAIRED	4
+#define DEF_MATCH_MODE_UNPAIRED	2
 #define DEF_NUM_OUTPUTS		10
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 
@@ -52,13 +53,13 @@
 
 
 /* Score Thresholds */
-#define DEF_WINDOW_GEN_THRESHOLD	55.0	/* Min required to generate match window */
+#define DEF_WINDOW_GEN_THRESHOLD	(55.0)	/* Min required to generate match window */
 //SHRiMP v 2.0.1
 //#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
 //#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 //SHRiMP v 2.0.2
-#define DEF_SW_VECT_THRESHOLD	50.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
-#define DEF_SW_FULL_THRESHOLD	55.0	/* read_length x match_value x .55 */
+#define DEF_SW_VECT_THRESHOLD	(45.0)	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_FULL_THRESHOLD	(50.0)	/* read_length x match_value x .55 */
 
 
 #define DEF_MAX_ALIGNMENTS 0
@@ -127,7 +128,9 @@
 	{"paired-options",1,0,28},\
 	{"unpaired-options",1,0,29},\
 	{"min-avg-qv",1,0,30},\
-	{"extra-sam-fields",0,0,31}\
+	{"extra-sam-fields",0,0,31},\
+	{"region-bits",1,0,32},\
+	{"progress",1,0,33},\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

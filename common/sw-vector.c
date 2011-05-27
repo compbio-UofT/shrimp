@@ -448,10 +448,9 @@ int
 sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     uint32_t *genome_ls, int initbp, bool is_rna)
 {
-	uint64_t before;
 	int i, score;
 
-	before = rdtsc();
+	llint before = rdtsc(), after;
 
 	if (!initialised)
 		abort();
@@ -501,7 +500,8 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	}
 
 	swcells += (glen * rlen);
-	swticks += (rdtsc() - before);
+	after = rdtsc();
+	swticks += MAX(after - before, 0);
 
 	return (score);
 }

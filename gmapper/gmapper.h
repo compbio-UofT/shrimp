@@ -46,7 +46,7 @@ EXTERN(int,					n_paired_mapping_options,	0);
 EXTERN(int,		mode_mirna,		false);
 EXTERN(double,		window_len,		DEF_WINDOW_LEN);
 EXTERN(double,		window_overlap,		DEF_WINDOW_OVERLAP);
-EXTERN(int,		num_matches,		DEF_NUM_MATCHES);
+EXTERN(int,		match_mode,		0);
 EXTERN(int,		num_outputs,		DEF_NUM_OUTPUTS);
 EXTERN(int,		max_alignments,		DEF_MAX_ALIGNMENTS);
 EXTERN(int,		num_tmp_outputs,	20 + DEF_NUM_OUTPUTS);
@@ -183,14 +183,20 @@ EXTERN(llint,			total_single_matches,		0);
 EXTERN(llint,			total_paired_matches,		0);
 EXTERN(llint,			total_dup_single_matches,	0);			/* number of duplicate hits */
 EXTERN(llint,			total_dup_paired_matches,	0);
-EXTERN(llint,			total_work_usecs,		0);
-EXTERN(llint,			map_usecs,			0);
-EXTERN(llint,			scan_ticks[50],			{});
+
+EXTERN(llint,			load_genome_usecs,		0);
+EXTERN(llint,			mapping_wallclock_usecs,	0);
+EXTERN(llint,			read_handle_usecs[50],		{});
 EXTERN(llint,			wait_ticks[50],			{});
 EXTERN(llint,			anchor_list_ticks[50],		{});
 EXTERN(llint,			region_counts_ticks[50],	{});
 EXTERN(llint,			hit_list_ticks[50],		{});
 EXTERN(llint,			duplicate_removal_ticks[50],	{});
+//EXTERN(llint,			anchor_list_usecs[50],		{});
+//EXTERN(llint,			region_counts_usecs[50],	{});
+//EXTERN(llint,			hit_list_usecs[50],		{});
+//EXTERN(llint,			duplicate_removal_usecs[50],	{});
+
 EXTERN(stat_t,			anchor_list_init_size[50],	{});
 EXTERN(int,			anchor_list_big_gap,		DEF_ANCHOR_LIST_BIG_GAP);
 EXTERN(stat_t,			n_big_gaps_anchor_list[50],	{});

@@ -632,10 +632,9 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     struct anchor * anchors, int anchors_cnt, int local_alignment)
 {
 	struct sw_full_results scratch;
-	llint before;
 	int i, j, k;
 
-	before = rdtsc();
+	llint before = rdtsc(), after;
 
 	if (!initialised)
 		abort();
@@ -669,5 +668,6 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	sfr->qralign = xstrdup(qralign);
 
 	//swcells += (glen * rlen);
-	swticks += (rdtsc() - before);
+	after = rdtsc();
+	swticks += MAX(after - before, 0);
 }

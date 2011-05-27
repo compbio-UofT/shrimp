@@ -203,6 +203,7 @@ typedef struct pass1_options {
   bool		gapless;
   bool		only_paired;
   int		num_outputs;
+  int		min_matches;
   double	threshold;
   double	window_overlap;
 } pass1_options;
