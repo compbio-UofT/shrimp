@@ -566,6 +566,18 @@ launch_scan_threads(){
 }
 
 
+static char *
+thres_to_buff(char * buff, double * thres)
+{
+  if (IS_ABSOLUTE(*thres)) {
+    sprintf(buff, "%u", -(uint)(*thres));
+  } else {
+    sprintf(buff, "%.02f%%", *thres);
+  }
+  return buff;
+}
+
+
 static void
 print_insert_histogram()
 {
@@ -1056,21 +1068,26 @@ usage(char * progname, bool full_usage){
 static void
 print_pairing_options(struct pairing_options * options)
 {
-  fprintf(stderr, "[\n\tpairing:%s, min_insert:%d, max_insert:%d, pair_up_hits:%s,\n\tmin_num_matches:%d, pass1_num_outputs:%d,",
+  char buff[2][100];
+
+  fprintf(stderr, "[\n\tpairing:%s, min_insert:%d, max_insert:%d,\n\tpass1_num_outputs:%d,",
 	  pair_mode_string[options->pair_mode], options->min_insert_size, options->max_insert_size,
-	  options->pair_up_hits? "true" : "false", options->min_num_matches, options->pass1_num_outputs);
+	  options->pass1_num_outputs);
+  /*
   if (IS_ABSOLUTE(options->pass1_threshold)) {
     fprintf(stderr, " pass1_threshold:%u,\n", (uint)-options->pass1_threshold);
   } else {
     fprintf(stderr, " pass1_threshold:%.02f%%,\n", options->pass1_threshold);
   }
+  */
+  fprintf(stderr, " pass1_threshold:%s,\n", thres_to_buff(buff[0], &options->pass1_threshold));
   fprintf(stderr, "\tpass2_num_outputs:%d,", options->pass2_num_outputs);
   if (IS_ABSOLUTE(options->pass2_threshold)) {
     fprintf(stderr, " pass2_threshold:%u,", (uint)-options->pass2_threshold);
   } else {
     fprintf(stderr, " pass2_threshold:%.02f%%,", options->pass2_threshold);
   }
-  fprintf(stderr, " strata:%s, stop_count:%d,", options->strata? "true" : "false", options->stop_count);
+  fprintf(stderr, " strata:%s\n\tstop_count:%d,", options->strata? "true" : "false", options->stop_count);
   if (IS_ABSOLUTE(options->stop_threshold)) {
     fprintf(stderr, " stop_threshold:%u", (uint)-options->stop_threshold);
   } else {
@@ -1081,53 +1098,93 @@ print_pairing_options(struct pairing_options * options)
 
 
 static void
-print_read_mapping_options(struct read_mapping_options_t * options)
+print_read_mapping_options(struct read_mapping_options_t * options, bool is_paired)
 {
-  fprintf(stderr, "[\n\tregions:[recompute:%s, min_seed:%d, max_seed:%d]\n",
-	  options->regions.recompute? "true" : "false", options->regions.min_seed, options->regions.max_seed);
-  fprintf(stderr, "\tanchor_list:[recompute:%s, collapse:%s, use_region_counts:%s, use_mp_region_counts:%s]\n",
-	  options->anchor_list.recompute? "true" : "false",
-	  options->anchor_list.collapse? "true" : "false",
-	  options->anchor_list.use_region_counts? "true" : "false",
-	  options->anchor_list.use_mp_region_counts? "true" : "false");
-  fprintf(stderr, "\thit_list:[recompute:%s, gapless:%s, match_mode:%d,",
-	  options->hit_list.recompute? "true" : "false",
-	  options->hit_list.gapless? "true" : "false",
-	  options->hit_list.match_mode);
-  if (IS_ABSOLUTE(options->hit_list.threshold)) {
-    fprintf(stderr, " threshold:%u]\n", (uint)-options->hit_list.threshold);
-  } else {
-    fprintf(stderr, " threshold:%.02f%%]\n", options->hit_list.threshold);
+  fprintf(stderr, "[\n");
+
+  fprintf(stderr, "\tregions:[recompute:%s", options->regions.recompute? "true" : "false");
+  //if (!options->regions.recompute)
+    fprintf(stderr, "]\n");
+  //else
+  //  fprintf(stderr, ", min_seed:%d, max_seed:%d]\n",
+  //    options->regions.min_seed, options->regions.max_seed);
+
+  fprintf(stderr, "\tanchor_list:[recompute:%s", options->anchor_list.recompute? "true" : "false");
+  if (!options->anchor_list.recompute)
+    fprintf(stderr, "]\n");
+  else
+    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%s]\n",
+	    options->anchor_list.collapse? "true" : "false",
+	    options->anchor_list.use_region_counts? "true" : "false",
+	    options->anchor_list.use_mp_region_counts? "true" : "false");
+
+  fprintf(stderr, "\thit_list:[recompute:%s", options->hit_list.recompute? "true" : "false");
+  if (!options->hit_list.recompute)
+    fprintf(stderr, "]\n");
+  else {
+    fprintf(stderr, ", gapless:%s, match_mode:%d,",
+	    options->hit_list.gapless? "true" : "false",
+	    options->hit_list.match_mode);
+    if (IS_ABSOLUTE(options->hit_list.threshold)) {
+      fprintf(stderr, " threshold:%u]\n", (uint)-options->hit_list.threshold);
+    } else {
+      fprintf(stderr, " threshold:%.02f%%]\n", options->hit_list.threshold);
+    }
   }
-  fprintf(stderr, "\tpass1:[recompute:%s, gapless:%s, only_paired:%s, num_outputs:%d,",
-	  options->pass1.recompute? "true" : "false",
-	  options->pass1.gapless? "true" : "false",
-	  options->pass1.only_paired? "true" : "false",
-	  options->pass1.num_outputs);
-  if (IS_ABSOLUTE(options->pass1.threshold)) {
-    fprintf(stderr, " threshold:%u,", (uint)-options->pass1.threshold);
-  } else {
-    fprintf(stderr, " threshold:%.02f%%,", options->pass1.threshold);
+
+  fprintf(stderr, "\tpass1:[recompute:%s", options->pass1.recompute? "true" : "false");
+  if (!options->pass1.recompute)
+  fprintf(stderr, "]\n");
+  else {
+    if (IS_ABSOLUTE(options->pass1.threshold)) {
+      fprintf(stderr, ", threshold:%u", (uint)-options->pass1.threshold);
+    } else {
+      fprintf(stderr, ", threshold:%.02f%%", options->pass1.threshold);
+    }
+    if (IS_ABSOLUTE(options->pass1.window_overlap)) {
+      fprintf(stderr, ", window_overlap:%u", (uint)-options->pass1.window_overlap);
+    } else {
+      fprintf(stderr, ", window_overlap:%.02f%%", options->pass1.window_overlap);
+    }
+    fprintf(stderr, ", gapless:%s",
+	    options->pass1.gapless? "true" : "false");
+    if (is_paired) {
+      fprintf(stderr, ", only_paired:%s",
+	    options->pass1.only_paired? "true" : "false");
+    }
+    if (!is_paired) {
+      fprintf(stderr, ", num_outputs:%d",
+	      options->pass1.num_outputs);
+    }
+    fprintf(stderr, "]\n");
   }
-  if (IS_ABSOLUTE(options->pass1.window_overlap)) {
-    fprintf(stderr, " window_overlap:%u]\n", (uint)-options->pass1.window_overlap);
-  } else {
-    fprintf(stderr, " window_overlap:%.02f%%]\n", options->pass1.window_overlap);
-  }
-  fprintf(stderr, "\tpass2:[strata:%d, num_outputs:%d,",
-	  options->pass2.strata, options->pass2.num_outputs);
+
+  fprintf(stderr, "\tpass2:[");
   if (IS_ABSOLUTE(options->pass2.threshold)) {
-    fprintf(stderr, " threshold:%u,", (uint)-options->pass2.threshold);
+    fprintf(stderr, "threshold:%u", (uint)-options->pass2.threshold);
   } else {
-    fprintf(stderr, " threshold:%.02f%%,", options->pass2.threshold);
+    fprintf(stderr, "threshold:%.02f%%", options->pass2.threshold);
   }
-  fprintf(stderr, " stop_count:%d,", options->pass2.stop_count);
-  if (IS_ABSOLUTE(options->pass2.stop_threshold)) {
-    fprintf(stderr, " stop_threshold:%u]\n", (uint)-options->pass2.stop_threshold);
-  } else {
-    fprintf(stderr, " stop_threshold:%.02f%%]\n", options->pass2.stop_threshold);
+
+  if (!is_paired) {
+    fprintf(stderr, ", strata:%d, num_outputs:%d",
+	    options->pass2.strata, options->pass2.num_outputs);
   }
   fprintf(stderr, "]\n");
+
+  if (!is_paired) {
+    fprintf(stderr, "\tstop:[stop_count:%d",
+	    options->pass2.stop_count);
+    if (options->pass2.stop_count > 0) {
+      if (IS_ABSOLUTE(options->pass2.stop_threshold)) {
+	fprintf(stderr, ", stop_threshold:%u", (uint)-options->pass2.stop_threshold);
+      } else {
+	fprintf(stderr, ", stop_threshold:%.02f%%", options->pass2.stop_threshold);
+      }
+    }
+    fprintf(stderr, "]\n");
+  }
+
 }
 
 
@@ -1176,15 +1233,15 @@ print_settings() {
     for (i = 0; i < n_paired_mapping_options; i++) {
       fprintf(stderr, "Paired mapping options, set [%d]\n", i);
       print_pairing_options(&paired_mapping_options[i].pairing);
-      print_read_mapping_options(&paired_mapping_options[i].read[0]);
-      print_read_mapping_options(&paired_mapping_options[i].read[1]);
+      print_read_mapping_options(&paired_mapping_options[i].read[0], true);
+      print_read_mapping_options(&paired_mapping_options[i].read[1], true);
     }
 
     if (n_unpaired_mapping_options[0] > 0) {
       fprintf(stderr, "\n");
       for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
 	fprintf(stderr, "Unpaired mapping options for first read in a pair, set [%d]\n", i);
-	print_read_mapping_options(&unpaired_mapping_options[0][i]);
+	print_read_mapping_options(&unpaired_mapping_options[0][i], false);
       }
     }
 
@@ -1192,13 +1249,13 @@ print_settings() {
       fprintf(stderr, "\n");
       for (i = 0; i < n_unpaired_mapping_options[1]; i++) {
 	fprintf(stderr, "Unpaired mapping options for second read in a pair, set [%d]\n", i);
-	print_read_mapping_options(&unpaired_mapping_options[1][i]);
+	print_read_mapping_options(&unpaired_mapping_options[1][i], false);
       }
     }
   } else {
     for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
       fprintf(stderr, "Unpaired mapping options, set [%d]\n", i);
-      print_read_mapping_options(&unpaired_mapping_options[0][i]);
+      print_read_mapping_options(&unpaired_mapping_options[0][i], false);
     }
   }
   fprintf(stderr, "\n");
@@ -1373,10 +1430,6 @@ get_pairing_options(char * c, struct pairing_options * options)
   p = strtok(NULL, ",");
   get_int(p, &options->max_insert_size);
   p = strtok(NULL, ",");
-  get_bool(p, &options->pair_up_hits);
-  p = strtok(NULL, ",");
-  get_int(p, &options->min_num_matches);
-  p = strtok(NULL, ",");
   get_int(p, &options->pass1_num_outputs);
   p = strtok(NULL, ",");
   get_threshold(p, &options->pass1_threshold);
@@ -1394,62 +1447,89 @@ get_pairing_options(char * c, struct pairing_options * options)
 
 
 static void
-get_read_mapping_options(char * c, struct read_mapping_options_t * options)
+get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool is_paired)
 {
-  char * p;
+  char * p, * q;
+  char * save_ptr;
   if (c == NULL) {
     fprintf(stderr, "error: invalid read mapping options\n");
     exit(1);
   }
+  fprintf(stderr, "parsing read_mapping_options [%s] (%s)\n", c, is_paired? "paired" : "unpaired");
   // regions
-  p = strtok(c, ",");
+  q = strtok_r(c, "/", &save_ptr);
+  p = strtok(q, ",");
   get_bool(p, &options->regions.recompute);
-  p = strtok(NULL, ",");
-  get_int(p, &options->regions.min_seed);
-  p = strtok(NULL, ",");
-  get_int(p, &options->regions.max_seed);
+  //if (options->regions.recompute) {
+  //p = strtok(NULL, ",");
+  //get_int(p, &options->regions.min_seed);
+  //p = strtok(NULL, ",");
+  //get_int(p, &options->regions.max_seed);
+  //}
   // anchor_list
-  p = strtok(NULL, ",");
+  q = strtok_r(NULL, "/", &save_ptr);
+  p = strtok(q, ",");
   get_bool(p, &options->anchor_list.recompute);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->anchor_list.collapse);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->anchor_list.use_region_counts);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->anchor_list.use_mp_region_counts);
+  if (options->anchor_list.recompute) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->anchor_list.collapse);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->anchor_list.use_region_counts);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->anchor_list.use_mp_region_counts);
+  }
   // hit_list
-  p = strtok(NULL, ",");
+  q = strtok_r(NULL, "/", &save_ptr);
+  p = strtok(q, ",");
   get_bool(p, &options->hit_list.recompute);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->hit_list.gapless);
-  p = strtok(NULL, ",");
-  get_int(p, &options->hit_list.match_mode);
-  p = strtok(NULL, ",");
-  get_threshold(p, &options->hit_list.threshold);
+  if (options->hit_list.recompute) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->hit_list.gapless);
+    p = strtok(NULL, ",");
+    get_int(p, &options->hit_list.match_mode);
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->hit_list.threshold);
+  }
   // pass1
-  p = strtok(NULL, ",");
+  q = strtok_r(NULL, "/", &save_ptr);
+  p = strtok(q, ",");
   get_bool(p, &options->pass1.recompute);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->pass1.gapless);
-  p = strtok(NULL, ",");
-  get_bool(p, &options->pass1.only_paired);
-  p = strtok(NULL, ",");
-  get_threshold(p, &options->pass1.window_overlap);
-  p = strtok(NULL, ",");
-  get_int(p, &options->pass1.num_outputs);
-  p = strtok(NULL, ",");
-  get_threshold(p, &options->pass1.threshold);
+  if (options->pass1.recompute) {
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->pass1.threshold);
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->pass1.window_overlap);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass1.gapless);
+    if (is_paired) {
+      p = strtok(NULL, ",");
+      get_bool(p, &options->pass1.only_paired);
+    }
+    if (!is_paired) {
+      p = strtok(NULL, ",");
+      get_int(p, &options->pass1.num_outputs);
+    }
+  }
   // pass2
-  p = strtok(NULL, ",");
-  get_bool(p, &options->pass2.strata);
-  p = strtok(NULL, ",");
-  get_int(p, &options->pass2.num_outputs);
-  p = strtok(NULL, ",");
+  q = strtok_r(NULL, "/", &save_ptr);
+  p = strtok(q, ",");
   get_threshold(p, &options->pass2.threshold);
-  p = strtok(NULL, ",");
-  get_int(p, &options->pass2.stop_count);
-  p = strtok(NULL, ",");
-  get_threshold(p, &options->pass2.stop_threshold);
+  if (!is_paired) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass2.strata);
+    p = strtok(NULL, ",");
+    get_int(p, &options->pass2.num_outputs);
+  }
+  // stop
+  if (!is_paired) {
+    q = strtok_r(NULL, "/", &save_ptr);
+    p = strtok(q, ",");
+    get_int(p, &options->pass2.stop_count);
+    if (options->pass2.stop_count > 0) {
+      p = strtok(NULL, ",");
+      get_threshold(p, &options->pass2.stop_threshold);
+    }
+  }
 }
 
 
@@ -1893,9 +1973,9 @@ int main(int argc, char **argv){
 		  c = strtok_r(optarg, ";", &save_c);
 		  get_pairing_options(c, &paired_mapping_options[n_paired_mapping_options - 1].pairing);
 		  c = strtok_r(NULL, ";", &save_c);
-		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[0]);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[0], true);
 		  c = strtok_r(NULL, ";", &save_c);
-		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[1]);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[1], true);
 		  // HACK SETTINGS
 		  pair_mode = paired_mapping_options[0].pairing.pair_mode;
 		  break;
@@ -1915,7 +1995,7 @@ int main(int argc, char **argv){
 		    my_realloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]), (n_unpaired_mapping_options[nip] - 1) * sizeof(unpaired_mapping_options[nip][0]),
 			       &mem_small, "unpaired_mapping_options[%d]", nip);
 		  c = strtok(NULL, ";");
-		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1]);
+		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1], false);
 		  break;
 		case 30:
 		  min_avg_qv = atoi(optarg);
@@ -2208,8 +2288,8 @@ int main(int argc, char **argv){
 			  &mem_small, "unpaired_mapping_options[0]");
 
 	      unpaired_mapping_options[0][0].regions.recompute = use_regions;
-	      unpaired_mapping_options[0][0].regions.min_seed = -1;
-	      unpaired_mapping_options[0][0].regions.max_seed = -1;
+	      //unpaired_mapping_options[0][0].regions.min_seed = -1;
+	      //unpaired_mapping_options[0][0].regions.max_seed = -1;
 	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
 	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
 	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
@@ -2238,19 +2318,17 @@ int main(int argc, char **argv){
 			  &mem_small, "paired_mapping_options");
 
 	      paired_mapping_options[0].pairing.pair_mode = pair_mode;
-	      paired_mapping_options[0].pairing.pair_up_hits = true;
 	      paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
 	      paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
 	      paired_mapping_options[0].pairing.strata = strata_flag;
-	      paired_mapping_options[0].pairing.min_num_matches = 3;
 	      paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
 	      paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
 	      paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
 	      paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
 
 	      paired_mapping_options[0].read[0].regions.recompute = use_regions;
-	      paired_mapping_options[0].read[0].regions.min_seed = -1;
-	      paired_mapping_options[0].read[0].regions.max_seed = -1;
+	      //paired_mapping_options[0].read[0].regions.min_seed = -1;
+	      //paired_mapping_options[0].read[0].regions.max_seed = -1;
 
 	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	      paired_mapping_options[0].read[0].anchor_list.collapse = true;

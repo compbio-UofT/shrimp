@@ -492,8 +492,8 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 
   assert(region_map[0][0] != NULL);
 
-  for (sn = (options->min_seed >= 0? options->min_seed : 0);
-       sn <= (options->max_seed >= 0? options->max_seed: n_seeds - 1);
+  for (sn = 0; //(options->min_seed >= 0? options->min_seed : 0);
+       sn <= n_seeds - 1; //(options->max_seed >= 0? options->max_seed: n_seeds - 1);
        sn++) {
     for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
       offset = sn*re->max_n_kmers + i;
@@ -1602,8 +1602,8 @@ new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
 	continue;
 
       for (j = re1->hits[st1][i].pair_min; j <= re1->hits[st1][i].pair_max; j++) {
-	if (re1->hits[st1][i].matches + re2->hits[st2][j].matches < options->min_num_matches)
-	  continue;
+	//if (re1->hits[st1][i].matches + re2->hits[st2][j].matches < options->min_num_matches)
+	//  continue;
 
 	tmp.score = re1->hits[st1][i].score_vector + re2->hits[st2][j].score_vector;
 	tmp.score_max = re1->hits[st1][i].score_max + re2->hits[st2][j].score_max;

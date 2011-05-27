@@ -176,8 +176,8 @@ typedef struct {
 
 typedef struct regions_options {
   bool		recompute;
-  int		min_seed;
-  int		max_seed;
+  //int		min_seed;
+  //int		max_seed;
 } regions_options;
 
 typedef struct anchor_list_options {
@@ -238,7 +238,7 @@ typedef struct pairing_options {
   int		pair_mode;
   int		min_insert_size;
   int		max_insert_size;		// for read 1 relative to read 0
-  int		min_num_matches;
+  //int		min_num_matches;
   int		pass1_num_outputs;
   int		pass2_num_outputs;
   int		stop_count;
@@ -248,7 +248,6 @@ typedef struct pairing_options {
   double	stop_threshold;
 
   bool		strata;
-  bool		pair_up_hits;
 } pairing_options;
 
 typedef struct readpair_mapping_options_t {
