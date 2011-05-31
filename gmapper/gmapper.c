@@ -430,7 +430,6 @@ launch_scan_threads()
 	  for (char * c = re_buffer[i].qual; *c != 0; c++) {
 	    re_buffer[i].avg_qv += (*c - qual_delta);
 	  }
-	  re_buffer[i].avg_qv /= re_buffer[i].read_len;
 	  //fprintf(stderr, " avg_qv:%d\n", re_buffer[i].avg_qv);
 	}
 
@@ -448,6 +447,7 @@ launch_scan_threads()
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
 	}
+	re_buffer[i].avg_qv /= re_buffer[i].read_len;
 
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
@@ -460,6 +460,8 @@ launch_scan_threads()
 	  } else if (re_buffer[i].read_len > longest_read_len) {
 	    fprintf(stderr, "warning: skipping read [%s]; it has length %d, maximum allowed is %d. Use --longest-read ?\n",
 		    re_buffer[i].name, re_buffer[i].read_len, longest_read_len);
+	  } else {
+	    //fprintf(stderr, "skipping read [%s] with avg_qv:%g\n", re_buffer[i].name, (double)re_buffer[i].avg_qv);
 	  }
 	  if (pair_mode == PAIR_NONE) {
 	    #pragma omp atomic
@@ -515,6 +517,11 @@ launch_scan_threads()
 	  }
       }
 
+      // free unused memory while the buffer waits in the output heap
+      thread_output_buffer[thread_id] = (char *)
+	my_realloc(thread_output_buffer[thread_id], thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id], thread_output_buffer_sizes[thread_id],
+		   &mem_thread_buffer, "thread_output_buffer[]");
+
       //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
 #pragma omp critical
       {
@@ -522,7 +529,7 @@ launch_scan_threads()
 	tmp.key = thread_output_buffer_chunk[thread_id];
 	//tmp.rest = thread_output_buffer[thread_id];
 	tmp.rest.ptr = thread_output_buffer[thread_id];
-	tmp.rest.sz = thread_output_buffer_sizes[thread_id];
+	tmp.rest.sz = thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id]; //thread_output_buffer_sizes[thread_id];
 	thread_output_buffer[thread_id] = NULL;	
 	heap_out_insert(&h, &tmp);
 	heap_out_get_min(&h, &tmp);
@@ -857,7 +864,7 @@ print_statistics()
 		    "Duplicate Paired Matches Pruned:",
 		    comma_integer(total_dup_paired_matches));
 
-	    if (sam_half_paired) {
+	    if (half_paired) {
 	      fprintf(stderr, "\n");
 
 	      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
@@ -1145,10 +1152,10 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
   fprintf(stderr, "\tanchor_list:[recompute:%s",
 	  options->anchor_list.recompute? "true" : "false");
   if (options->anchor_list.recompute) {
-    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%s",
+    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%d",
 	    options->anchor_list.collapse? "true" : "false",
 	    options->anchor_list.use_region_counts? "true" : "false",
-	    options->anchor_list.use_mp_region_counts? "true" : "false");
+	    options->anchor_list.use_mp_region_counts);
   }
   fprintf(stderr, "]\n");
 
@@ -1494,7 +1501,7 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
     p = strtok(NULL, ",");
     get_bool(p, &options->anchor_list.use_region_counts);
     p = strtok(NULL, ",");
-    get_bool(p, &options->anchor_list.use_mp_region_counts);
+    get_int(p, &options->anchor_list.use_mp_region_counts);
   }
   // hit_list
   q = strtok_r(NULL, "/", &save_ptr);
@@ -1672,7 +1679,7 @@ int main(int argc, char **argv){
 			sam_header_filename=optarg;
 			break;	
 		case 19:
-			sam_half_paired=true;
+			half_paired=true;
 			break;
 		case 20:
 			sam_r2=true;
@@ -1989,7 +1996,7 @@ int main(int argc, char **argv){
 		case 28:
 		  if (n_unpaired_mapping_options[0] > 0 || n_unpaired_mapping_options[1] > 0) {
 		    fprintf(stderr, "warning: unpaired mapping options set before paired mapping options! the latter take precedence.\n");
-		    sam_half_paired = true;
+		    half_paired = true;
 		  }
 		  n_paired_mapping_options++;
 		  paired_mapping_options = (struct readpair_mapping_options_t *)
@@ -2013,7 +2020,7 @@ int main(int argc, char **argv){
 		    exit(1);
 		  }
 		  if (n_paired_mapping_options > 0)
-		    sam_half_paired = true;
+		    half_paired = true;
 		  nip = (*c == '0'? 0 : 1);
 		  n_unpaired_mapping_options[nip]++;
 		  unpaired_mapping_options[nip] = (struct read_mapping_options_t *)
@@ -2168,7 +2175,7 @@ int main(int argc, char **argv){
 	  fprintf(stderr, "warning: in paired mode, both strands must be inspected; ignoring -C and -F\n");
 	  Cflag = Fflag = true;
 	}
-	if (pair_mode == PAIR_NONE && sam_half_paired) {
+	if (pair_mode == PAIR_NONE && half_paired) {
 	  fprintf(stderr, "error: cannot use option half-paired in non-paired mode!\n");
 	  exit(1);
 	}
@@ -2330,7 +2337,7 @@ int main(int argc, char **argv){
 	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
 	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
 	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
-	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = false;
+	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = 0;
 	      unpaired_mapping_options[0][0].hit_list.recompute = true;
 	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
 	      unpaired_mapping_options[0][0].hit_list.match_mode = match_mode;
@@ -2370,7 +2377,12 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
 	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
 	      paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions;
-	      paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (use_regions && (match_mode == 3));
+	      if (use_regions) {
+		paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (match_mode == 4 && !half_paired? 1
+										      : match_mode == 3 && half_paired? 2
+										      : match_mode == 3 && !half_paired? 3
+										      : 0);
+	      }
 	      paired_mapping_options[0].read[0].hit_list.recompute = true;
 	      paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
 	      paired_mapping_options[0].read[0].hit_list.match_mode = (match_mode == 4? 2 : 3);
@@ -2382,10 +2394,10 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
 	      paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
 	      paired_mapping_options[0].read[0].pass2.strata = strata_flag;
-	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold * 0.75;
+	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold * 0.5;
 	      paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
 
-	      if (!sam_half_paired)
+	      if (!half_paired)
 		{
 		  paired_mapping_options[0].pairing.stop_count = 0;
 		}

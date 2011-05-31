@@ -163,7 +163,7 @@ EXTERN(unsigned int,		thread_output_heap_capacity,	DEF_THREAD_OUTPUT_HEAP_CAPACI
 EXTERN(FILE *,		unaligned_reads_file,		NULL);
 EXTERN(FILE *,		aligned_reads_file,		NULL);
 EXTERN(bool,		sam_unaligned,			false);
-EXTERN(bool,		sam_half_paired,		false); //output reads in paired mode that only have one mapping
+EXTERN(bool,		half_paired,			false); //output reads in paired mode that only have one mapping
 EXTERN(bool,		sam_r2,				false);
 EXTERN(char *,		sam_header_filename,		NULL);
 EXTERN(char *,		sam_read_group_name,		NULL);

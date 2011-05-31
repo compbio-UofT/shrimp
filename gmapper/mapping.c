@@ -588,6 +588,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 {
   int first, last, max, k;
   int nip = re->first_in_pair? 0 : 1;
+  int count_main, count_mp;
 
   while (*idx < max_idx) {
 #ifdef USE_PREFETCH
@@ -600,41 +601,48 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 
     assert(((region_map[nip][st][region] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id);
 
-    // BEGIN COPY-PASTE
-    if ((region_map[nip][st][region] & ((1 << 8) - 1)) >= 2) // #region >= 2
-      break;
+    // BEGIN COPY
+    count_main = (region_map[nip][st][region] & ((1 << 8) - 1));
 
-    if (options->use_mp_region_counts) {
+    // if necessary, compute the mp counts
+    if (options->use_mp_region_counts != 0) {
       if ((region_map[nip][st][region] >> 31) == 0) {
-	// compute mp counts                                                                                                                                
-	first = MAX(0, region + re->delta_region_min[st]);
-	last = MIN(n_regions - 1, region + re->delta_region_max[st]);
-	max = 0;
-	for (k = first; k <= last; k++) {
-	  if (((region_map[1-nip][1-st][k] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id
-	      && (region_map[1-nip][1-st][k] & ((1 << 8) - 1)) > max) {
-	    max = (region_map[1-nip][1-st][k] & ((1 << 8) - 1));
-	  }
-	}
-	region_map[nip][st][region] |= (1 << 31);
-	region_map[nip][st][region] |= (max << 8);
+        first = MAX(0, region + re->delta_region_min[st]);
+        last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+        max = 0;
+        for (k = first; k <= last; k++) {
+          if (((region_map[1-nip][1-st][k] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id
+              && (region_map[1-nip][1-st][k] & ((1 << 8) - 1)) > max) {
+            max = (region_map[1-nip][1-st][k] & ((1 << 8) - 1));
+          }
+        }
+        region_map[nip][st][region] |= (1 << 31);
+        region_map[nip][st][region] |= (max << 8);
       }
-      if (((region_map[nip][st][region] >> 8) & ((1 << 8) - 1)) >= 2) // #region_mp >= 2
+
+      count_mp = ((region_map[nip][st][region] >> 8) & ((1 << 8) - 1));
+
+      if ((options->use_mp_region_counts == 1 && (count_main >= 2 && count_mp >= 2))
+	  || (options->use_mp_region_counts == 2 && (count_main >= 2 || count_mp >= 2))
+	  || (options->use_mp_region_counts == 3 && (count_mp >= 1 && (count_main + count_mp) >= 3))
+	  )
+      break;
+    } else { // don't use mp counts at all
+      if (count_main >= 2)
 	break;
     }
-    // END COPY-PASTE
+    // END COPY
 
     if (region > 0
 	&& (map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
       region--;
 
-      // BEGIN COPY-PASTE
-      if ((region_map[nip][st][region] & ((1 << 8) - 1)) >= 2) // #region >= 2
-	break;
+      // BEGIN PASTE
+      count_main = (region_map[nip][st][region] & ((1 << 8) - 1));
 
-      if (options->use_mp_region_counts) {
+      // if necessary, compute the mp counts                                                                                                                    
+      if (options->use_mp_region_counts != 0) {
 	if ((region_map[nip][st][region] >> 31) == 0) {
-	  // compute mp counts
 	  first = MAX(0, region + re->delta_region_min[st]);
 	  last = MIN(n_regions - 1, region + re->delta_region_max[st]);
 	  max = 0;
@@ -647,10 +655,20 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 	  region_map[nip][st][region] |= (1 << 31);
 	  region_map[nip][st][region] |= (max << 8);
 	}
-	if (((region_map[nip][st][region] >> 8) & ((1 << 8) - 1)) >= 2) // #region_mp >= 2
+
+	count_mp = ((region_map[nip][st][region] >> 8) & ((1 << 8) - 1));
+
+	if ((options->use_mp_region_counts == 1 && (count_main >= 2 && count_mp >= 2))
+	    || (options->use_mp_region_counts == 2 && (count_main >= 2 || count_mp >= 2))
+	    || (options->use_mp_region_counts == 3 && (count_mp >= 1 && (count_main + count_mp) >= 3))
+	    )
+	  break;
+      } else { // don't use mp counts at all                                                                                                                    
+	if (count_main >= 2)
 	  break;
       }
-      // END COPY-PASTE
+
+      // END PASTE
     }
 
     /*
@@ -923,8 +941,10 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
      */
     max_idx = i;
     max_score = re->anchors[st][i].length * match_score;
-    if (options->match_mode == 3) 
+    if (options->match_mode == 3) {
+      assert((region_map[re->first_in_pair? 0 : 1][st][re->anchors[st][i].x >> region_bits] >> 31) != 0);
       heavy_mp = (((region_map[re->first_in_pair? 0 : 1][st][re->anchors[st][i].x >> region_bits] >> 8) & ((1 << 8) - 1)) >= 2);
+    }
 
     if (!options->gapless) {
       // avoid single matches when n=2
@@ -998,6 +1018,7 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
 
 	// add hit
 	re->hits[st][re->n_hits[st]].g_off = goff;
+	re->hits[st][re->n_hits[st]].g_off_pos_strand = goff;
 	re->hits[st][re->n_hits[st]].w_len = w_len;
 	re->hits[st][re->n_hits[st]].cn = cn;
 	re->hits[st][re->n_hits[st]].st = st;
@@ -1081,11 +1102,9 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
     }
 
     // check window overlap
-    if (re->hits[st][i].gen_st != 0)
-      reverse_hit(re, &re->hits[st][i]);
     if (last_good_cn >= 0
 	&& re->hits[st][i].cn == last_good_cn
-	&& re->hits[st][i].g_off + (unsigned int)abs_or_pct(options->window_overlap, re->window_len) <= last_good_g_off + re->window_len) {
+	&& re->hits[st][i].g_off_pos_strand + (unsigned int)abs_or_pct(options->window_overlap, re->window_len) <= last_good_g_off + re->window_len) {
       re->hits[st][i].score_vector = 0;
       re->hits[st][i].pct_score_vector = 0;
       continue;
@@ -1099,7 +1118,6 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
 	  uint32_t ** gen_ls;
 	  struct read_hit * rh = &re->hits[st][i];
 
-	  assert(st == rh->st);
 	  if (rh->st != re->input_strand)
 	    reverse_hit(re, &re->hits[st][i]);
 
@@ -1131,7 +1149,7 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
       re->hits[st][i].pct_score_vector = (1000 * 100 * re->hits[st][i].score_vector)/re->hits[st][i].score_max;
       if (re->hits[st][i].score_vector >= (int)abs_or_pct(options->threshold, re->hits[st][i].score_max)) {
 	last_good_cn = re->hits[st][i].cn;
-	last_good_g_off = re->hits[st][i].g_off;
+	last_good_g_off = re->hits[st][i].g_off_pos_strand;
       }
     }
 
@@ -1169,7 +1187,7 @@ new_read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * lo
   int st, i;
 
   assert(re != NULL && a != NULL && load != NULL && *load == 0);
-  assert(pair_mode == PAIR_NONE || sam_half_paired);
+  assert(pair_mode == PAIR_NONE || half_paired);
 
   for (st = 0; st < 2; st++) {
     assert(re->n_hits[st] == 0 || re->hits[st] != NULL);
@@ -1854,7 +1872,8 @@ static bool
 new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 		   struct read_hit_pair * hits_pass1, int * n_hits_pass1,
 		   struct read_hit_pair * hits_pass2, int * n_hits_pass2,
-		   struct pairing_options * options)
+		   struct pairing_options * options,
+		   struct pass2_options * options1, struct pass2_options * options2)
 {
   int i, j, cnt;
 
@@ -1863,9 +1882,10 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
     for (j = 0; j < 2; j++) {
       struct read_hit * rh = hits_pass1[i].rh[j];
       struct read_entry * re = (j == 0? re1 : re2);
+      double thres = (j == 0? options1->threshold : options2->threshold);
 
       if (rh->score_full < 0 || rh->sfrp == NULL) {
-	hit_run_full_sw(re, rh, (int)abs_or_pct(options->pass2_threshold, hits_pass1[i].score_max)/3);
+	hit_run_full_sw(re, rh, (int)abs_or_pct(thres, rh->score_max));
 	if (compute_mapping_qualities && rh->score_full > 0) {
 	  hit_run_post_sw(re, rh);
 	}
@@ -2091,7 +2111,8 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
       my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), &mem_mapping,
 		"hits_pass2 [%s,%s]", re1->name, re2->name);
     n_hits_pass2 = 0;
-    done = new_readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing);
+    done = new_readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing,
+			      &options[option_index].read[0].pass2, &options[option_index].read[1].pass2);
 
     new_readpair_output(re1, re2, hits_pass2, &n_hits_pass2);
 
@@ -2111,7 +2132,7 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 
-  if (option_index >= n_options && sam_half_paired) {
+  if (option_index >= n_options && half_paired) {
     // this read pair fell through all the option sets; try unpaired mapping
     new_handle_read(re1, unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
     new_handle_read(re2, unpaired_mapping_options[1], n_unpaired_mapping_options[1]);

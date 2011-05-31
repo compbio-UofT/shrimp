@@ -19,7 +19,7 @@
 #define DEF_LIST_CUTOFF		4294967295u // 2^32 - 1
 
 #define DEF_USE_REGIONS		true
-#define DEF_REGION_BITS		10
+#define DEF_REGION_BITS		12
 #define DEF_REGION_OVERLAP	50
 
 #define DEF_ANCHOR_LIST_BIG_GAP	1024
@@ -58,7 +58,7 @@
 //#define DEF_SW_VECT_THRESHOLD	60.0	/* == DEF_SW_FULL_THRESHOLD in lspace */
 //#define DEF_SW_FULL_THRESHOLD	68.0	/* read_length x match_value x .68 */
 //SHRiMP v 2.0.2
-#define DEF_SW_VECT_THRESHOLD	(45.0)	/* == DEF_SW_FULL_THRESHOLD in lspace */
+#define DEF_SW_VECT_THRESHOLD	(47.0)	/* == DEF_SW_FULL_THRESHOLD in lspace */
 #define DEF_SW_FULL_THRESHOLD	(50.0)	/* read_length x match_value x .55 */
 
 

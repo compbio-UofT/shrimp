@@ -215,7 +215,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	}
   } else {
 	int thread_id = omp_get_thread_num();
-	char ** output_buffer = thread_output_buffer_filled+thread_id;
+	char ** output_buffer = &thread_output_buffer_filled[thread_id];
  	char * output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
 	while ( (size_t)(output_buffer_end - *output_buffer) < thread_output_buffer_safety) { 
 		//fprintf(stderr,"%d incrementing buffer, free space %llu\n",thread_id,output_buffer_end - *output_buffer );
@@ -354,7 +354,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	bool pcr_duplicate = false;
 	int stored_alignments = MIN(num_outputs,satisfying_alignments); //IH
 	//if the read has no mapping or if not in half_paired mode and the mate has no mapping
-	if (query_unmapped || (!sam_half_paired && paired_read && mate_unmapped)) {
+	if (query_unmapped || (!half_paired && paired_read && mate_unmapped)) {
 		mapq=0;
 		if (Qflag && shrimp_mode == MODE_LETTER_SPACE ){
 			strcpy(qual,re->qual);
@@ -413,7 +413,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 		return;
 	}
 	assert(rh!=NULL);
-	assert( !paired_read || (!query_unmapped && !mate_unmapped) || sam_half_paired);
+	assert( !paired_read || (!query_unmapped && !mate_unmapped) || half_paired);
 	//start filling in the fields
 	rname = contig_names[rh->cn];
 	reverse_strand = (rh->gen_st == 1);
@@ -688,7 +688,7 @@ new_read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_
   for (i = 0; i < *n_hits_pass2; i++) {
     struct read_hit * rh = hits_pass2[i];
     char * output1 = NULL, * output2 = NULL;
-    if (sam_half_paired) {
+    if (half_paired) {
       int other_hits[] = {0, 0, 0};
       if (re->first_in_pair) {
 	hit_output(re, rh, NULL, &output1, NULL, true, hits, *n_hits_pass2);
@@ -714,7 +714,7 @@ new_read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_
 	}
       }
       free(output1);
-      if (Pflag || sam_half_paired) {
+      if (Pflag || half_paired) {
 	free(output2);
       }
     }

@@ -18,8 +18,9 @@ LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++
 LN=ln
 
-all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
-    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
+#all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
+#    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
+all: bin/gmapper
 
 #
 # mapper /

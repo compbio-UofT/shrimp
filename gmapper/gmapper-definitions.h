@@ -120,6 +120,7 @@ typedef struct read_hit {
   struct sw_full_results *      sfrp;
   struct anchor anchor;
   llint         g_off;
+  llint		g_off_pos_strand;
   int           score_window_gen;
   int           score_vector;
   int           pct_score_vector;
@@ -184,7 +185,7 @@ typedef struct anchor_list_options {
   bool		recompute;			// whether to recompute anchor list for each read
   bool		collapse;
   bool		use_region_counts;		// whether to use region counts for each read
-  bool		use_mp_region_counts;
+  int		use_mp_region_counts;
   //int		min_count[2];
   //int		max_count[2];			// min/max[0]: min/max count for this read; min/max[1]: for mp
   //int		min_seed;
