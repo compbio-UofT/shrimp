@@ -211,6 +211,7 @@ bool save_genome_map(const char *prefix)
   sprintf(name, "%s.genome", prefix);
   gzFile fp = gzopen(name, "wb");
   if (fp == NULL){
+    fprintf(stderr, "error: could not open genome file: %s.genome\n", prefix);
     return false;
   }
 

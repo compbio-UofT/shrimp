@@ -519,7 +519,7 @@ launch_scan_threads()
 
       // free unused memory while the buffer waits in the output heap
       thread_output_buffer[thread_id] = (char *)
-	my_realloc(thread_output_buffer[thread_id], thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id], thread_output_buffer_sizes[thread_id],
+	my_realloc(thread_output_buffer[thread_id], thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id] + 1, thread_output_buffer_sizes[thread_id],
 		   &mem_thread_buffer, "thread_output_buffer[]");
 
       //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
@@ -529,7 +529,7 @@ launch_scan_threads()
 	tmp.key = thread_output_buffer_chunk[thread_id];
 	//tmp.rest = thread_output_buffer[thread_id];
 	tmp.rest.ptr = thread_output_buffer[thread_id];
-	tmp.rest.sz = thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id]; //thread_output_buffer_sizes[thread_id];
+	tmp.rest.sz = thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id] + 1; //thread_output_buffer_sizes[thread_id];
 	thread_output_buffer[thread_id] = NULL;	
 	heap_out_insert(&h, &tmp);
 	heap_out_get_min(&h, &tmp);
@@ -1098,7 +1098,6 @@ usage(char * progname, bool full_usage){
 	  "      --strata          Print only the best scoring hits\n");
   fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
-
   exit(1);
 }
 
@@ -2561,10 +2560,10 @@ int main(int argc, char **argv){
 	  }
 
 	  fprintf(stderr,"Saving genome map to %s\n",save_file);
-	  if(save_genome_map(save_file)){
-	    exit(0);
+	  if(!save_genome_map(save_file)){
+	    exit(1);
 	  }
-	  exit(1);
+	  exit(0);
 	}
 
 	//TODO setup need max window and max read len

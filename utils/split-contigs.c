@@ -162,14 +162,14 @@ main(int argc, char *argv[]) {
 
   for (i = 0; i < n_seeds; i++) {
     double crt;
-    long long unsigned entries;
-    entries = 1llu << (2 * weight[i]);
+    long long int entries;
+    entries = 1ll << (2 * weight[i]);
     crt = ((double)(entries * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
-    fprintf(stderr, "seed %d: number of entries: %llu, index size: %.3f GB\n", i, entries, crt);
+    fprintf(stderr, "seed %d: number of entries: %lld, index size: %.3f GB\n", i, entries, crt);
     index_size += crt;
   }
 
-  // save 0.5GB for keeping reads and other data
+  // save some memory (1.5GB) for keeping reads and other data, including O/S
   if (target_size < overhead_mem + index_size) {
     fprintf(stderr, "error: not enough memory for current settings\n");
     exit(1);
