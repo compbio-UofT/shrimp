@@ -671,7 +671,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 
 
 void
-new_read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_hits_pass2)
+read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_hits_pass2)
 {
   int i;
   int hits[] = {0, 0, 0};
@@ -723,8 +723,8 @@ new_read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_
 
 
 void
-new_readpair_output(struct read_entry * re1, struct read_entry * re2,
-		    struct read_hit_pair * hits_pass2, int * n_hits_pass2)
+readpair_output(struct read_entry * re1, struct read_entry * re2,
+		struct read_hit_pair * hits_pass2, int * n_hits_pass2)
 {
   int i;
   int hits1[] = {0, 0, 0};

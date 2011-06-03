@@ -35,6 +35,7 @@ EXTERN(shrimp_args_t,	shrimp_args,		{});
 /* thread control */
 EXTERN(int,			num_threads,		DEF_NUM_THREADS);
 EXTERN(int,			chunk_size,		DEF_CHUNK_SIZE);
+EXTERN(int,			not_used,		0);
 
 
 /* parameters */
@@ -192,7 +193,11 @@ EXTERN(llint,			read_handle_usecs[50],		{});
 EXTERN(llint,			wait_ticks[50],			{});
 EXTERN(llint,			anchor_list_ticks[50],		{});
 EXTERN(llint,			region_counts_ticks[50],	{});
+EXTERN(llint,			mp_region_counts_ticks[50],	{});
 EXTERN(llint,			hit_list_ticks[50],		{});
+EXTERN(llint,			pass1_ticks[50],		{});
+EXTERN(llint,			get_vector_hits_ticks[50],	{});
+EXTERN(llint,			pass2_ticks[50],		{});
 EXTERN(llint,			duplicate_removal_ticks[50],	{});
 //EXTERN(llint,			anchor_list_usecs[50],		{});
 //EXTERN(llint,			region_counts_usecs[50],	{});

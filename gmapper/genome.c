@@ -657,6 +657,12 @@ bool genome_load_mmap(char const * mmap_name)
   }
   fprintf(stderr, "\n");
 
+#ifndef NDEBUG
+  for (char * crt = (char *)h->map_start; crt < (char *)h->map_end; crt += 64) {
+    not_used += *crt;
+  }  
+#endif
+
   return true;
 }
 

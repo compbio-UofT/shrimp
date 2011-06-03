@@ -496,7 +496,7 @@ launch_scan_threads()
 	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    new_handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
+	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
 	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
 	else if (i % 2 == 1)
@@ -511,7 +511,7 @@ launch_scan_threads()
 	    re_buffer[i].paired=true;
 	    re_buffer[i].first_in_pair=false;
 	    re_buffer[i].mate_pair=&re_buffer[i-1];
-	    new_handle_readpair(&re_buffer[i-1], &re_buffer[i], paired_mapping_options, n_paired_mapping_options);
+	    handle_readpair(&re_buffer[i-1], &re_buffer[i], paired_mapping_options, n_paired_mapping_options);
 	    read_free_full(&re_buffer[i-1], &mem_mapping);
 	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
@@ -637,7 +637,8 @@ print_statistics()
 
 	double scan_secs[num_threads], readparse_secs[num_threads], read_handle_overhead_secs[num_threads];
 	double anchor_list_secs[num_threads], hit_list_secs[num_threads];
-	double region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
+	double region_counts_secs[num_threads], mp_region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
+	double pass1_secs[num_threads], get_vector_hits_secs[num_threads], pass2_secs[num_threads];
 	double total_scan_secs = 0, total_wait_secs = 0, total_readparse_secs = 0;
 
 	double hz;
@@ -686,6 +687,10 @@ print_statistics()
           hit_list_secs[tid] = (double)hit_list_ticks[tid] / hz;
           duplicate_removal_secs[tid] = (double)duplicate_removal_ticks[tid] / hz;
           region_counts_secs[tid] = (double)region_counts_ticks[tid] / hz;
+          mp_region_counts_secs[tid] = (double)mp_region_counts_ticks[tid] / hz;
+	  pass1_secs[tid] = (double)pass1_ticks[tid] / hz;
+	  get_vector_hits_secs[tid] = (double)get_vector_hits_ticks[tid] / hz;
+	  pass2_secs[tid] = (double)pass2_ticks[tid] / hz;
 	  /*
 	  anchor_list_secs[tid] = (double)anchor_list_usecs[tid] / 1.0e6;
           hit_list_secs[tid] = (double)hit_list_usecs[tid] / 1.0e6;
@@ -736,17 +741,18 @@ print_statistics()
 
 	if (Dflag) {
 	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "ReadParse", "Scan", "Reg Cnts", "Anch List", "Hit List", "Dup Remv",
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
+		  "", "ReadParse", "Scan", "Reg Cnts", "MPRegCnt", "Anch List", "Hit List", "Pass1", "Vect Hits", "Pass2", "Dup Remv",
 		  "Vector SW", "Scalar SW", "Post SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Time", "Time", "Time", "Time", "Time",
+	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+		  "", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time",
 		  "Invocs", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
 	  fprintf(stderr, "\n");
 	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
 		    i, readparse_secs[i], scan_secs[i],
-		    region_counts_secs[i], anchor_list_secs[i], hit_list_secs[i], duplicate_removal_secs[i],
+		    region_counts_secs[i], mp_region_counts_secs[i], anchor_list_secs[i], hit_list_secs[i],
+		    pass1_secs[i], get_vector_hits_secs[i], pass2_secs[i], duplicate_removal_secs[i],
 		    comma_integer(f1_invocs[i]), f1_secs[i],
 		    comma_integer(f2_invocs[i]), f2_secs[i],
 		    comma_integer(fwbw_invocs[i]), fwbw_secs[i],

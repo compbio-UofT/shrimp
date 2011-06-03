@@ -558,6 +558,70 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 }
 
 
+static void
+read_get_mp_region_counts(struct read_entry * re, int st)
+{
+  llint before = rdtsc(), after;
+
+  int nip, sn, i, offset, region;
+  int first, last, max, k;
+  unsigned int j;
+
+  nip = re->first_in_pair? 0 : 1;
+  for (sn = 0; sn < n_seeds; sn++) {
+    for (i = 0; re->min_kmer_pos + i + seed[sn].span - 1 < re->read_len; i++) {
+      offset = sn*re->max_n_kmers + i;
+
+      if (genomemap_len[sn][re->mapidx[st][offset]] > list_cutoff)
+	continue;
+  
+      for (j = 0; j < genomemap_len[sn][re->mapidx[st][offset]]; j++) {
+#ifdef USE_PREFETCH
+	if (j + 4 < genomemap_len[sn][re->mapidx[st][offset]]) {
+	  int region_ahead = (int)(genomemap[sn][re->mapidx[st][offset]][j + 4] >> region_bits);
+	  _mm_prefetch((char *)&region_map[nip][st][region_ahead], _MM_HINT_T0);
+	  _mm_prefetch((char *)&region_map[1-nip][1-st][region_ahead], _MM_HINT_T0);
+	}
+#endif
+
+	region = (int)(genomemap[sn][re->mapidx[st][offset]][j] >> region_bits);
+
+	if (!RG_VALID_MP_CNT(region_map[nip][st][region])) {
+	  first = MAX(0, region + re->delta_region_min[st]);
+	  last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+	  max = 0;
+	  for (k = first; k <= last && max < 2; k++) {
+	    if (RG_GET_MAP_ID(region_map[1-nip][1-st][k]) == region_map_id) {
+	      max = (RG_GET_HAS_2(region_map[1-nip][1-st][k]) ? 2 : 1);
+	    }
+	  }
+	  RG_SET_MP_CNT(region_map[nip][st][region], max);
+	}
+
+	if (region > 0
+	    && (genomemap[sn][re->mapidx[st][offset]][j] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+	  region--;
+	  if (!RG_VALID_MP_CNT(region_map[nip][st][region])) {
+	    first = MAX(0, region + re->delta_region_min[st]);
+	    last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+	    max = 0;
+	    for (k = first; k <= last && max < 2; k++) {
+	      if (RG_GET_MAP_ID(region_map[1-nip][1-st][k]) == region_map_id) {
+		max = (RG_GET_HAS_2(region_map[1-nip][1-st][k]) ? 2 : 1);
+	      }
+	    }
+	    RG_SET_MP_CNT(region_map[nip][st][region], max);
+	  }
+	}
+      }
+    }
+  }
+
+  after = rdtsc();
+  mp_region_counts_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+}
+
+
 /*
 static void
 read_get_mp_region_counts_per_strand(struct read_entry * re, int st, struct read_entry * re_mp,
@@ -598,7 +662,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 			   struct anchor_list_options * options,
 			   uint * idx, uint max_idx, uint32_t * map, int * anchors_discarded)
 {
-  int first, last, max, k;
+  //int first, last, max, k;
   int nip = re->first_in_pair? 0 : 1;
   int count_main, count_mp;
 
@@ -617,6 +681,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
     if (options->use_mp_region_counts != 0)
       {
 
+	/*
 	if (!RG_VALID_MP_CNT(region_map[nip][st][region])) {
 	  first = MAX(0, region + re->delta_region_min[st]);
 	  last = MIN(n_regions - 1, region + re->delta_region_max[st]);
@@ -649,6 +714,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 
 	  region++;
 	}
+	*/
 
 	// BEGIN COPY
 	count_main = (RG_GET_HAS_2(region_map[nip][st][region]) ? 2 : 1);
@@ -754,8 +820,8 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 
 
 static void
-new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
-				    struct anchor_list_options * options)
+read_get_anchor_list_per_strand(struct read_entry * re, int st,
+				struct anchor_list_options * options)
 {
   uint list_sz;
   uint offset;
@@ -895,13 +961,13 @@ new_read_get_anchor_list_per_strand(struct read_entry * re, int st,
 }
 
 static inline void
-new_read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
+read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
 {
   llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
 
-  new_read_get_anchor_list_per_strand(re, 0, options);
-  new_read_get_anchor_list_per_strand(re, 1, options);
+  read_get_anchor_list_per_strand(re, 0, options);
+  read_get_anchor_list_per_strand(re, 1, options);
 
   after = rdtsc();
   anchor_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
@@ -910,7 +976,7 @@ new_read_get_anchor_list(struct read_entry * re, struct anchor_list_options * op
 
 
 static void
-new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_options * options)
+read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_options * options)
 {
   llint goff, gstart, gend;
   int max_score, tmp_score = 0;
@@ -1089,13 +1155,13 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
 
 
 static inline void
-new_read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
+read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
 {
   llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
 
-  new_read_get_hit_list_per_strand(re, 0, options);
-  new_read_get_hit_list_per_strand(re, 1, options);
+  read_get_hit_list_per_strand(re, 0, options);
+  read_get_hit_list_per_strand(re, 1, options);
 
   after = rdtsc();
   hit_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
@@ -1110,7 +1176,7 @@ new_read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
 
 
 static void
-new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options * options)
+read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options * options)
 {
   int i;
   int last_good_cn;
@@ -1188,10 +1254,15 @@ new_read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options *
  * Go through hit list, apply vector filter, and save top scores.
  */
 static inline void
-new_read_pass1(struct read_entry * re, struct pass1_options * options)
+read_pass1(struct read_entry * re, struct pass1_options * options)
 {
-  new_read_pass1_per_strand(re, 0, options);
-  new_read_pass1_per_strand(re, 1, options);
+  llint before = rdtsc(), after;
+
+  read_pass1_per_strand(re, 0, options);
+  read_pass1_per_strand(re, 1, options);
+
+  after = rdtsc();
+  pass1_ticks[omp_get_thread_num()] += MAX(after - before, 0);
 
 #ifdef DEBUG_HIT_LIST_PASS1
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
@@ -1209,8 +1280,9 @@ DEF_EXTHEAP(struct read_hit *,unpaired_pass1)
  * Go through the list adding hits to the heap.
  */
 static void
-new_read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, struct pass1_options * options)
+read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, struct pass1_options * options)
 {
+  llint before = rdtsc(), after;
   int st, i;
 
   assert(re != NULL && a != NULL && load != NULL && *load == 0);
@@ -1236,6 +1308,9 @@ new_read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * lo
       }
     }
   }
+
+  after = rdtsc();
+  get_vector_hits_ticks[omp_get_thread_num()] += MAX(after - before, 0);
 }
 
 
@@ -1455,11 +1530,13 @@ hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
  * Do a final pass for given read.
  */
 static bool
-new_read_pass2(struct read_entry * re,
-	       struct read_hit * * hits_pass1, int * n_hits_pass1,
-	       struct read_hit * * hits_pass2, int * n_hits_pass2,
-	       struct pass2_options * options)
+read_pass2(struct read_entry * re,
+	   struct read_hit * * hits_pass1, int * n_hits_pass1,
+	   struct read_hit * * hits_pass2, int * n_hits_pass2,
+	   struct pass2_options * options)
 {
+  llint before = rdtsc(), after;
+
   int i, cnt;
   assert(re != NULL && hits_pass1 != NULL && hits_pass2 != NULL);
 
@@ -1558,12 +1635,15 @@ new_read_pass2(struct read_entry * re,
     }
   }
 
+  after = rdtsc();
+  pass2_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+
   return cnt >= options->stop_count;
 }
 
 
 void
-new_handle_read(struct read_entry * re, struct read_mapping_options_t * options, int n_options)
+handle_read(struct read_entry * re, struct read_mapping_options_t * options, int n_options)
 {
   bool done;
   int option_index = 0;
@@ -1590,16 +1670,16 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
 
     if (options[option_index].anchor_list.recompute) {
       read_free_anchor_list(re, &mem_mapping);
-      new_read_get_anchor_list(re, &options[option_index].anchor_list);
+      read_get_anchor_list(re, &options[option_index].anchor_list);
     }
 
     if (options[option_index].hit_list.recompute) {
       read_free_hit_list(re, &mem_mapping);
-      new_read_get_hit_list(re, &options[option_index].hit_list);
+      read_get_hit_list(re, &options[option_index].hit_list);
     }
 
     if (options[option_index].pass1.recompute) {
-      new_read_pass1(re, &options[option_index].pass1);
+      read_pass1(re, &options[option_index].pass1);
     }
 
     //hits_pass1 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]));
@@ -1607,16 +1687,16 @@ new_handle_read(struct read_entry * re, struct read_mapping_options_t * options,
       my_malloc(options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]),
 		&mem_mapping, "hits_pass1 [%s]", re->name);
     n_hits_pass1 = 0;
-    new_read_get_vector_hits(re, hits_pass1, &n_hits_pass1, &options[option_index].pass1);
+    read_get_vector_hits(re, hits_pass1, &n_hits_pass1, &options[option_index].pass1);
 
     //hits_pass2 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]));
     hits_pass2 = (struct read_hit * *)
       my_malloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]),
 		&mem_mapping, "hits_pass2 [%s]", re->name);
     n_hits_pass2 = 0;
-    done = new_read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
+    done = read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
 
-    new_read_output(re, hits_pass2, &n_hits_pass2);
+    read_output(re, hits_pass2, &n_hits_pass2);
 
     for (i = 0; i < n_hits_pass1; i++) {
       free_sfrp(&hits_pass1[i]->sfrp, re, &mem_mapping);
@@ -1646,10 +1726,12 @@ DEF_EXTHEAP(struct read_hit_pair, paired_pass1)
  * Go through the hit lists, constructing paired hits.
  */
 static void
-new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
-			     struct read_hit_pair * a, int * load,
-			     struct pairing_options * options)
+readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
+			 struct read_hit_pair * a, int * load,
+			 struct pairing_options * options)
 {
+  llint before = rdtsc(), after;
+
   int st1, st2, i, j;
   read_hit_pair tmp;
 
@@ -1688,6 +1770,9 @@ new_readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
       }
     }
   }
+
+  after = rdtsc();
+  get_vector_hits_ticks[omp_get_thread_num()] += MAX(after - before, 0);
 }
 
 
@@ -1896,12 +1981,14 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
  * Do a final pass for given read.
  */
 static bool
-new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
-		   struct read_hit_pair * hits_pass1, int * n_hits_pass1,
-		   struct read_hit_pair * hits_pass2, int * n_hits_pass2,
-		   struct pairing_options * options,
-		   struct pass2_options * options1, struct pass2_options * options2)
+readpair_pass2(struct read_entry * re1, struct read_entry * re2,
+	       struct read_hit_pair * hits_pass1, int * n_hits_pass1,
+	       struct read_hit_pair * hits_pass2, int * n_hits_pass2,
+	       struct pairing_options * options,
+	       struct pass2_options * options1, struct pass2_options * options2)
 {
+  llint before = rdtsc(), after;
+
   int i, j, cnt;
 
   /* compute full alignment scores */
@@ -1984,6 +2071,9 @@ new_readpair_pass2(struct read_entry * re1, struct read_entry * re2,
       cnt++;
     }
   }
+
+  after = rdtsc();
+  pass2_ticks[omp_get_thread_num()] += MAX(after - before, 0);
 
   return cnt >= options->stop_count;
 }
@@ -2071,8 +2161,8 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
 
 
 void
-new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
-		    struct readpair_mapping_options_t * options, int n_options)
+handle_readpair(struct read_entry * re1, struct read_entry * re2,
+		struct readpair_mapping_options_t * options, int n_options)
 {
   bool done;
   int option_index = 0;
@@ -2097,33 +2187,42 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
       read_get_region_counts(re1, 1, &options[option_index].read[0].regions);
       read_get_region_counts(re2, 0, &options[option_index].read[1].regions);
       read_get_region_counts(re2, 1, &options[option_index].read[1].regions);
+
+      if (options[option_index].read[0].anchor_list.use_mp_region_counts) {
+	read_get_mp_region_counts(re1, 0);
+	read_get_mp_region_counts(re1, 1);
+      }
+      if (options[option_index].read[1].anchor_list.use_mp_region_counts) {
+	read_get_mp_region_counts(re2, 0);
+	read_get_mp_region_counts(re2, 1);
+      }
     }
 
     if (options[option_index].read[0].anchor_list.recompute) {
       read_free_anchor_list(re1, &mem_mapping);
-      new_read_get_anchor_list(re1, &options[option_index].read[0].anchor_list);
+      read_get_anchor_list(re1, &options[option_index].read[0].anchor_list);
     }
     if (options[option_index].read[1].anchor_list.recompute) {
       read_free_anchor_list(re2, &mem_mapping);
-      new_read_get_anchor_list(re2, &options[option_index].read[1].anchor_list);
+      read_get_anchor_list(re2, &options[option_index].read[1].anchor_list);
     }
 
     if (options[option_index].read[0].hit_list.recompute) {
       read_free_hit_list(re1, &mem_mapping);
-      new_read_get_hit_list(re1, &options[option_index].read[0].hit_list);
+      read_get_hit_list(re1, &options[option_index].read[0].hit_list);
     }
     if (options[option_index].read[1].hit_list.recompute) {
       read_free_hit_list(re2, &mem_mapping);
-      new_read_get_hit_list(re2, &options[option_index].read[1].hit_list);
+      read_get_hit_list(re2, &options[option_index].read[1].hit_list);
     }
 
     readpair_pair_up_hits(re1, re2);
 
     if (options[option_index].read[0].pass1.recompute) {
-      new_read_pass1(re1, &options[option_index].read[0].pass1);
+      read_pass1(re1, &options[option_index].read[0].pass1);
     }
     if (options[option_index].read[1].pass1.recompute) {
-      new_read_pass1(re2, &options[option_index].read[1].pass1);
+      read_pass1(re2, &options[option_index].read[1].pass1);
     }
 
     //hits_pass1 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]));
@@ -2131,17 +2230,17 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
       my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), &mem_mapping,
 		"hits_pass1 [%s,%s]", re1->name, re2->name);
     n_hits_pass1 = 0;
-    new_readpair_get_vector_hits(re1, re2, hits_pass1, &n_hits_pass1, &options[option_index].pairing);
+    readpair_get_vector_hits(re1, re2, hits_pass1, &n_hits_pass1, &options[option_index].pairing);
 
     //hits_pass2 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]));
     hits_pass2 = (struct read_hit_pair *)
       my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), &mem_mapping,
 		"hits_pass2 [%s,%s]", re1->name, re2->name);
     n_hits_pass2 = 0;
-    done = new_readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing,
+    done = readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing,
 			      &options[option_index].read[0].pass2, &options[option_index].read[1].pass2);
 
-    new_readpair_output(re1, re2, hits_pass2, &n_hits_pass2);
+    readpair_output(re1, re2, hits_pass2, &n_hits_pass2);
 
     for (i = 0; i < n_hits_pass1; i++) {
       free_sfrp(&hits_pass1[i].rh[0]->sfrp, re1, &mem_mapping);
@@ -2161,7 +2260,7 @@ new_handle_readpair(struct read_entry * re1, struct read_entry * re2,
 
   if (option_index >= n_options && half_paired) {
     // this read pair fell through all the option sets; try unpaired mapping
-    new_handle_read(re1, unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
-    new_handle_read(re2, unpaired_mapping_options[1], n_unpaired_mapping_options[1]);
+    handle_read(re1, unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
+    handle_read(re2, unpaired_mapping_options[1], n_unpaired_mapping_options[1]);
   }
 }
