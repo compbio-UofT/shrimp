@@ -15,7 +15,7 @@ override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(
 #CXX=/filer/misko/intel_suite/compilerpro-12.0.0.084/bin/intel64/icc
 
 LD=$(CXX)
-LDFLAGS=-lm -lz -lstdc++
+LDFLAGS=-lm -lz -lstdc++ -lrt
 LN=ln
 
 #all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \

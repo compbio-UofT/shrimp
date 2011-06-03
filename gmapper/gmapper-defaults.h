@@ -131,6 +131,8 @@
 	{"extra-sam-fields",0,0,31},\
 	{"region-bits",1,0,32},\
 	{"progress",1,0,33},\
+	{"save-mmap",1,0,34},\
+	{"load-mmap",1,0,35}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

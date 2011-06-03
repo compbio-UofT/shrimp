@@ -2048,6 +2048,12 @@ int main(int argc, char **argv){
 		case 33:
 		  progress = atoi(optarg);
 		  break;
+		case 34:
+		  save_mmap = optarg;
+		  break;
+		case 35:
+		  load_mmap = optarg;
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2115,14 +2121,14 @@ int main(int argc, char **argv){
 	  exit(1);
 	}
 
-	if (load_file != NULL && save_file != NULL)
+	if (load_file != NULL && (save_file != NULL || save_mmap != NULL))
 	  { // args: none
 	    if (argc != 0) {
 	      fprintf(stderr, "error: when using both -L and -S, no extra files can be given\n");
 	      usage(progname, false);
 	    }
-	  } 
-	else if (load_file != NULL)
+	  }
+	else if (load_file != NULL || load_mmap != NULL)
 	  { // args: reads file
 	    if (argc == 0 && single_reads_file) {
 	      fprintf(stderr,"error: read_file not specified\n");
@@ -2437,12 +2443,18 @@ int main(int argc, char **argv){
 	    }
 	}
 
-	if(load_file == NULL){
+	if(load_file == NULL && load_mmap == NULL) {
 	  print_settings();
 	}
 
+	if (load_file != NULL && save_mmap != NULL) {
+	  exit(genome_load_map_save_mmap(load_file, save_mmap) == true ? 0 : 1);
+	}
+
 	before = gettimeinusecs();
-	if (load_file != NULL){
+	if (load_mmap != NULL) {
+	  genome_load_mmap(load_mmap);
+	} else if (load_file != NULL){
 		if (strchr(load_file, ',') == NULL) {
 			//use prefix
 			int buf_size = strlen(load_file) + 20;
@@ -2546,7 +2558,7 @@ int main(int argc, char **argv){
 	  //fprintf(stderr, "\n");
 	}
 
-	if (load_file != NULL) {
+	if (load_file != NULL || load_mmap != NULL) {
 	  print_settings();
 	}
 
@@ -2581,7 +2593,7 @@ int main(int argc, char **argv){
 	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
 	      for (int st = 0; st < 2; st++)
 		//region_map[number_in_pair][st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
-		region_map[number_in_pair][st] = (int32_t *)
+		region_map[number_in_pair][st] = (region_map_t *)
 		  my_calloc(n_regions * sizeof(region_map[0][0][0]),
 			    &mem_mapping, "region_map");
 	  }
@@ -2698,20 +2710,24 @@ int main(int argc, char **argv){
 	  }
 	}
 
-	free_genome();
+	if (load_mmap != NULL) {
+	  // munmap?
+	} else {
+	  free_genome();
 
-	//free(seed);
-	if (Hflag) {
-	  int sn;
-	  for (sn = 0; sn < n_seeds; sn++) {
-	    my_free(seed_hash_mask[sn], BPTO32BW(max_seed_span) * sizeof(seed_hash_mask[sn][0]),
-		    &mem_small, "seed_hash_mask[%d]", sn);
+	  //free(seed);
+	  if (Hflag) {
+	    int sn;
+	    for (sn = 0; sn < n_seeds; sn++) {
+	      my_free(seed_hash_mask[sn], BPTO32BW(max_seed_span) * sizeof(seed_hash_mask[sn][0]),
+		      &mem_small, "seed_hash_mask[%d]", sn);
+	    }
+	    my_free(seed_hash_mask, n_seeds * sizeof(seed_hash_mask[0]),
+		    &mem_small, "seed_hash_mask");
 	  }
-	  my_free(seed_hash_mask, n_seeds * sizeof(seed_hash_mask[0]),
-		  &mem_small, "seed_hash_mask");
+	  my_free(seed, n_seeds * sizeof(seed[0]),
+		  &mem_small, "seed");
 	}
-	my_free(seed, n_seeds * sizeof(seed[0]),
-		&mem_small, "seed");
 
 	//free(paired_mapping_options);
 	my_free(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]),
@@ -2726,7 +2742,9 @@ int main(int argc, char **argv){
 	if (sam_read_group_name != NULL)
 	  free(sam_read_group_name);
 
+#ifdef MYALLOC_ENABLE_CRT
 	fprintf(stderr, "crt_mem: %lld\n", (long long)crt_mem);
+#endif
 	fprintf(stderr, "mem_genomemap: max=%lld crt=%lld\n", (long long)count_get_max(&mem_genomemap), (long long)count_get_count(&mem_genomemap));
 	fprintf(stderr, "mem_mapping: max=%lld crt=%lld\n", (long long)count_get_max(&mem_mapping), (long long)count_get_count(&mem_mapping));
 	fprintf(stderr, "mem_thread_buffer: max=%lld crt=%lld\n", (long long)count_get_max(&mem_thread_buffer), (long long)count_get_count(&mem_thread_buffer));

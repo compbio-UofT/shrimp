@@ -22,6 +22,15 @@ DEF_HEAP(double, struct read_hit_holder, unpaired)
 DEF_HEAP(double, struct read_hit_pair_holder, paired)
 
 
+#define RG_GET_MAP_ID(c) ( (c) >> 3 )
+#define RG_SET_MAP_ID(c, id) (c) = ( (id) << 3 ) + 0x6;
+#define RG_GET_HAS_2(c) ( ( (c) & 0x1 ) != 0 )
+#define RG_SET_HAS_2(c) (c) |= 0x1
+#define RG_VALID_MP_CNT(c) ( ( (c) & 0x6 ) != 0x6 )
+#define RG_GET_MP_CNT(c) ( ( (c) >> 1 ) & 0x3 )
+#define RG_SET_MP_CNT(c, cnt) (c) &= ~(0x6); (c) |= ( (cnt) << 1 )
+
+
 /*
  * Free sfrp for given hit.
  */
@@ -231,7 +240,7 @@ static void
 dump_hit(struct read_hit * hit) {
   fprintf(stderr, "(cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,scores:(wg=%d,vc=%d,fl=%d,poster=%.5g),"
 	          "matches:%d,pair_min:%d,pair_max:%d,anchor:(x=%lld,y=%lld,ln=%d,wd=%d))\n",
-	  hit->cn, hit->st, hit->gen_st, hit->g_off, hit->w_len,
+	  hit->cn, hit->st, hit->gen_st, hit->g_off_pos_strand, hit->w_len,
 	  hit->score_window_gen, hit->score_vector, hit->score_full, hit->sfrp != NULL? hit->sfrp->posterior : -1.0,
 	  hit->matches, hit->pair_min, hit->pair_max,
 	  hit->anchor.x, hit->anchor.y, hit->anchor.length, hit->anchor.width);
@@ -480,13 +489,16 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
     region_map_id = 1;
     for (int _nip = 0; _nip < 2; _nip++) {
       for (int _st = 0; _st < 2; _st++) {
+	
 	//free(region_map[_nip][_st]);
 	my_free(region_map[_nip][_st], n_regions * sizeof(region_map[0][0][0]),
 		&mem_mapping, "region_map");
 	//region_map[_nip][_st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
-	region_map[_nip][_st] = (int32_t *)
+	region_map[_nip][_st] = (region_map_t *)
 	  my_calloc(n_regions * sizeof(region_map[0][0][0]),
 		    &mem_mapping, "region_map");
+	
+	//memset(region_map[_nip][_st], 0, n_regions * sizeof(region_map[0][0][0]));
       }
     }
   }
@@ -512,29 +524,29 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 
         region = (int)(genomemap[sn][re->mapidx[st][offset]][j] >> region_bits);
 
-        if (((region_map[number_in_pair][st][region] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id) {
-	  if ((region_map[number_in_pair][st][region] & ((1 << 8) - 1)) < region_map_max_count) // don't overflow
-	    region_map[number_in_pair][st][region]++;
+	// BEGIN COPY
+	if (RG_GET_MAP_ID(region_map[number_in_pair][st][region]) == region_map_id) {
+	  // a previous kmer set it, so there are >=2 kmers in this region
+	  RG_SET_HAS_2(region_map[number_in_pair][st][region]);
 	} else {
 	  region_map[number_in_pair][st][region] = 0; // clear old entry
-	  region_map[number_in_pair][st][region] |= (region_map_id << 16); // set new id
-	  region_map[number_in_pair][st][region]++; // set new count
+	  RG_SET_MAP_ID(region_map[number_in_pair][st][region], region_map_id); // set new id
 	}
+	// END COPY
 
 	// extend regions by region_overlap
 	if ((genomemap[sn][re->mapidx[st][offset]][j] & ((1 << region_bits) - 1)) < (uint)region_overlap && region > 0) {
 	  region--;
 
-	  // BEGIN copy-paste from above
-	  if (((region_map[number_in_pair][st][region] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id) {
-	    if ((region_map[number_in_pair][st][region] & ((1 << 8) - 1)) < region_map_max_count) // don't overflow
-	      region_map[number_in_pair][st][region]++;
+	  // BEGIN PASTE
+	  if (RG_GET_MAP_ID(region_map[number_in_pair][st][region]) == region_map_id) {
+	    // a previous kmer set it, so there are >=2 kmers in this region
+	    RG_SET_HAS_2(region_map[number_in_pair][st][region]);
 	  } else {
 	    region_map[number_in_pair][st][region] = 0; // clear old entry
-	    region_map[number_in_pair][st][region] |= (region_map_id << 16); // set new id
-	    region_map[number_in_pair][st][region]++; // set new count
+	    RG_SET_MAP_ID(region_map[number_in_pair][st][region], region_map_id); // set new id
 	  }
-	  // END
+	  // END PASTE
 	}
       }
     }
@@ -599,77 +611,84 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 #endif
     int region = (int)(map[*idx] >> region_bits);
 
-    assert(((region_map[nip][st][region] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id);
-
-    // BEGIN COPY
-    count_main = (region_map[nip][st][region] & ((1 << 8) - 1));
+    assert(RG_GET_MAP_ID(region_map[nip][st][region]) == region_map_id);
 
     // if necessary, compute the mp counts
-    if (options->use_mp_region_counts != 0) {
-      if ((region_map[nip][st][region] >> 31) == 0) {
-        first = MAX(0, region + re->delta_region_min[st]);
-        last = MIN(n_regions - 1, region + re->delta_region_max[st]);
-        max = 0;
-        for (k = first; k <= last; k++) {
-          if (((region_map[1-nip][1-st][k] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id
-              && (region_map[1-nip][1-st][k] & ((1 << 8) - 1)) > max) {
-            max = (region_map[1-nip][1-st][k] & ((1 << 8) - 1));
-          }
-        }
-        region_map[nip][st][region] |= (1 << 31);
-        region_map[nip][st][region] |= (max << 8);
-      }
+    if (options->use_mp_region_counts != 0)
+      {
 
-      count_mp = ((region_map[nip][st][region] >> 8) & ((1 << 8) - 1));
-
-      if ((options->use_mp_region_counts == 1 && (count_main >= 2 && count_mp >= 2))
-	  || (options->use_mp_region_counts == 2 && (count_main >= 2 || count_mp >= 2))
-	  || (options->use_mp_region_counts == 3 && (count_mp >= 1 && (count_main + count_mp) >= 3))
-	  )
-      break;
-    } else { // don't use mp counts at all
-      if (count_main >= 2)
-	break;
-    }
-    // END COPY
-
-    if (region > 0
-	&& (map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
-      region--;
-
-      // BEGIN PASTE
-      count_main = (region_map[nip][st][region] & ((1 << 8) - 1));
-
-      // if necessary, compute the mp counts                                                                                                                    
-      if (options->use_mp_region_counts != 0) {
-	if ((region_map[nip][st][region] >> 31) == 0) {
+	if (!RG_VALID_MP_CNT(region_map[nip][st][region])) {
 	  first = MAX(0, region + re->delta_region_min[st]);
 	  last = MIN(n_regions - 1, region + re->delta_region_max[st]);
 	  max = 0;
-	  for (k = first; k <= last; k++) {
-	    if (((region_map[1-nip][1-st][k] >> 16) & ((1 << region_map_id_bits) - 1)) == region_map_id
-		&& (region_map[1-nip][1-st][k] & ((1 << 8) - 1)) > max) {
-	      max = (region_map[1-nip][1-st][k] & ((1 << 8) - 1));
+	  for (k = first; k <= last && max < 2; k++) {
+	    if (RG_GET_MAP_ID(region_map[1-nip][1-st][k]) == region_map_id) {
+	      max = (RG_GET_HAS_2(region_map[1-nip][1-st][k]) ? 2 : 1);
 	    }
 	  }
-	  region_map[nip][st][region] |= (1 << 31);
-	  region_map[nip][st][region] |= (max << 8);
+	  RG_SET_MP_CNT(region_map[nip][st][region], max);
+	  count_mp = max;
 	}
 
-	count_mp = ((region_map[nip][st][region] >> 8) & ((1 << 8) - 1));
+	if (region > 0
+	    && (map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+	  region--;
 
+	  if (!RG_VALID_MP_CNT(region_map[nip][st][region])) {
+	    first = MAX(0, region + re->delta_region_min[st]);
+	    last = MIN(n_regions - 1, region + re->delta_region_max[st]);
+	    max = 0;
+	    for (k = first; k <= last && max < 2; k++) {
+	      if (RG_GET_MAP_ID(region_map[1-nip][1-st][k]) == region_map_id) {
+		max = (RG_GET_HAS_2(region_map[1-nip][1-st][k]) ? 2 : 1);
+	      }
+	    }
+	    RG_SET_MP_CNT(region_map[nip][st][region], max);
+	    count_mp = max;
+	  }
+
+	  region++;
+	}
+
+	// BEGIN COPY
+	count_main = (RG_GET_HAS_2(region_map[nip][st][region]) ? 2 : 1);
+	count_mp = RG_GET_MP_CNT(region_map[nip][st][region]);
 	if ((options->use_mp_region_counts == 1 && (count_main >= 2 && count_mp >= 2))
 	    || (options->use_mp_region_counts == 2 && (count_main >= 2 || count_mp >= 2))
 	    || (options->use_mp_region_counts == 3 && (count_mp >= 1 && (count_main + count_mp) >= 3))
 	    )
 	  break;
-      } else { // don't use mp counts at all                                                                                                                    
-	if (count_main >= 2)
-	  break;
-      }
+	// END COPY
 
-      // END PASTE
-    }
+        if (region > 0
+            && (map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+          region--;
+
+	  //BEGIN PASTE
+	  count_main = (RG_GET_HAS_2(region_map[nip][st][region]) ? 2 : 1);
+	  count_mp = RG_GET_MP_CNT(region_map[nip][st][region]);
+	  if ((options->use_mp_region_counts == 1 && (count_main >= 2 && count_mp >= 2))
+	      || (options->use_mp_region_counts == 2 && (count_main >= 2 || count_mp >= 2))
+	      || (options->use_mp_region_counts == 3 && (count_mp >= 1 && (count_main + count_mp) >= 3))
+	      )
+	    break;
+	  //END PASTE
+	}
+
+      }
+    else  // don't use mp counts at all
+      {
+	if (RG_GET_HAS_2(region_map[nip][st][region]))
+	  break;
+
+	if (region > 0
+            && (map[*idx] & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+          region--;
+
+	  if (RG_GET_HAS_2(region_map[nip][st][region]))
+	    break;
+	}
+      }
 
     /*
     if ((options->min_count[0] == 0 || options->min_count[0] <= (region_map[nip][st][region] & ((1 << 8) - 1)))
@@ -942,8 +961,16 @@ new_read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list
     max_idx = i;
     max_score = re->anchors[st][i].length * match_score;
     if (options->match_mode == 3) {
-      assert((region_map[re->first_in_pair? 0 : 1][st][re->anchors[st][i].x >> region_bits] >> 31) != 0);
-      heavy_mp = (((region_map[re->first_in_pair? 0 : 1][st][re->anchors[st][i].x >> region_bits] >> 8) & ((1 << 8) - 1)) >= 2);
+      int region = re->anchors[st][i].x >> region_bits;
+      assert(RG_VALID_MP_CNT(region_map[re->first_in_pair? 0 : 1][st][region]));
+      heavy_mp = (RG_GET_MP_CNT(region_map[re->first_in_pair? 0 : 1][st][region]) >= 2);
+
+      if (!heavy_mp && region > 0
+	  && (re->anchors[st][i].x & ((1 << region_bits) - 1)) < (uint)region_overlap) {
+	region--;
+	assert(RG_VALID_MP_CNT(region_map[re->first_in_pair? 0 : 1][st][region]));
+	heavy_mp = (RG_GET_MP_CNT(region_map[re->first_in_pair? 0 : 1][st][region]) >= 2);
+      }
     }
 
     if (!options->gapless) {

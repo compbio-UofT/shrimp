@@ -263,6 +263,36 @@ typedef struct readpair_mapping_options_t {
 } readpair_mapping_options_t;
 
 
+typedef struct map_header {
+  void *	map_start;
+  void *	map_end;
+  int		map_version;
+
+  shrimp_mode_t	shrimp_mode;
+  bool		Hflag;
+  int		num_contigs;
+  int		n_seeds;
+  int		min_seed_span;
+  int		max_seed_span;
+  int		avg_seed_span;
+
+  uint32_t *	genome_len;
+  uint32_t *	contig_offsets;
+  char * *	contig_names;
+
+  uint32_t * *	genome_contigs;
+  uint32_t * *	genome_contigs_rc;
+  uint32_t * *	genome_cs_contigs;
+  uint32_t * *	genome_cs_contigs_rc;
+
+  struct seed_type *	seed;
+  uint32_t * *	seed_hash_mask;
+
+  uint32_t * *	genomemap_len;
+  uint32_t * * *genomemap;
+} map_header;
+
+
 static inline void
 read_free_anchor_list(struct read_entry * re, count_t * counter)
 {

@@ -1259,13 +1259,9 @@ crash(int exit_code, int display_errno, char * msg, ...)
   va_list fmtargs;
   char new_msg[strlen(msg) + 1000];
 
-  strcpy(new_msg, "error: ");
-  if (display_errno) {
-    strcat(new_msg, strerror(errno));
-    strcat(new_msg, ": ");
-  }
-  strcat(new_msg, msg);
-  strcat(new_msg, "\n");
+  sprintf(new_msg, "error: %s%s%s\n", msg,
+	  display_errno? ": " : "",
+	  display_errno? strerror(errno) : "");
 
   va_start(fmtargs, msg);
   vfprintf(stderr, new_msg, fmtargs);
@@ -1281,13 +1277,9 @@ logit(int display_errno, char * msg, ...)
   va_list fmtargs;
   char new_msg[strlen(msg) + 1000];
 
-  strcpy(new_msg, "logit: ");
-  if (display_errno) {
-    strcat(new_msg, strerror(errno));
-    strcat(new_msg, ": ");
-  }
-  strcat(new_msg, msg);
-  strcat(new_msg, "\n");
+  sprintf(new_msg, "logit: %s%s%s\n", msg,
+	  display_errno? ": " : "",
+	  display_errno? strerror(errno) : "");
 
   va_start(fmtargs, msg);
   vfprintf(stderr, new_msg, fmtargs);

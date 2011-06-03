@@ -28,6 +28,8 @@ void		print_genomemap_stats();
 void		free_genome();
 bool		load_genome(char **, int);
 void		trim_genome();
+bool		genome_load_map_save_mmap(char *, char const *);
+bool		genome_load_mmap(char const *);
 
 
 #ifdef __cplusplus
