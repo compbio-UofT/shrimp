@@ -6,7 +6,7 @@
 #include <assert.h>
 #include "file_buffer.h"
 
-#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+//#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 /*void * memrchr(const void *s, int c, size_t n) {
     const unsigned char *cp;
     if (n != 0) {
@@ -125,6 +125,9 @@ void add_read_buffer_to_main(file_buffer * fb) {
 	fb->changed=false;
 	assert(fb->frb.seen+fb->frb.unseen==fb->frb.filled);
 	assert(fb->unseen_start<=fb->unseen_end);
+	if (fb->unseen_start+fb->size<fb->unseen_end) {
+		fprintf(stderr,"%lu+%lu<%lu\n",fb->unseen_start,fb->size,fb->unseen_end);
+	}
 	assert(fb->unseen_start+fb->size>=fb->unseen_end);
 	//while the buffer is not filled to the top and we have stuff left to read in the frb
 	while (fb->unseen_end!=fb->unseen_start+fb->size && !fb->frb.exhausted) {
@@ -163,6 +166,7 @@ void add_read_buffer_to_main(file_buffer * fb) {
 				unseen_end_mod=fb->unseen_end%fb->size;
 			} else {
 				fb->exhausted=true;	
+				assert(fb->unseen_start+fb->size>=fb->unseen_end);
 				return;
 			}
 		}
@@ -173,7 +177,7 @@ void add_read_buffer_to_main(file_buffer * fb) {
 	}
 	assert(fb->frb.seen+fb->frb.unseen==fb->frb.filled);
 	assert(fb->unseen_start<=fb->unseen_end);
-		assert(fb->unseen_start+fb->size>=fb->unseen_end);
+	assert(fb->unseen_start+fb->size>=fb->unseen_end);
 }
 
 

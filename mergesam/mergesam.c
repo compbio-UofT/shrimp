@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <time.h>
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
@@ -9,6 +10,7 @@
 #include "mergesam_heap.h"
 #include "fastx_readnames.h"
 #include "sam_reader.h"
+#include "../common/util.h"
 #include <ctype.h>
 #include <omp.h>
 
@@ -78,10 +80,10 @@ void usage(char * s) {
 	"Parameters:      (all sizes are in bytes unless specified)\n");
 	fprintf(stderr,
 	"      --buffer-size    File buffer size in memory per file   (Default: %d)\n",DEF_BUFFER_SIZE);
-	fprintf(stderr,
-	"      --read-size      Read size, read into buffer with this (Default: %d)\n",DEF_READ_SIZE);
+//	fprintf(stderr,
+//	"      --read-size      Read size, read into buffer with this (Default: %d)\n",DEF_READ_SIZE);
 	fprintf(stderr, 
-	"   -s/--stack-size     # of input align. per. file per read  (Default: %d)\n",DEF_ALIGNMENTS_STACK_SIZE);
+	"   -s/--stack-size     Input alignment stack size            (Default: %d)\n",DEF_ALIGNMENTS_STACK_SIZE);
 	fprintf(stderr,
 	"      --read-rate      How many reads to process at once     (Default: %d)\n",DEF_READ_RATE);
 	fprintf(stderr,
@@ -111,6 +113,10 @@ void usage(char * s) {
 	"      --colour-space   Reads file contains ABSOLiD data\n");
 	fprintf(stderr,
 	"      --letter-space   Reads file contains non-ABSOLiD data\n");	
+	fprintf(stderr,
+	"      --unaligned-fastx\n");
+	fprintf(stderr,
+	"      --aligned-fastx\n");
 	exit(1);
 }
 
@@ -134,6 +140,8 @@ struct option long_op[] =
 		{"sam-unaligned",0,0,11},
 		{"strata",0,0,12},
 		{"stack-size",1,0,'s'},
+		{"unaligned-fastx",0,0,'u'},
+		{"aligned-fastx",0,0,'a'},
                 {0,0,0,0}
         };
 
@@ -218,7 +226,7 @@ int main (int argc, char ** argv) {
 	options.threads=1;
 	found_sam_headers=false;
         int op_id;
-        char short_op[] = "o:QN:Es:";
+        char short_op[] = "o:QN:Es:au";
         char c = getopt_long(argc, argv, short_op, long_op, &op_id);
         while (c != EOF) {
 		switch (c) {
@@ -307,6 +315,12 @@ int main (int argc, char ** argv) {
 			options.alignments_stack_size=atoi(optarg);
 			assert(options.alignments_stack_size>0);
 			break;
+		case 'a':
+			options.aligned_fastx=true;
+			break;
+		case 'u':
+			options.unaligned_fastx=true;
+			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
 			usage(argv[0]);
@@ -388,6 +402,7 @@ int main (int argc, char ** argv) {
 	for (i=0; i<options.number_of_sam_files; i++) {
 		sam_files[i]=sam_open(argv[i],&fxrn);
 		sam_files[i]->sam_headers=sam_headers+i;
+		sam_files[i]->fileno=i;
 		int j; 
 		for (j=0; j<options.read_rate; j++) {
 			pp_ll_index[j*options.number_of_sam_files+i]=sam_files[i]->pp_lls+j*LL_ALL;
@@ -411,10 +426,13 @@ int main (int argc, char ** argv) {
 	}	
 
 	size_t reads_processed=0;
+	clock_t start_time=clock();
+	long iterations=0;
 	//get the hit list, process it, do it again!
 	fprintf(stderr,"Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
+	bool have_non_eof_file=true;
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
-	while (!fxrn.reads_exhausted) {
+	while (!fxrn.reads_exhausted && have_non_eof_file) {
 		//fprintf(stderr,"LOOP START\n");
 		//fprintf(stderr,"Reads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//Populate the hitlist to as large as possible
@@ -427,22 +445,30 @@ int main (int argc, char ** argv) {
 		memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
 	
 		//Hit list in memory start processing!
+		
 		int i;	
+		clock_t last_time = clock ();
 		while (fxrn.reads_seen<fxrn.reads_filled) {
+			iterations++;
 			int reads_to_process=options.read_rate;
 
 	
 			//READ IN DATA
-			#pragma omp parallel for 
+			#pragma omp parallel for schedule(guided)
 			for (i=0; i<options.number_of_sam_files; i++) {
-				fill_fb(sam_files[i]->fb);	
-				parse_sam(sam_files[i],&fxrn);
+				if (sam_files[i]->fb->frb.eof!=1 || sam_files[i]->fb->unseen_end!=sam_files[i]->fb->unseen_inter) {
+					fill_fb(sam_files[i]->fb);	
+					parse_sam(sam_files[i],&fxrn);
+				}
 			}
 			
 			//find the minimum number of complete read alignments in memory
+			have_non_eof_file=false;
 			for (i=0; i<options.number_of_sam_files; i++) {
-				//fprintf(stderr,"file %d; %lu, %lu, %lu\n",i,sam_files[i]->last_tested,fxrn.reads_seen,sam_files[i]->last_tested-fxrn.reads_seen);
-				reads_to_process=MIN(reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
+				if (sam_files[i]->fb->frb.eof!=1 || sam_files[i]->fb->unseen_end!=sam_files[i]->fb->unseen_inter) {
+					reads_to_process=MIN(reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
+					have_non_eof_file=true;
+				}
 			}
 			//fprintf(stderr,"Processing %d reads entries on this interation..\n",reads_to_process);
 			if (reads_to_process>0) {
@@ -465,7 +491,7 @@ int main (int argc, char ** argv) {
 			}
 			
 			//prepare output
-			#pragma omp parallel for //schedule(static,10)
+			#pragma omp parallel for schedule(guided) //schedule(static,10)
 			for (i=0; i<reads_to_process; i++) {	
 				const size_t read_id=(fxrn.reads_seen+i)%options.read_rate;
 				pp_ll_combine_and_check(master_ll+i,pp_ll_index+read_id*options.number_of_sam_files,thread_heaps+omp_get_thread_num());
@@ -496,6 +522,12 @@ int main (int argc, char ** argv) {
 			}
 			reads_processed+=reads_to_process;
 			//fprintf(stderr,"XReads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
+			if ( (clock()-last_time)/options.threads > CLOCKS_PER_SEC/4) {
+				double reads_per_second=reads_processed/( (double)(clock()-start_time)/(CLOCKS_PER_SEC*options.threads));
+				double reads_per_iteration=reads_processed/(double)iterations;
+				fprintf(stderr,"Processing overall at %lf reads / second, %lf reads / iteration, processed %lu\n",reads_per_second,reads_per_iteration,reads_processed);
+				last_time=clock();
+			} 
 		}
 	}
 	fprintf(stderr,"Processed %lu reads\n",reads_processed);

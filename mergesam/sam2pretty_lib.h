@@ -11,6 +11,7 @@
 #define SIZE_MPOS 9
 #define SIZE_ISIZE 10
 #define SIZE_32bit 10
+#define SIZE_DOUBLE 12
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -55,6 +56,12 @@ struct pretty {
 	char * read_name;
 	size_t read_name_length;
 	int32_t isize;
+
+	double z0;
+	bool has_z0;
+	double z1;
+	bool has_z1;
+	int fileno;
 
 	//int32_t strand; //0 is postive, 1 is reverse
 	int32_t mapq;
@@ -157,4 +164,5 @@ pretty * pretty_new();
 void pretty_print_sam_update(pretty * pa,bool inplace);
 void pretty_print_sam_unaligned(pretty * pa,bool inplace);
 void pretty_from_aux_inplace(pretty * pa);
+void pretty_print_sam_fastx(pretty* pa, bool inplace );
 #endif

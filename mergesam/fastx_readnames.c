@@ -2,8 +2,9 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include "mergesam.h"
-#include "mergesam_heap.h"
+//#include "mergesam.h"
+//#include "mergesam_heap.h"
+#include "../common/util.h"
 #include "fastx_readnames.h"
 void reconsolidate_reads(fastx_readnames * fxrn) {
 	assert(fxrn->reads_seen+fxrn->reads_unseen==fxrn->reads_filled);

@@ -988,7 +988,7 @@ void pretty_print_sam_unaligned(pretty * pa,bool inplace) {
 		pa->flags | 0x4 | 0x8,
 		"*",
 		0,
-		255,
+		0,
 		"*",
 		"*",
 		0,
@@ -1004,7 +1004,7 @@ void pretty_print_sam_unaligned(pretty * pa,bool inplace) {
 	if (pa->has_read_group) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
 	}
-	if (pa->has_read_group) {
+	if (pa->has_r2) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tR2:Z:%s",pa->r2);
 	}
 	if (!inplace) {
@@ -1032,6 +1032,60 @@ void pretty_print_sam_unaligned(pretty * pa,bool inplace) {
 	}
 }
 
+
+void pretty_print_sam_fastx(pretty* pa, bool inplace ) { 
+	char * read; char * qualities=NULL;
+	if (pa->colour_space) {
+		read=pa->cs_string;
+		if (pa->has_cs_qualities) {
+			qualities=pa->cs_qualities;
+			assert(strlen(pa->cs_string)-1==strlen(pa->cs_qualities));
+		}
+	} else {
+		read=pa->read_string;
+		if (pa->read_qualities[0]!='*') {
+			qualities=pa->read_qualities;
+		}
+	}
+	size_t buffer_size=1+strlen(pa->read_name)+1
+		+strlen(read)+1;
+	if (qualities!=NULL) {
+		buffer_size+=1+1
+			+strlen(qualities)+1;
+	}	
+	assert(buffer_size<1000);
+	char buffer[buffer_size];
+	size_t position;
+	if (qualities==NULL) {
+		//fasta
+		position=snprintf(buffer,buffer_size,">%s\n%s\n",pa->read_name,read);
+	} else {
+		//fastq
+		position=snprintf(buffer,buffer_size,"@%s\n%s\n+\n%sX\n",pa->read_name,read,qualities);
+	} 
+	if (!inplace) {
+		position+=snprintf(buffer+position,buffer_size-position,"\n");
+		if (pa->sam_string!=NULL) {
+			free(pa->sam_string);
+		}
+		if (buffer_size<position) {
+			fprintf(stderr,"Failed to properly bound memory needed for updated sam alignment\n");
+			exit(1);
+		}
+		pa->sam_string=(char*)malloc(sizeof(char)*(position+1));
+		if (pa->sam_string==NULL) {
+			fprintf(stderr,"Failed to allocate memory to store same string!\n");
+			exit(1);
+		}
+		strcpy(pa->sam_string,buffer);
+	} else {
+		if (position>pa->sam_string_length) {
+			fprintf(stderr,"Failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
+			exit(1);
+		}
+		strcpy(pa->sam_string,buffer);
+	}
+}
 
 void pretty_print_sam_update(pretty * pa, bool inplace) {
 	size_t buffer_size=13*SIZE_TAB+SIZE_NEWLINE+SIZE_NULL+strlen(pa->read_name)+SIZE_FLAG+
@@ -1078,6 +1132,15 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_h2) {
 		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
+	if (pa->has_z0) {
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX;
+	}
+	if (pa->has_z1) {
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX;
+	}
+	if (pa->aux!=NULL) {
+		buffer_size+=SIZE_TAB+strlen(pa->aux);
+	}
 	char buffer[buffer_size];
 	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
@@ -1093,7 +1156,13 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 		pa->read_qualities);
 	if (pa->has_score) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
-	}	 
+	}	
+	if (pa->has_z0) {
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.4e",pa->z0);
+	} 
+	if (pa->has_z1) {
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.4e",pa->z1);
+	} 
 	if (pa->has_edit_distance) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
 	}	 
@@ -1129,6 +1198,9 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	}
 	if (pa->has_read_group) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
+	}
+	if (pa->aux!=NULL) {
+		position+=snprintf(buffer+position,buffer_size-position,"\t%s",pa->aux);
 	}
 	if (!inplace) {
 		position+=snprintf(buffer+position,buffer_size-position,"\n");
@@ -1254,6 +1326,14 @@ static inline void switch_and_fill(int32_t k, char * data, pretty * pa) {
 			pa->has_h2=true;
 			pa->h2=atoi(data);
 			break;
+		case ('Z'<<8)+'0':
+			pa->has_z0=true;
+			pa->z0=atof(data);
+			break;
+		case ('Z'<<8)+'1':
+			pa->has_z1=true;	
+			pa->z1=atof(data);
+			break;
 		default: 
 			break;
 	}
@@ -1280,6 +1360,7 @@ void pretty_from_aux_inplace(pretty * pa) {
 	int32_t k=field2int32_t(start_of_string);
 	char * data=start_of_string+5;
 	switch_and_fill(k,data,pa);
+	pa->aux=NULL;
 } 
 
 
@@ -1356,7 +1437,27 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 			pa->score=atoi(start_of_string+5);
 			pa->has_score=true;
 			if (next_tab!=NULL) {
-				pa->aux=++next_tab;
+				start_of_string=++next_tab;
+				pa->aux=start_of_string;
+				next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
+				if (next_tab!=NULL && start_of_string[0]=='Z' && start_of_string[1]=='0') {
+					*next_tab='\0';
+					pa->z0=atof(start_of_string+5);
+					pa->has_z0=true;
+					start_of_string=++next_tab;
+					next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
+					if (start_of_string[0]=='Z' && start_of_string[1]=='1') {
+						if (next_tab!=NULL) {
+							*next_tab='\0';
+						}
+						pa->z1=atof(start_of_string+5);
+						pa->has_z1=true;
+						pa->aux=++next_tab;
+					} else {
+						fprintf(stderr,"Parsed a Z0 but did not find Z1!\n");
+						exit(1);
+					}
+				}
 			} else {
 				pa->aux=NULL;
 			}

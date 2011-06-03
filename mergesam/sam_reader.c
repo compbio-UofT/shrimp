@@ -4,8 +4,20 @@
 #include <stdlib.h>
 #include "mergesam_heap.h"
 #include "sam_reader.h"
+#include "../common/util.h"
 
 bool found_sam_headers;
+
+static inline int pa_to_mapq(pretty * pa) {
+	if (!pa->has_z1 || !pa->has_z0) {
+		//return 255;
+		return 0;
+	}
+	if (pa->z1==0.0) {
+		return 255;
+	}
+	return qv_from_pr_corr(pa->z0/pa->z1);
+}
 
 static inline void pp_ll_zero(pp_ll * ll) {
 	ll->head=NULL;
@@ -35,7 +47,7 @@ static inline void pp_ll_set(pp_ll * ll,pretty *  pa) {
 	pa->next=NULL;
 }
 
-static inline void pp_ll_combine_and_check_single(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h) {
+static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s,bool paired) {
 	//heap_pa * h=thread_heaps+omp_get_thread_num();
 	h->load=0;
 	heap_pa_elem e;
@@ -46,10 +58,20 @@ static inline void pp_ll_combine_and_check_single(pp_ll * m_ll,pp_ll ** ll,int o
 		if (local_ll->length>0) {
 			pa = local_ll->head;
 			while (pa!=NULL) {
-				//Add in MAPQ code to grab stats here?
-				e.score=pa->score+(pa->mate_pair!=NULL ? pa->mate_pair->score : 0);
-				e.isize_score=MAX_INT32;
+				if (paired) {
+					e.score=pa->score+pa->mate_pair->score;
+					assert(pa->mapped && pa->mate_pair!=NULL);
+					assert(pa->mate_pair->mapped &&  pa->mp_mapped);
+					e.isize_score=options.expected_insert_size >= 0 ? abs(options.expected_insert_size-pa->isize) : 0;
+				} else {
+					//Add in MAPQ code to grab stats here?
+					e.score=pa->score+(pa->mate_pair!=NULL ? pa->mate_pair->score : 0);
+					e.isize_score=MAX_INT32;
+				}
 				e.rest=pa;
+				if (pa->has_z1 && z1s!=NULL) {
+					z1s[pa->fileno]=pa->z1;
+				}
 				if (options.strata) {
 					heap_pa_insert_bounded_strata(h,&e);
 				} else {
@@ -59,10 +81,7 @@ static inline void pp_ll_combine_and_check_single(pp_ll * m_ll,pp_ll ** ll,int o
 			}
 		}
 	}
-	if (h->load==0 || (options.max_alignments>0 && h->load>options.max_alignments)) {
-		//m_ll->length=0;
-	} else {
-		assert(options.max_outputs>0);
+	if (h->load>0 && (options.max_alignments==-1 || h->load<=options.max_alignments)) {
 		i=h->load>options.max_outputs ? 1 : 0;
 		if (m_ll->length==0) {
 			m_ll->head=h->array[i].rest;
@@ -75,11 +94,17 @@ static inline void pp_ll_combine_and_check_single(pp_ll * m_ll,pp_ll ** ll,int o
 			h->array[i].rest->next=h->array[i+1].rest;
 		}
 		h->array[i].rest->next=NULL;
-		m_ll->length+=h->load- (h->load>options.max_outputs ? 1 : 0);
+		m_ll->length+= h->load - (h->load>options.max_outputs ? 1 : 0);
 	}
-	if (options.sam_unaligned && h->load>0) {
+	if ((options.sam_unaligned || options.unaligned_fastx) && h->load>0) {
 		*unaligned_pa=h->array[0].rest;
 	}
+}
+static inline void pp_ll_combine_and_check_heap_single(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s) {
+	pp_ll_combine_and_check_heap(m_ll,ll,offset,unaligned_pa,h,z1s,false);
+}
+static inline void pp_ll_combine_and_check_heap_paired(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s) {
+	pp_ll_combine_and_check_heap(m_ll,ll,offset,unaligned_pa,h,z1s,true);
 }
 
 static inline void remove_offending_fields(pretty * pa) {
@@ -99,86 +124,110 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	heap_pa_elem e;
 	pretty * pa = NULL;
 	pretty * unaligned_pa=NULL;
+	double z1s[LL_ALL*options.number_of_sam_files];
+	memset(z1s,0,sizeof(double)*LL_ALL*options.number_of_sam_files);
+	double z1_sums[LL_ALL];
+	memset(z1_sums,0,sizeof(double)*LL_ALL);	
 	if (options.paired) {
-		assert(!options.unpaired);
-		//check paired first, and then go lower
-		int i;
-		for (i=0; i<options.number_of_sam_files; i++) {
-			pp_ll * paired_ll = ll[i]+PAIRED;
-			if (paired_ll->length>0) {
-				pa = paired_ll->head;
-				while (pa!=NULL) {
-					e.score=pa->score+pa->mate_pair->score;
-					assert(pa->mapped && pa->mate_pair!=NULL);
-					assert(pa->mate_pair->mapped &&  pa->mp_mapped);
-					e.isize_score=options.expected_insert_size >= 0 ? abs(options.expected_insert_size-pa->isize) : 0;
-					e.rest=pa;
-					if (options.strata) {
-						heap_pa_insert_bounded_strata(h,&e);
-					} else {
-						heap_pa_insert_bounded(h,&e);
-					}
-					pa=pa->next;
-				}
-			}
+		pp_ll_combine_and_check_heap_paired(m_ll,ll,PAIRED,&unaligned_pa,h,z1s+PAIRED*options.number_of_sam_files);
+		if (options.half_paired) { 
+			h->load=0;
+			pp_ll_combine_and_check_heap_single(m_ll,ll,FIRST_LEG,&unaligned_pa,h,z1s+FIRST_LEG*options.number_of_sam_files);
+			h->load=0;
+			pp_ll_combine_and_check_heap_single(m_ll,ll,SECOND_LEG,&unaligned_pa,h,z1s+SECOND_LEG*options.number_of_sam_files);
 		}
-		if (h->load==0 || (options.max_alignments>0 && h->load>options.max_alignments)) {
-			//m_ll->length=0;
-		} else {
-			assert(options.max_outputs>0);
-			i=h->load>options.max_outputs ? 1 : 0;
-			m_ll->head=h->array[i].rest;
-			m_ll->tail=h->array[h->load-1].rest;
-			for (; i<h->load-1; i++) {
-				h->array[i].rest->next=h->array[i+1].rest;
-			}
-			h->array[i].rest->next=NULL;
-			m_ll->length=h->load- (h->load>options.max_outputs ? 1 : 0);
-		}
-		if (options.sam_unaligned && h->load>0) {
-			unaligned_pa=h->array[0].rest;
-		}
+	} else if (options.unpaired) {
+		pp_ll_combine_and_check_heap_single(m_ll,ll,UNPAIRED,&unaligned_pa,h,z1s+UNPAIRED*options.number_of_sam_files);
 	}
-	if (h->load==0) {
-		if (options.paired && options.half_paired) {
-			pp_ll_combine_and_check_single(m_ll,ll,FIRST_LEG,&unaligned_pa,h);
-			pp_ll_combine_and_check_single(m_ll,ll,SECOND_LEG,&unaligned_pa,h);
-		} else if (options.unpaired) {
-			pp_ll_combine_and_check_single(m_ll,ll,UNPAIRED,&unaligned_pa,h);
-		}
+	int i;
+	for (i=0; i<options.number_of_sam_files; i++) {
+		z1_sums[PAIRED]+=z1s[PAIRED*options.number_of_sam_files+i];
+		z1_sums[FIRST_LEG]+=z1s[FIRST_LEG*options.number_of_sam_files+i];
+		z1_sums[SECOND_LEG]+=z1s[SECOND_LEG*options.number_of_sam_files+i];
+		z1_sums[UNPAIRED]+=z1s[UNPAIRED*options.number_of_sam_files+i];
 	}
-	if (m_ll->length==0 && options.sam_unaligned) {
+	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_fastx)) {
 		if (unaligned_pa==NULL) {
-			pp_ll_combine_and_check_single(m_ll,ll,UNMAPPED,&unaligned_pa,h);
+			if (!options.half_paired) { 
+				h->load=0;
+				pp_ll_combine_and_check_heap_single(m_ll,ll,FIRST_LEG,&unaligned_pa,h,z1s+FIRST_LEG*options.number_of_sam_files);
+				h->load=0;
+				pp_ll_combine_and_check_heap_single(m_ll,ll,SECOND_LEG,&unaligned_pa,h,z1s+SECOND_LEG*options.number_of_sam_files);
+			}
+			h->load=0;
+			pp_ll_combine_and_check_heap_single(m_ll,ll,UNMAPPED,&unaligned_pa,h,NULL);
 		}
 		if (unaligned_pa!=NULL) {
 			m_ll->length=1;
 			m_ll->head=unaligned_pa;
 			m_ll->tail=unaligned_pa;
 			unaligned_pa->next=NULL;
+			
 			pretty_from_aux_inplace(unaligned_pa);
-			pretty_print_sam_unaligned(unaligned_pa,true);
+			if (options.unaligned_fastx) {
+				pretty_print_sam_fastx(unaligned_pa, true);
+			} else {
+				pretty_print_sam_unaligned(unaligned_pa,true);
+			}
 			if (unaligned_pa->paired_sequencing) {
 				pretty_from_aux_inplace(unaligned_pa->mate_pair);
-				pretty_print_sam_unaligned(unaligned_pa->mate_pair,true);
+				if (options.unaligned_fastx) {
+					pretty_print_sam_fastx(unaligned_pa->mate_pair, true);
+				} else {
+					pretty_print_sam_unaligned(unaligned_pa->mate_pair,true);
+				}
 			}
 		}
-	} else {
+	} else if (!options.unaligned_fastx) {
 		pa=m_ll->head;
 		while(pa!=NULL) {
-			pretty_from_aux_inplace(pa);
-			remove_offending_fields(pa);
-			pretty_print_sam_update(pa, true);
+			if (pa->has_z1) {
+				if (pa->paired_sequencing) {
+					if (pa->proper_pair) {
+						pa->z1=z1_sums[PAIRED];
+						pa->mate_pair->z1=z1_sums[PAIRED];
+					} else if (pa->first_in_pair) {
+						pa->z1=z1_sums[FIRST_LEG];
+						pa->mate_pair->z1=z1_sums[SECOND_LEG];
+					} else if (pa->second_in_pair) {
+						pa->z1=z1_sums[SECOND_LEG];
+						pa->mate_pair->z1=z1_sums[FIRST_LEG];
+					} else {
+						assert(1==0);
+					}
+					if (pa->mate_pair->mapped) {
+						pa->mate_pair->mapq=pa_to_mapq(pa->mate_pair);
+					}
+				} else {
+					pa->z1=z1_sums[UNPAIRED];
+				}
+				pa->mapq=pa_to_mapq(pa);
+			}
+			//pretty_from_aux_inplace(pa);
+			if (options.aligned_fastx) {
+				pa->next=NULL;
+				pretty_from_aux_inplace(pa);
+				pretty_print_sam_fastx(pa, true);
+			} else {
+				remove_offending_fields(pa);
+				pretty_print_sam_update(pa, true);
+			}
 			//revert_sam_string(pa);
 			if (pa->mate_pair!=NULL) {
 				assert(pa->mate_pair->mate_pair!=NULL);
-				pretty_from_aux_inplace(pa->mate_pair);
-				remove_offending_fields(pa->mate_pair);
-				pretty_print_sam_update(pa->mate_pair, true);
+				if (options.aligned_fastx) {
+					pretty_from_aux_inplace(pa->mate_pair);
+					pretty_print_sam_fastx(pa->mate_pair, true);
+				} else {
+					remove_offending_fields(pa->mate_pair);
+					pretty_print_sam_update(pa->mate_pair, true);
+				}
 				//revert_sam_string(pa->mate_pair);
 			}
 			pa=pa->next;
 		}
+	} else {
+		m_ll->length=0; m_ll->head=NULL;
 	}	
 	return;	
 	
@@ -191,7 +240,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 			assert(pa->mapped && pa->mp_mapped);
 			//both sides mapped
 			pp_ll_append(ll+PAIRED,pa);
-		} else if (options.half_paired && (pa->mapped || pa->mp_mapped)) {
+		} else if ((options.half_paired || options.sam_unaligned || options.unaligned_fastx)  && (pa->mapped || pa->mp_mapped)) {
 			//lets figure out which leg
 			if (pa->mapped) {
 				if (pa->first_in_pair) {
@@ -206,7 +255,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 					pp_ll_append(ll+FIRST_LEG,pa);
 				}
 			}
-		} else if (options.sam_unaligned && !pa->mapped && !pa->mp_mapped) {
+		} else if ((options.sam_unaligned || options.unaligned_fastx) && !pa->mapped && !pa->mp_mapped) {
 			//unmapped paired
 			pp_ll_append(ll+UNMAPPED,pa);
 		}
@@ -214,7 +263,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 		if (pa->mapped) {
 			//unpaired and mapped
 			pp_ll_append(ll+UNPAIRED,pa);
-		} else if (options.sam_unaligned) {
+		} else if (options.sam_unaligned || options.unaligned_fastx) {
 			//unpaired and unmapped
 			pp_ll_append(ll+UNMAPPED,pa);
 		}
@@ -332,7 +381,7 @@ sam_reader * sam_open(char * sam_filename,fastx_readnames * fxrn) {
 	sr->pretty_stack_start=0;
 	sr->pretty_stack_end=0;
 	fprintf(stderr,"Starting a alignments stack with size %lu\n",options.alignments_stack_size);
-	sr->pretty_stack_size=fxrn->reads_inmem*options.alignments_stack_size;
+	sr->pretty_stack_size=options.alignments_stack_size;
 	sr->pretty_stack=(pretty*)malloc(sizeof(pretty)*sr->pretty_stack_size);
 	if (sr->pretty_stack==NULL) {
 		fprintf(stderr,"Failed to allocate memory for pretty_stack\n");
@@ -427,6 +476,7 @@ void parse_sam(sam_reader * sr,fastx_readnames * fxrn) {
 							pretty_from_string_inplace(line,length_of_string,pa);
 							pa->read_id=read_id;
 							pa->sam_header=false;
+							pa->fileno=sr->fileno;	
 							assert(pa->read_name!=NULL);
 							assert(pa->mate_pair==NULL);
 							if (pa->paired_sequencing) {
@@ -451,6 +501,7 @@ void parse_sam(sam_reader * sr,fastx_readnames * fxrn) {
 							break;
 						} else {	
 							sr->inter_offsets[read_id]=sr->fb->unseen_start;
+							//fprintf(stderr,"Setting interoffset %lu\n",sr->fb->unseen_start);
 							sr->pretty_stack_ends[read_id]=sr->pretty_stack_end;
 							sr->fb->unseen_start=sr->fb->unseen_inter;
 							//fprintf(stderr,"Asign start %lu, %lu\n",read_id,sr->fb->unseen_start);
@@ -480,8 +531,8 @@ void parse_sam(sam_reader * sr,fastx_readnames * fxrn) {
 	}
 	//fprintf(stderr,"RETURN GRACE %lu!=%lu,%lu<%d+%lu \n",sr->fb->unseen_end,sr->fb->unseen_inter, sr->last_tested,options.read_rate,fxrn->reads_seen);
 	if (sr->fb->frb.eof==1 && sr->fb->unseen_end==sr->fb->unseen_inter && sr->last_tested==fxrn->reads_seen) {
-		sr->last_tested++;
-		//fprintf(stderr,"EOF\n");
+		//sr->last_tested++;
+		fprintf(stderr,"EOF\n");
 	}
 		//fprintf(stderr,"RETURN %llu - %llu < %llu \n",sr->last_tested, fxrn->reads_seen, read_amount);
 	/*if (last_tested<read_amount && (sr->fb->frb.eof==0 || sr->fb->unseen_end!=sr->fb->unseen_start)) {

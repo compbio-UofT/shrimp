@@ -5,7 +5,7 @@
 #define DEF_INSERT_SIZE -1
 #define GROWTH_FACTOR 1.3
 #define SIZE_READ_NAME 255
-#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+//#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define MAX_INT32	2147483647
 
 #define PAIRED		0
@@ -18,8 +18,8 @@
 //IO SETTINGS
 #define DEF_READ_SIZE	1024*10
 #define DEF_BUFFER_SIZE	1024*1024*50
-#define DEF_READ_RATE 3000
-#define DEF_ALIGNMENTS_STACK_SIZE 21
+#define DEF_READ_RATE 6000
+#define DEF_ALIGNMENTS_STACK_SIZE DEF_READ_RATE*2
 typedef struct runtime_options {
 	//input options
 	size_t buffer_size;
@@ -42,6 +42,8 @@ typedef struct runtime_options {
 	//determined at runtime options
 	bool paired;
 	bool unpaired; 
+	bool unaligned_fastx;
+	bool aligned_fastx;
 };
 extern runtime_options options;
 #endif

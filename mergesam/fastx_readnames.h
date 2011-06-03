@@ -1,8 +1,10 @@
 #ifndef __FILE_BUFFER_PARSERS__
 #define __FILE_BUFFER_PARSERS__
+
 #include "file_buffer.h"
 #include "sam2pretty_lib.h"
 #include "mergesam.h"
+
 typedef struct fastx_readnames {
 	size_t reads_seen;
 	size_t reads_unseen;
@@ -19,6 +21,8 @@ typedef struct fastx_readnames {
 	int64_t fastq_seen_seq;//=0;
 	int64_t fastq_seen_qual;//=0;  
 };
+
+
 void reconsolidate_reads(fastx_readnames  * fxrn);
 void parse_reads(fastx_readnames * fxrn);
 #endif

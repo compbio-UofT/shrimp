@@ -9,6 +9,7 @@ struct pp_ll {
 	pretty * head;
 	pretty * tail;
 	size_t length;
+	double * file_z1s;
 };
 struct sam_reader {
 	file_buffer * fb;
@@ -21,6 +22,7 @@ struct sam_reader {
 	size_t last_tested;
 	size_t * inter_offsets;
 	size_t * pretty_stack_ends;
+	int fileno;
 };
 void parse_sam(sam_reader * sr,fastx_readnames * fxrn);
 void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa * h);
