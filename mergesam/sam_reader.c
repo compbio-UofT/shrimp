@@ -9,14 +9,15 @@
 bool found_sam_headers;
 
 static inline int pa_to_mapq(pretty * pa) {
-	if (!pa->has_z1 || !pa->has_z0) {
+	if (!pa->has_z) {
 		//return 255;
 		return 0;
 	}
-	if (pa->z1==0.0) {
+	if (pa->z[1]==0.0) {
 		return 255;
 	}
-	return qv_from_pr_corr(pa->z0/pa->z1);
+	//fprintf(stderr,"%.20e and %.20e\n",pa->z[0],pa->z[1]);
+	return qv_from_pr_corr(pa->z[0]/pa->z[1]);
 }
 
 static inline void pp_ll_zero(pp_ll * ll) {
@@ -69,8 +70,8 @@ static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int off
 					e.isize_score=MAX_INT32;
 				}
 				e.rest=pa;
-				if (pa->has_z1 && z1s!=NULL) {
-					z1s[pa->fileno]=pa->z1;
+				if (pa->has_z && z1s!=NULL) {
+					z1s[pa->fileno]=pa->z[1];
 				}
 				if (options.strata) {
 					heap_pa_insert_bounded_strata(h,&e);
@@ -181,17 +182,17 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	} else if (!options.unaligned_fastx) {
 		pa=m_ll->head;
 		while(pa!=NULL) {
-			if (pa->has_z1) {
+			if (pa->has_z) {
 				if (pa->paired_sequencing) {
 					if (pa->proper_pair) {
-						pa->z1=z1_sums[PAIRED];
-						pa->mate_pair->z1=z1_sums[PAIRED];
+						pa->z[1]=z1_sums[PAIRED];
+						pa->mate_pair->z[1]=z1_sums[PAIRED];
 					} else if (pa->first_in_pair) {
-						pa->z1=z1_sums[FIRST_LEG];
-						pa->mate_pair->z1=z1_sums[SECOND_LEG];
+						pa->z[1]=z1_sums[FIRST_LEG];
+						pa->mate_pair->z[1]=z1_sums[SECOND_LEG];
 					} else if (pa->second_in_pair) {
-						pa->z1=z1_sums[SECOND_LEG];
-						pa->mate_pair->z1=z1_sums[FIRST_LEG];
+						pa->z[1]=z1_sums[SECOND_LEG];
+						pa->mate_pair->z[1]=z1_sums[FIRST_LEG];
 					} else {
 						assert(1==0);
 					}
@@ -199,7 +200,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 						pa->mate_pair->mapq=pa_to_mapq(pa->mate_pair);
 					}
 				} else {
-					pa->z1=z1_sums[UNPAIRED];
+					pa->z[1]=z1_sums[UNPAIRED];
 				}
 				pa->mapq=pa_to_mapq(pa);
 			}

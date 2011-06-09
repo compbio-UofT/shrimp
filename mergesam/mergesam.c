@@ -433,7 +433,6 @@ int main (int argc, char ** argv) {
 	bool have_non_eof_file=true;
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
 	while (!fxrn.reads_exhausted && have_non_eof_file) {
-		//fprintf(stderr,"LOOP START\n");
 		//fprintf(stderr,"Reads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//Populate the hitlist to as large as possible
 		while (!fxrn.reads_exhausted) {

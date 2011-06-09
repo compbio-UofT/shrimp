@@ -7,6 +7,7 @@
 
 #include "sam2pretty_lib.h"
 
+bool sam2pretty_lib_verbose=false;
 
 void pretty_stats(pretty * pa) {
 	if (pa->pretty_length==0) {
@@ -26,7 +27,7 @@ void pretty_stats(pretty * pa) {
 	int32_t j, length;
 	length=strlen(pa->pretty_read_string);
 	//printf("%s,%d to %d\n",pa->cigar,pa->clipped_read_start-1,(length-(pa->unclipped_read_length-pa->clipped_read_end)));
-	for (j=pa->clipped_read_start-1; j<(length-(pa->unclipped_read_length-pa->clipped_read_end)); j++) {
+	for (j=pa->clipped_read_start-1; j<pa->clipped_read_end; j++) {
 		char g = pa->pretty_genome_string[j];
 		char r = pa->pretty_read_string[j];
 		char rc = r>90 ? r-32 : r;
@@ -65,12 +66,13 @@ void pretty_match(pretty * pa) {
 		exit(1);
 	}
 	int32_t i;
+	
 	for (i=0; i<pretty_read_string_length; i++){
 		char rc = r[i]>90 ? r[i]-32 : r[i];
 		char gc = g[i]>90 ? g[i]-32 : g[i];
 		if (g[i]=='-' || r[i]=='-' || gc!=rc) {
 			m[i]=' ';
-		} else if (pa->has_cs_edit_string && pa->cs_edit_string[i]>96) {
+		} else if (pa->has_cs_edit_string && pa->pretty_read_string[i]>96) {
 			m[i]='X';
 		} else {
 			m[i]='|';
@@ -79,6 +81,34 @@ void pretty_match(pretty * pa) {
 	m[pretty_read_string_length]='\0';
 	pa->pretty_match_string=m;
 	return;
+}
+
+
+void make_pretty_edit_string(const char * match, const char * read , char * target) {
+	target[0]='\0';
+	int strech=0;
+	int i;
+	for (i=0; i<(int)strlen(match); i++) {
+		if (match[i]!='X') {
+			strech++;
+		} else if (match[i]==' ') {
+			sprintf(target+strlen(target),"%d%c",strech==i ? strech : strech + 1,read[i]);
+			strech=0;
+		} else if (match[i]=='X') {
+			if (strech!=0) {
+				sprintf(target+strlen(target),"%d",strech==i ? strech : strech+1);
+			}
+			sprintf(target+strlen(target),"x");
+			strech=0;
+		} else {
+			fprintf(stderr,"Cannot find case for %c !!\n",match[i]);
+			exit(1);
+		}
+	}
+	if (strech!=0) {
+		sprintf(target+strlen(target),"%d",strech==i ? strech : strech + 1);
+	}
+		
 }
 
 void pretty_print(pretty * pa) {
@@ -101,9 +131,22 @@ void pretty_print(pretty * pa) {
 	} else if (pa->paired_sequencing) {
 		strcpy(suffix,"/?");
 	}
+	size_t pretty_edit_string_buffer_length=1;
+	if (pa->pretty_read_string!=NULL && pa->pretty_match_string!=NULL) {
+		pretty_edit_string_buffer_length=strlen(pa->read_string)*2;
+	}
+	char pretty_edit_string[pretty_edit_string_buffer_length];
+	pretty_edit_string[0]='\0';
+	if (pa->pretty_read_string!=NULL && pa->pretty_match_string!=NULL) {
+		make_pretty_edit_string(pa->pretty_match_string,pa->pretty_read_string,pretty_edit_string);
+	}
+	if (pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)		
+		printf("> %s%s\t%s\t%c\t%d\t%d\t%d\t%d\t%d\t%s\n",pa->read_name,suffix,pa->reference_name,strand,
+			pa->genome_start_padded,pa->genome_end_padded,pa->clipped_read_start,pa->clipped_read_end,
+			pa->unclipped_read_length,pretty_edit_string);	
 	if (pa->pretty_length>0) {
-	if (pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)
-		printf("> Pretty SAM Alignment:\n");	
+	if (sam2pretty_lib_verbose && pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)
+		printf(">> Pretty SAM Alignment:\n");	
 	if (pa->colour_space) {
 		if (pa->pretty_genome_string!=NULL)
 			printf("G:\t%d\t %s\t%d\n",genome_coordinate_1,pa->pretty_genome_string,genome_coordinate_2);
@@ -129,10 +172,6 @@ void pretty_print(pretty * pa) {
 			printf("Q:\t\t%s\t\n",pa->pretty_read_qualities);
 	}
 	}
-	if (pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)		
-		printf("> %s%s\t%s\t%c\t%d\t%d\t%d\t%d\t%d\n",pa->read_name,suffix,pa->reference_name,strand,
-			pa->genome_start_padded,pa->genome_end_padded,pa->clipped_read_start,pa->clipped_read_end,
-			pa->unclipped_read_length);	
 	//pa->paired_sequencing = ((entry->core.flag & 0x0001) != 0) ? true : false ;
 	//pa->proper_pair = ((entry->core.flag & 0x0002) != 0) ? true : false ;
 	//pa->mapped = ((entry->core.flag & 0x0004) != 0) ? true : false ;
@@ -145,29 +184,31 @@ void pretty_print(pretty * pa) {
 	//pa->platform_quality_fail = ((entry->core.flag & 0x0200) != 0) ? true : false ;
 	//pa->pcr_duplicate = ((entry->core.flag & 0x0400) != 0) ? true : false ;
 	//print flags
-	printf("> SAM FLAG info:\n");
-	printf(">>\tPaired Seqs:\t%s\tProper Pair:\t%s\n",pa->paired_sequencing ? "True" : "False",pa->proper_pair ? "True" : "False");
-	printf(">>\tQuery Mapped:\t%s\tMate Mapped:\t%s\n",pa->mapped ? "True" : "False", pa->mp_mapped ? "True" : "False");
-	printf(">>\tQuery Strand:\t%c\tMate Strand:\t%c\n",pa->reverse ? '-' : '+', pa->mp_reverse ? '-' : '+');
-	printf(">>\tFirst in Pair:\t%s\tSecond in Pair:\t%s\n",pa->first_in_pair ? "True" : "False", pa->second_in_pair ? "True" : "False");
-	printf(">>\tPrimary Algn:\t%s\tPltf. Q. Fail:\t%s\n",pa->primary_alignment ? "True" : "False", pa->platform_quality_fail ? "True" : "False");	
-	printf(">>\tPCR duplicate:\t%s\n", pa->pcr_duplicate ? "True" : "False");
-        //int32_t clipped;
-        //int32_t mismatches;
-        //int32_t deletions;
-        //int32_t insertions;
-        //int32_t matches;
-	if (pa->pretty_length>0) {
-		printf("> Internally Computed Stats:\n");
-		printf(">>\tClipped:\t%d\tMatches:\t%d\tMisMatches:\t%d\n",pa->clipped,pa->matches,pa->mismatches);
-		printf(">>\tInsertions:\t%d\tDeletions:\t%d\n",pa->insertions,pa->deletions);
-		printf(">>\tEdit distance:\t%d\n",pa->mismatches+pa->insertions+pa->deletions+pa->clipped);
-	}
-	if (pa->edit_distance!=-1) {
-		printf("> SAM Edit distance:\t%d\n",pa->edit_distance);
-		if (pa->pretty_length>0){
-			if (pa->edit_distance!=pa->mismatches+pa->insertions+pa->deletions) {
-				fprintf(stderr,"read %s: SAM edit distance and calculated edit distance do not match!\n",pa->read_name);
+	if (sam2pretty_lib_verbose) {
+		printf("> SAM FLAG info:\n");
+		printf(">>\tPaired Seqs:\t%s\tProper Pair:\t%s\n",pa->paired_sequencing ? "True" : "False",pa->proper_pair ? "True" : "False");
+		printf(">>\tQuery Mapped:\t%s\tMate Mapped:\t%s\n",pa->mapped ? "True" : "False", pa->mp_mapped ? "True" : "False");
+		printf(">>\tQuery Strand:\t%c\tMate Strand:\t%c\n",pa->reverse ? '-' : '+', pa->mp_reverse ? '-' : '+');
+		printf(">>\tFirst in Pair:\t%s\tSecond in Pair:\t%s\n",pa->first_in_pair ? "True" : "False", pa->second_in_pair ? "True" : "False");
+		printf(">>\tPrimary Algn:\t%s\tPltf. Q. Fail:\t%s\n",pa->primary_alignment ? "True" : "False", pa->platform_quality_fail ? "True" : "False");	
+		printf(">>\tPCR duplicate:\t%s\n", pa->pcr_duplicate ? "True" : "False");
+		//int32_t clipped;
+		//int32_t mismatches;
+		//int32_t deletions;
+		//int32_t insertions;
+		//int32_t matches;
+		if (pa->pretty_length>0) {
+			printf("> Internally Computed Stats:\n");
+			printf(">>\tClipped:\t%d\tMatches:\t%d\tMisMatches:\t%d\n",pa->clipped,pa->matches,pa->mismatches);
+			printf(">>\tInsertions:\t%d\tDeletions:\t%d\n",pa->insertions,pa->deletions);
+			printf(">>\tEdit distance:\t%d\n",pa->mismatches+pa->insertions+pa->deletions+pa->clipped);
+		}
+		if (pa->edit_distance!=-1) {
+			printf("> SAM Edit distance:\t%d\n",pa->edit_distance);
+			if (pa->pretty_length>0){
+				if (pa->edit_distance!=pa->mismatches+pa->insertions+pa->deletions) {
+					fprintf(stderr,"read %s: SAM edit distance and calculated edit distance do not match!\n",pa->read_name);
+				}
 			}
 		}
 	}
@@ -197,6 +238,9 @@ pretty * pretty_copy_base(pretty * parent) {
 	}
 	if (child->cs_string!=NULL) {	
 		child->cs_string=strdup(child->cs_string);
+	}
+	if (child->read_group!=NULL) {
+		child->read_group=strdup(child->read_group);
 	}	
 	child->pretty_genome_string=NULL;
 	child->pretty_read_string=NULL;
@@ -661,7 +705,6 @@ void pretty_cs_qualities(pretty * pa) {
 		int32_t length=pa->cigar_lengths[index];
 		switch (pa->cigar_ops[index]) {
 			case 'S':
-			case 'H':
 			case 'I':
 			case 'M':
 				for(j=0; j<length; j++) {
@@ -669,6 +712,7 @@ void pretty_cs_qualities(pretty * pa) {
 				}
 				break;
 			case 'N':
+			case 'H':
 			case 'D':
 			case 'P':
 				for (j=0; j<length; j++) {
@@ -716,7 +760,6 @@ void pretty_qualities(pretty * pa) {
 		int32_t length=pa->cigar_lengths[index];
 		switch (pa->cigar_ops[index]) {
 			case 'S':
-			case 'H':
 			case 'I':
 			case 'M':
 				for(j=0; j<length; j++) {
@@ -725,6 +768,7 @@ void pretty_qualities(pretty * pa) {
 				break;
 			case 'N':
 			case 'D':
+			case 'H':
 			case 'P':
 				for (j=0; j<length; j++) {
 					pa->pretty_read_qualities[current_pretty_read_qualities_index++]=' ';
@@ -1132,11 +1176,12 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_h2) {
 		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
-	if (pa->has_z0) {
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_z1) {
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX;
+	if (pa->has_z) {
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z0
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z1
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z2
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z3
+		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z4
 	}
 	if (pa->aux!=NULL) {
 		buffer_size+=SIZE_TAB+strlen(pa->aux);
@@ -1157,11 +1202,12 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_score) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
 	}	
-	if (pa->has_z0) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.4e",pa->z0);
-	} 
-	if (pa->has_z1) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.4e",pa->z1);
+	if (pa->has_z) {
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.4e",pa->z[0]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.4e",pa->z[1]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ2:f:%.4e",pa->z[2]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ3:f:%.4e",pa->z[3]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ4:f:%.4e",pa->z[4]);
 	} 
 	if (pa->has_edit_distance) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
@@ -1220,12 +1266,23 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	} else {
 		if (position>pa->sam_string_length) {
 			fprintf(stderr,"Failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
+			fprintf(stderr,"%s\n",pa->read_name);
+			fprintf(stderr,"%s\n",pa->sam_string);
+			fprintf(stderr,"|%s|\n",buffer);
+			fprintf(stderr,"|%s|\n",pa->aux);
 			exit(1);
 		}
 		strcpy(pa->sam_string,buffer);
 
 	}
 }
+
+void pretty_print_sam_force_ls(FILE * f, pretty * pa) {
+	pretty pa_dup=*pa;
+	pa_dup.colour_space=false;
+	pretty_print_sam(f,&pa_dup);	
+}
+
 void pretty_print_sam(FILE * f, pretty * pa) {
 	fprintf(f,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
@@ -1250,12 +1307,12 @@ void pretty_print_sam(FILE * f, pretty * pa) {
 			fprintf(f,"\tCQ:Z:%s",pa->cs_qualities);
 		}
 		fprintf(f,"\tCS:Z:%s",pa->cs_string);
-	}
-	if (pa->has_cs_mismatches) {
-		fprintf(f,"\tCM:i:%d",pa->cs_mismatches);
-	}
-	if (pa->has_cs_edit_string) {
-		fprintf(f,"\tXX:Z:%s",pa->cs_edit_string);
+		if (pa->has_cs_mismatches) {
+			fprintf(f,"\tCM:i:%d",pa->cs_mismatches);
+		}
+		if (pa->has_cs_edit_string) {
+			fprintf(f,"\tXX:Z:%s",pa->cs_edit_string);
+		}
 	}
 	if (pa->has_read_group) {
 		fprintf(f,"\tRG:Z:%s",pa->read_group);
@@ -1327,12 +1384,24 @@ static inline void switch_and_fill(int32_t k, char * data, pretty * pa) {
 			pa->h2=atoi(data);
 			break;
 		case ('Z'<<8)+'0':
-			pa->has_z0=true;
-			pa->z0=atof(data);
+			pa->has_z=true;
+			pa->z[0]=atof(data);
 			break;
 		case ('Z'<<8)+'1':
-			pa->has_z1=true;	
-			pa->z1=atof(data);
+			pa->has_z=true;	
+			pa->z[1]=atof(data);
+			break;
+		case ('Z'<<8)+'2':
+			pa->has_z=true;
+			pa->z[2]=atof(data);
+			break;
+		case ('Z'<<8)+'3':
+			pa->has_z=true;	
+			pa->z[3]=atof(data);
+			break;
+		case ('Z'<<8)+'4':
+			pa->has_z=true;	
+			pa->z[4]=atof(data);
 			break;
 		default: 
 			break;
@@ -1436,28 +1505,30 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 			}
 			pa->score=atoi(start_of_string+5);
 			pa->has_score=true;
-			if (next_tab!=NULL) {
-				start_of_string=++next_tab;
-				pa->aux=start_of_string;
-				next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
-				if (next_tab!=NULL && start_of_string[0]=='Z' && start_of_string[1]=='0') {
-					*next_tab='\0';
-					pa->z0=atof(start_of_string+5);
-					pa->has_z0=true;
+			if (next_tab!=NULL && next_tab[1]=='Z' && next_tab[2]=='0') {
+				pa->has_z=true;
+				int i; 
+				for (i=0; i<6; i++) {
 					start_of_string=++next_tab;
-					next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
-					if (start_of_string[0]=='Z' && start_of_string[1]=='1') {
-						if (next_tab!=NULL) {
-							*next_tab='\0';
-						}
-						pa->z1=atof(start_of_string+5);
-						pa->has_z1=true;
-						pa->aux=++next_tab;
-					} else {
-						fprintf(stderr,"Parsed a Z0 but did not find Z1!\n");
+					assert(next_tab!=NULL);
+					if (length_of_string-(next_tab-sam_string)<6) {
+						fprintf(stderr,"There has been an error in parsing ZX fields\n");
 						exit(1);
 					}
+					next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
+					if (next_tab!=NULL) {
+						*next_tab='\0';											
+					}
+					//next field should be null terminated
+					pa->z[i]=atof(start_of_string+5);	
+					//increment
+					if (next_tab==NULL && i!=5) {
+						fprintf(stderr,"there has been an error in parsing ZX fields, ran short\n");
+						exit(1);
+					}
+					start_of_string=++next_tab;
 				}
+				pa->aux=start_of_string;
 			} else {
 				pa->aux=NULL;
 			}

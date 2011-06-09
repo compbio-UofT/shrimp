@@ -57,11 +57,9 @@ struct pretty {
 	size_t read_name_length;
 	int32_t isize;
 
-	double z0;
-	bool has_z0;
-	double z1;
-	bool has_z1;
 	int fileno;
+	bool has_z;
+	double z[5];
 
 	//int32_t strand; //0 is postive, 1 is reverse
 	int32_t mapq;
@@ -142,6 +140,8 @@ struct pretty {
 	bool sam_header;
 };
 
+extern bool sam2pretty_lib_verbose;
+
 int32_t pretty_remap_header(FILE* f,char* contig_name,uint32_t offset_start, uint32_t offset_end);
 int32_t pretty_header(FILE* f,char* contig_name,uint32_t sequence_size);
 pretty * pretty_sub_prettys(pretty * parent);
@@ -160,6 +160,7 @@ void pretty_free_fast(pretty* pa);
 void pretty_match(pretty* pa);
 int32_t pretty_remap(pretty * pa, uint32_t offset_start, uint32_t offset_end);
 void pretty_print_sam(FILE * f, pretty * pa);
+void pretty_print_sam_force_ls(FILE * f, pretty * pa);
 pretty * pretty_new();
 void pretty_print_sam_update(pretty * pa,bool inplace);
 void pretty_print_sam_unaligned(pretty * pa,bool inplace);
