@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-
+#define SAM2PRETTY_NUM_ZS	5
 
 typedef struct pretty pretty;
 struct pretty {
@@ -59,7 +59,7 @@ struct pretty {
 
 	int fileno;
 	bool has_z;
-	double z[5];
+	double z[SAM2PRETTY_NUM_ZS];
 
 	//int32_t strand; //0 is postive, 1 is reverse
 	int32_t mapq;

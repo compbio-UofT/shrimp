@@ -1203,11 +1203,11 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
 	}	
 	if (pa->has_z) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.4e",pa->z[0]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.4e",pa->z[1]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ2:f:%.4e",pa->z[2]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ3:f:%.4e",pa->z[3]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ4:f:%.4e",pa->z[4]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.5e",pa->z[0]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.5e",pa->z[1]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ2:f:%.5e",pa->z[2]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ3:f:%.5e",pa->z[3]);
+		position+=snprintf(buffer+position,buffer_size-position,"\tZ4:f:%.5e",pa->z[4]);
 	} 
 	if (pa->has_edit_distance) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
@@ -1508,7 +1508,7 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 			if (next_tab!=NULL && next_tab[1]=='Z' && next_tab[2]=='0') {
 				pa->has_z=true;
 				int i; 
-				for (i=0; i<6; i++) {
+				for (i=0; i<5; i++) {
 					start_of_string=++next_tab;
 					assert(next_tab!=NULL);
 					if (length_of_string-(next_tab-sam_string)<6) {
@@ -1520,15 +1520,22 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 						*next_tab='\0';											
 					}
 					//next field should be null terminated
+					if (start_of_string[0]!='Z' && start_of_string[1]!=48+i) {
+						fprintf(stderr,"there has been an error parsing ZX fields! there must be 5 of them!\n");
+						exit(1);
+					}
 					pa->z[i]=atof(start_of_string+5);	
 					//increment
 					if (next_tab==NULL && i!=5) {
 						fprintf(stderr,"there has been an error in parsing ZX fields, ran short\n");
 						exit(1);
 					}
-					start_of_string=++next_tab;
 				}
-				pa->aux=start_of_string;
+				fprintf(stderr,"found %e %e\n",pa->z[0], pa->z[1]);
+				if (next_tab!=NULL) {
+					next_tab++;
+				}
+				pa->aux=next_tab;
 			} else {
 				pa->aux=NULL;
 			}

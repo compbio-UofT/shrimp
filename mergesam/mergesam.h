@@ -8,12 +8,13 @@
 //#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define MAX_INT32	2147483647
 
-#define PAIRED		0
-#define UNPAIRED	1
-#define FIRST_LEG	2
-#define SECOND_LEG	3
-#define UNMAPPED	4
-#define LL_ALL		5
+#define PAIRED	0
+#define PAIRED_SECOND	1
+#define UNPAIRED	2
+#define FIRST_LEG	3
+#define SECOND_LEG	4
+#define UNMAPPED	5
+#define LL_ALL		6
 
 //IO SETTINGS
 #define DEF_READ_SIZE	1024*10

@@ -2,13 +2,17 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 #include "mergesam_heap.h"
 #include "sam_reader.h"
 #include "../common/util.h"
 
+#define zsi(x,y,z) (zs+x*options.number_of_sam_files*SAM2PRETTY_NUM_ZS+y*SAM2PRETTY_NUM_ZS+z)
+
 bool found_sam_headers;
 
 static inline int pa_to_mapq(pretty * pa) {
+	return 1;
 	if (!pa->has_z) {
 		//return 255;
 		return 0;
@@ -18,6 +22,17 @@ static inline int pa_to_mapq(pretty * pa) {
 	}
 	//fprintf(stderr,"%.20e and %.20e\n",pa->z[0],pa->z[1]);
 	return qv_from_pr_corr(pa->z[0]/pa->z[1]);
+}
+
+double sum_logs_of_positives(double y, double x) {
+	//fprintf(stderr,"sum of logs %e %e\n",y,x);
+	if (isinf(x) && x<0) {
+		return y;
+	}
+	if (isinf(y) && y<0) {
+		return x;
+	}
+	return y + log(1+exp(x-y));
 }
 
 static inline void pp_ll_zero(pp_ll * ll) {
@@ -48,7 +63,7 @@ static inline void pp_ll_set(pp_ll * ll,pretty *  pa) {
 	pa->next=NULL;
 }
 
-static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s,bool paired) {
+static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * zs_first,double * zs_second) {
 	//heap_pa * h=thread_heaps+omp_get_thread_num();
 	h->load=0;
 	heap_pa_elem e;
@@ -59,20 +74,37 @@ static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int off
 		if (local_ll->length>0) {
 			pa = local_ll->head;
 			while (pa!=NULL) {
-				if (paired) {
+				if (pa->mapped && pa->has_z) {
+					//fprintf(stderr,"ps %s, fip %s , %p %p\n",pa->paired_sequencing ? "Y" : "N",pa->first_in_pair ? "Y" : "N",zs_first,zs_second);
+					double * zs = (!pa->paired_sequencing || pa->first_in_pair) ? zs_first : zs_second;
+					if (zs!=NULL) {	
+						zs[pa->fileno*SAM2PRETTY_NUM_ZS+1]=-pa->z[1];
+						//fprintf(stderr,"WRITTING %e %p %e\n",-pa->z[1],zs+pa->fileno*SAM2PRETTY_NUM_ZS+1,zs[pa->fileno*SAM2PRETTY_NUM_ZS+1]);
+						zs[pa->fileno*SAM2PRETTY_NUM_ZS+3]=-pa->z[3];
+						zs[pa->fileno*SAM2PRETTY_NUM_ZS+4]=pa->z[4];
+					}
+				}
+				assert(!pa->proper_pair || pa->mate_pair!=NULL);
+				if (pa->proper_pair) {
 					e.score=pa->score+pa->mate_pair->score;
 					assert(pa->mapped && pa->mate_pair!=NULL);
 					assert(pa->mate_pair->mapped &&  pa->mp_mapped);
 					e.isize_score=options.expected_insert_size >= 0 ? abs(options.expected_insert_size-pa->isize) : 0;
+					if (pa->mp_mapped && pa->mate_pair->has_z) {
+						assert(pa->mate_pair->mapped);
+						//update the mate pairs numbers
+						double * zs = pa->mate_pair->first_in_pair ? zs_first : zs_second;
+						assert(zs!=NULL); 
+						zs[pa->mate_pair->fileno*SAM2PRETTY_NUM_ZS+1]=exp(-pa->z[1]);
+						zs[pa->mate_pair->fileno*SAM2PRETTY_NUM_ZS+3]=exp(-pa->z[3]);
+						zs[pa->mate_pair->fileno*SAM2PRETTY_NUM_ZS+4]=pa->z[4];
+					}
 				} else {
 					//Add in MAPQ code to grab stats here?
 					e.score=pa->score+(pa->mate_pair!=NULL ? pa->mate_pair->score : 0);
 					e.isize_score=MAX_INT32;
 				}
 				e.rest=pa;
-				if (pa->has_z && z1s!=NULL) {
-					z1s[pa->fileno]=pa->z[1];
-				}
 				if (options.strata) {
 					heap_pa_insert_bounded_strata(h,&e);
 				} else {
@@ -101,12 +133,6 @@ static inline void pp_ll_combine_and_check_heap(pp_ll * m_ll,pp_ll ** ll,int off
 		*unaligned_pa=h->array[0].rest;
 	}
 }
-static inline void pp_ll_combine_and_check_heap_single(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s) {
-	pp_ll_combine_and_check_heap(m_ll,ll,offset,unaligned_pa,h,z1s,false);
-}
-static inline void pp_ll_combine_and_check_heap_paired(pp_ll * m_ll,pp_ll ** ll,int offset,pretty ** unaligned_pa,heap_pa * h,double * z1s) {
-	pp_ll_combine_and_check_heap(m_ll,ll,offset,unaligned_pa,h,z1s,true);
-}
 
 static inline void remove_offending_fields(pretty * pa) {
 	pa->has_ih=false;
@@ -125,38 +151,80 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	heap_pa_elem e;
 	pretty * pa = NULL;
 	pretty * unaligned_pa=NULL;
-	double z1s[LL_ALL*options.number_of_sam_files];
-	memset(z1s,0,sizeof(double)*LL_ALL*options.number_of_sam_files);
-	double z1_sums[LL_ALL];
-	memset(z1_sums,0,sizeof(double)*LL_ALL);	
+	double zs[LL_ALL*options.number_of_sam_files*SAM2PRETTY_NUM_ZS];
+	memset(zs,0,sizeof(double)*LL_ALL*options.number_of_sam_files*SAM2PRETTY_NUM_ZS);
+	double zs_agg[LL_ALL*SAM2PRETTY_NUM_ZS];
+	memset(zs_agg,0,sizeof(double)*LL_ALL*SAM2PRETTY_NUM_ZS);	
+	int i;
+	for (i=0; i<LL_ALL*options.number_of_sam_files*SAM2PRETTY_NUM_ZS; i++) {
+		zs[i]=-INFINITY;
+	}
+	for (i=0; i<LL_ALL*SAM2PRETTY_NUM_ZS; i++) {
+		zs_agg[i]=-INFINITY;
+	}
 	if (options.paired) {
-		pp_ll_combine_and_check_heap_paired(m_ll,ll,PAIRED,&unaligned_pa,h,z1s+PAIRED*options.number_of_sam_files);
+		pp_ll_combine_and_check_heap(m_ll,ll,PAIRED,&unaligned_pa,h,zsi(PAIRED,0,0),zsi(PAIRED_SECOND,0,0));
 		if (options.half_paired) { 
 			h->load=0;
-			pp_ll_combine_and_check_heap_single(m_ll,ll,FIRST_LEG,&unaligned_pa,h,z1s+FIRST_LEG*options.number_of_sam_files);
+			pp_ll_combine_and_check_heap(m_ll,ll,FIRST_LEG,&unaligned_pa,h,zsi(FIRST_LEG,0,0),NULL);
 			h->load=0;
-			pp_ll_combine_and_check_heap_single(m_ll,ll,SECOND_LEG,&unaligned_pa,h,z1s+SECOND_LEG*options.number_of_sam_files);
+			pp_ll_combine_and_check_heap(m_ll,ll,SECOND_LEG,&unaligned_pa,h,NULL,zsi(SECOND_LEG,0,0));
 		}
 	} else if (options.unpaired) {
-		pp_ll_combine_and_check_heap_single(m_ll,ll,UNPAIRED,&unaligned_pa,h,z1s+UNPAIRED*options.number_of_sam_files);
+		pp_ll_combine_and_check_heap(m_ll,ll,UNPAIRED,&unaligned_pa,h,zsi(UNPAIRED,0,0),NULL);
 	}
-	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
-		z1_sums[PAIRED]+=z1s[PAIRED*options.number_of_sam_files+i];
-		z1_sums[FIRST_LEG]+=z1s[FIRST_LEG*options.number_of_sam_files+i];
-		z1_sums[SECOND_LEG]+=z1s[SECOND_LEG*options.number_of_sam_files+i];
-		z1_sums[UNPAIRED]+=z1s[UNPAIRED*options.number_of_sam_files+i];
+		//aggregate z1
+		zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+1]=sum_logs_of_positives(zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+1],*(zsi(PAIRED,i,1)));
+		zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+1]=sum_logs_of_positives(zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+1],*(zsi(PAIRED_SECOND,i,1)));
+		zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+1]=sum_logs_of_positives(zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+1],*(zsi(FIRST_LEG,i,1)));
+		zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+1]=sum_logs_of_positives(zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+1],*(zsi(SECOND_LEG,i,1)));
+		//fprintf(stderr,"READING %p zsi(SECOND_LEG,i,1), %e\n",zsi(SECOND_LEG,i,1),*(zsi(SECOND_LEG,i,1)),zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+1]);
+		zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+1]=sum_logs_of_positives(zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+1],*(zsi(UNPAIRED,i,1)));
+		//aggregate z3
+		zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+3]=sum_logs_of_positives(zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+3],*(zsi(PAIRED,i,3)));
+		zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+3]=sum_logs_of_positives(zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+3],*(zsi(PAIRED_SECOND,i,3)));
+		zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+3]=sum_logs_of_positives(zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+3],*(zsi(FIRST_LEG,i,3)));
+		zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+3]=sum_logs_of_positives(zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+3],*(zsi(SECOND_LEG,i,3)));
+		zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+3]=sum_logs_of_positives(zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+3],*(zsi(UNPAIRED,i,3)));
+		if (i==0) {
+			//aggregate z4
+			zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+4]=*(zsi(PAIRED,i,4));
+			zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+4]=*(zsi(PAIRED_SECOND,i,4));
+			zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+4]=*(zsi(FIRST_LEG,i,4));
+			zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+4]=*(zsi(SECOND_LEG,i,4));
+			zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+4]=*(zsi(UNPAIRED,i,4));
+		} else {
+			zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+4]=MAX(zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+4],*(zsi(PAIRED,i,4)));
+			zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+4]=MAX(zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+4],*(zsi(PAIRED_SECOND,i,4)));
+			zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+4]=MAX(zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+4],*(zsi(FIRST_LEG,i,4)));
+			zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+4]=MAX(zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+4],*(zsi(SECOND_LEG,i,4)));
+			zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+4]=MAX(zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+4],*(zsi(UNPAIRED,i,4)));
+		}
+		
 	}
+	//aggregate z1
+	zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+1]=-zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+1];
+	zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+1]=-zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+1];
+	zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+1]=-zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+1];
+	zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+1]=-zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+1];
+	zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+1]=-zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+1];
+	//aggregate z3
+	zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+3]=-zs_agg[PAIRED*SAM2PRETTY_NUM_ZS+3];
+	zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+3]=-zs_agg[PAIRED_SECOND*SAM2PRETTY_NUM_ZS+3];
+	zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+3]=-zs_agg[FIRST_LEG*SAM2PRETTY_NUM_ZS+3];
+	zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+3]=-zs_agg[SECOND_LEG*SAM2PRETTY_NUM_ZS+3];
+	zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+3]=-zs_agg[UNPAIRED*SAM2PRETTY_NUM_ZS+3];
 	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_fastx)) {
 		if (unaligned_pa==NULL) {
 			if (!options.half_paired) { 
 				h->load=0;
-				pp_ll_combine_and_check_heap_single(m_ll,ll,FIRST_LEG,&unaligned_pa,h,z1s+FIRST_LEG*options.number_of_sam_files);
+				pp_ll_combine_and_check_heap(m_ll,ll,FIRST_LEG,&unaligned_pa,h,NULL,NULL);
 				h->load=0;
-				pp_ll_combine_and_check_heap_single(m_ll,ll,SECOND_LEG,&unaligned_pa,h,z1s+SECOND_LEG*options.number_of_sam_files);
+				pp_ll_combine_and_check_heap(m_ll,ll,SECOND_LEG,&unaligned_pa,h,NULL,NULL);
 			}
 			h->load=0;
-			pp_ll_combine_and_check_heap_single(m_ll,ll,UNMAPPED,&unaligned_pa,h,NULL);
+			pp_ll_combine_and_check_heap(m_ll,ll,UNMAPPED,&unaligned_pa,h,NULL,NULL);
 		}
 		if (unaligned_pa!=NULL) {
 			m_ll->length=1;
@@ -183,26 +251,39 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 		pa=m_ll->head;
 		while(pa!=NULL) {
 			if (pa->has_z) {
+				double * zs_pa=NULL; double * zs_mp=NULL;
 				if (pa->paired_sequencing) {
 					if (pa->proper_pair) {
-						pa->z[1]=z1_sums[PAIRED];
-						pa->mate_pair->z[1]=z1_sums[PAIRED];
+						if (pa->first_in_pair) {
+							zs_pa=zs_agg+PAIRED*SAM2PRETTY_NUM_ZS;
+							zs_mp=zs_agg+PAIRED_SECOND*SAM2PRETTY_NUM_ZS;
+						} else {
+							zs_mp=zs_agg+PAIRED*SAM2PRETTY_NUM_ZS;
+							zs_pa=zs_agg+PAIRED_SECOND*SAM2PRETTY_NUM_ZS;
+						}
 					} else if (pa->first_in_pair) {
-						pa->z[1]=z1_sums[FIRST_LEG];
-						pa->mate_pair->z[1]=z1_sums[SECOND_LEG];
+						zs_pa=zs_agg+FIRST_LEG*SAM2PRETTY_NUM_ZS;
 					} else if (pa->second_in_pair) {
-						pa->z[1]=z1_sums[SECOND_LEG];
-						pa->mate_pair->z[1]=z1_sums[FIRST_LEG];
+						zs_pa=zs_agg+SECOND_LEG*SAM2PRETTY_NUM_ZS;
 					} else {
-						assert(1==0);
-					}
-					if (pa->mate_pair->mapped) {
-						pa->mate_pair->mapq=pa_to_mapq(pa->mate_pair);
+						fprintf(stderr,"Something bad has happend while processing the read, this case is unhandled!\n");
+						exit(1);
 					}
 				} else {
-					pa->z[1]=z1_sums[UNPAIRED];
+					zs_pa=zs_agg+UNPAIRED*SAM2PRETTY_NUM_ZS;
 				}
+				assert(zs_pa!=NULL);
+				pa->z[1]=zs_pa[1];
+				pa->z[3]=zs_pa[3];
+				pa->z[4]=zs_pa[4];
 				pa->mapq=pa_to_mapq(pa);
+				if (zs_mp!=NULL) {
+					pa->mate_pair->z[1]=zs_mp[1];
+					pa->mate_pair->z[3]=zs_mp[3];
+					pa->mate_pair->z[4]=zs_mp[4];
+					assert(pa->mate_pair->mapped);
+					pa->mate_pair->mapq=pa_to_mapq(pa->mate_pair);
+				}
 			}
 			//pretty_from_aux_inplace(pa);
 			if (options.aligned_fastx) {
@@ -243,6 +324,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 			pp_ll_append(ll+PAIRED,pa);
 		} else if ((options.half_paired || options.sam_unaligned || options.unaligned_fastx)  && (pa->mapped || pa->mp_mapped)) {
 			//lets figure out which leg
+			assert(!pa->mapped || !pa->mp_mapped);
 			if (pa->mapped) {
 				if (pa->first_in_pair) {
 					pp_ll_append(ll+FIRST_LEG,pa);

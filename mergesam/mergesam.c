@@ -451,7 +451,6 @@ int main (int argc, char ** argv) {
 			iterations++;
 			int reads_to_process=options.read_rate;
 
-	
 			//READ IN DATA
 			#pragma omp parallel for schedule(guided)
 			for (i=0; i<options.number_of_sam_files; i++) {
@@ -465,6 +464,7 @@ int main (int argc, char ** argv) {
 			have_non_eof_file=false;
 			for (i=0; i<options.number_of_sam_files; i++) {
 				if (sam_files[i]->fb->frb.eof!=1 || sam_files[i]->fb->unseen_end!=sam_files[i]->fb->unseen_inter) {
+					//fprintf(stderr,"MIN(%d,%d)\n",reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
 					reads_to_process=MIN(reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
 					have_non_eof_file=true;
 				}
@@ -478,7 +478,7 @@ int main (int argc, char ** argv) {
 					sam_files[i]->pretty_stack_start=sam_files[i]->pretty_stack_ends[read_id];
 				}
 			} else {
-				fprintf(stderr,"AN ERROR HAS OCCURED!\n");
+				fprintf(stderr,"AN ERROR HAS OCCURED! - try increasing buffer size?\n");
 				exit(1);	
 			}
 	
