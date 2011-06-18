@@ -1505,8 +1505,10 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
     get_bool(p, &options->anchor_list.collapse);
     p = strtok(NULL, ",");
     get_bool(p, &options->anchor_list.use_region_counts);
-    p = strtok(NULL, ",");
-    get_int(p, &options->anchor_list.use_mp_region_counts);
+    if (is_paired) {
+      p = strtok(NULL, ",");
+      get_int(p, &options->anchor_list.use_mp_region_counts);
+    }
   }
   // hit_list
   q = strtok_r(NULL, "/", &save_ptr);
