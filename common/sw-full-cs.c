@@ -350,7 +350,10 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	/*
 	 * northwest
 	 */
-	ms = (db[j] == qr[k][i]) ? match : mismatch;
+	if (db[j] == BASE_N || qr[k][i] == BASE_N)
+	  ms = 0;
+	else
+	  ms = (db[j] == qr[k][i]) ? match : mismatch;
 
 	if (!revcmpl) {
 	  tmp  = cell_nw->from[k].score_nw + ms;
@@ -688,7 +691,7 @@ do_backtrace(int lena, int i, int j, int k, struct sw_full_results *sfr)
     case FROM_D_NORTHWEST_NORTH:
     case FROM_D_NORTHWEST_NORTHWEST:
     case FROM_D_NORTHWEST_WEST:
-      if (db[j] == qr[k][i])
+      if (db[j] == qr[k][i] || db[j] == BASE_N || qr[k][i] == BASE_N)
 	sfr->matches++;
       else
 	sfr->mismatches++;
@@ -1027,6 +1030,14 @@ pretty_print(int i, int j, int k)
     default:
       fprintf(stderr, "INTERNAL ERROR: backtrace[l] = 0x%x\n", backtrace[l]);
       assert(0);
+    }
+    if ((BT_TYPE(backtrace[l]) == BACK_A_MATCH_MISMATCH || BT_TYPE(backtrace[l]) == BACK_B_MATCH_MISMATCH
+	 || BT_TYPE(backtrace[l]) == BACK_C_MATCH_MISMATCH || BT_TYPE(backtrace[l]) == BACK_D_MATCH_MISMATCH)
+	&& (*(q-1) == 'n' || *(q-1) == 'N')) {
+      if (BT_ISCROSSOVER(backtrace[l]))
+	*(q-1) = (char)tolower(*(d-1));
+      else
+	*(q-1) = *(d-1);
     }
   }
 
