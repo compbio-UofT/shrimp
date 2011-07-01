@@ -1254,7 +1254,7 @@ size_t removedups(void * a, size_t n, size_t sz, int (*cmp)(void const *, void c
 
 
 void
-crash(int exit_code, int display_errno, char * msg, ...)
+crash(int exit_code, int display_errno, char const * msg, ...)
 {
   va_list fmtargs;
   char new_msg[strlen(msg) + 1000];
@@ -1272,7 +1272,7 @@ crash(int exit_code, int display_errno, char * msg, ...)
 
 
 void
-logit(int display_errno, char * msg, ...)
+logit(int display_errno, char const * msg, ...)
 {
   va_list fmtargs;
   char new_msg[strlen(msg) + 1000];

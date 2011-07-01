@@ -111,8 +111,8 @@ void		xgzwrite(gzFile, voidp, unsigned);
 void		xgzread(gzFile, voidp, size_t);
 void		edit2cigar(char *, uint16_t, uint16_t, uint16_t, char *);
 size_t		removedups(void *, size_t, size_t, int (*)(void const *, void const *));
-void		crash(int, int, char *, ...);
-void		logit(int, char *, ...);
+void		crash(int, int, char const *, ...);
+void		logit(int, char const *, ...);
 
 
 /* for optarg (and to shut up icc) */
