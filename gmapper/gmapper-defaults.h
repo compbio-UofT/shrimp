@@ -34,6 +34,7 @@
 #define DEF_MATCH_MODE_UNPAIRED	2
 #define DEF_NUM_OUTPUTS		10
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
+#define DEF_INDEL_TABOO_LEN	8
 
 /* SW Scores */
 #define DEF_LS_MATCH_SCORE	10
@@ -132,7 +133,8 @@
 	{"region-bits",1,0,32},\
 	{"progress",1,0,33},\
 	{"save-mmap",1,0,34},\
-	{"load-mmap",1,0,35}\
+	{"load-mmap",1,0,35},\
+	{"indel-taboo-len",1,0,36}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

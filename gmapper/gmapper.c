@@ -1240,6 +1240,8 @@ print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash filter calls:", hash_filter_calls? "yes" : "no");
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Indel Taboo Len:", indel_taboo_len,
+	  indel_taboo_len == 0? " (disabled)" : "");
   if (list_cutoff < DEF_LIST_CUTOFF) {
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Index list cutoff length:", list_cutoff);
   }
@@ -2062,6 +2064,12 @@ int main(int argc, char **argv){
 		case 35:
 		  load_mmap = optarg;
 		  break;
+		case 36:
+		  indel_taboo_len = atoi(optarg);
+		  if (indel_taboo_len < 0) {
+		    crash(1, 0, "invalid indel taboo len: [%s]", optarg);
+		  }
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2344,12 +2352,12 @@ int main(int argc, char **argv){
 		my_calloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
 			  &mem_small, "unpaired_mapping_options[0]");
 
-	      unpaired_mapping_options[0][0].regions.recompute = use_regions;
+	      unpaired_mapping_options[0][0].regions.recompute = (match_mode == 2 && use_regions);
 	      //unpaired_mapping_options[0][0].regions.min_seed = -1;
 	      //unpaired_mapping_options[0][0].regions.max_seed = -1;
 	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
 	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
-	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = use_regions;
+	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = (match_mode == 2 && use_regions);
 	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = 0;
 	      unpaired_mapping_options[0][0].hit_list.recompute = true;
 	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
@@ -2620,7 +2628,7 @@ int main(int argc, char **argv){
 	    ret = sw_full_cs_setup(max_window_len, longest_read_len,
 				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 				   match_score, mismatch_score,
-				   crossover_score, false, anchor_width);
+				   crossover_score, false, anchor_width, indel_taboo_len);
 	  } else {
 	    ret = sw_full_ls_setup(max_window_len, longest_read_len,
 				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,

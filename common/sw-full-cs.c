@@ -103,12 +103,13 @@ static struct swcell   *swmatrix;
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
 static int		anchor_width;
+static int		indel_taboo_len;
 
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
 #pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,match,mismatch,xover_penalty,\
-		swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs)
+			  swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs,indel_taboo_len)
 
 #define BT_CROSSOVER		0x80
 #define BT_CLIPPED		0xf0
@@ -359,20 +360,24 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	  tmp  = cell_nw->from[k].score_nw + ms;
 	  tmp2 = FROM_x(k, FROM_NORTHWEST_NORTHWEST);
 
-	  if (cell_nw->from[k].score_n + ms > tmp) {
+	  // end of an insertion: not in taboo zone
+	  if (i < lenb - indel_taboo_len && cell_nw->from[k].score_n + ms > tmp) {
 	    tmp  = cell_nw->from[k].score_n + ms;
 	    tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
 	  }
 
+	  // end of a deletion
 	  if (cell_nw->from[k].score_w + ms > tmp) {
 	    tmp  = cell_nw->from[k].score_w + ms;
 	    tmp2 = FROM_x(k, FROM_NORTHWEST_WEST);
 	  }
 	} else {
+	  //end of a deletion
 	  tmp  = cell_nw->from[k].score_w + ms;
 	  tmp2 = FROM_x(k, FROM_NORTHWEST_WEST);
 
-	  if (cell_nw->from[k].score_n + ms > tmp) {
+	  //end of an insertion: not in taboo zone
+	  if (i < lenb - indel_taboo_len && cell_nw->from[k].score_n + ms > tmp) {
 	    tmp  = cell_nw->from[k].score_n + ms;
 	    tmp2 = FROM_x(k, FROM_NORTHWEST_NORTH);
 	  }
@@ -395,8 +400,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	      tmp2 = FROM_x(l, FROM_NORTHWEST_NORTHWEST);
 	    }
 
-	    /* north */
-	    if (cell_nw->from[l].score_n + ms + xover_penalty > tmp) {
+	    /* north */ // end of insertion, not in taboo zone
+	    if (i < lenb - indel_taboo_len && cell_nw->from[l].score_n + ms + xover_penalty > tmp) {
 	      tmp  = cell_nw->from[l].score_n + ms + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTHWEST_NORTH);
 	    }
@@ -413,8 +418,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	      tmp2 = FROM_x(l, FROM_NORTHWEST_WEST);
 	    }
 
-	    /* north */
-	    if (cell_nw->from[l].score_n + ms + xover_penalty > tmp) {
+	    /* north */ // end of insertion, not in taboo zone
+	    if (i < lenb - indel_taboo_len && cell_nw->from[l].score_n + ms + xover_penalty > tmp) {
 	      tmp  = cell_nw->from[l].score_n + ms + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTHWEST_NORTH);
 	    }
@@ -440,10 +445,11 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	 * north
 	 */
 	if (!revcmpl) {
+	  // insertion start
 	  tmp  = cell_n->from[k].score_nw - b_gap_open - b_gap_ext;
 	  tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 
-	  if (cell_n->from[k].score_n - b_gap_ext > tmp) {
+	  if (!(i < lenb - indel_taboo_len) || cell_n->from[k].score_n - b_gap_ext > tmp) {
 	    tmp  = cell_n->from[k].score_n - b_gap_ext;
 	    tmp2 = FROM_x(k, FROM_NORTH_NORTH);
 	  }
@@ -451,7 +457,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	  tmp  = cell_n->from[k].score_n - b_gap_ext;
 	  tmp2 = FROM_x(k, FROM_NORTH_NORTH);
 
-	  if (cell_n->from[k].score_nw - b_gap_open - b_gap_ext > tmp) {
+	  // insertion start
+	  if (i < lenb - indel_taboo_len && cell_n->from[k].score_nw - b_gap_open - b_gap_ext > tmp) {
 	    tmp  = cell_n->from[k].score_nw - b_gap_open - b_gap_ext;
 	    tmp2 = FROM_x(k, FROM_NORTH_NORTHWEST);
 	  }
@@ -463,8 +470,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	    continue;
 
 	  if (!revcmpl) {
-	    /* northwest */
-	    if (cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
+	    /* northwest */ // insertion start
+	    if (i < lenb - indel_taboo_len && cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
 	      tmp  = cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTHWEST);
 	    }
@@ -481,8 +488,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTH);
 	    }
 
-	    /* northwest */
-	    if (cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
+	    /* northwest */ // insertion start
+	    if (i < lenb - indel_taboo_len && cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty > tmp) {
 	      tmp  = cell_n->from[l].score_nw - b_gap_open - b_gap_ext + xover_penalty;
 	      tmp2 = FROM_x(l, FROM_NORTH_NORTHWEST);
 	    }
@@ -502,10 +509,11 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	 * west
 	 */
 	if (!revcmpl) {
+	  // deletion start
 	  tmp  = cell_w->from[k].score_nw - a_gap_open - a_gap_ext;
 	  tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 
-	  if (cell_w->from[k].score_w - a_gap_ext > tmp) {
+	  if (!(i < lenb - indel_taboo_len) || cell_w->from[k].score_w - a_gap_ext > tmp) {
 	    tmp  = cell_w->from[k].score_w - a_gap_ext;
 	    tmp2 = FROM_x(k, FROM_WEST_WEST);
 	  }
@@ -513,7 +521,8 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	  tmp  = cell_w->from[k].score_w - a_gap_ext;
 	  tmp2 = FROM_x(k, FROM_WEST_WEST);
 
-	  if (cell_w->from[k].score_nw - a_gap_open - a_gap_ext > tmp) {
+	  // deletion start
+	  if (i < lenb - indel_taboo_len && cell_w->from[k].score_nw - a_gap_open - a_gap_ext > tmp) {
 	    tmp  = cell_w->from[k].score_nw - a_gap_open - a_gap_ext;
 	    tmp2 = FROM_x(k, FROM_WEST_NORTHWEST);
 	  }
@@ -597,7 +606,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   }
 
 #ifdef DEBUG_SW
-  fprintf(stderr, "max_i:%d max_j:%d max_k:%d\n", max_i, max_j, max_k);
+  fprintf(stderr, "max_i:%d max_j:%d max_k:%d\n", max_i+1, max_j+1, max_k);
 #endif
 
   *iret = max_i;
@@ -1061,7 +1070,7 @@ sw_full_cs_cleanup(void) {
 int
 sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b_gap_open, int _b_gap_ext,
 		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
-		 int _anchor_width)
+		 int _anchor_width, int _indel_taboo_len)
 {
   int i;
 
@@ -1106,6 +1115,7 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b
     swticks = swcells = swinvocs = 0;
 
   anchor_width = _anchor_width;
+  indel_taboo_len = _indel_taboo_len;
 
   initialised = 1;
 

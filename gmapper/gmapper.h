@@ -52,6 +52,7 @@ EXTERN(int,		num_outputs,		DEF_NUM_OUTPUTS);
 EXTERN(int,		max_alignments,		DEF_MAX_ALIGNMENTS);
 EXTERN(int,		num_tmp_outputs,	20 + DEF_NUM_OUTPUTS);
 EXTERN(int,		anchor_width,		DEF_ANCHOR_WIDTH);
+EXTERN(int,		indel_taboo_len,	DEF_INDEL_TABOO_LEN);
 EXTERN(uint32_t,	list_cutoff,		DEF_LIST_CUTOFF);
 EXTERN(bool,		gapless_sw,		DEF_GAPLESS_SW);
 EXTERN(bool,		hash_filter_calls,	DEF_HASH_FILTER_CALLS);
