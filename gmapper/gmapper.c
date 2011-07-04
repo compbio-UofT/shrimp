@@ -81,16 +81,16 @@ read_free(struct read_entry * re)
   free(re->name);
   free(re->seq);
   if (re->orig_seq!=re->seq) {
-	free(re->orig_seq);
+    free(re->orig_seq);
   }
   if (Qflag) {
-        assert(re->qual!=NULL);
-        free(re->qual);
-	if (re->qual!=re->orig_qual) {
-		free(re->orig_qual);
-	}
-        assert(re->plus_line!=NULL);
-        free(re->plus_line);
+    assert(re->qual!=NULL);
+    free(re->qual);
+    if (re->qual!=re->orig_qual) {
+      free(re->orig_qual);
+    }
+    assert(re->plus_line!=NULL);
+    free(re->plus_line);
   }
 }
 
@@ -98,6 +98,12 @@ read_free(struct read_entry * re)
 void
 read_free_full(struct read_entry * re, count_t * counter)
 {
+  if (shrimp_mode == MODE_COLOUR_SPACE && Qflag) {
+    if (re->crossover_score != NULL) {
+      free(re->crossover_score);
+      re->crossover_score = NULL;
+    }
+  }
   //free(re->mapidx[0]);
   if (re->mapidx[0] != NULL)
     my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]),
@@ -484,6 +490,20 @@ launch_scan_threads()
 	}
 
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
+	// compute position-based crossover scores based on qvs
+	if (shrimp_mode == MODE_COLOUR_SPACE && Qflag) {
+	  int j;
+
+	  re_buffer[i].crossover_score = (int *)xmalloc(re_buffer[i].read_len * sizeof(re_buffer[i].crossover_score[0]));
+	  for (j = 0; j < re_buffer[i].read_len; j++) {
+	    re_buffer[i].crossover_score[j] = (int)(score_alpha * log(pr_err_from_qv(re_buffer[i].qual[j] - qual_delta) / 3.0) / log(2.0));
+	    if (re_buffer[i].crossover_score[j] > -1) {
+	      re_buffer[i].crossover_score[j] = -1;
+	    } else if (re_buffer[i].crossover_score[j] < 2*crossover_score) {
+	      re_buffer[i].crossover_score[j] = 2*crossover_score;
+	    }
+	  }
+	}
 
 	if (re_buffer[i].range_string != NULL) {
 	  assert(0); // not maintained

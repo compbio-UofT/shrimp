@@ -98,7 +98,7 @@ static int8_t	       *db, *qr[4];
 static int		dblen, qrlen;
 static int		a_gap_open, a_gap_ext, b_gap_open, b_gap_ext;
 static int		match, mismatch;
-static int		xover_penalty;
+static int		global_xover_penalty;
 static struct swcell   *swmatrix;
 static uint8_t	       *backtrace;
 static char	       *dbalign, *qralign;
@@ -108,7 +108,7 @@ static int		indel_taboo_len;
 /* statistics */
 static uint64_t		swticks, swcells, swinvocs;
 
-#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,match,mismatch,xover_penalty,\
+#pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,match,mismatch,global_xover_penalty,\
 			  swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs,indel_taboo_len)
 
 #define BT_CROSSOVER		0x80
@@ -194,7 +194,7 @@ static void print_sw_backtrace(int lena, int lenb) {
 }*/
 
 inline static void
-init_cell(int idx, int local_alignment) {
+init_cell(int idx, int local_alignment, int xover_penalty) {
   if (local_alignment) {
 	  swmatrix[idx].from[0].score_nw = 0;
 	  swmatrix[idx].from[0].score_n  = -b_gap_open;
@@ -247,10 +247,10 @@ init_cell(int idx, int local_alignment) {
 static int
 full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	int *kret, bool revcmpl,
-	struct anchor * anchors, int anchors_cnt, int local_alignment)
+	struct anchor * anchors, int anchors_cnt, int local_alignment, int * crossover_score)
 {
   int i, j, k, l, max_i, max_j, max_k;
-  int score, ms, tmp, resetval;
+  int score, ms, tmp, resetval, xover_penalty;
   //int go, ge;
   //int sw_band, ne_band;
   int8_t tmp2;
@@ -265,7 +265,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
   //ge = gap_ext;
 
   for (j = 0; j < lena + 1; j++) {
-    init_cell(j,1);
+    init_cell(j, 1, global_xover_penalty);
   }
   //for (j = 0; j < lenb + 1; j++) {
   //init_cell(j * (lena + 1));
@@ -307,14 +307,16 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
      */
     int x_min, x_max;
 
+    xover_penalty = (crossover_score == NULL? global_xover_penalty : crossover_score[i]);
+
     anchor_get_x_range(&rectangle, lena, lenb, i, &x_min, &x_max);
     if (!local_alignment) {
     	//x_max=MIN(lena,x_max); x_min=MAX(0,x_min-lenb/40); 
     	//init_cell(i * (lena + 1) + x_max  + 1,  0);
     	//init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, x_min == 0  ?  1 : 0);
-    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0);
+      init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 0, xover_penalty);
     } else {
-    	init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1);
+      init_cell((i + 1) * (lena + 1) + (x_min - 1) + 1, 1, xover_penalty);
     }
     //if (x_min > 0) {
     //fprintf(stderr,"INIT cell %d , %d, %d\n",i+1, (x_min-1)+1,x_max);
@@ -576,7 +578,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 	}
 
 #ifdef DEBUG_SW
-	fprintf(stderr, "i:%d j:%d k:%d score_nw:%d [%u,%s] score_n:%d [%u,%s] score_w:%d [%u,%s] \n", i+1, j+1, k,
+	fprintf(stderr, "i:%d j:%d k:%d score_nw:%d [%u,%s] score_n:%d [%u,%s] score_w:%d [%u,%s] xover_penalty:%d\n", i+1, j+1, k,
 		cell_cur->from[k].score_nw, cell_cur->from[k].back_nw & 0x3,
 		(cell_cur->from[k].back_nw >> 2 == 0 ? "!" :
 		 (cell_cur->from[k].back_nw >> 2 == FROM_NORTHWEST_NORTH ? "n" :
@@ -588,7 +590,9 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
 
 		cell_cur->from[k].score_w, cell_cur->from[k].back_w & 0x3,
 		(cell_cur->from[k].back_w >> 2 == 0 ? "!" :
-		 (cell_cur->from[k].back_w >> 2 == FROM_WEST_NORTHWEST ? "nw" : "w")));
+		 (cell_cur->from[k].back_w >> 2 == FROM_WEST_NORTHWEST ? "nw" : "w")),
+
+		xover_penalty);
 #endif
 
       }
@@ -600,7 +604,7 @@ full_sw(int lena, int lenb, int threshscore, int *iret, int *jret,
       anchor_get_x_range(&rectangle, lena, lenb, i+1, &next_x_min, &next_x_max);
       for (j = x_max + 1; j <= next_x_max; j++) {
 	//fprintf(stderr,"Init cell %d , , %d\n",i+1,j+1);
-	init_cell((i + 1) * (lena + 1) + (j + 1),local_alignment);
+	init_cell((i + 1) * (lena + 1) + (j + 1), local_alignment, xover_penalty); // still xover on i-th color
       }
     }
   }
@@ -1069,7 +1073,7 @@ sw_full_cs_cleanup(void) {
 
 int
 sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b_gap_open, int _b_gap_ext,
-		 int _match, int _mismatch, int _xover_penalty, bool reset_stats,
+		 int _match, int _mismatch, int _global_xover_penalty, bool reset_stats,
 		 int _anchor_width, int _indel_taboo_len)
 {
   int i;
@@ -1109,7 +1113,7 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b
   b_gap_ext = -(_b_gap_ext);
   match = _match;
   mismatch = _mismatch;
-  xover_penalty = _xover_penalty;
+  global_xover_penalty = _global_xover_penalty;
 
   if (reset_stats)
     swticks = swcells = swinvocs = 0;
@@ -1137,7 +1141,7 @@ sw_full_cs_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
 void
 sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 	   int initbp, int threshscore, struct sw_full_results *sfr, bool revcmpl, bool is_rna,
-	   struct anchor * anchors, int anchors_cnt, int local_alignment)
+	   struct anchor * anchors, int anchors_cnt, int local_alignment, int * crossover_score)
 {
   struct sw_full_results scratch;
   int i, j, k;
@@ -1202,7 +1206,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   _rlen = rlen;
 #endif
 
-  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt,local_alignment);
+  sfr->score = full_sw(glen, rlen, threshscore, &i, &j, &k, revcmpl, anchors, anchors_cnt, local_alignment, crossover_score);
   if (sfr->score >= 0 && sfr->score >= threshscore) {
     k = do_backtrace(glen, i, j, k, sfr);
     pretty_print(sfr->read_start, sfr->genome_start, k);

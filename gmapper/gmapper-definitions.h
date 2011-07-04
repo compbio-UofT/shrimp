@@ -86,6 +86,7 @@ typedef struct read_entry {
   struct read_hit *     hits[2];        /* list of hits */
   struct range_restriction * ranges;
   char *        range_string;
+  int *		crossover_score;
 
   double	mq_denominator;
   int           n_anchors[2];

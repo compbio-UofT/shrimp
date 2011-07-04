@@ -394,7 +394,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     sw_full_cs(gen, rh->g_off, rh->w_len,
 	       re->read[rh->st], re->read_len, re->initbp[rh->st],
 	       thresh, rh->sfrp, rh->gen_st && Tflag, genome_is_rna,
-	       &rh->anchor, 1,Gflag ? 0 : 1);
+	       &rh->anchor, 1,Gflag ? 0 : 1, re->crossover_score);
   } else {
     /*
      * The full SW in letter space assumes it's given the correct max score.
