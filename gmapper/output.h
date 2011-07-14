@@ -22,8 +22,8 @@
 
 void	hit_output(struct read_entry *, struct read_hit *, struct read_hit *,
 		   char * *, char * *, bool, int *, int);
-void	read_output(struct read_entry *, struct read_hit * *, int *);
-void	readpair_output(struct read_entry *, struct read_entry *, struct read_hit_pair *, int *);
+void	read_output(struct read_entry *, struct read_hit * *, int);
+void	readpair_output(struct read_entry *, struct read_entry *, struct read_hit_pair *, int, struct read_hit * * *, int *);
 
 
 #ifdef __cplusplus

@@ -182,7 +182,7 @@ reverse(char* s, char* t)  // USING TWO ARRAYS FOR THIS IS BAD CODE!!!
  */
 void
 hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp,
-	   char ** output1, char ** output2, bool first_in_pair, int* hits, int satisfying_alignments)
+	   bool first_in_pair, int* hits, int satisfying_alignments)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
@@ -191,52 +191,60 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
  * rh is the read_hit for the current read
  * rh_mp is the read_hit for the current reads mate pair
  *
- * output1 is a pointer to a string to be used for the firest line of output
- * output1 is a pointer to a string to be used for remaining output lines (used for pretty print)
- *
  * paired is true if this read is paired
  * first is true if this is the first read in the pair
  *
  */
 {
-  assert(re !=NULL);
-  if(!Eflag) {
-  	assert(rh != NULL);
-  	assert(rh->sfrp != NULL);
-  	*output1 = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
-			   genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
-			   re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
-	if (Pflag) {
-		//pretty print output
-		*output2 = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
-				     genome_contigs[rh->cn], genome_len[rh->cn],
-				     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
-				     re->read_len, re->initbp[rh->st], rh->gen_st);
-	}
-  } else {
-	int thread_id = omp_get_thread_num();
-	char ** output_buffer = &thread_output_buffer_filled[thread_id];
- 	char * output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
-	while ( (size_t)(output_buffer_end - *output_buffer) < thread_output_buffer_safety) { 
-		//fprintf(stderr,"%d incrementing buffer, free space %llu\n",thread_id,output_buffer_end - *output_buffer );
-		size_t new_size = thread_output_buffer_sizes[thread_id]+thread_output_buffer_increment;
-		size_t filled = thread_output_buffer_filled[thread_id]-thread_output_buffer[thread_id];
-		//fprintf(stderr, "there are %llu bytes used\n",filled);
-		//thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
-		thread_output_buffer[thread_id] = (char *)
-		  my_realloc(thread_output_buffer[thread_id], new_size, thread_output_buffer_sizes[thread_id],
-			     &mem_thread_buffer, "realloc thread_output_buffer");
-		/*
-		if (thread_output_buffer[thread_id]==NULL) {
-			fprintf(stderr,"Hit output : realloc failed!\n");
-			exit(1);
-		}
-		*/
-		thread_output_buffer_sizes[thread_id]=new_size;
-		thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id]+filled;
-		output_buffer = thread_output_buffer_filled+thread_id;
-		output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
-	}	
+  assert(re != NULL);
+  assert(rh != NULL);
+  assert(rh->sfrp != NULL);
+
+  int thread_id = omp_get_thread_num();
+  char ** output_buffer = &thread_output_buffer_filled[thread_id];
+  char * output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
+  while ( (size_t)(output_buffer_end - *output_buffer) < thread_output_buffer_safety) { 
+    //fprintf(stderr,"%d incrementing buffer, free space %llu\n",thread_id,output_buffer_end - *output_buffer );
+    size_t new_size = thread_output_buffer_sizes[thread_id]+thread_output_buffer_increment;
+    size_t filled = thread_output_buffer_filled[thread_id]-thread_output_buffer[thread_id];
+    //fprintf(stderr, "there are %llu bytes used\n",filled);
+    //thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
+    thread_output_buffer[thread_id] = (char *)
+      my_realloc(thread_output_buffer[thread_id], new_size, thread_output_buffer_sizes[thread_id],
+		 &mem_thread_buffer, "realloc thread_output_buffer");
+    /*
+      if (thread_output_buffer[thread_id]==NULL) {
+      fprintf(stderr,"Hit output : realloc failed!\n");
+      exit(1);
+      }
+    */
+    thread_output_buffer_sizes[thread_id]=new_size;
+    thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id]+filled;
+    output_buffer = thread_output_buffer_filled+thread_id;
+    output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
+  }	
+
+  if (!Eflag) // old shrimp output format
+    {
+      char * tmp_output;
+
+      tmp_output = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
+				 genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
+				 re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
+      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "%s\n", tmp_output);
+      free(tmp_output);
+
+      if (Pflag) { //pretty print output
+	tmp_output = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
+				   genome_contigs[rh->cn], genome_len[rh->cn],
+				   (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
+				   re->read_len, re->initbp[rh->st], rh->gen_st);
+	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "%s\n", tmp_output);
+	free(tmp_output);
+      }
+    }
+  else // SAM output
+    {
 	//TODO change this size?
 	//int buffer_size=MAX(longest_read_len,1000)*8;
 	//*output1 = (char *)xmalloc(sizeof(char *)*buffer_size);
@@ -670,67 +678,132 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 }
 
 
-void
-read_output(struct read_entry * re, struct read_hit * * hits_pass2, int * n_hits_pass2)
+static void
+add_sam_hit_counts(struct read_hit * * hits_pass2, int n_hits_pass2, int * hits)
 {
   int i;
-  int hits[] = {0, 0, 0};
-
-  for (i = 0; i < *n_hits_pass2; i++) {
+  for (i = 0; i < n_hits_pass2; i++) {
     struct sw_full_results * sfrp = hits_pass2[i]->sfrp;
     int edit_distance = sfrp->mismatches + sfrp->insertions + sfrp->deletions;
     if (0 <= edit_distance && edit_distance < 3) {
       hits[edit_distance]++;
     }
   }
-
-  /* Output sorted list, removing any duplicates. */
-  for (i = 0; i < *n_hits_pass2; i++) {
-    struct read_hit * rh = hits_pass2[i];
-    char * output1 = NULL, * output2 = NULL;
-    if (half_paired) {
-      int other_hits[] = {0, 0, 0};
-      if (re->first_in_pair) {
-	hit_output(re, rh, NULL, &output1, NULL, true, hits, *n_hits_pass2);
-	hit_output(re->mate_pair, NULL, rh, &output2, NULL, false, other_hits, 0);
-      } else {
-	hit_output(re->mate_pair, NULL, rh, &output1, NULL, true, other_hits, 0);
-	hit_output(re, rh, NULL, &output2, NULL, false, hits, *n_hits_pass2);
-      }
-    } else {
-      hit_output(re, rh, NULL,  &output1, &output2, false, hits, *n_hits_pass2);
-    }
-    //legacy support for SHRiMP output
-    if (!Eflag) {
-      if (!Pflag) {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n", output1);
-	}
-      } else {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n\n%s\n", output1, output2);
-	}
-      }
-      free(output1);
-      if (Pflag || half_paired) {
-	free(output2);
-      }
-    }
-  }
 }
 
 
 void
-readpair_output(struct read_entry * re1, struct read_entry * re2,
-		struct read_hit_pair * hits_pass2, int * n_hits_pass2)
+read_output(struct read_entry * re, struct read_hit * * hits_pass2, int n_hits_pass2)
 {
   int i;
+  int sam_hit_counts[3] = {0, 0, 0};
+
+  if (Eflag)
+    add_sam_hit_counts(hits_pass2, n_hits_pass2, sam_hit_counts);
+
+  for (i = 0; i < n_hits_pass2; i++) {
+    struct read_hit * rh = hits_pass2[i];
+    hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+  }
+
+    /*
+    if (half_paired) {
+      int other_hits[] = {0, 0, 0};
+      if (re->first_in_pair) {
+	hit_output(re, rh, NULL, true, sam_hit_counts, n_hits_pass2);
+	hit_output(re->mate_pair, NULL, rh, false, other_hits, 0);
+      } else {
+	hit_output(re->mate_pair, NULL, rh, true, other_hits, 0);
+	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+      }
+    } else {
+    */
+}
+
+
+typedef struct aux_read_hit_entry {
+  struct read_hit * rh;
+  int * aux_index_mate;
+  int * index_pair;
+  int n_pairings;
+} aux_read_hit_entry;
+
+
+void
+readpair_output(struct read_entry * re1, struct read_entry * re2,
+		struct read_hit_pair * hits_pass2, int n_hits_pass2,
+		struct read_hit * * * single_hits_pass2, int * n_single_hits_pass2)
+{
+  struct aux_read_hit_entry * pm[2];
+  int n_pm[2];
+  int new_index[2];
+  int i, j, nip;
+
+  if (compute_mapping_qualities) {
+    // first, compute bipartite graph of paired mappings
+    pm[0] = NULL;
+    n_pm[0] = 0;
+    pm[1] = NULL;
+    n_pm[1] = 0;
+    for (i = 0; i < n_hits_pass2; i++) {
+      for (nip = 0; nip < 2; nip++) {
+	new_index[nip] = -1;
+	for (j = 0; j < n_pm[nip]; j++) {
+	  if (pm[nip][j].rh == hits_pass2[i].rh[nip]) {
+	    new_index[nip] = j;
+	    break;
+	  }
+	}
+	if (new_index[nip] == -1) {
+	  // create new aux_read_hit_entry
+	  pm[nip] = (struct aux_read_hit_entry *)
+	    my_realloc(pm[nip], (n_pm[nip] + 1) * sizeof(pm[nip][0]), n_pm[nip] * sizeof(pm[nip][0]),
+		       &mem_mapping, "aux_read_hit array");
+	  n_pm[nip]++;
+	  new_index[nip] = n_pm[nip] - 1;
+	  pm[nip][new_index[nip]].rh = hits_pass2[i].rh[nip];
+	  pm[nip][new_index[nip]].aux_index_mate = NULL;
+	  pm[nip][new_index[nip]].index_pair = NULL;
+	}
+      }
+      for (nip = 0; nip < 2; nip++) {
+	pm[nip][new_index[nip]].aux_index_mate = (int *)
+	  my_realloc(pm[nip][new_index[nip]].aux_index_mate,
+		     (pm[nip][new_index[nip]].n_pairings + 1) * sizeof(pm[nip][new_index[nip]].aux_index_mate[0]),
+		     pm[nip][new_index[nip]].n_pairings * sizeof(pm[nip][new_index[nip]].aux_index_mate[0]),
+		     &mem_mapping, "aux_index_mate");
+	pm[nip][new_index[nip]].index_pair = (int *)
+	  my_realloc(pm[nip][new_index[nip]].index_pair,
+		     (pm[nip][new_index[nip]].n_pairings + 1) * sizeof(pm[nip][new_index[nip]].index_pair[0]),
+		     pm[nip][new_index[nip]].n_pairings * sizeof(pm[nip][new_index[nip]].index_pair[0]),
+		     &mem_mapping, "index_pair");
+	pm[nip][new_index[nip]].n_pairings++;
+	pm[nip][new_index[nip]].aux_index_mate[pm[nip][new_index[nip]].n_pairings - 1] = new_index[1-nip];
+	pm[nip][new_index[nip]].index_pair[pm[nip][new_index[nip]].n_pairings - 1] = i;
+      }
+    }
+
+
+
+
+
+    // done, free aux_read_hit arrays
+    for (nip = 0; nip < 2; nip++) {
+      for (j = 0; j < n_pm[nip]; j++) {
+	my_free(pm[nip][j].aux_index_mate, pm[nip][j].n_pairings * sizeof(pm[nip][j].aux_index_mate[0]), &mem_mapping, "aux_index_mate");
+	my_free(pm[nip][j].index_pair, pm[nip][j].n_pairings * sizeof(pm[nip][j].index_pair[0]), &mem_mapping, "index_pair");
+      }
+      my_free(pm[nip], n_pm[nip] * sizeof(pm[nip][0]), &mem_mapping, "aux_read_hit array");
+    }
+  }
+
+  int sam_hit_counts[2][3] = { {0, 0, 0}, {0, 0, 0} };
   int hits1[] = {0, 0, 0};
   int hits2[] = {0, 0, 0};
   
-  for (i = 0; i < *n_hits_pass2; i++) {
+
+
+  for (i = 0; i < n_hits_pass2; i++) {
     struct sw_full_results * sfrp1 = hits_pass2[i].rh[0]->sfrp;
     struct sw_full_results * sfrp2 = hits_pass2[i].rh[1]->sfrp;
     int edit_distance1 = sfrp1->mismatches + sfrp1->insertions + sfrp1->deletions;
@@ -743,29 +816,16 @@ readpair_output(struct read_entry * re1, struct read_entry * re2,
     }
   }
 
-  /* Output sorted list, removing any duplicates. */
-  for (i = 0; i < *n_hits_pass2; i++) {
+  assert(0);
+
+
+  for (i = 0; i < n_hits_pass2; i++) {
     struct read_hit * rh1 = hits_pass2[i].rh[0];
     struct read_hit * rh2 = hits_pass2[i].rh[1];
     uint bucket;
 
-    char * output1 = NULL, * output2 = NULL, * output3 = NULL, * output4 = NULL;
-
-    hit_output(re1, rh1,  rh2, &output1, &output2, true, hits1, *n_hits_pass2);
-    hit_output(re2, rh2,  rh1, &output3, &output4, false, hits2, *n_hits_pass2);
-    if (!Eflag) {
-      if (!Pflag) {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n%s\n", output1, output3);
-	}
-      } else {
-#pragma omp critical (stdout)
-	{
-	  fprintf(stdout, "%s\n%s\n%s\n%s\n", output1, output2, output3, output4);
-	}
-      }
-    }
+    hit_output(re1, rh1,  rh2, true, hits1, n_hits_pass2);
+    hit_output(re2, rh2,  rh1, false, hits2, n_hits_pass2);
 
     if (Xflag) {
       if (hits_pass2[i].insert_size < min_insert_size)
@@ -778,13 +838,6 @@ readpair_output(struct read_entry * re1, struct read_entry * re2,
 	bucket = 99;
 #pragma omp atomic
       insert_histogram[bucket]++;
-    }
-
-    free(output1);
-    free(output3);
-    if (Pflag) {
-      free(output2);
-      free(output4);
     }
   }
 }

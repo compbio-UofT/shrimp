@@ -1127,6 +1127,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	re->hits[st][re->n_hits[st]].pair_min = -1;
 	re->hits[st][re->n_hits[st]].pair_max = -1;
 	re->hits[st][re->n_hits[st]].mapping_quality = 255;
+	re->hits[st][re->n_hits[st]].saved = 0;
 	re->n_hits[st]++;
       }
   }
@@ -1191,6 +1192,13 @@ read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options * opt
     }
 
     if (re->hits[st][i].matches < options->min_matches) {
+      continue;
+    }
+
+    // if this hit is saved, leave it be, but update last_good
+    if (re->hits[st][i].saved == 1) {
+      last_good_cn = re->hits[st][i].cn;
+      last_good_g_off = re->hits[st][i].g_off_pos_strand;
       continue;
     }
 
@@ -1292,6 +1300,7 @@ read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, 
     assert(re->n_hits[st] == 0 || re->hits[st] != NULL);
 
     for (i = 0; i < re->n_hits[st]; i++) {
+      if (re->hits[st][i].saved == 1) continue;
       if (re->hits[st][i].score_vector >= (int)abs_or_pct(options->threshold, re->hits[st][i].score_max)
 	  && (*load < options->num_outputs
 	      || ( (IS_ABSOLUTE(options->threshold)
@@ -1531,7 +1540,7 @@ hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
  */
 static bool
 read_pass2(struct read_entry * re,
-	   struct read_hit * * hits_pass1, int * n_hits_pass1,
+	   struct read_hit * * hits_pass1, int n_hits_pass1,
 	   struct read_hit * * hits_pass2, int * n_hits_pass2,
 	   struct pass2_options * options)
 {
@@ -1541,7 +1550,7 @@ read_pass2(struct read_entry * re,
   assert(re != NULL && hits_pass1 != NULL && hits_pass2 != NULL);
 
   /* compute full alignment scores */
-  for (i = 0; i < *n_hits_pass1; i++) {
+  for (i = 0; i < n_hits_pass1; i++) {
     struct read_hit * rh = hits_pass1[i];
     if (rh->score_full < 0 || rh->sfrp == NULL) {
       hit_run_full_sw(re, rh, (int)abs_or_pct(options->threshold, rh->score_max));
@@ -1561,12 +1570,12 @@ read_pass2(struct read_entry * re,
     if (rh->score_full >= abs_or_pct(options->threshold, rh->score_max)) {
       hits_pass2[*n_hits_pass2] = rh;
       (*n_hits_pass2)++;
-    } 
+    }
   }
 
 #ifdef DEBUG_HIT_LIST_PASS2
   fprintf(stderr, "Dumping hit list after pass2 (before duplicates removal and sorting) for read:[%s]\n", re->name);
-  for (i = 0; i < *n_hits_pass1; i++) {
+  for (i = 0; i < n_hits_pass1; i++) {
     dump_hit(hits_pass1[i]);
   }
 #endif
@@ -1620,6 +1629,11 @@ read_pass2(struct read_entry * re,
     }
   }
 
+  // mark remaining hits as saved
+  for (i = 0; i < *n_hits_pass2; i++) {
+    hits_pass2[i]->saved = 1;
+  }
+
   // update counts
   re->final_matches += *n_hits_pass2;
 #pragma omp atomic
@@ -1643,13 +1657,15 @@ read_pass2(struct read_entry * re,
 
 
 void
-handle_read(struct read_entry * re, struct read_mapping_options_t * options, int n_options)
+handle_read(struct read_entry * re, struct read_mapping_options_t * options, int n_options,
+	    struct read_hit * * * _hits_pass2, int * _n_hits_pass2)
 {
   bool done;
   int option_index = 0;
   int i;
-  struct read_hit * * hits_pass1;
-  struct read_hit * * hits_pass2;
+  struct read_hit * * hits_pass1 = NULL;
+  struct read_hit * * hits_pass2 = NULL;
+  int hits_pass2_load = 0;
   int n_hits_pass1;
   int n_hits_pass2;
 
@@ -1691,29 +1707,47 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
 
     //hits_pass2 = (struct read_hit * *)xmalloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]));
     hits_pass2 = (struct read_hit * *)
-      my_malloc(options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]),
-		&mem_mapping, "hits_pass2 [%s]", re->name);
+      my_realloc(hits_pass2, (hits_pass2_load + options[option_index].pass1.num_outputs) * sizeof(hits_pass2[0]), hits_pass2_load * sizeof(hits_pass2[0]),
+		 &mem_mapping, "hits_pass2 [%s]", re->name);
     n_hits_pass2 = 0;
-    done = read_pass2(re, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pass2);
+    done = read_pass2(re, hits_pass1, n_hits_pass1, &hits_pass2[hits_pass2_load], &n_hits_pass2, &options[option_index].pass2);
+    hits_pass2 = (struct read_hit * *)
+      my_realloc(hits_pass2, (hits_pass2_load + n_hits_pass2) * sizeof(hits_pass2[0]), (hits_pass2_load + options[option_index].pass1.num_outputs) * sizeof(hits_pass2[0]),
+		 &mem_mapping, "hits_pass2 [%s]", re->name);
 
-    read_output(re, hits_pass2, &n_hits_pass2);
+    hits_pass2_load += n_hits_pass2;
 
+    // free pass1 structs
     for (i = 0; i < n_hits_pass1; i++) {
-      free_sfrp(&hits_pass1[i]->sfrp, re, &mem_mapping);
+      if (hits_pass1[i]->saved == 0) {
+	free_sfrp(&hits_pass1[i]->sfrp, re, &mem_mapping);
+      }
     }
-
-    //free(hits_pass1);
     my_free(hits_pass1, options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]),
 	    &mem_mapping, "hits_pass1 [%s]", re->name);
-    //free(hits_pass2);
-    my_free(hits_pass2, options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]),
-	    &mem_mapping, "hits_pass2 [%s]", re->name);
 
   } while (!done && ++option_index < n_options);
 
   //if (options_index >= n_options) {
     // this read fell through all the option sets
   //}
+
+  if (_hits_pass2 != NULL) // these will be output and freed elsewhere
+    {
+      *_hits_pass2 = hits_pass2;
+      *_n_hits_pass2 = hits_pass2_load;
+    }
+  else
+    {
+      read_output(re, hits_pass2, hits_pass2_load);
+
+      for (i = 0; i < hits_pass2_load; i++) {
+	assert(hits_pass2[i]->saved == 1);
+	free_sfrp(&hits_pass2[i]->sfrp, re, &mem_mapping);
+      }
+      my_free(hits_pass2, hits_pass2_load * sizeof(hits_pass2[0]),
+	      &mem_mapping, "hits_pass2 [%s]", re->name);
+    }
 
   read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
@@ -1741,10 +1775,12 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
     st2 = 1 - st1; // opposite strand
 
     for (i = 0; i < re1->n_hits[st1]; i++) {
+      if (re1->hits[st1][i].saved == 1) continue;
       if (re1->hits[st1][i].pair_min < 0)
 	continue;
 
       for (j = re1->hits[st1][i].pair_min; j <= re1->hits[st1][i].pair_max; j++) {
+	if (re2->hits[st2][j].saved == 1) continue;
 	//if (re1->hits[st1][i].matches + re2->hits[st2][j].matches < options->min_num_matches)
 	//  continue;
 
@@ -1982,7 +2018,7 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
  */
 static bool
 readpair_pass2(struct read_entry * re1, struct read_entry * re2,
-	       struct read_hit_pair * hits_pass1, int * n_hits_pass1,
+	       struct read_hit_pair * hits_pass1, int n_hits_pass1,
 	       struct read_hit_pair * hits_pass2, int * n_hits_pass2,
 	       struct pairing_options * options,
 	       struct pass2_options * options1, struct pass2_options * options2)
@@ -1992,7 +2028,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   int i, j, cnt;
 
   /* compute full alignment scores */
-  for (i = 0; i < *n_hits_pass1; i++) {
+  for (i = 0; i < n_hits_pass1; i++) {
     for (j = 0; j < 2; j++) {
       struct read_hit * rh = hits_pass1[i].rh[j];
       struct read_entry * re = (j == 0? re1 : re2);
@@ -2023,7 +2059,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 #ifdef DEBUG_HIT_LIST_PASS2
   fprintf(stderr, "Dumping paired hits after pass2 (before duplicates removal and sorting) for reads:[%s,%s]\n",
 	  re1->name, re2->name);
-  for (i = 0; i < *n_hits_pass1; i++) {
+  for (i = 0; i < n_hits_pass1; i++) {
     dump_hit(hits_pass1[i].rh[0]);
     dump_hit(hits_pass1[i].rh[1]);
   }
@@ -2055,6 +2091,12 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
       total_pairs_dropped++;
       *n_hits_pass2 = 0;
     }
+  }
+
+  // mark remaining hits as saved
+  for (i = 0; i < *n_hits_pass2; i++) {
+    hits_pass2[i].rh[0]->saved = 1;
+    hits_pass2[i].rh[1]->saved = 1;
   }
 
   // update counts
@@ -2160,15 +2202,54 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
 }
 
 
+// move paired hit structs to area that persists until the output
+static void
+readpair_save_final_hits(pair_entry * pe, read_hit_pair * hits_pass2, int n_hits_pass2)
+{
+  int i, nip, j;
+
+  // first, copy array of paired hit entries
+  pe->final_paired_hits = (struct read_hit_pair *)
+    my_realloc(pe->final_paired_hits, (pe->n_final_paired_hits + n_hits_pass2) * sizeof(pe->final_paired_hits[0]), pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]),
+	       &mem_mapping, "final_paired_hits");
+  memcpy(&pe->final_paired_hits[pe->n_final_paired_hits], hits_pass2, n_hits_pass2 * sizeof(pe->final_paired_hits[0]));
+
+  // next, copy read_hit entries to persistent pool
+  for (i = 0; i < n_hits_pass2; i++) {
+    for (nip = 0; nip < 2; nip++) {
+      // did we already move pe->final_paired_hits[pe->n_final_paired_hits + i]?
+      if (!(&pe->final_paired_hit_pool[nip][0] <= hits_pass2[i].rh[nip] && hits_pass2[i].rh[nip] < &pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip]])) {
+	// no, need to move it now
+	pe->final_paired_hit_pool[nip] = (read_hit *)
+	  my_realloc(pe->final_paired_hit_pool[nip],
+		     (pe->final_paired_hit_pool_size[nip] + 1) * sizeof(pe->final_paired_hit_pool[nip][0]),
+		     pe->final_paired_hit_pool_size[nip] * sizeof(pe->final_paired_hit_pool[nip][0]),
+		     &mem_mapping, "final_paired_hit_pool");
+	memcpy(&pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip]], hits_pass2[i].rh[nip], sizeof(read_entry));
+	// the sfrp pointer was copied, delete old reference to prevent it being freed too soon
+	hits_pass2[i].rh[nip]->sfrp = NULL;
+	// now change pointers in final_paired_hits array to new read_entry location
+	for (j = i; j < n_hits_pass2; j++) {
+	  
+	}
+      }
+
+
+    // need to save paired hit at hits_pass2[i]
+
+  }
+}
+
+
 void
 handle_readpair(struct read_entry * re1, struct read_entry * re2,
 		struct readpair_mapping_options_t * options, int n_options)
 {
   bool done;
   int option_index = 0;
-  int i;
-  struct read_hit_pair * hits_pass1;
-  struct read_hit_pair * hits_pass2;
+  int i, k;
+  struct read_hit_pair * hits_pass1 = NULL;
+  struct read_hit_pair * hits_pass2 = NULL;
   int n_hits_pass1;
   int n_hits_pass2;
 
@@ -2225,34 +2306,26 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2,
       read_pass1(re2, &options[option_index].read[1].pass1);
     }
 
-    //hits_pass1 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]));
     hits_pass1 = (struct read_hit_pair *)
-      my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), &mem_mapping,
-		"hits_pass1 [%s,%s]", re1->name, re2->name);
+      my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), &mem_mapping, "hits_pass1 [%s,%s]", re1->name, re2->name);
     n_hits_pass1 = 0;
     readpair_get_vector_hits(re1, re2, hits_pass1, &n_hits_pass1, &options[option_index].pairing);
 
-    //hits_pass2 = (struct read_hit_pair *)xmalloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]));
     hits_pass2 = (struct read_hit_pair *)
-      my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), &mem_mapping,
-		"hits_pass2 [%s,%s]", re1->name, re2->name);
+      my_malloc(options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), &mem_mapping, "hits_pass2 [%s,%s]", re1->name, re2->name);
     n_hits_pass2 = 0;
-    done = readpair_pass2(re1, re2, hits_pass1, &n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing,
-			      &options[option_index].read[0].pass2, &options[option_index].read[1].pass2);
+    done = readpair_pass2(re1, re2, hits_pass1, n_hits_pass1, hits_pass2, &n_hits_pass2, &options[option_index].pairing,
+			  &options[option_index].read[0].pass2, &options[option_index].read[1].pass2);
 
-    readpair_output(re1, re2, hits_pass2, &n_hits_pass2);
+    readpair_save_final_hits(pe, hits_pass2, n_hits_pass2);
 
     for (i = 0; i < n_hits_pass1; i++) {
       free_sfrp(&hits_pass1[i].rh[0]->sfrp, re1, &mem_mapping);
       free_sfrp(&hits_pass1[i].rh[1]->sfrp, re2, &mem_mapping);
     }
 
-    //free(hits_pass1);
-    my_free(hits_pass1, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]),
-	    &mem_mapping, "hits_pass1 [%s,%s]", re1->name, re2->name);
-    //free(hits_pass2);
-    my_free(hits_pass2, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]),
-	    &mem_mapping, "hits_pass2 [%s,%s]", re1->name, re2->name);
+    my_free(hits_pass1, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), &mem_mapping, "hits_pass1 [%s,%s]", re1->name, re2->name);
+    my_free(hits_pass2, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass2[0]), &mem_mapping, "hits_pass2 [%s,%s]", re1->name, re2->name);
 
   } while (!done && ++option_index < n_options);
 
@@ -2263,4 +2336,7 @@ handle_readpair(struct read_entry * re1, struct read_entry * re2,
     handle_read(re1, unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
     handle_read(re2, unpaired_mapping_options[1], n_unpaired_mapping_options[1]);
   }
+
+  // OUTPUT
+  readpair_output(pe);
 }

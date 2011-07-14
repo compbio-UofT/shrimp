@@ -458,7 +458,8 @@ launch_scan_threads()
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
 	    || re_buffer[i].read_len > longest_read_len
-	    || (Qflag && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv)) { // ignore reads with low avg qv
+	    || (Qflag && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
+	    ) {
 	  if (re_buffer[i].max_n_kmers < 0) {
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
 		    re_buffer[i].name);
@@ -516,7 +517,7 @@ launch_scan_threads()
 	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
+	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0], NULL, NULL);
 	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
 	else if (i % 2 == 1)

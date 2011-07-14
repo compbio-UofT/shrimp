@@ -88,6 +88,9 @@ typedef struct read_entry {
   char *        range_string;
   int *		crossover_score;
 
+  sturct read_hit *	final_unpaired_hits;
+  int		n_final_unpaired_hits;
+
   double	mq_denominator;
   int           n_anchors[2];
   int           n_hits[2];
@@ -138,6 +141,7 @@ typedef struct read_hit {
   int           w_len;
   int           st;
   int           gen_st;
+  int		saved; // =1 if this hit is selected to be output: do not free its sfrp any more
 } read_hit;
 
 typedef struct read_hit_pair {
@@ -157,6 +161,16 @@ struct read_hit_pair_holder {
 struct read_hit_holder {
   struct read_hit *     hit;
 };
+
+
+typedef struct pair_entry {
+  struct read_entry re[2];
+  struct read_hit * final_paired_hit_pool[2];
+  struct read_hit_pair * final_paired_hits;
+  int final_paired_hit_pool_size[2];
+  int n_final_paired_hits;
+} pair_entry;
+
 
 
 /* other */
