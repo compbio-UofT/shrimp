@@ -320,9 +320,7 @@ launch_scan_threads()
     int load, i;
     llint before, after;
     //re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
-    re_buffer = (struct read_entry *)
-      my_malloc(chunk_size * sizeof(re_buffer[0]),
-		&mem_thread_buffer, "re_buffer");
+    re_buffer = (read_entry *)my_malloc(chunk_size * sizeof(re_buffer[0]), &mem_thread_buffer, "re_buffer");
 
     while (read_more) {
       memset(re_buffer, 0, chunk_size * sizeof(re_buffer[0]));
@@ -517,11 +515,13 @@ launch_scan_threads()
 	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0], NULL, NULL);
+	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
 	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
 	else if (i % 2 == 1)
 	  {
+	    pair_entry pe;
+	    memset(&pe, 0, sizeof(pe));
 	    if (pair_reverse[pair_mode][0])
 	      read_reverse(&re_buffer[i-1]);
 	    if (pair_reverse[pair_mode][1])
@@ -532,7 +532,9 @@ launch_scan_threads()
 	    re_buffer[i].paired=true;
 	    re_buffer[i].first_in_pair=false;
 	    re_buffer[i].mate_pair=&re_buffer[i-1];
-	    handle_readpair(&re_buffer[i-1], &re_buffer[i], paired_mapping_options, n_paired_mapping_options);
+	    pe.re[0] = &re_buffer[i-1];
+	    pe.re[1] = &re_buffer[i];
+	    handle_readpair(&pe, paired_mapping_options, n_paired_mapping_options);
 	    read_free_full(&re_buffer[i-1], &mem_mapping);
 	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
@@ -1151,7 +1153,10 @@ print_pairing_options(struct pairing_options * options)
   } else {
     fprintf(stderr, " pass2_threshold:%.02f%%,", options->pass2_threshold);
   }
-  fprintf(stderr, " strata:%s\n\tstop_count:%d,", options->strata? "true" : "false", options->stop_count);
+  fprintf(stderr, " strata:%s, save_outputs:%s\n\tstop_count:%d,",
+	  options->strata? "true" : "false",
+	  options->save_outputs? "true" : "false",
+          options->stop_count);
   if (IS_ABSOLUTE(options->stop_threshold)) {
     fprintf(stderr, " stop_threshold:%u", (uint)-options->stop_threshold);
   } else {
@@ -1218,8 +1223,9 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
   fprintf(stderr, "threshold:%s",
 	  thres_to_buff(buff[0], &options->pass2.threshold));
   if (!is_paired) {
-    fprintf(stderr, ", strata:%d, num_outputs:%d",
-	    options->pass2.strata,
+    fprintf(stderr, ", strata:%s, save_outputs:%s, num_outputs:%d",
+	    options->pass2.strata? "true" : "false",
+	    options->pass2.save_outputs? "true" : "false",
 	    options->pass2.num_outputs);
   }
   fprintf(stderr, "]\n");
@@ -1494,6 +1500,8 @@ get_pairing_options(char * c, struct pairing_options * options)
   get_threshold(p, &options->stop_threshold);
   p = strtok(NULL, ",");
   get_bool(p, &options->strata);  
+  p = strtok(NULL, ",");
+  get_bool(p, &options->save_outputs);
 }
 
 
@@ -1577,6 +1585,8 @@ get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool
   if (!is_paired) {
     p = strtok(NULL, ",");
     get_bool(p, &options->pass2.strata);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass2.save_outputs);
     p = strtok(NULL, ",");
     get_int(p, &options->pass2.num_outputs);
   }
@@ -2392,6 +2402,7 @@ int main(int argc, char **argv){
 	      unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
 	      unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
 	      unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+	      unpaired_mapping_options[0][0].pass2.save_outputs = false;
 	      unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
 	      unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
 	      unpaired_mapping_options[0][0].pass2.stop_count = 0;
@@ -2408,6 +2419,7 @@ int main(int argc, char **argv){
 	      paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
 	      paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
 	      paired_mapping_options[0].pairing.strata = strata_flag;
+	      paired_mapping_options[0].pairing.save_outputs = compute_mapping_qualities;
 	      paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
 	      paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
 	      paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
@@ -2470,6 +2482,7 @@ int main(int argc, char **argv){
 		  unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
 		  unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
 		  unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+		  unpaired_mapping_options[0][0].pass2.save_outputs = compute_mapping_qualities;
 		  unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
 		  unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
 		  unpaired_mapping_options[0][0].pass2.stop_count = 0;

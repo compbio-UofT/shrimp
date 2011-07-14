@@ -20,8 +20,8 @@
 #endif
 
 
-void		handle_read(struct read_entry *, struct read_mapping_options_t *, int, struct read_hit * * *, int *);
-void		handle_readpair(struct read_entry *, struct read_entry *, struct readpair_mapping_options_t *, int);
+void		handle_read(read_entry *, struct read_mapping_options_t *, int);
+void		handle_readpair(pair_entry *, struct readpair_mapping_options_t *, int);
 
 
 #ifdef __cplusplus

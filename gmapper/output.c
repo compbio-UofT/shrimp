@@ -679,15 +679,18 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 
 
 static void
-add_sam_hit_counts(struct read_hit * * hits_pass2, int n_hits_pass2, int * hits)
+compute_unpaired_mqv(read_entry * re, read_hit * * hits, int n_hits)
 {
-  int i;
-  for (i = 0; i < n_hits_pass2; i++) {
-    struct sw_full_results * sfrp = hits_pass2[i]->sfrp;
-    int edit_distance = sfrp->mismatches + sfrp->insertions + sfrp->deletions;
-    if (0 <= edit_distance && edit_distance < 3) {
-      hits[edit_distance]++;
-    }
+
+}
+
+
+static void
+add_sam_hit_counts(struct read_hit * h, int * sam_hit_counts)
+{
+  int edit_distance = h->sfrp->mismatches + h->sfrp->insertions + h->sfrp->deletions;
+  if (0 <= edit_distance && edit_distance < 3) {
+    sam_hit_counts[edit_distance]++;
   }
 }
 
@@ -698,134 +701,54 @@ read_output(struct read_entry * re, struct read_hit * * hits_pass2, int n_hits_p
   int i;
   int sam_hit_counts[3] = {0, 0, 0};
 
-  if (Eflag)
-    add_sam_hit_counts(hits_pass2, n_hits_pass2, sam_hit_counts);
+  if (Eflag) {
+    for (i = 0; i < n_hits_pass2; i++) {
+      add_sam_hit_counts(hits_pass2[i], sam_hit_counts);
+    }
+  }
+
+  // Compute mapping qualities only if in unpaired mode.
+  // Note: this procedure might be called in paired mode by setting save_outputs to false; no mqv in that case
+  if (pair_mode == PAIR_NONE)
+    compute_unpaired_mqv(re, hits_pass2, n_hits_pass2);
 
   for (i = 0; i < n_hits_pass2; i++) {
     struct read_hit * rh = hits_pass2[i];
-    hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
-  }
-
-    /*
-    if (half_paired) {
-      int other_hits[] = {0, 0, 0};
+    if (pair_mode == PAIR_NONE)
+      hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+    else {
       if (re->first_in_pair) {
 	hit_output(re, rh, NULL, true, sam_hit_counts, n_hits_pass2);
-	hit_output(re->mate_pair, NULL, rh, false, other_hits, 0);
-      } else {
-	hit_output(re->mate_pair, NULL, rh, true, other_hits, 0);
-	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
-      }
-    } else {
-    */
+	hit_output(re->mate_pair, NULL, rh, false, NULL, 0);
+     } else {
+      	hit_output(re->mate_pair, NULL, rh, true, NULL, 0);
+      	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+     }
+    }
+  }
 }
 
 
-typedef struct aux_read_hit_entry {
-  struct read_hit * rh;
-  int * aux_index_mate;
-  int * index_pair;
-  int n_pairings;
-} aux_read_hit_entry;
-
-
 void
-readpair_output(struct read_entry * re1, struct read_entry * re2,
-		struct read_hit_pair * hits_pass2, int n_hits_pass2,
-		struct read_hit * * * single_hits_pass2, int * n_single_hits_pass2)
+readpair_output_no_mqv(pair_entry * pe, struct read_hit_pair * hits_pass2, int n_hits_pass2)
 {
-  struct aux_read_hit_entry * pm[2];
-  int n_pm[2];
-  int new_index[2];
-  int i, j, nip;
-
-  if (compute_mapping_qualities) {
-    // first, compute bipartite graph of paired mappings
-    pm[0] = NULL;
-    n_pm[0] = 0;
-    pm[1] = NULL;
-    n_pm[1] = 0;
-    for (i = 0; i < n_hits_pass2; i++) {
-      for (nip = 0; nip < 2; nip++) {
-	new_index[nip] = -1;
-	for (j = 0; j < n_pm[nip]; j++) {
-	  if (pm[nip][j].rh == hits_pass2[i].rh[nip]) {
-	    new_index[nip] = j;
-	    break;
-	  }
-	}
-	if (new_index[nip] == -1) {
-	  // create new aux_read_hit_entry
-	  pm[nip] = (struct aux_read_hit_entry *)
-	    my_realloc(pm[nip], (n_pm[nip] + 1) * sizeof(pm[nip][0]), n_pm[nip] * sizeof(pm[nip][0]),
-		       &mem_mapping, "aux_read_hit array");
-	  n_pm[nip]++;
-	  new_index[nip] = n_pm[nip] - 1;
-	  pm[nip][new_index[nip]].rh = hits_pass2[i].rh[nip];
-	  pm[nip][new_index[nip]].aux_index_mate = NULL;
-	  pm[nip][new_index[nip]].index_pair = NULL;
-	}
-      }
-      for (nip = 0; nip < 2; nip++) {
-	pm[nip][new_index[nip]].aux_index_mate = (int *)
-	  my_realloc(pm[nip][new_index[nip]].aux_index_mate,
-		     (pm[nip][new_index[nip]].n_pairings + 1) * sizeof(pm[nip][new_index[nip]].aux_index_mate[0]),
-		     pm[nip][new_index[nip]].n_pairings * sizeof(pm[nip][new_index[nip]].aux_index_mate[0]),
-		     &mem_mapping, "aux_index_mate");
-	pm[nip][new_index[nip]].index_pair = (int *)
-	  my_realloc(pm[nip][new_index[nip]].index_pair,
-		     (pm[nip][new_index[nip]].n_pairings + 1) * sizeof(pm[nip][new_index[nip]].index_pair[0]),
-		     pm[nip][new_index[nip]].n_pairings * sizeof(pm[nip][new_index[nip]].index_pair[0]),
-		     &mem_mapping, "index_pair");
-	pm[nip][new_index[nip]].n_pairings++;
-	pm[nip][new_index[nip]].aux_index_mate[pm[nip][new_index[nip]].n_pairings - 1] = new_index[1-nip];
-	pm[nip][new_index[nip]].index_pair[pm[nip][new_index[nip]].n_pairings - 1] = i;
-      }
-    }
-
-
-
-
-
-    // done, free aux_read_hit arrays
-    for (nip = 0; nip < 2; nip++) {
-      for (j = 0; j < n_pm[nip]; j++) {
-	my_free(pm[nip][j].aux_index_mate, pm[nip][j].n_pairings * sizeof(pm[nip][j].aux_index_mate[0]), &mem_mapping, "aux_index_mate");
-	my_free(pm[nip][j].index_pair, pm[nip][j].n_pairings * sizeof(pm[nip][j].index_pair[0]), &mem_mapping, "index_pair");
-      }
-      my_free(pm[nip], n_pm[nip] * sizeof(pm[nip][0]), &mem_mapping, "aux_read_hit array");
-    }
-  }
-
+  int i;
   int sam_hit_counts[2][3] = { {0, 0, 0}, {0, 0, 0} };
-  int hits1[] = {0, 0, 0};
-  int hits2[] = {0, 0, 0};
-  
 
-
-  for (i = 0; i < n_hits_pass2; i++) {
-    struct sw_full_results * sfrp1 = hits_pass2[i].rh[0]->sfrp;
-    struct sw_full_results * sfrp2 = hits_pass2[i].rh[1]->sfrp;
-    int edit_distance1 = sfrp1->mismatches + sfrp1->insertions + sfrp1->deletions;
-    int edit_distance2 = sfrp2->mismatches + sfrp2->insertions + sfrp2->deletions;
-    if (0 <= edit_distance1 && edit_distance1 < 3) {
-      hits1[edit_distance1]++;
-    }
-    if (0 <= edit_distance2 && edit_distance2 < 3) {
-      hits2[edit_distance2]++;
+  if (Eflag) {
+    for (i = 0; i < n_hits_pass2; i++) {
+      add_sam_hit_counts(hits_pass2[i].rh[0], sam_hit_counts[0]);
+      add_sam_hit_counts(hits_pass2[i].rh[1], sam_hit_counts[1]);
     }
   }
-
-  assert(0);
-
 
   for (i = 0; i < n_hits_pass2; i++) {
     struct read_hit * rh1 = hits_pass2[i].rh[0];
     struct read_hit * rh2 = hits_pass2[i].rh[1];
     uint bucket;
 
-    hit_output(re1, rh1,  rh2, true, hits1, n_hits_pass2);
-    hit_output(re2, rh2,  rh1, false, hits2, n_hits_pass2);
+    hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], n_hits_pass2);
+    hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], n_hits_pass2);
 
     if (Xflag) {
       if (hits_pass2[i].insert_size < min_insert_size)
@@ -840,4 +763,11 @@ readpair_output(struct read_entry * re1, struct read_entry * re2,
       insert_histogram[bucket]++;
     }
   }
+}
+
+
+void
+readpair_output(pair_entry * pe)
+{
+
 }
