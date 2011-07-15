@@ -681,6 +681,23 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 static void
 compute_unpaired_mqv(read_entry * re, read_hit * * hits, int n_hits)
 {
+  int i;
+  double z1 = 10000.0;
+
+  for (i = 0; i < n_hits; i++) {
+    z1 = -log( exp(-z1) + hits[i]->sfrp->posterior );
+  }
+  for (i = 0; i < n_hits; i++) {
+    hits[i]->sfrp->z0 = (int)(-log(hits[i]->sfrp->posterior) * 1000.0);
+    hits[i]->sfrp->z1 = (int)(z1 * 1000.0);
+    hits[i]->sfrp->mqv = qv_from_pr_corr(hits[i]->sfrp->posterior / exp(-z1));
+  }
+}
+
+
+static void
+compute_paired_mqv(pair_entry * pe)
+{
 
 }
 

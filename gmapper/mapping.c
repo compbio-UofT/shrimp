@@ -379,10 +379,8 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   }
 
   assert(rh->sfrp == NULL);
-  //rh->sfrp = (struct sw_full_results *)xcalloc(sizeof(rh->sfrp[0]));
-  rh->sfrp = (struct sw_full_results *)
-    my_calloc(sizeof(rh->sfrp[0]),
-	      &mem_mapping, "sfrp [%s]", re->name);
+  rh->sfrp = (struct sw_full_results *)my_calloc(sizeof(rh->sfrp[0]), &mem_mapping, "sfrp [%s]", re->name);
+  rh->sfrp->mqv = 255; // unavailable
 
 #ifdef DEBUG_SW_FULL_CALLS
   fprintf(stderr, "SW full call: (name:[%s],cn:%d,st:%d,gen_st:%d,g_off:%lld,w_len:%d,anchor:(%lld,%lld,%d,%d))\n",
