@@ -150,6 +150,8 @@ typedef struct read_hit {
 
 typedef struct read_hit_pair {
   struct read_hit *	rh[2];
+  int			rh_idx[2];	// when used in pair_entry.final_paired_hits, use indexes instead of pointers
+					// because pair_entry.final_paired_hit_pool arrays change with realloc
   int			score_max;
   int			score;
   int			pct_score;

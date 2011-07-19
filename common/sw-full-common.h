@@ -42,6 +42,8 @@ struct sw_full_results {
 	/* Colour space fields */
 	int crossovers;				/* # of mat. xovers */
 	bool dup;
+
+  bool	in_use; // when set, this sfrp is part of a pair selected for output
 };
 
 static inline bool
@@ -89,7 +91,7 @@ free_sfrp(struct sw_full_results * * sfrp, struct read_entry * re, count_t * cou
     free((*sfrp)->dbalign);
     free((*sfrp)->qralign);
     free((*sfrp)->qual);
-    my_free(*sfrp, sizeof(**sfrp), counter, "sfrp [%s]", re->name);
+    my_free(*sfrp, sizeof(**sfrp), counter, "sfrp(%p) [%s]", *sfrp, re->name);
     *sfrp = NULL;
   }
 }

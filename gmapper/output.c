@@ -198,8 +198,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
  */
 {
   assert(re != NULL);
-  assert(rh != NULL);
-  assert(rh->sfrp != NULL);
+  assert((rh != NULL && rh->sfrp != NULL) || (rh_mp != NULL && rh_mp->sfrp != NULL));
 
   int thread_id = omp_get_thread_num();
   char ** output_buffer = &thread_output_buffer_filled[thread_id];

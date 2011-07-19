@@ -360,6 +360,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
   // allocate sfrp struct
   assert(rh->sfrp == NULL);
   rh->sfrp = (struct sw_full_results *)my_calloc(sizeof(rh->sfrp[0]), &mem_mapping, "sfrp [%s]", re->name);
+  rh->sfrp->in_use = false;
   rh->sfrp->mqv = 255; // unavailable
 
 #ifdef DEBUG_SW_FULL_CALLS
@@ -1612,6 +1613,7 @@ read_pass2(struct read_entry * re,
   // mark remaining hits as saved
   for (i = 0; i < *n_hits_pass2; i++) {
     hits_pass2[i]->saved = 1;
+    hits_pass2[i]->sfrp->in_use = true;
   }
 
   // update counts
@@ -1714,9 +1716,9 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
     }
 
     // free pass1 structs
-    for (i = 0; i < n_hits_pass1; i++) {
-      free_sfrp(&hits_pass1[i]->sfrp, re, &mem_mapping);
-    }
+    for (i = 0; i < n_hits_pass1; i++)
+      if (hits_pass1[i]->sfrp != NULL && !hits_pass1[i]->sfrp->in_use)
+	free_sfrp(&hits_pass1[i]->sfrp, re, &mem_mapping);
     my_free(hits_pass1, options[option_index].pass1.num_outputs * sizeof(hits_pass1[0]), &mem_mapping, "hits_pass1 [%s]", re->name);
     my_free(hits_pass2, options[option_index].pass1.num_outputs * sizeof(hits_pass2[0]), &mem_mapping, "hits_pass2 [%s]", re->name);
 
@@ -2073,7 +2075,9 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   // mark remaining hits as saved
   for (i = 0; i < *n_hits_pass2; i++) {
     hits_pass2[i].rh[0]->saved = 1;
+    hits_pass2[i].rh[0]->sfrp->in_use = true;
     hits_pass2[i].rh[1]->saved = 1;
+    hits_pass2[i].rh[1]->sfrp->in_use = true;
   }
 
   // update counts
@@ -2199,25 +2203,27 @@ readpair_save_final_hits(pair_entry * pe, read_hit_pair * hits_pass2, int n_hits
   for (i = 0; i < n_hits_pass2; i++) {
     for (nip = 0; nip < 2; nip++) {
       // did we already move pe->final_paired_hits[pe->n_final_paired_hits + i]?
-      if (!(&pe->final_paired_hit_pool[nip][0] <= pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip]
-            && pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip] < &pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip]])) {
+      if (pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip] != NULL) {
 	// no, need to move it now
 	pe->final_paired_hit_pool[nip] = (read_hit *)
-	  my_realloc(pe->final_paired_hit_pool[nip], (pe->final_paired_hit_pool_size[nip] + 1) * sizeof(pe->final_paired_hit_pool[nip][0]),
+	  my_realloc(pe->final_paired_hit_pool[nip],
+	      (pe->final_paired_hit_pool_size[nip] + 1) * sizeof(pe->final_paired_hit_pool[nip][0]),
 	      pe->final_paired_hit_pool_size[nip] * sizeof(pe->final_paired_hit_pool[nip][0]),
 	      &mem_mapping, "final_paired_hit_pool[%d] [%s,%s]", nip, pe->re[0]->name, pe->re[1]->name);
 	pe->final_paired_hit_pool_size[nip]++;
 	rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip] - 1];
-	memcpy(rhp, pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip], sizeof(read_entry));
-	// the sfrp pointer was copied, delete old reference to prevent it being freed too soon
+	memcpy(rhp, pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip], sizeof(read_hit));
+	// the sfrp pointer was copied, delete old reference to prevent it from being freed too soon
 	hits_pass2[i].rh[nip]->sfrp = NULL;
 
 	// now change pointers in final_paired_hits array to new read_entry location
+	// use indexes rather than pointers though
 	for (j = i; j < n_hits_pass2; j++) {
 	  rhpp = &pe->final_paired_hits[pe->n_final_paired_hits + j];
 
 	  if (rhpp->rh[nip] == hits_pass2[i].rh[nip]) {
-	    rhpp->rh[nip] = rhp;
+	    rhpp->rh[nip] = NULL;
+	    rhpp->rh_idx[nip] = pe->final_paired_hit_pool_size[nip] - 1;
 	    rhp->paired_hit_idx = (int *)
 		my_realloc(rhp->paired_hit_idx,
 		    (rhp->n_paired_hit_idx + 1) * sizeof(rhp->paired_hit_idx[0]),
@@ -2320,8 +2326,10 @@ handle_readpair(pair_entry * pe,
     }
 
     for (i = 0; i < n_hits_pass1; i++) {
-      free_sfrp(&hits_pass1[i].rh[0]->sfrp, re1, &mem_mapping);
-      free_sfrp(&hits_pass1[i].rh[1]->sfrp, re2, &mem_mapping);
+      if (hits_pass1[i].rh[0]->sfrp != NULL && !hits_pass1[i].rh[0]->sfrp->in_use)
+	free_sfrp(&hits_pass1[i].rh[0]->sfrp, re1, &mem_mapping);
+      if (hits_pass1[i].rh[1]->sfrp != NULL && !hits_pass1[i].rh[1]->sfrp->in_use)
+	free_sfrp(&hits_pass1[i].rh[1]->sfrp, re2, &mem_mapping);
     }
 
     my_free(hits_pass1, options[option_index].pairing.pass1_num_outputs * sizeof(hits_pass1[0]), &mem_mapping, "hits_pass1 [%s,%s]", re1->name, re2->name);

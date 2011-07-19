@@ -2202,7 +2202,7 @@ int main(int argc, char **argv){
 	  usage(progname,false);
 	}
 
-	if (n_seeds == 0 && load_file == NULL) {
+	if (n_seeds == 0 && load_file == NULL && load_mmap == NULL) {
           if (mode_mirna)
             load_default_mirna_seeds();
           else
