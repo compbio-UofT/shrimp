@@ -1017,14 +1017,14 @@ readpair_output(pair_entry * pe)
 	// max mqv is in an unpaired hit
 	// see if it can be paired with best one from read1
 	int idx_best_other = -1;
-	int min_other_z0 = -1;
+	double max_other_z0 = 0.0;
 	for (i = 0; i < pe->re[1 - best_nip]->n_final_unpaired_hits; i++) {
-	  if (pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0 < min_other_z0) {
-	    min_other_z0 = pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0;
+	  if (pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0 > max_other_z0) {
+	    max_other_z0 = pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0;
 	    idx_best_other = i;
 	  }
 	}
-	int best_other_mqv = qv_from_pr_corr(exp((-min_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
+	int best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
 	if (best_other_mqv < 10) {
 	  // output unpaired hit
 	  last[2] = 0;
@@ -1040,7 +1040,7 @@ readpair_output(pair_entry * pe)
 	      my_realloc(pe->final_paired_hits,
 		  (pe->n_final_paired_hits + 1) * sizeof(pe->final_paired_hits[0]),
 		  pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]),
-		  &mem_mapping, "final_paired_hits");
+		  &mem_mapping, "final_paired_hits [%s,%s]", pe->re[0]->name, pe->re[1]->name);
 	  pe->n_final_paired_hits++;
 	  rhpp = &pe->final_paired_hits[pe->n_final_paired_hits - 1];
 	  rhpp->rh[best_nip] = &pe->re[best_nip]->final_unpaired_hits[max_idx[best_nip]];
