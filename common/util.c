@@ -1285,3 +1285,16 @@ logit(int display_errno, char const * msg, ...)
   vfprintf(stderr, new_msg, fmtargs);
   va_end(fmtargs);
 }
+
+
+long long
+nchoosek(int n, int k)
+{
+  long long res = 1;
+  int i;
+  for (i = 0; i < k; i++)
+    res *= (n - i);
+  for (i = 0; i < k; i++)
+    res /= (i + 1);
+  return res;
+}

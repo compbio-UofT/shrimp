@@ -104,24 +104,62 @@ read_free_full(struct read_entry * re, count_t * counter)
       re->crossover_score = NULL;
     }
   }
-  //free(re->mapidx[0]);
   if (re->mapidx[0] != NULL)
-    my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]),
-	    counter, "mapidx [%s]", re->name);
-  //free(re->mapidx[1]);
+    my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), counter, "mapidx [%s]", re->name);
   if (re->mapidx[1] != NULL)
-    my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]),
-	    counter, "mapidx [%s]", re->name);
+    my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), counter, "mapidx [%s]", re->name);
+
   read_free_hit_list(re, counter);
   read_free_anchor_list(re, counter);
 
-  if (re->n_ranges > 0) {
+  if (re->n_ranges > 0)
     free(re->ranges);
+
+  if (re->n_final_unpaired_hits > 0) {
+    int i;
+    for (i = 0; i < re->n_final_unpaired_hits; i++)
+      free_sfrp(&re->final_unpaired_hits[i].sfrp, re, counter);
+    my_free(re->final_unpaired_hits, re->n_final_unpaired_hits * sizeof(re->final_unpaired_hits[0]),
+            counter, "final_unpaired_hits [%s]", re->name);
+    re->n_final_unpaired_hits = 0;
+    re->final_unpaired_hits = NULL;
   }
 
   free(re->read[0]);
   free(re->read[1]);
   read_free(re);
+}
+
+
+void
+readpair_free_full(pair_entry * peP, count_t * counterP)
+{
+  int nip, i;
+
+  for (nip = 0; nip < 2; nip++) {
+    read_free_full(peP->re[nip], counterP);
+    if (peP->final_paired_hit_pool_size[nip] > 0) {
+      for (i = 0; i < peP->final_paired_hit_pool_size[nip]; i++) {
+	free_sfrp(&peP->final_paired_hit_pool[nip][i].sfrp, peP->re[nip], counterP);
+	if (peP->final_paired_hit_pool[nip][i].n_paired_hit_idx > 0) {
+	  my_free(peP->final_paired_hit_pool[nip][i].paired_hit_idx, peP->final_paired_hit_pool[nip][i].n_paired_hit_idx * sizeof(peP->final_paired_hit_pool[nip][i].paired_hit_idx[0]),
+	      counterP, "paired_hit_idx [%s]", peP->re[nip]->name);
+	  peP->final_paired_hit_pool[nip][i].n_paired_hit_idx = 0;
+	  peP->final_paired_hit_pool[nip][i].paired_hit_idx = NULL;
+	}
+      }
+      my_free(peP->final_paired_hit_pool[nip], peP->final_paired_hit_pool_size[nip] * sizeof(peP->final_paired_hit_pool[nip][0]),
+              counterP, "final_paired_hit_pool[%d] [%s,%s]", nip, peP->re[0]->name, peP->re[1]->name);
+      peP->final_paired_hit_pool_size[nip] = 0;
+      peP->final_paired_hit_pool[nip] = NULL;
+    }
+  }
+  if (peP->n_final_paired_hits > 0) {
+    my_free(peP->final_paired_hits, peP->n_final_paired_hits * sizeof(peP->final_paired_hits[0]),
+	counterP, "final_paired_hits [%s,%s]", peP->re[0]->name, peP->re[1]->name);
+    peP->n_final_paired_hits = 0;
+    peP->final_paired_hits = NULL;
+  }
 }
 
 
@@ -535,8 +573,7 @@ launch_scan_threads()
 	    pe.re[0] = &re_buffer[i-1];
 	    pe.re[1] = &re_buffer[i];
 	    handle_readpair(&pe, paired_mapping_options, n_paired_mapping_options);
-	    read_free_full(&re_buffer[i-1], &mem_mapping);
-	    read_free_full(&re_buffer[i], &mem_mapping);
+	    readpair_free_full(&pe, &mem_mapping);
 	  }
       }
 
@@ -1612,6 +1649,7 @@ int main(int argc, char **argv){
 	char const * optstr = NULL;
 	char *c, *save_c;
 	int ch;
+	int i, sn, cn;
 
 	llint before;
 
@@ -2097,9 +2135,17 @@ int main(int argc, char **argv){
 		  break;
 		case 36:
 		  indel_taboo_len = atoi(optarg);
-		  if (indel_taboo_len < 0) {
+		  if (indel_taboo_len < 0)
 		    crash(1, 0, "invalid indel taboo len: [%s]", optarg);
-		  }
+		  break;
+		case 37:
+		  single_best_mapping = true;
+		  break;
+		case 38:
+		  all_contigs = true;
+		  break;
+		case 39:
+		  compute_mapping_qualities = true;
 		  break;
 		default:
 			usage(progname, false);
@@ -2138,12 +2184,16 @@ int main(int argc, char **argv){
 		usage(progname,false);
 	} 
 
-	if (Xflag) {
-	  if (pair_mode == PAIR_NONE) {
-	    fprintf(stderr, "warning: insert histogram not available in unpaired mode; ignoring\n");
-	    Xflag = false;
-	  } else {
-	    insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
+	// set up insert size histogram
+	if (Xflag && pair_mode == PAIR_NONE) {
+	  fprintf(stderr, "warning: insert histogram not available in unpaired mode; ignoring\n");
+	  Xflag = false;
+	}
+	if (pair_mode != PAIR_NONE) {
+	  insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
+	  for (i = 0; i < 100; i++) {
+	    insert_histogram[i] = 1;
+	    insert_histogram_load += insert_histogram[i];
 	  }
 	}
 
@@ -2581,7 +2631,6 @@ int main(int argc, char **argv){
 	//
 	if (Vflag && save_file == NULL && list_cutoff == DEF_LIST_CUTOFF) {
 	  // this will be a mapping job; enable automatic trimming
-	  int i, sn;
 	  long long unsigned int total_genome_len = 0;
 	  int max_seed_weight = 0;
 
@@ -2627,6 +2676,10 @@ int main(int argc, char **argv){
 	  }
 	  exit(0);
 	}
+
+	// compute total genome size
+	for (cn = 0; cn < num_contigs; cn++)
+	  total_genome_size += genome_len[cn];
 
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;

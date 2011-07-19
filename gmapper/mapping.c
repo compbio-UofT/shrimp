@@ -32,27 +32,6 @@ DEF_HEAP(double, struct read_hit_pair_holder, paired)
 
 
 /*
- * Free sfrp for given hit.
- */
-static inline void
-free_sfrp(struct sw_full_results * * sfrp, struct read_entry * re, count_t * counter = NULL)
-{
-  assert(sfrp != NULL);
-  assert(re != NULL);
-
-  if (*sfrp != NULL) {
-    free((*sfrp)->dbalign);
-    free((*sfrp)->qralign);
-    free((*sfrp)->qual);
-    //free(*sfrp);
-    my_free(*sfrp, sizeof(**sfrp),
-	    counter, "sfrp [%s]", re->name);
-    *sfrp = NULL;
-  }
-}
-
-
-/*
  * Mapping routines
  */
 static void
@@ -378,6 +357,7 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
     gen = genome_contigs_rc[rh->cn];
   }
 
+  // allocate sfrp struct
   assert(rh->sfrp == NULL);
   rh->sfrp = (struct sw_full_results *)my_calloc(sizeof(rh->sfrp[0]), &mem_mapping, "sfrp [%s]", re->name);
   rh->sfrp->mqv = 255; // unavailable
@@ -418,10 +398,10 @@ hit_run_full_sw(struct read_entry * re, struct read_hit * rh, int thresh)
 }
 
 
-static inline int32_t
-get_isize(struct read_hit *rh, struct read_hit * rh_mp)
+int
+get_insert_size(struct read_hit *rh, struct read_hit * rh_mp)
 {
-  if (rh_mp==NULL || rh==NULL) {
+  if (rh_mp == NULL || rh == NULL || rh->cn != rh_mp->cn) {
     return 0;
   }
   //get the mate pair info
@@ -1126,6 +1106,8 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	re->hits[st][re->n_hits[st]].pair_max = -1;
 	re->hits[st][re->n_hits[st]].mapping_quality = 255;
 	re->hits[st][re->n_hits[st]].saved = 0;
+	re->hits[st][re->n_hits[st]].paired_hit_idx = NULL;
+	re->hits[st][re->n_hits[st]].n_paired_hit_idx = 0;
 	re->n_hits[st]++;
       }
   }
@@ -1664,7 +1646,7 @@ read_save_final_hits(read_entry * re, read_hit * * hits_pass2, int n_hits_pass2)
       my_realloc(re->final_unpaired_hits,
 	  (re->n_final_unpaired_hits + n_hits_pass2) * sizeof(re->final_unpaired_hits[0]),
 	  re->n_final_unpaired_hits * sizeof(re->final_unpaired_hits[0]),
-	  &mem_mapping, "final_unpaired_hits");
+	  &mem_mapping, "final_unpaired_hits [%s]", re->name);
   for (i = 0; i < n_hits_pass2; i++) {
     memcpy(&re->final_unpaired_hits[re->n_final_unpaired_hits + i], hits_pass2[i], sizeof(*hits_pass2[0]));
     // erase sfrp structs to prevent them from being freed too early
@@ -1910,7 +1892,7 @@ readpair_compute_paired_hit(struct read_hit * rh1, struct read_hit * rh2, bool t
   dest->score = rh1->score_full + rh2->score_full;
   dest->pct_score = (1000 * 100 * dest->score)/dest->score_max;
   dest->key = threshold_is_absolute? dest->score : dest->pct_score;
-  dest->insert_size = abs(get_isize(rh1, rh2));
+  dest->insert_size = abs(get_insert_size(rh1, rh2));
   //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);
 }
 
@@ -2202,11 +2184,15 @@ static void
 readpair_save_final_hits(pair_entry * pe, read_hit_pair * hits_pass2, int n_hits_pass2)
 {
   int i, nip, j;
+  read_hit * rhp;
+  read_hit_pair * rhpp;
 
   // first, copy array of paired hit entries
   pe->final_paired_hits = (struct read_hit_pair *)
-    my_realloc(pe->final_paired_hits, (pe->n_final_paired_hits + n_hits_pass2) * sizeof(pe->final_paired_hits[0]),
-	       pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]), &mem_mapping, "final_paired_hits");
+    my_realloc(pe->final_paired_hits,
+	(pe->n_final_paired_hits + n_hits_pass2) * sizeof(pe->final_paired_hits[0]),
+	pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]),
+	&mem_mapping, "final_paired_hits [%s,%s]", pe->re[0]->name, pe->re[1]->name);
   memcpy(&pe->final_paired_hits[pe->n_final_paired_hits], hits_pass2, n_hits_pass2 * sizeof(pe->final_paired_hits[0]));
 
   // next, copy read_hit entries to persistent pool
@@ -2219,16 +2205,26 @@ readpair_save_final_hits(pair_entry * pe, read_hit_pair * hits_pass2, int n_hits
 	pe->final_paired_hit_pool[nip] = (read_hit *)
 	  my_realloc(pe->final_paired_hit_pool[nip], (pe->final_paired_hit_pool_size[nip] + 1) * sizeof(pe->final_paired_hit_pool[nip][0]),
 	      pe->final_paired_hit_pool_size[nip] * sizeof(pe->final_paired_hit_pool[nip][0]),
-	      &mem_mapping, "final_paired_hit_pool");
+	      &mem_mapping, "final_paired_hit_pool[%d] [%s,%s]", nip, pe->re[0]->name, pe->re[1]->name);
 	pe->final_paired_hit_pool_size[nip]++;
-	memcpy(&pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip] - 1],
-	       pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip], sizeof(read_entry));
+	rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip] - 1];
+	memcpy(rhp, pe->final_paired_hits[pe->n_final_paired_hits + i].rh[nip], sizeof(read_entry));
 	// the sfrp pointer was copied, delete old reference to prevent it being freed too soon
 	hits_pass2[i].rh[nip]->sfrp = NULL;
+
 	// now change pointers in final_paired_hits array to new read_entry location
 	for (j = i; j < n_hits_pass2; j++) {
-	  if (pe->final_paired_hits[pe->n_final_paired_hits + j].rh[nip] == hits_pass2[i].rh[nip]) {
-	    pe->final_paired_hits[pe->n_final_paired_hits + j].rh[nip] = &pe->final_paired_hit_pool[nip][pe->final_paired_hit_pool_size[nip] - 1];
+	  rhpp = &pe->final_paired_hits[pe->n_final_paired_hits + j];
+
+	  if (rhpp->rh[nip] == hits_pass2[i].rh[nip]) {
+	    rhpp->rh[nip] = rhp;
+	    rhp->paired_hit_idx = (int *)
+		my_realloc(rhp->paired_hit_idx,
+		    (rhp->n_paired_hit_idx + 1) * sizeof(rhp->paired_hit_idx[0]),
+		    rhp->n_paired_hit_idx * sizeof(rhp->paired_hit_idx[0]),
+		    &mem_mapping, "paired_hits [%s]", pe->re[nip]->name);
+	    rhp->n_paired_hit_idx++;
+	    rhp->paired_hit_idx[rhp->n_paired_hit_idx - 1] = pe->n_final_paired_hits + j;
 	  }
 	}
       }

@@ -134,7 +134,10 @@
 	{"progress",1,0,33},\
 	{"save-mmap",1,0,34},\
 	{"load-mmap",1,0,35},\
-	{"indel-taboo-len",1,0,36}\
+	{"indel-taboo-len",1,0,36},\
+	{"single-best-mapping",0,0,37},\
+	{"all-contigs",0,0,38},\
+	{"mapping-qualities",0,0,39}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

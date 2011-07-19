@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include "../gmapper/gmapper-definitions.h"
 #include "../common/my-alloc.h"
 #include "../common/stats.h"
 
@@ -31,8 +32,12 @@ struct sw_full_results {
 
 	// fields used for MQ calculation
 	int	mqv;	// mapping quality value; we use 255 for N/A
-	int	z0;	// 1000*nlog(posterior)
-	int	z1;	// 1000*nlog(sum of posteriors)
+	double	z0;	// posterior
+	double	z1;	// sum of posteriors
+	double	z2;	// sum hits paired with this of insert*posterior*posterior
+	double	z3;	// sum of z2s
+	double	pr_top_random;
+	double	pr_missed_mp;
 
 	/* Colour space fields */
 	int crossovers;				/* # of mat. xovers */
@@ -68,6 +73,25 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
 	sfr2->qralign = qralign2;
 
 	return (equal);
+}
+
+
+/*
+ * Free sfrp for given hit.
+ */
+static inline void
+free_sfrp(struct sw_full_results * * sfrp, struct read_entry * re, count_t * counter = NULL)
+{
+  assert(sfrp != NULL);
+  assert(re != NULL);
+
+  if (*sfrp != NULL) {
+    free((*sfrp)->dbalign);
+    free((*sfrp)->qralign);
+    free((*sfrp)->qual);
+    my_free(*sfrp, sizeof(**sfrp), counter, "sfrp [%s]", re->name);
+    *sfrp = NULL;
+  }
 }
 
 

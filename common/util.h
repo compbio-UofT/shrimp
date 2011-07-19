@@ -113,6 +113,7 @@ void		edit2cigar(char *, uint16_t, uint16_t, uint16_t, char *);
 size_t		removedups(void *, size_t, size_t, int (*)(void const *, void const *));
 void		crash(int, int, char const *, ...);
 void		logit(int, char const *, ...);
+long long	nchoosek(int, int);
 
 
 /* for optarg (and to shut up icc) */
@@ -287,6 +288,21 @@ pr_err_from_qv(int qv)
   else
     return pow(10.0, -(double)qv/10.0);
 }
+
+
+static inline int
+double_to_neglog(double x, int shift = 1000)
+{
+  return (int)((double)shift * -log(x));
+}
+
+
+static inline double
+neglog_to_double(int y, int shift = 1000)
+{
+  return exp(-(double)y / (double)shift);
+}
+
 
 
 #ifdef __cplusplus

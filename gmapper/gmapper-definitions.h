@@ -122,6 +122,8 @@ typedef struct read_entry {
 
 typedef struct read_hit {
   struct sw_full_results *      sfrp;
+  int *		paired_hit_idx;
+
   struct anchor anchor;
   llint         g_off;
   llint		g_off_pos_strand;
@@ -141,7 +143,9 @@ typedef struct read_hit {
   int           w_len;
   int           st;
   int           gen_st;
+
   int		saved; // =1 if this hit is selected to be output: do not free its sfrp any more
+  int		n_paired_hit_idx;
 } read_hit;
 
 typedef struct read_hit_pair {

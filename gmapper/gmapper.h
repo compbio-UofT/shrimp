@@ -94,6 +94,7 @@ EXTERN(bool,		Qflag,			false);		/* use fastq reads */
 EXTERN(bool,		Gflag,			false);		/* global alignment flag ! */
 EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
 EXTERN(bool,		extra_sam_fields,	false);
+EXTERN(bool,		single_best_mapping,	false);
 
 /* Scores */
 EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);
@@ -134,6 +135,7 @@ EXTERN(int,		max_insert_size,		DEF_MAX_INSERT_SIZE);
 EXTERN(int,	 	expected_isize,			-1);
 EXTERN(llint,		insert_histogram[100],		{});
 EXTERN(int,		insert_histogram_bucket_size,	1);
+EXTERN(int,		insert_histogram_load,		100);
 EXTERN(char *,		reads_filename,			NULL);
 EXTERN(char *,	 	left_reads_filename,		NULL);
 EXTERN(char *,		right_reads_filename,		NULL);
@@ -230,6 +232,7 @@ EXTERN(uint32_t **,		genome_cs_contigs_rc,		NULL);
 EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
+EXTERN(long long int,		total_genome_size,		0);
 
 EXTERN(ptr_and_sz *,		genomemap_block,		NULL);
 EXTERN(ptr_and_sz,		genome_contigs_block,		{});
