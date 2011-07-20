@@ -34,7 +34,7 @@
 #define DEF_MATCH_MODE_UNPAIRED	2
 #define DEF_NUM_OUTPUTS		10
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
-#define DEF_INDEL_TABOO_LEN	8
+#define DEF_INDEL_TABOO_LEN	0
 
 /* SW Scores */
 #define DEF_LS_MATCH_SCORE	10

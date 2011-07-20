@@ -1895,6 +1895,7 @@ readpair_compute_paired_hit(struct read_hit * rh1, struct read_hit * rh2, bool t
   dest->pct_score = (1000 * 100 * dest->score)/dest->score_max;
   dest->key = threshold_is_absolute? dest->score : dest->pct_score;
   dest->insert_size = abs(get_insert_size(rh1, rh2));
+  dest->improper_mapping = false;
   //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);
 }
 

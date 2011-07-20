@@ -20,8 +20,8 @@
 #endif
 
 
-void	hit_output(struct read_entry *, struct read_hit *, struct read_hit *,
-		   char * *, char * *, bool, int *, int);
+//void	hit_output(struct read_entry *, struct read_hit *, struct read_hit *,
+//		   char * *, char * *, bool, int *, int, bool);
 void	read_output(read_entry *, struct read_hit * *, int);
 void	readpair_output_no_mqv(pair_entry *, struct read_hit_pair *, int);
 void	readpair_output(pair_entry *);

@@ -183,7 +183,7 @@ reverse(char* s, char* t)  // USING TWO ARRAYS FOR THIS IS BAD CODE!!!
  */
 void
 hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp,
-	   bool first_in_pair, int* hits, int satisfying_alignments)
+	   bool first_in_pair, int* hits, int satisfying_alignments, bool improper_mapping = false)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
@@ -259,7 +259,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	//pos
 	int pos=0;
 	//mapq
-	int mapq = (rh != NULL ? rh->mapping_quality : 0);
+	int mapq = (rh != NULL ? rh->sfrp->mqv : 0);
 	//cigar
 	char * cigar=(char *)"*";
 	cigar_t * cigar_binary=NULL;
@@ -311,7 +311,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	bool paired_read = re->paired;
 	struct read_entry * re_mp = re->mate_pair;
 	assert(!paired_read || re_mp!=NULL);
-	bool paired_alignment = paired_read && (rh!=NULL && rh_mp!=NULL); //paired mapping, not paired read!
+	bool paired_alignment = paired_read && (rh!=NULL && rh_mp!=NULL && !improper_mapping); //paired mapping, not paired read!
 	//bool proper_pair = (paired_read && !query_unmapped && !mate_unmapped);
 	//bool query_unmapped = (re->n_hits[0] + re->n_hits[1])>0 ? false : true;
 	bool query_unmapped = (rh==NULL);
@@ -630,7 +630,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	  }
 	  else // paired mode
 	  {
-	    if (rh != NULL && rh_mp != NULL) {
+	    if (rh != NULL && rh_mp != NULL && !improper_mapping) {
 	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ2:i:%d\tZ3:i:%d\tZ4:i:%d",
 		  double_to_neglog(rh->sfrp->z2), double_to_neglog(rh->sfrp->z3),
 		  double_to_neglog(rh->sfrp->pr_top_random));
@@ -710,6 +710,7 @@ compute_unpaired_mqv(read_entry * re, read_hit * * hits, int n_hits)
   for (i = 0; i < n_hits; i++) {
     hits[i]->sfrp->z0 = hits[i]->sfrp->posterior;
     hits[i]->sfrp->z1 = z1;
+
     hits[i]->sfrp->mqv = qv_from_pr_corr(hits[i]->sfrp->posterior / z1);
   }
 }
@@ -731,6 +732,11 @@ compute_paired_mqv(pair_entry * pe)
     z1[nip] = 0;
     for (i = 0; i < pe->re[nip]->n_final_unpaired_hits; i++)
       z1[nip] += pe->re[nip]->final_unpaired_hits[i].sfrp->posterior;
+    // and write them back
+    for (i = 0; i < pe->re[nip]->n_final_unpaired_hits; i++) {
+      pe->re[nip]->final_unpaired_hits[i].sfrp->z0 = pe->re[nip]->final_unpaired_hits[i].sfrp->posterior;
+      pe->re[nip]->final_unpaired_hits[i].sfrp->z1 = z1[nip];
+    }
   }
 
   // renormalize insert sizes into a distribution
@@ -752,10 +758,11 @@ compute_paired_mqv(pair_entry * pe)
       double tmp = 0.0;
       for (j = 0; j < rhp->n_paired_hit_idx; j++) {
 	read_hit_pair * rhpp = &pe->final_paired_hits[rhp->paired_hit_idx[j]];
+	read_hit * rh_mpP = &pe->final_paired_hit_pool[1 - nip][rhpp->rh_idx[1 - nip]];
 	bucket = (rhpp->insert_size - min_insert_size) / insert_histogram_bucket_size;
 	if (bucket < 0) bucket = 0;
 	if (bucket > 99) bucket = 99;
-	tmp += ((double)insert_histogram[bucket] / (double)insert_histogram_load) * rhpp->rh[1-nip]->sfrp->posterior;
+	tmp += ((double)insert_histogram[bucket] / (double)insert_histogram_load) * rh_mpP->sfrp->posterior;
       }
       tmp *= rhp->sfrp->posterior;
       if (tmp < 1e-200) tmp = 1e-200;
@@ -769,7 +776,7 @@ compute_paired_mqv(pair_entry * pe)
     }
   }
 
-  // compute the probability that the top mapping of a certain type is random
+  // compute the probability that the top mapping in each class is random
   // for unpaired, use the one with max posterior
   for (nip = 0; nip < 2; nip++) {
     // find the mapping with max score
@@ -790,8 +797,8 @@ compute_paired_mqv(pair_entry * pe)
 
   // for paired, both mappings must be random
   for (i = 0; i < pe->n_final_paired_hits; i++) {
-    double tmp = pr_random_mapping_given_score(pe->re[0], pe->final_paired_hits[i].rh[0]->sfrp->posterior_score);
-    tmp *= pr_random_mapping_given_score(pe->re[1], pe->final_paired_hits[i].rh[1]->sfrp->posterior_score);
+    double tmp = pr_random_mapping_given_score(pe->re[0], pe->final_paired_hit_pool[0][pe->final_paired_hits[i].rh_idx[0]].sfrp->posterior_score);
+    tmp *= pr_random_mapping_given_score(pe->re[1], pe->final_paired_hit_pool[1][pe->final_paired_hits[i].rh_idx[1]].sfrp->posterior_score);
     tmp *= 1000;
     if (tmp < pr_top_random[2]) pr_top_random[2] = tmp;
   }
@@ -800,8 +807,8 @@ compute_paired_mqv(pair_entry * pe)
     pr_top_random[2] = 1.0;
   // write it back
   for (i = 0; i < pe->n_final_paired_hits; i++) {
-    pe->final_paired_hits[i].rh[0]->sfrp->pr_top_random = pr_top_random[2];
-    pe->final_paired_hits[i].rh[1]->sfrp->pr_top_random = pr_top_random[2];
+    pe->final_paired_hit_pool[0][pe->final_paired_hits[i].rh_idx[0]].sfrp->pr_top_random = pr_top_random[2];
+    pe->final_paired_hit_pool[1][pe->final_paired_hits[i].rh_idx[1]].sfrp->pr_top_random = pr_top_random[2];
   }
 
   // finally, for unpaired mappings, compute the prob the algo missed the mate mapping
@@ -827,7 +834,7 @@ compute_paired_mqv(pair_entry * pe)
   // paired:
   for (i = 0; i < pe->n_final_paired_hits; i++) {
     for (nip = 0; nip < 2; nip++) {
-      read_hit * rhp = pe->final_paired_hits[i].rh[nip];
+      read_hit * rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hits[i].rh_idx[nip]];
       double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / rhp->sfrp->z3);
       rhp->sfrp->mqv = qv_from_pr_corr(p_corr);
     }
@@ -880,14 +887,14 @@ read_output(struct read_entry * re, struct read_hit * * hits_pass2, int n_hits_p
   for (i = first; i < last; i++) {
     struct read_hit * rh = hits_pass2[i];
     if (pair_mode == PAIR_NONE)
-      hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+      hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2, false);
     else {
       if (re->first_in_pair) {
-	hit_output(re, rh, NULL, true, sam_hit_counts, n_hits_pass2);
-	hit_output(re->mate_pair, NULL, rh, false, NULL, 0);
+	hit_output(re, rh, NULL, true, sam_hit_counts, n_hits_pass2, false);
+	hit_output(re->mate_pair, NULL, rh, false, NULL, 0, false);
      } else {
-      	hit_output(re->mate_pair, NULL, rh, true, NULL, 0);
-      	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2);
+      	hit_output(re->mate_pair, NULL, rh, true, NULL, 0, false);
+      	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2, false);
      }
     }
   }
@@ -912,8 +919,8 @@ readpair_output_no_mqv(pair_entry * pe, struct read_hit_pair * hits_pass2, int n
     struct read_hit * rh2 = hits_pass2[i].rh[1];
     uint bucket;
 
-    hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], n_hits_pass2);
-    hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], n_hits_pass2);
+    hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], n_hits_pass2, false);
+    hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], n_hits_pass2, false);
 
     if (Xflag) {
       if (hits_pass2[i].insert_size < min_insert_size)
@@ -955,7 +962,8 @@ readpair_output(pair_entry * pe)
   last[2] = pe->n_final_paired_hits;
   if (compute_mapping_qualities) {
     compute_paired_mqv(pe);
-    if (single_best_mapping) {
+    if (single_best_mapping
+	&& (pe->n_final_paired_hits > 0 || pe->re[0]->n_final_unpaired_hits > 0 || pe->re[1]->n_final_unpaired_hits > 0)) {
       // find out the max mqv for either read
       int max_is_paired[2];
       int max_idx[2];
@@ -991,11 +999,13 @@ readpair_output(pair_entry * pe)
 	int best_other_mqv = -1;
 	int idx_pair = -1;
 	read_hit * rhp = &pe->final_paired_hit_pool[best_nip][max_idx[best_nip]];
-	for (i = 0; i < rhp->n_paired_hit_idx; i++)
-	  if (pe->final_paired_hits[rhp->paired_hit_idx[i]].rh[1 - best_nip]->sfrp->mqv > best_other_mqv) {
-	    best_other_mqv = pe->final_paired_hits[rhp->paired_hit_idx[i]].rh[1 - best_nip]->sfrp->mqv;
+	for (i = 0; i < rhp->n_paired_hit_idx; i++) {
+	  read_hit * rh_mpP = &pe->final_paired_hit_pool[1-best_nip][pe->final_paired_hits[rhp->paired_hit_idx[i]].rh_idx[1 - best_nip]];
+	  if (rh_mpP->sfrp->mqv > best_other_mqv) {
+	    best_other_mqv = rh_mpP->sfrp->mqv;
 	    idx_pair = rhp->paired_hit_idx[i];
 	  }
+	}
 
 	// update the histogram of insert sizes
 	int bucket = (pe->final_paired_hits[idx_pair].insert_size - min_insert_size) / insert_histogram_bucket_size;
@@ -1023,7 +1033,9 @@ readpair_output(pair_entry * pe)
 	    idx_best_other = i;
 	  }
 	}
-	int best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
+	int best_other_mqv = -1;
+	if (idx_best_other >= 0)
+	  best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
 	if (best_other_mqv < 10) {
 	  // output unpaired hit
 	  last[2] = 0;
@@ -1045,10 +1057,12 @@ readpair_output(pair_entry * pe)
 	  rhpp->rh[best_nip] = &pe->re[best_nip]->final_unpaired_hits[max_idx[best_nip]];
 	  rhpp->rh[1 - best_nip] = &pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other];
 	  rhpp->score_max = rhpp->rh[0]->score_max + rhpp->rh[1]->score_max;
+	  rhpp->insert_size = get_insert_size(rhpp->rh[best_nip], rhpp->rh[1 - best_nip]);
+	  rhpp->improper_mapping = true;
 	  last[0] = 0;
 	  last[1] = 0;
-	  first[2] = pe->n_final_paired_hits;
-	  last[2] = pe->n_final_paired_hits + 1;
+	  first[2] = pe->n_final_paired_hits - 1;
+	  last[2] = pe->n_final_paired_hits;
 	}
       }
 
@@ -1060,8 +1074,11 @@ readpair_output(pair_entry * pe)
     read_hit * rh1 = pe->final_paired_hits[i].rh[0];
     read_hit * rh2 = pe->final_paired_hits[i].rh[1];
 
-    hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], pe->n_final_paired_hits);
-    hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], pe->n_final_paired_hits);
+    if (rh1 == NULL) rh1 = &pe->final_paired_hit_pool[0][pe->final_paired_hits[i].rh_idx[0]];
+    if (rh2 == NULL) rh2 = &pe->final_paired_hit_pool[1][pe->final_paired_hits[i].rh_idx[1]];
+
+    hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], pe->n_final_paired_hits, pe->final_paired_hits[i].improper_mapping);
+    hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], pe->n_final_paired_hits, pe->final_paired_hits[i].improper_mapping);
   }
   for (nip = 0; nip < 2; nip++)
     for (i = first[nip]; i < last[nip]; i++) {
@@ -1069,11 +1086,11 @@ readpair_output(pair_entry * pe)
       read_hit * rhp = &rep->final_unpaired_hits[i];
 
       if (rep->first_in_pair) {
-	hit_output(rep, rhp, NULL, true, sam_hit_counts[0], rep->n_final_unpaired_hits);
-	hit_output(rep->mate_pair, NULL, rhp, false, NULL, 0);
+	hit_output(rep, rhp, NULL, true, sam_hit_counts[0], rep->n_final_unpaired_hits, false);
+	hit_output(rep->mate_pair, NULL, rhp, false, NULL, 0, false);
       } else {
-  	hit_output(rep->mate_pair, NULL, rhp, true, NULL, 0);
-  	hit_output(rep, rhp, NULL, false, sam_hit_counts[1], rep->n_final_unpaired_hits);
+  	hit_output(rep->mate_pair, NULL, rhp, true, NULL, 0, false);
+  	hit_output(rep, rhp, NULL, false, sam_hit_counts[1], rep->n_final_unpaired_hits, false);
       }
     }
 }

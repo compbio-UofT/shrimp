@@ -136,8 +136,14 @@ readpair_free_full(pair_entry * peP, count_t * counterP)
 {
   int nip, i;
 
+  if (peP->n_final_paired_hits > 0) {
+    my_free(peP->final_paired_hits, peP->n_final_paired_hits * sizeof(peP->final_paired_hits[0]),
+	counterP, "final_paired_hits [%s,%s]", peP->re[0]->name, peP->re[1]->name);
+    peP->n_final_paired_hits = 0;
+    peP->final_paired_hits = NULL;
+  }
+
   for (nip = 0; nip < 2; nip++) {
-    read_free_full(peP->re[nip], counterP);
     if (peP->final_paired_hit_pool_size[nip] > 0) {
       for (i = 0; i < peP->final_paired_hit_pool_size[nip]; i++) {
 	free_sfrp(&peP->final_paired_hit_pool[nip][i].sfrp, peP->re[nip], counterP);
@@ -154,12 +160,9 @@ readpair_free_full(pair_entry * peP, count_t * counterP)
       peP->final_paired_hit_pool[nip] = NULL;
     }
   }
-  if (peP->n_final_paired_hits > 0) {
-    my_free(peP->final_paired_hits, peP->n_final_paired_hits * sizeof(peP->final_paired_hits[0]),
-	counterP, "final_paired_hits [%s,%s]", peP->re[0]->name, peP->re[1]->name);
-    peP->n_final_paired_hits = 0;
-    peP->final_paired_hits = NULL;
-  }
+
+  read_free_full(peP->re[0], counterP);
+  read_free_full(peP->re[1], counterP);
 }
 
 
@@ -414,7 +417,7 @@ launch_scan_threads()
 	  nreads_mod += load;
 	  if (nreads_mod >= progress) {
 	    llint time_usecs = gettimeinusecs();
-	    fprintf(stderr, "\r%lld %d %d", nreads,
+	    fprintf(stderr, "\r%lld %d %d.", nreads,
 		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6),
 		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6 * (1/(double)num_threads)) );
 	    last_nreads = nreads;
@@ -578,8 +581,9 @@ launch_scan_threads()
       }
 
       // free unused memory while the buffer waits in the output heap
+      size_t new_size = (thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id]) + 1;
       thread_output_buffer[thread_id] = (char *)
-	my_realloc(thread_output_buffer[thread_id], thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id] + 1, thread_output_buffer_sizes[thread_id],
+	my_realloc(thread_output_buffer[thread_id], new_size, thread_output_buffer_sizes[thread_id],
 		   &mem_thread_buffer, "thread_output_buffer[]");
 
       //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
@@ -589,7 +593,7 @@ launch_scan_threads()
 	tmp.key = thread_output_buffer_chunk[thread_id];
 	//tmp.rest = thread_output_buffer[thread_id];
 	tmp.rest.ptr = thread_output_buffer[thread_id];
-	tmp.rest.sz = thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id] + 1; //thread_output_buffer_sizes[thread_id];
+	tmp.rest.sz = new_size; //thread_output_buffer_sizes[thread_id];
 	thread_output_buffer[thread_id] = NULL;	
 	heap_out_insert(&h, &tmp);
 	heap_out_get_min(&h, &tmp);
@@ -1980,7 +1984,7 @@ int main(int argc, char **argv){
 		  }
 		  break;
 		case 'I':
-		  c = strtok(strdup(optarg), ",");
+		  c = strtok(optarg, ",");
 		  if (c == NULL) {
 		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
 		    exit(1);

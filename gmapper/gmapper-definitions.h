@@ -157,6 +157,7 @@ typedef struct read_hit_pair {
   int			pct_score;
   int			key;
   int			insert_size;
+  bool			improper_mapping;
 } read_hit_pair;
 
 struct read_hit_pair_holder {

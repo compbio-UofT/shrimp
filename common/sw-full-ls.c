@@ -644,10 +644,10 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	assert(glen > 0 && glen <= dblen);
 	assert(rlen > 0 && rlen <= qrlen);
 
-	if (sfr == NULL)
-		sfr = &scratch;
-
-	memset(sfr, 0, sizeof(*sfr));
+	if (sfr == NULL) {
+	  sfr = &scratch;
+	  memset(sfr, 0, sizeof(*sfr));
+	}
 	memset(backtrace, 0, (dblen + qrlen) * sizeof(backtrace[0]));
 
 	dbalign[0] = qralign[0] = '\0';

@@ -22,7 +22,7 @@
 
 void		handle_read(read_entry *, struct read_mapping_options_t *, int);
 void		handle_readpair(pair_entry *, struct readpair_mapping_options_t *, int);
-int		get_insert_size(read_entry *, read_entry *);
+int		get_insert_size(read_hit *, read_hit *);
 
 
 static inline double
@@ -47,7 +47,7 @@ pr_random_mapping_given_score(read_entry * re_p, int score)
     // how many crossovers would give this score?
     int n_xovers = ceil_div(read_len * match_score - score, abs(crossover_score));
     // pr of observing those by chance
-    double tmp = -log(nchoosek(read_len, n_xovers)) - n_xovers * log(3) + read_len * log(4);
+    double tmp = -log_nchoosek(read_len, n_xovers) - n_xovers * log(3) + read_len * log(4);
     return exp(-tmp);
   }
   else // LETTER_SPACE
@@ -55,7 +55,7 @@ pr_random_mapping_given_score(read_entry * re_p, int score)
     // how many errors/mismatches would give this score?
     int n_mismatches = ceil_div(read_len * match_score - score, abs(mismatch_score - match_score));
     // pr of observing those by chance
-    double tmp = -log(nchoosek(read_len, n_mismatches)) - n_mismatches * log(3) + read_len * log(4);
+    double tmp = -log_nchoosek(read_len, n_mismatches) - n_mismatches * log(3) + read_len * log(4);
     return exp(-tmp);
   }
 }

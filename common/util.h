@@ -114,6 +114,7 @@ size_t		removedups(void *, size_t, size_t, int (*)(void const *, void const *));
 void		crash(int, int, char const *, ...);
 void		logit(int, char const *, ...);
 long long	nchoosek(int, int);
+double		log_nchoosek(int, int);
 
 
 /* for optarg (and to shut up icc) */
@@ -206,8 +207,9 @@ lstocs(int first_letter, int second_letter, bool is_rna)
 
 static inline uint
 ceil_div(uint a, uint b) {
-  assert(a > 0 && b > 0);
+  assert(b > 0);
 
+  if (a == 0) return 0;
   return ((a - 1) / b) + 1;
 }
 

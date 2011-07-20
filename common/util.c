@@ -1298,3 +1298,14 @@ nchoosek(int n, int k)
     res /= (i + 1);
   return res;
 }
+
+
+double
+log_nchoosek(int n, int k)
+{
+  double res = 0.0;
+  int i;
+  for (i = 0; i < k; i++)
+    res += log(n - i) - log(i + 1);
+  return res;
+}
