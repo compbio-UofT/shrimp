@@ -938,6 +938,28 @@ readpair_output_no_mqv(pair_entry * pe, struct read_hit_pair * hits_pass2, int n
 }
 
 
+// Find paired mapping containing given mapping of one read
+// and max mqv mapping of the other
+int
+get_idx_mp_max_mqv(pair_entry * pe, int nip, int idx)
+{
+  assert(pe != NULL && idx < pe->final_paired_hit_pool_size[nip]);
+  assert(pe->final_paired_hit_pool[nip][idx].n_paired_hit_idx > 0);
+
+  int best_other_mqv = -1;
+  int i, idx_pair;
+  read_hit * rhp = &pe->final_paired_hit_pool[nip][idx];
+  for (i = 0; i < rhp->n_paired_hit_idx; i++) {
+    read_hit * rh_mpP = &pe->final_paired_hit_pool[1 - nip][pe->final_paired_hits[rhp->paired_hit_idx[i]].rh_idx[1 - nip]];
+    if (rh_mpP->sfrp->mqv > best_other_mqv) {
+      best_other_mqv = rh_mpP->sfrp->mqv;
+      idx_pair = rhp->paired_hit_idx[i];
+    }
+  }
+  return idx_pair;
+}
+
+
 void
 readpair_output(pair_entry * pe)
 {
@@ -966,103 +988,133 @@ readpair_output(pair_entry * pe)
 	&& (pe->n_final_paired_hits > 0 || pe->re[0]->n_final_unpaired_hits > 0 || pe->re[1]->n_final_unpaired_hits > 0)) {
       // find out the max mqv for either read
       int max_is_paired[2];
+      int max_idx_unpaired[2] = { -1, -1 };
+      int max_idx_paired[2] = { -1, -1 };
       int max_idx[2];
+      int max_mqv_unpaired[2] = { -1, -1 };
+      int max_mqv_paired[2] = { -1, -1 };
       int max_mqv[2];
-      int best_nip;
+      int best_nip, idx_pair;
 
       for (nip = 0; nip < 2; nip++) {
-	max_mqv[nip] = -1;
 	for (i = 0; i < pe->re[nip]->n_final_unpaired_hits; i++)
-	  if (pe->re[nip]->final_unpaired_hits[i].sfrp->mqv > max_mqv[nip]) {
-	    max_mqv[nip] = pe->re[nip]->final_unpaired_hits[i].sfrp->mqv;
-	    max_is_paired[nip] = 0;
-	    max_idx[nip] = i;
+	  if (pe->re[nip]->final_unpaired_hits[i].sfrp->mqv > max_mqv_unpaired[nip]) {
+	    max_mqv_unpaired[nip] = pe->re[nip]->final_unpaired_hits[i].sfrp->mqv;
+	    max_idx_unpaired[nip] = i;
 	  }
 	for (i = 0; i < pe->final_paired_hit_pool_size[nip]; i++)
-	  if (pe->final_paired_hit_pool[nip][i].sfrp->mqv > max_mqv[nip]) {
-	    max_mqv[nip] = pe->final_paired_hit_pool[nip][i].sfrp->mqv;
-	    max_is_paired[nip] = 1;
-	    max_idx[nip] = i;
+	  if (pe->final_paired_hit_pool[nip][i].sfrp->mqv > max_mqv_paired[nip]) {
+	    max_mqv_paired[nip] = pe->final_paired_hit_pool[nip][i].sfrp->mqv;
+	    max_idx_paired[nip] = i;
 	  }
       }
 
-      if (max_mqv[0] >= max_mqv[1])
-	// will output best hit for read0
-	best_nip = 0;
-      else
-	best_nip = 1;
-
-      if (max_is_paired[best_nip] == 1)
+      if (!all_contigs)
       {
-	// output a pair containing max
-	// choose max mq for the other read
-	int best_other_mqv = -1;
-	int idx_pair = -1;
-	read_hit * rhp = &pe->final_paired_hit_pool[best_nip][max_idx[best_nip]];
-	for (i = 0; i < rhp->n_paired_hit_idx; i++) {
-	  read_hit * rh_mpP = &pe->final_paired_hit_pool[1-best_nip][pe->final_paired_hits[rhp->paired_hit_idx[i]].rh_idx[1 - best_nip]];
-	  if (rh_mpP->sfrp->mqv > best_other_mqv) {
-	    best_other_mqv = rh_mpP->sfrp->mqv;
-	    idx_pair = rhp->paired_hit_idx[i];
+	// output top mapping in each class
+
+	// for unpaired, take max
+	for (nip = 0; nip < 2; nip++)
+	  if (max_idx_unpaired[nip] >= 0) {
+	    first[nip] = max_idx_unpaired[nip];
+	    last[nip] = max_idx_unpaired[nip] + 1;
 	  }
-	}
 
-	// update the histogram of insert sizes
-	int bucket = (pe->final_paired_hits[idx_pair].insert_size - min_insert_size) / insert_histogram_bucket_size;
-	if (bucket < 0) bucket = 0;
-	if (bucket > 99) bucket = 99;
-#pragma omp atomic
-	insert_histogram[bucket]++;
-#pragma omp atomic
-	insert_histogram_load++;
-
-	last[0] = 0;
-	last[1] = 0;
+	// for paired, take the max mqv, then the mate with the max mqv
+	if (max_mqv_paired[0] > max_mqv_paired[1])
+	  best_nip = 0;
+	else
+	  best_nip = 1;
+	idx_pair = get_idx_mp_max_mqv(pe, best_nip, max_idx_paired[best_nip]);
 	first[2] = idx_pair;
 	last[2] = idx_pair + 1;
       }
       else
       {
-	// max mqv is in an unpaired hit
-	// see if it can be paired with best one from read1
-	int idx_best_other = -1;
-	double max_other_z0 = 0.0;
-	for (i = 0; i < pe->re[1 - best_nip]->n_final_unpaired_hits; i++) {
-	  if (pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0 > max_other_z0) {
-	    max_other_z0 = pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0;
-	    idx_best_other = i;
+	// output top mapping over all classes
+
+	for (nip = 0; nip < 2; nip++) {
+	  if (max_mqv_unpaired[nip] > max_mqv_paired[nip]) {
+	    max_mqv[nip] = max_mqv_unpaired[nip];
+	    max_is_paired[nip] = 0;
+	    max_idx[nip] = max_idx_unpaired[nip];
+	  } else {
+	    max_mqv[nip] = max_mqv_paired[nip];
+	    max_is_paired[nip] = 1;
+	    max_idx[nip] = max_idx_paired[nip];
 	  }
 	}
-	int best_other_mqv = -1;
-	if (idx_best_other >= 0)
-	  best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
-	if (best_other_mqv < 10) {
-	  // output unpaired hit
-	  last[2] = 0;
-	  last[1-best_nip] = 0;
-	  first[best_nip] = max_idx[best_nip];
-	  last[best_nip] = max_idx[best_nip] + 1;
-	} else {
-	  // unpaired qv >= 10:
-	  // pair up hits, possibly across chromosomes
-	  // for this, create a new read_hit_pair entry
-	  read_hit_pair * rhpp;
-	  pe->final_paired_hits = (read_hit_pair *)
-	      my_realloc(pe->final_paired_hits,
-		  (pe->n_final_paired_hits + 1) * sizeof(pe->final_paired_hits[0]),
-		  pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]),
-		  &mem_mapping, "final_paired_hits [%s,%s]", pe->re[0]->name, pe->re[1]->name);
-	  pe->n_final_paired_hits++;
-	  rhpp = &pe->final_paired_hits[pe->n_final_paired_hits - 1];
-	  rhpp->rh[best_nip] = &pe->re[best_nip]->final_unpaired_hits[max_idx[best_nip]];
-	  rhpp->rh[1 - best_nip] = &pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other];
-	  rhpp->score_max = rhpp->rh[0]->score_max + rhpp->rh[1]->score_max;
-	  rhpp->insert_size = get_insert_size(rhpp->rh[best_nip], rhpp->rh[1 - best_nip]);
-	  rhpp->improper_mapping = true;
+
+	if (max_mqv[0] >= max_mqv[1])
+	  // will output best hit for read0
+	  best_nip = 0;
+	else
+	  best_nip = 1;
+
+	if (max_is_paired[best_nip] == 1)
+	{
+	  // output a pair containing max
+	  // choose max mq for the other read
+
+	  idx_pair = get_idx_mp_max_mqv(pe, best_nip, max_idx[best_nip]);
+
+	  // update the histogram of insert sizes
+	  int bucket = (pe->final_paired_hits[idx_pair].insert_size - min_insert_size) / insert_histogram_bucket_size;
+	  if (bucket < 0) bucket = 0;
+	  if (bucket > 99) bucket = 99;
+#pragma omp atomic
+	  insert_histogram[bucket]++;
+#pragma omp atomic
+	  insert_histogram_load++;
+
 	  last[0] = 0;
 	  last[1] = 0;
-	  first[2] = pe->n_final_paired_hits - 1;
-	  last[2] = pe->n_final_paired_hits;
+	  first[2] = idx_pair;
+	  last[2] = idx_pair + 1;
+	}
+	else
+	{
+	  // max mqv is in an unpaired hit
+	  // see if it can be paired with best one from read1
+	  int idx_best_other = -1;
+	  double max_other_z0 = 0.0;
+	  for (i = 0; i < pe->re[1 - best_nip]->n_final_unpaired_hits; i++) {
+	    if (pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0 > max_other_z0) {
+	      max_other_z0 = pe->re[1 - best_nip]->final_unpaired_hits[i].sfrp->z0;
+	      idx_best_other = i;
+	    }
+	  }
+	  int best_other_mqv = -1;
+	  if (idx_best_other >= 0)
+	    best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
+	  if (best_other_mqv < 10) {
+	    // output unpaired hit
+	    last[2] = 0;
+	    last[1-best_nip] = 0;
+	    first[best_nip] = max_idx[best_nip];
+	    last[best_nip] = max_idx[best_nip] + 1;
+	  } else {
+	    // unpaired qv >= 10:
+	    // pair up hits, possibly across chromosomes
+	    // for this, create a new read_hit_pair entry
+	    read_hit_pair * rhpp;
+	    pe->final_paired_hits = (read_hit_pair *)
+		  my_realloc(pe->final_paired_hits,
+		      (pe->n_final_paired_hits + 1) * sizeof(pe->final_paired_hits[0]),
+		      pe->n_final_paired_hits * sizeof(pe->final_paired_hits[0]),
+		      &mem_mapping, "final_paired_hits [%s,%s]", pe->re[0]->name, pe->re[1]->name);
+	    pe->n_final_paired_hits++;
+	    rhpp = &pe->final_paired_hits[pe->n_final_paired_hits - 1];
+	    rhpp->rh[best_nip] = &pe->re[best_nip]->final_unpaired_hits[max_idx[best_nip]];
+	    rhpp->rh[1 - best_nip] = &pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other];
+	    rhpp->score_max = rhpp->rh[0]->score_max + rhpp->rh[1]->score_max;
+	    rhpp->insert_size = get_insert_size(rhpp->rh[best_nip], rhpp->rh[1 - best_nip]);
+	    rhpp->improper_mapping = true;
+	    last[0] = 0;
+	    last[1] = 0;
+	    first[2] = pe->n_final_paired_hits - 1;
+	    last[2] = pe->n_final_paired_hits;
+	  }
 	}
       }
 
