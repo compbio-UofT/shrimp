@@ -306,6 +306,25 @@ neglog_to_double(int y, int shift = 1000)
 }
 
 
+static inline double
+normal_cdf(double x, double mean, double stddev)
+{
+  double y = (x - mean) / stddev;
+  if (y < 0) y = -y;
+  double b0 = 0.2316419;
+  double b1 = 0.319381530;
+  double b2 = -0.356563782;
+  double b3 = 1.781477937;
+  double b4 = -1.821255978;
+  double b5 = 1.330274429;
+  double pi = 3.141592653589;
+  double t = 1.0 / (1.0 + b0 * y);
+  double res = (exp(- y * y / 2) / sqrt(2.0 * pi)) * ((((b5 * t + b4) * t + b3) * t + b2) * t + b1) * t;
+  if (x > mean) res = 1 - res;
+  return res;
+}
+
+
 
 #ifdef __cplusplus
 //} /* extern "C" */

@@ -716,10 +716,24 @@ compute_unpaired_mqv(read_entry * re, read_hit * * hits, int n_hits)
 }
 
 
+static inline double
+get_pr_insert_size(double insert_size)
+{
+  double res;
+  res = normal_cdf(insert_size + 10, insert_size_mean, insert_size_stddev) - normal_cdf(insert_size - 10, insert_size_mean, insert_size_stddev);
+  //int bucket = (insert_size - min_insert_size) / insert_histogram_bucket_size;
+  //if (bucket < 0) bucket = 0;
+  //if (bucket > 99) bucket = 99;
+  //res = (double)insert_histogram[bucket] / (double)insert_histogram_load;
+  if (res < 1e-200) res = 1e-200;
+  return res;
+}
+
+
 static void
 compute_paired_mqv(pair_entry * pe)
 {
-  int i, j, nip, bucket;
+  int i, j, nip;
   double z1[2];
   double z3;
   double insert_size_denom;
@@ -740,14 +754,10 @@ compute_paired_mqv(pair_entry * pe)
   }
 
   // renormalize insert sizes into a distribution
-  // for this, use counts in insert_histogram to estimate probabilities
   insert_size_denom = 0;
   for (i = 0; i < pe->n_final_paired_hits; i++) {
-    int bucket = (pe->final_paired_hits[i].insert_size - min_insert_size) / insert_histogram_bucket_size;
-    if (bucket < 0) bucket = 0;
-    if (bucket > 99) bucket = 99;
-
-    insert_size_denom += (double)insert_histogram[bucket] / (double)insert_histogram_load;
+    double pr_ins = get_pr_insert_size(pe->final_paired_hits[i].insert_size);
+    insert_size_denom += pr_ins;
   }
 
   // compute paired posteriors
@@ -759,10 +769,8 @@ compute_paired_mqv(pair_entry * pe)
       for (j = 0; j < rhp->n_paired_hit_idx; j++) {
 	read_hit_pair * rhpp = &pe->final_paired_hits[rhp->paired_hit_idx[j]];
 	read_hit * rh_mpP = &pe->final_paired_hit_pool[1 - nip][rhpp->rh_idx[1 - nip]];
-	bucket = (rhpp->insert_size - min_insert_size) / insert_histogram_bucket_size;
-	if (bucket < 0) bucket = 0;
-	if (bucket > 99) bucket = 99;
-	tmp += ((double)insert_histogram[bucket] / (double)insert_histogram_load) * rh_mpP->sfrp->posterior;
+	double pr_ins = get_pr_insert_size(rhpp->insert_size);
+	tmp += pr_ins * rh_mpP->sfrp->posterior;
       }
       tmp *= rhp->sfrp->posterior;
       if (tmp < 1e-200) tmp = 1e-200;

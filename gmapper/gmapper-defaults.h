@@ -27,6 +27,8 @@
 #define DEF_PAIR_MODE		PAIR_NONE
 #define DEF_MIN_INSERT_SIZE	50
 #define DEF_MAX_INSERT_SIZE	2000
+#define DEF_INSERT_SIZE_MEAN	200
+#define DEF_INSERT_SIZE_STDDEV	50
 
 #define DEF_WINDOW_LEN		140.0
 #define DEF_WINDOW_OVERLAP	20.0
@@ -123,7 +125,7 @@
 	{"trim-end",1,0,22},\
 	{"trim-first",1,0,23},\
 	{"trim-second",1,0,24},\
-	{"expected-isize",1,0,25},\
+	{"insert-size-dist",1,0,25},\
 	{"use-regions",0,0,26},\
 	{"region-overlap",1,0,27},\
 	{"paired-options",1,0,28},\

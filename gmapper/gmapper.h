@@ -132,7 +132,8 @@ STATIC(size_t const,		colour_entries,		sizeof(colour_space_options)/sizeof(struc
 EXTERN(int,		pair_mode,			DEF_PAIR_MODE);
 EXTERN(int,		min_insert_size,		DEF_MIN_INSERT_SIZE);
 EXTERN(int,		max_insert_size,		DEF_MAX_INSERT_SIZE);
-EXTERN(int,	 	expected_isize,			-1);
+EXTERN(double,		insert_size_mean,		DEF_INSERT_SIZE_MEAN);
+EXTERN(double,		insert_size_stddev,		DEF_INSERT_SIZE_STDDEV);
 EXTERN(llint,		insert_histogram[100],		{});
 EXTERN(int,		insert_histogram_bucket_size,	1);
 EXTERN(int,		insert_histogram_load,		100);

@@ -2059,11 +2059,14 @@ int main(int argc, char **argv){
 			trim_first=false;
 			break;
 		case 25:
-			expected_isize=atoi(optarg);
-			if (expected_isize<0) {
-				fprintf(stderr,"Expected insert size needs to be positive!\n");
-				exit(1);
-			}
+			c = strtok(optarg, ",");
+			if (c == NULL)
+			  crash(1, 0, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			insert_size_mean = atof(c);
+			c = strtok(NULL, ",");
+			if (c == NULL)
+			  crash(1, 0, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			insert_size_stddev = atof(c);
 			break;
 		case 26:
 		  use_regions = !use_regions;
