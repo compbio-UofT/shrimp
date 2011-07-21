@@ -372,7 +372,7 @@ launch_scan_threads()
 #pragma omp critical (fill_reads_buffer)
       {
 	after = rdtsc();
-	wait_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+	tpg.wait_ticks += MAX(after - before, 0);
 
 	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 
@@ -677,296 +677,313 @@ print_insert_histogram()
   }
 }
 
+typedef struct tp_stats_t {
+  uint64_t f1_invocs, f1_cells, f1_ticks;
+  double f1_secs, f1_cellspersec;
+  uint64_t f2_invocs, f2_cells, f2_ticks;
+  double f2_secs, f2_cellspersec;
+  uint64_t fwbw_invocs, fwbw_cells, fwbw_ticks;
+  double fwbw_secs, fwbw_cellspersec;
+  double scan_secs, readparse_secs, read_handle_overhead_secs;
+  double anchor_list_secs, hit_list_secs;
+  double region_counts_secs, mp_region_counts_secs, duplicate_removal_secs;
+  double pass1_secs, get_vector_hits_secs, pass2_secs;
+} tp_stats_t;
 
 static void
 print_statistics()
 {
   static char const my_tab[] = "    ";
 
-	uint64_t f1_invocs[num_threads], f1_cells[num_threads], f1_ticks[num_threads];
-	double f1_secs[num_threads], f1_cellspersec[num_threads];
-	uint64_t f1_total_invocs = 0, f1_total_cells = 0;
-	double f1_total_secs = 0, f1_total_cellspersec = 0;
-	uint64_t f1_calls_bypassed = 0;
+  //uint64_t f1_invocs[num_threads], f1_cells[num_threads], f1_ticks[num_threads];
+  //double f1_secs[num_threads], f1_cellspersec[num_threads];
+  uint64_t f1_total_invocs = 0, f1_total_cells = 0;
+  double f1_total_secs = 0, f1_total_cellspersec = 0;
+  uint64_t f1_calls_bypassed = 0;
+  //uint64_t f2_invocs[num_threads], f2_cells[num_threads], f2_ticks[num_threads];
+  //double f2_secs[num_threads], f2_cellspersec[num_threads];
+  uint64_t f2_total_invocs = 0, f2_total_cells = 0;
+  double f2_total_secs = 0, f2_total_cellspersec = 0;
+  //uint64_t fwbw_invocs[num_threads], fwbw_cells[num_threads], fwbw_ticks[num_threads];
+  //double fwbw_secs[num_threads], fwbw_cellspersec[num_threads];
+  uint64_t fwbw_total_invocs = 0, fwbw_total_cells = 0;
+  double fwbw_total_secs = 0, fwbw_total_cellspersec = 0;
+  //double scan_secs[num_threads], readparse_secs[num_threads], read_handle_overhead_secs[num_threads];
+  //double anchor_list_secs[num_threads], hit_list_secs[num_threads];
+  //double region_counts_secs[num_threads], mp_region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
+  //double pass1_secs[num_threads], get_vector_hits_secs[num_threads], pass2_secs[num_threads];
+  double total_scan_secs = 0, total_wait_secs = 0, total_readparse_secs = 0;
 
-	uint64_t f2_invocs[num_threads], f2_cells[num_threads], f2_ticks[num_threads];
-	double f2_secs[num_threads], f2_cellspersec[num_threads];
-	uint64_t f2_total_invocs = 0, f2_total_cells = 0;
-	double f2_total_secs = 0, f2_total_cellspersec = 0;
+  tp_stats_t * tps = (tp_stats_t *)malloc(num_threads * sizeof(tps[0]));
+  tpg_t * tpgA = (tpg_t *)malloc(num_threads * sizeof(tpgA[0]));
 
-	uint64_t fwbw_invocs[num_threads], fwbw_cells[num_threads], fwbw_ticks[num_threads];
-	double fwbw_secs[num_threads], fwbw_cellspersec[num_threads];
-	uint64_t fwbw_total_invocs = 0, fwbw_total_cells = 0;
-	double fwbw_total_secs = 0, fwbw_total_cellspersec = 0;
+  double hz;
+  uint64_t fasta_load_ticks;
+  fasta_stats_t fs;
 
-	double scan_secs[num_threads], readparse_secs[num_threads], read_handle_overhead_secs[num_threads];
-	double anchor_list_secs[num_threads], hit_list_secs[num_threads];
-	double region_counts_secs[num_threads], mp_region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
-	double pass1_secs[num_threads], get_vector_hits_secs[num_threads], pass2_secs[num_threads];
-	double total_scan_secs = 0, total_wait_secs = 0, total_readparse_secs = 0;
-
-	double hz;
-	uint64_t fasta_load_ticks;
-	fasta_stats_t fs;
-
-	fs = fasta_stats();
-	fasta_load_ticks = fs->total_ticks;
-	free(fs);
-	hz = cpuhz();
+  fs = fasta_stats();
+  fasta_load_ticks = fs->total_ticks;
+  free(fs);
+  hz = cpuhz();
 
 #pragma omp parallel num_threads(num_threads) shared(hz)
-	{
-	  int tid = omp_get_thread_num();
+  {
+    int tid = omp_get_thread_num();
 
-	  f1_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid], NULL);
+    memcpy(&tpgA[tid], &tpg, sizeof(tpg_t));
 
-	  f1_secs[tid] = (double)f1_ticks[tid] / hz;
-	  f1_cellspersec[tid] = (double)f1_cells[tid] / f1_secs[tid];
-	  if (isnan(f1_cellspersec[tid]))
-	    f1_cellspersec[tid] = 0;
+    f1_stats(&tps[tid].f1_invocs, &tps[tid].f1_cells, &tps[tid].f1_ticks, NULL);
 
-	  if (shrimp_mode == MODE_COLOUR_SPACE) {
-	    sw_full_cs_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
-	    post_sw_stats(&fwbw_invocs[tid], &fwbw_cells[tid], &fwbw_ticks[tid]);
-	  } else {
-	    sw_full_ls_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
-	  }
+    tps[tid].f1_secs = (double)tps[tid].f1_ticks / hz;
+    tps[tid].f1_cellspersec = (double)tps[tid].f1_cells / tps[tid].f1_secs;
+    if (isnan(tps[tid].f1_cellspersec))
+      tps[tid].f1_cellspersec = 0;
 
-	  f2_secs[tid] = (double)f2_ticks[tid] / hz;
-	  f2_cellspersec[tid] = (double)f2_cells[tid] / f2_secs[tid];
-	  if (isnan(f2_cellspersec[tid]))
-	    f2_cellspersec[tid] = 0;
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      sw_full_cs_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
+      post_sw_stats(&tps[tid].fwbw_invocs, &tps[tid].fwbw_cells, &tps[tid].fwbw_ticks);
+    } else {
+      sw_full_ls_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
+    }
 
-	  fwbw_secs[tid] = (double)fwbw_ticks[tid] / hz;
-	  fwbw_cellspersec[tid] = (double)fwbw_cells[tid] / fwbw_secs[tid];
-	  if (isnan(fwbw_cellspersec[tid]))
-	    fwbw_cellspersec[tid] = 0;
+    tps[tid].f2_secs = (double)tps[tid].f2_ticks / hz;
+    tps[tid].f2_cellspersec = (double)tps[tid].f2_cells / tps[tid].f2_secs;
+    if (isnan(tps[tid].f2_cellspersec))
+      tps[tid].f2_cellspersec = 0;
 
-	  readparse_secs[tid] = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)read_handle_usecs[tid] / 1.0e6) - ((double)wait_ticks[tid] / hz);
+    tps[tid].fwbw_secs = (double)tps[tid].fwbw_ticks / hz;
+    tps[tid].fwbw_cellspersec = (double)tps[tid].fwbw_cells / tps[tid].fwbw_secs;
+    if (isnan(tps[tid].fwbw_cellspersec))
+      tps[tid].fwbw_cellspersec = 0;
 
-	  scan_secs[tid] = ((double)read_handle_usecs[tid] / 1.0e6) - f1_secs[tid] - f2_secs[tid] - fwbw_secs[tid];
-	  scan_secs[tid] = MAX(0, scan_secs[tid]);
+    tps[tid].readparse_secs = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)tpg.read_handle_usecs / 1.0e6) - ((double)tpg.wait_ticks / hz);
 
-	  anchor_list_secs[tid] = (double)anchor_list_ticks[tid] / hz;
-          hit_list_secs[tid] = (double)hit_list_ticks[tid] / hz;
-          duplicate_removal_secs[tid] = (double)duplicate_removal_ticks[tid] / hz;
-          region_counts_secs[tid] = (double)region_counts_ticks[tid] / hz;
-          mp_region_counts_secs[tid] = (double)mp_region_counts_ticks[tid] / hz;
-	  pass1_secs[tid] = (double)pass1_ticks[tid] / hz;
-	  get_vector_hits_secs[tid] = (double)get_vector_hits_ticks[tid] / hz;
-	  pass2_secs[tid] = (double)pass2_ticks[tid] / hz;
-	  /*
-	  anchor_list_secs[tid] = (double)anchor_list_usecs[tid] / 1.0e6;
-          hit_list_secs[tid] = (double)hit_list_usecs[tid] / 1.0e6;
-          duplicate_removal_secs[tid] = (double)duplicate_removal_usecs[tid] / 1.0e6;
-          region_counts_secs[tid] = (double)region_counts_usecs[tid] / 1.0e6;
-	  */
+    tps[tid].scan_secs = ((double)tpg.read_handle_usecs / 1.0e6) - tps[tid].f1_secs - tps[tid].f2_secs - tps[tid].fwbw_secs;
+    tps[tid].scan_secs = MAX(0, tps[tid].scan_secs);
 
-	  read_handle_overhead_secs[tid] = scan_secs[tid]
-	    - region_counts_secs[tid] - anchor_list_secs[tid] - hit_list_secs[tid] - duplicate_removal_secs[tid];
-	}
-	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
+    tps[tid].anchor_list_secs = (double)tpg.anchor_list_ticks / hz;
+    tps[tid].hit_list_secs = (double)tpg.hit_list_ticks / hz;
+    tps[tid].duplicate_removal_secs = (double)tpg.duplicate_removal_ticks / hz;
+    tps[tid].region_counts_secs = (double)tpg.region_counts_ticks / hz;
+    tps[tid].mp_region_counts_secs = (double)tpg.mp_region_counts_ticks / hz;
+    tps[tid].pass1_secs = (double)tpg.pass1_ticks / hz;
+    tps[tid].get_vector_hits_secs = (double)tpg.get_vector_hits_ticks / hz;
+    tps[tid].pass2_secs = (double)tpg.pass2_ticks / hz;
+    /*
+	  tps[tid].anchor_list_secs = (double)anchor_list_usecs[tid] / 1.0e6;
+          tps[tid].hit_list_secs = (double)hit_list_usecs[tid] / 1.0e6;
+          tps[tid].duplicate_removal_secs = (double)duplicate_removal_usecs[tid] / 1.0e6;
+          tps[tid].region_counts_secs = (double)region_counts_usecs[tid] / 1.0e6;
+     */
 
-	fprintf(stderr, "\nStatistics:\n");
+    tps[tid].read_handle_overhead_secs = tps[tid].scan_secs
+      - tps[tid].region_counts_secs - tps[tid].anchor_list_secs - tps[tid].hit_list_secs - tps[tid].duplicate_removal_secs;
+  }
+  f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
-	fprintf(stderr, "%sOverall:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Load Genome Time:", (double)load_genome_usecs / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Mapping Time:", (double)mapping_wallclock_usecs / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Reads per hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6)));
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Reads per core-hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6 * (1/(double)num_threads))));
+  fprintf(stderr, "\nStatistics:\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sOverall:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Load Genome Time:", (double)load_genome_usecs / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Read Mapping Time:", (double)mapping_wallclock_usecs / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Reads per hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6)));
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Reads per core-hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6 * (1/(double)num_threads))));
 
-	int i;
-	for(i = 0; i < num_threads; i++){
-	  total_scan_secs += scan_secs[i];
-	  total_readparse_secs += readparse_secs[i];
-	  total_wait_secs += (double)wait_ticks[i] / hz;
+  fprintf(stderr, "\n");
 
-	  f1_total_secs += f1_secs[i];
-	  f1_total_invocs += f1_invocs[i];
-	  f1_total_cells += f1_cells[i];
+  int i;
+  for(i = 0; i < num_threads; i++){
+    total_scan_secs += tps[i].scan_secs;
+    total_readparse_secs += tps[i].readparse_secs;
+    total_wait_secs += (double)tpgA[i].wait_ticks / hz;
 
-	  f2_total_secs += f2_secs[i];
-	  f2_total_invocs += f2_invocs[i];
-	  f2_total_cells += f2_cells[i];
+    f1_total_secs += tps[i].f1_secs;
+    f1_total_invocs += tps[i].f1_invocs;
+    f1_total_cells += tps[i].f1_cells;
 
-	  fwbw_total_secs += fwbw_secs[i];
-	  fwbw_total_invocs += fwbw_invocs[i];
-	  fwbw_total_cells += fwbw_cells[i];
-	}
-	f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
-	f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
-	fwbw_total_cellspersec = fwbw_total_secs == 0? 0 : (double)fwbw_total_cells / fwbw_total_secs;
+    f2_total_secs += tps[i].f2_secs;
+    f2_total_invocs += tps[i].f2_invocs;
+    f2_total_cells += tps[i].f2_cells;
 
-	if (Dflag) {
-	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "ReadParse", "Scan", "Reg Cnts", "MPRegCnt", "Anch List", "Hit List", "Pass1", "Vect Hits", "Pass2", "Dup Remv",
-		  "Vector SW", "Scalar SW", "Post SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time",
-		  "Invocs", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
-	  fprintf(stderr, "\n");
-	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, readparse_secs[i], scan_secs[i],
-		    region_counts_secs[i], mp_region_counts_secs[i], anchor_list_secs[i], hit_list_secs[i],
-		    pass1_secs[i], get_vector_hits_secs[i], pass2_secs[i], duplicate_removal_secs[i],
-		    comma_integer(f1_invocs[i]), f1_secs[i],
-		    comma_integer(f2_invocs[i]), f2_secs[i],
-		    comma_integer(fwbw_invocs[i]), fwbw_secs[i],
-		    (double)wait_ticks[i] / hz);
-	  }
-          for (i = 0; i < num_threads; i++) {
-            fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
-              i, stat_get_mean(&anchor_list_init_size[i]), stat_get_sample_stddev(&anchor_list_init_size[i]),
-              stat_get_mean(&n_anchors_discarded[i]), stat_get_sample_stddev(&n_anchors_discarded[i]),
-              stat_get_mean(&n_big_gaps_anchor_list[i]), stat_get_sample_stddev(&n_big_gaps_anchor_list[i]));
-          }
-	  fprintf(stderr, "\n");
-	}
+    fwbw_total_secs += tps[i].fwbw_secs;
+    fwbw_total_invocs += tps[i].fwbw_invocs;
+    fwbw_total_cells += tps[i].fwbw_cells;
+  }
+  f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
+  f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
+  fwbw_total_cellspersec = fwbw_total_secs == 0? 0 : (double)fwbw_total_cells / fwbw_total_secs;
 
-	fprintf(stderr, "%sSpaced Seed Scan:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", total_scan_secs);
+  if (Dflag) {
+    fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
+    fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
+            "", "ReadParse", "Scan", "Reg Cnts", "MPRegCnt", "Anch List", "Hit List", "Pass1", "Vect Hits", "Pass2", "Dup Remv",
+            "Vector SW", "Scalar SW", "Post SW", "Wait");
+    fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+            "", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time",
+            "Invocs", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
+    fprintf(stderr, "\n");
+    for(i = 0; i < num_threads; i++) {
+      fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+	  i, tps[i].readparse_secs, tps[i].scan_secs,
+	  tps[i].region_counts_secs, tps[i].mp_region_counts_secs, tps[i].anchor_list_secs, tps[i].hit_list_secs,
+	  tps[i].pass1_secs, tps[i].get_vector_hits_secs, tps[i].pass2_secs, tps[i].duplicate_removal_secs,
+	  comma_integer(tps[i].f1_invocs), tps[i].f1_secs,
+	  comma_integer(tps[i].f2_invocs), tps[i].f2_secs,
+	  comma_integer(tps[i].fwbw_invocs), tps[i].fwbw_secs,
+	  (double)tpgA[i].wait_ticks / hz);
+    }
+    for (i = 0; i < num_threads; i++) {
+      fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
+	  i, stat_get_mean(&tpgA[i].anchor_list_init_size), stat_get_sample_stddev(&tpgA[i].anchor_list_init_size),
+	  stat_get_mean(&tpgA[i].n_anchors_discarded), stat_get_sample_stddev(&tpgA[i].n_anchors_discarded),
+	  stat_get_mean(&tpgA[i].n_big_gaps_anchor_list), stat_get_sample_stddev(&tpgA[i].n_big_gaps_anchor_list));
+    }
+    fprintf(stderr, "\n");
+  }
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sSpaced Seed Scan:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", total_scan_secs);
 
-	fprintf(stderr, "%sVector Smith-Waterman:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", f1_total_secs);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Invocations:", comma_integer(f1_total_invocs));
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Bypassed Calls:", comma_integer(f1_calls_bypassed));
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells Computed:", (double)f1_total_cells / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells per Second:", f1_total_cellspersec / 1.0e6);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sVector Smith-Waterman:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", f1_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(f1_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Bypassed Calls:", comma_integer(f1_calls_bypassed));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)f1_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", f1_total_cellspersec / 1.0e6);
 
-	fprintf(stderr, "%sScalar Smith-Waterman:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", f2_total_secs);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Invocations:", comma_integer(f2_total_invocs));
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells Computed:", (double)f2_total_cells / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells per Second:", f2_total_cellspersec / 1.0e6);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sScalar Smith-Waterman:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", f2_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(f2_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)f2_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", f2_total_cellspersec / 1.0e6);
 
-	fprintf(stderr, "%sForward-Backward:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", fwbw_total_secs);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Invocations:", comma_integer(fwbw_total_invocs));
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells Computed:", (double)fwbw_total_cells / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells per Second:", fwbw_total_cellspersec / 1.0e6);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sForward-Backward:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", fwbw_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(fwbw_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)fwbw_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", fwbw_total_cellspersec / 1.0e6);
 
-	fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Fasta Lib Time:", (double)fasta_load_ticks / hz);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Load Time:", total_readparse_secs);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Wait Time:", total_wait_secs);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Fasta Lib Time:", (double)fasta_load_ticks / hz);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Read Load Time:", total_readparse_secs);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Wait Time:", total_wait_secs);
 
-	fprintf(stderr, "%sGeneral:\n", my_tab);
-	if (pair_mode == PAIR_NONE)
-	  {
-	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Reads Matched:",
-		    comma_integer(total_reads_matched),
-		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "... with QV >= 10:",
-		    comma_integer(total_reads_matched_conf),
-		    (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Reads Dropped:",
-		    comma_integer(total_reads_dropped),
-		    (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		    "Total Matches:",
-		    comma_integer(total_single_matches));
-	    fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab,
-		    "Avg Hits/Matched Read:",
-		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
-	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		    "Duplicate Hits Pruned:",
-		    comma_integer(total_dup_single_matches));
-	  }
-	else // paired hits
-	  {
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Pairs Matched:",
-		    comma_integer(total_pairs_matched),
-		    (nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "... with QV >= 10:",
-		    comma_integer(total_pairs_matched_conf),
-		    (nreads == 0) ? 0 : ((double)total_pairs_matched_conf / (double)(nreads/2)) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Pairs Dropped:",
-		    comma_integer(total_pairs_dropped),
-		    (nreads == 0) ? 0 : ((double)total_pairs_dropped / (double)(nreads/2)) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Total Paired Matches:",
-		    comma_integer(total_paired_matches));
-	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
-		    "Avg Matches/Pair Matched:",
-		    (total_pairs_matched == 0) ? 0 : ((double)total_paired_matches / (double)total_pairs_matched));
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Duplicate Paired Matches Pruned:",
-		    comma_integer(total_dup_paired_matches));
+  fprintf(stderr, "\n");
 
-	    if (half_paired) {
-	      fprintf(stderr, "\n");
+  fprintf(stderr, "%sGeneral:\n", my_tab);
+  if (pair_mode == PAIR_NONE)
+  {
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+	"Reads Matched:",
+	comma_integer(total_reads_matched),
+	(nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "... with QV >= 10:",
+            comma_integer(total_reads_matched_conf),
+            (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "Reads Dropped:",
+            comma_integer(total_reads_dropped),
+            (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+            "Total Matches:",
+            comma_integer(total_single_matches));
+    fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab,
+            "Avg Hits/Matched Read:",
+            (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+            "Duplicate Hits Pruned:",
+            comma_integer(total_dup_single_matches));
+  }
+  else // paired hits
+  {
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+	"Pairs Matched:",
+	comma_integer(total_pairs_matched),
+	(nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "... with QV >= 10:",
+            comma_integer(total_pairs_matched_conf),
+            (nreads == 0) ? 0 : ((double)total_pairs_matched_conf / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "Pairs Dropped:",
+            comma_integer(total_pairs_dropped),
+            (nreads == 0) ? 0 : ((double)total_pairs_dropped / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+            "Total Paired Matches:",
+            comma_integer(total_paired_matches));
+    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+            "Avg Matches/Pair Matched:",
+            (total_pairs_matched == 0) ? 0 : ((double)total_paired_matches / (double)total_pairs_matched));
+    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+            "Duplicate Paired Matches Pruned:",
+            comma_integer(total_dup_paired_matches));
 
-	      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		      "Additional Reads Matched Unpaired:",
-		      comma_integer(total_reads_matched),
-		      (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
-	      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		      "... with QV >= 10:",
-		      comma_integer(total_reads_matched_conf),
-		      (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
-	      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		      "Total Unpaired Matches:",
-		      comma_integer(total_single_matches));
-	      fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
-		      "Avg Matches/Unpaired Matched Read:",
-		      (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
-	      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		      "Duplicate Unpaired Matches Pruned:",
-		      comma_integer(total_dup_single_matches));
-	    }
-	  }
+    if (half_paired) {
+      fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+              "Additional Reads Matched Unpaired:",
+              comma_integer(total_reads_matched),
+              (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+              "... with QV >= 10:",
+              comma_integer(total_reads_matched_conf),
+              (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
+      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+              "Total Unpaired Matches:",
+              comma_integer(total_single_matches));
+      fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+              "Avg Matches/Unpaired Matched Read:",
+              (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+              "Duplicate Unpaired Matches Pruned:",
+              comma_integer(total_dup_single_matches));
+    }
+  }
 
-	fprintf(stderr, "%sMemory usage:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Genomemap:",
-		comma_integer(count_get_count(&mem_genomemap)));
+  fprintf(stderr, "\n");
 
-	if (Xflag) {
-	  print_insert_histogram();
-	}
+  fprintf(stderr, "%sMemory usage:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Genomemap:",
+          comma_integer(count_get_count(&mem_genomemap)));
+
+  if (Xflag) {
+    print_insert_histogram();
+  }
+
+  free(tps);
+  free(tpgA);
 }
 
 static void
@@ -2694,8 +2711,8 @@ int main(int argc, char **argv){
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-	  //hash_mark = 0;
-	  //window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
+	  // init thread-private globals
+	  memset(&tpg, 0, sizeof(tpg_t));
 
 	  /* region handling */
 	  if (use_regions) {

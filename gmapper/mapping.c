@@ -532,7 +532,7 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
   }
 
   after = rdtsc();
-  region_counts_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.region_counts_ticks += MAX(after - before, 0);
   //region_counts_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
@@ -597,7 +597,7 @@ read_get_mp_region_counts(struct read_entry * re, int st)
   }
 
   after = rdtsc();
-  mp_region_counts_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.mp_region_counts_ticks += MAX(after - before, 0);
 }
 
 
@@ -831,7 +831,7 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
       list_sz += genomemap_len[sn][re->mapidx[st][offset]];
     }
   }
-  stat_add(&anchor_list_init_size[omp_get_thread_num()], list_sz);
+  stat_add(&tpg.anchor_list_init_size, list_sz);
 
   // init anchor list
   //re->anchors[st] = (struct anchor *)xmalloc(list_sz * sizeof(re->anchors[0][0]));
@@ -935,8 +935,8 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
     my_realloc(re->anchors[st], re->n_anchors[st] * sizeof(re->anchors[0][0]), list_sz * sizeof(re->anchors[0][0]),
 	       &mem_mapping, "anchors [%s]", re->name);
 
-  stat_add(&n_anchors_discarded[omp_get_thread_num()], anchors_discarded);
-  stat_add(&n_big_gaps_anchor_list[omp_get_thread_num()], big_gaps);
+  stat_add(&tpg.n_anchors_discarded, anchors_discarded);
+  stat_add(&tpg.n_big_gaps_anchor_list, big_gaps);
 }
 
 static inline void
@@ -949,7 +949,7 @@ read_get_anchor_list(struct read_entry * re, struct anchor_list_options * option
   read_get_anchor_list_per_strand(re, 1, options);
 
   after = rdtsc();
-  anchor_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.anchor_list_ticks += MAX(after - before, 0);
   //anchor_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
@@ -1146,7 +1146,7 @@ read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
   read_get_hit_list_per_strand(re, 1, options);
 
   after = rdtsc();
-  hit_list_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.hit_list_ticks += MAX(after - before, 0);
   //hit_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 
 #ifdef DEBUG_HIT_LIST_CREATION
@@ -1251,7 +1251,7 @@ read_pass1(struct read_entry * re, struct pass1_options * options)
   read_pass1_per_strand(re, 1, options);
 
   after = rdtsc();
-  pass1_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.pass1_ticks += MAX(after - before, 0);
 
 #ifdef DEBUG_HIT_LIST_PASS1
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
@@ -1300,7 +1300,7 @@ read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, 
   }
 
   after = rdtsc();
-  get_vector_hits_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.get_vector_hits_ticks += MAX(after - before, 0);
 }
 
 
@@ -1492,7 +1492,7 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
   *n_hits_pass2 = k;
 
   after = rdtsc();
-  duplicate_removal_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.duplicate_removal_ticks += MAX(after - before, 0);
   //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
@@ -1632,7 +1632,7 @@ read_pass2(struct read_entry * re,
   }
 
   after = rdtsc();
-  pass2_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.pass2_ticks += MAX(after - before, 0);
 
   return cnt >= options->stop_count;
 }
@@ -1728,7 +1728,7 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
     // this read fell through all the option sets
   //}
 
-  read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  tpg.read_handle_usecs += gettimeinusecs() - before;
 }
 
 
@@ -1787,7 +1787,7 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
   }
 
   after = rdtsc();
-  get_vector_hits_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.get_vector_hits_ticks += MAX(after - before, 0);
 }
 
 
@@ -1988,7 +1988,7 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   *n_hits_pass2 = tmp;
 
   after = rdtsc();
-  duplicate_removal_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.duplicate_removal_ticks += MAX(after - before, 0);
   //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
 }
 
@@ -2097,7 +2097,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   }
 
   after = rdtsc();
-  pass2_ticks[omp_get_thread_num()] += MAX(after - before, 0);
+  tpg.pass2_ticks += MAX(after - before, 0);
 
   return cnt >= options->stop_count;
 }
@@ -2338,7 +2338,7 @@ handle_readpair(pair_entry * pe,
 
   } while (!done && ++option_index < n_options);
 
-  read_handle_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  tpg.read_handle_usecs += gettimeinusecs() - before;
 
   if (option_index >= n_options && half_paired) {
     // this read pair fell through all the option sets; try unpaired mapping

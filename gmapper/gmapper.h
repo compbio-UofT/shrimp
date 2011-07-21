@@ -193,25 +193,42 @@ EXTERN(llint,			total_dup_paired_matches,	0);
 
 EXTERN(llint,			load_genome_usecs,		0);
 EXTERN(llint,			mapping_wallclock_usecs,	0);
-EXTERN(llint,			read_handle_usecs[50],		{});
-EXTERN(llint,			wait_ticks[50],			{});
-EXTERN(llint,			anchor_list_ticks[50],		{});
-EXTERN(llint,			region_counts_ticks[50],	{});
-EXTERN(llint,			mp_region_counts_ticks[50],	{});
-EXTERN(llint,			hit_list_ticks[50],		{});
-EXTERN(llint,			pass1_ticks[50],		{});
-EXTERN(llint,			get_vector_hits_ticks[50],	{});
-EXTERN(llint,			pass2_ticks[50],		{});
-EXTERN(llint,			duplicate_removal_ticks[50],	{});
-//EXTERN(llint,			anchor_list_usecs[50],		{});
-//EXTERN(llint,			region_counts_usecs[50],	{});
-//EXTERN(llint,			hit_list_usecs[50],		{});
-//EXTERN(llint,			duplicate_removal_usecs[50],	{});
 
-EXTERN(stat_t,			anchor_list_init_size[50],	{});
+/* per-thread counts and statistics */
+//EXTERN(llint,			read_handle_usecs,		0);
+//EXTERN(llint,			wait_ticks,			0);
+//EXTERN(llint,			anchor_list_ticks,		0);
+//EXTERN(llint,			region_counts_ticks,		0);
+//EXTERN(llint,			mp_region_counts_ticks,		0);
+//EXTERN(llint,			hit_list_ticks,			0);
+//EXTERN(llint,			pass1_ticks,			0);
+//EXTERN(llint,			get_vector_hits_ticks,		0);
+//EXTERN(llint,			pass2_ticks,			0);
+//EXTERN(llint,			duplicate_removal_ticks,	0);
+//EXTERN(stat_t,			anchor_list_init_size,		0);
+//EXTERN(stat_t,			n_big_gaps_anchor_list,		0);
+//EXTERN(stat_t,			n_anchors_discarded,		0);
 EXTERN(int,			anchor_list_big_gap,		DEF_ANCHOR_LIST_BIG_GAP);
-EXTERN(stat_t,			n_big_gaps_anchor_list[50],	{});
-EXTERN(stat_t,			n_anchors_discarded[50],	{});
+
+// thread-private globals
+typedef struct tpg_t {
+  llint read_handle_usecs;
+  llint wait_ticks;
+  llint anchor_list_ticks;
+  llint region_counts_ticks;
+  llint mp_region_counts_ticks;
+  llint hit_list_ticks;
+  llint pass1_ticks;
+  llint get_vector_hits_ticks;
+  llint pass2_ticks;
+  llint duplicate_removal_ticks;
+  stat_t anchor_list_init_size;
+  stat_t n_big_gaps_anchor_list;
+  stat_t n_anchors_discarded;
+} tpgT;
+
+EXTERN(tpg_t,	tpg,	{});
+#pragma omp threadprivate(tpg)
 
 EXTERN(count_t,			mem_genomemap,			{});
 EXTERN(count_t,			mem_small,			{});
