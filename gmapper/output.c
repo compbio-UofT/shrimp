@@ -828,7 +828,13 @@ compute_paired_mqv(pair_entry * pe)
   }
 
   // compute denominator selecting between classes of mappings
-  class_select_denom = pr_top_random[1] * pr_top_random[2] * pr_missed_mp[0] + pr_top_random[0] * pr_top_random[2] * pr_missed_mp[1] + pr_top_random[0] * pr_top_random[1];
+  class_select_denom = 0.0;
+  if (pe->re[0]->n_final_unpaired_hits > 0)
+    class_select_denom += pr_top_random[1] * pr_top_random[2] * pr_missed_mp[0];
+  if (pe->re[1]->n_final_unpaired_hits > 0)
+    class_select_denom += pr_top_random[0] * pr_top_random[2] * pr_missed_mp[1];
+  if (pe->n_final_paired_hits > 0)
+    class_select_denom += pr_top_random[0] * pr_top_random[1];
 
   // DONE! ready to compute mqvs
   // unpaired:
