@@ -118,7 +118,7 @@
 	{"global",0,0,15},\
 	{"read-group",1,0,17},\
 	{"sam-header",1,0,18},\
-	{"half-paired",0,0,19},\
+	{"no-half-paired",0,0,19},\
 	{"sam-r2",0,0,20},\
 	{"mode",1,0,'M'},\
 	{"trim-front",1,0,21},\
@@ -139,7 +139,7 @@
 	{"indel-taboo-len",1,0,36},\
 	{"single-best-mapping",0,0,37},\
 	{"all-contigs",0,0,38},\
-	{"mapping-qualities",0,0,39}\
+	{"no-mapping-qualities",0,0,39}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

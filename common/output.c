@@ -209,7 +209,7 @@ output_pretty(const char *readname, const char *contigname,
 		if (dbalign[j] == qralign[j] && dbalign[j] != '-') {
 			strbuf_append(sb, "|");
 		} else {
-			assert(j > 0 || dbalign[j] == toupper((int)qralign[j]));
+		  //assert(j > 0 || dbalign[j] == toupper((int)qralign[j]));
 			if (dbalign[j] == toupper((int)qralign[j]))
 				strbuf_append(sb, "X");
 			else if (islower((int)qralign[j]))
@@ -287,13 +287,14 @@ output_normal(const char *readname, const char *contigname,
     const struct sw_full_results *sfr, uint32_t genome_len, bool use_colours,
     uint32_t *read, u_int readlen, int initbp, bool revcmpl, bool inc_read)
 {
-	struct sw_full_results sfr_tmp;
+  //struct sw_full_results sfr_tmp;
 	uint32_t genome_start, genome_end;
 	uint32_t idx_genome_start, idx_genome_end;
 	const char *dbalign, *qralign;
-	char *edit, *readseq, *str;
+	char *edit;
+	char *readseq, *str;
 	strbuf_t sb;
-	bool ret;
+	//bool ret;
 
 	sb = strbuf_create();
 
@@ -328,6 +329,7 @@ output_normal(const char *readname, const char *contigname,
 	    (revcmpl) ? '-' : '+');
 
 	edit = editstr(dbalign, qralign);
+	/*
 	ret = editstr_to_sfr(edit, &sfr_tmp);
 	assert(ret &&
 	    sfr->matches == sfr_tmp.matches &&
@@ -335,13 +337,14 @@ output_normal(const char *readname, const char *contigname,
 	    sfr->crossovers == sfr_tmp.crossovers &&
 	    sfr->insertions == sfr_tmp.insertions &&
 	    sfr->deletions == sfr_tmp.deletions);
+	*/
 
 	strbuf_append(sb, "\t%u\t%u\t%d\t%d\t%d\t%d\t%s\t%s", idx_genome_start + 1,
 	    idx_genome_end + 1, sfr->read_start + 1,
 	    sfr->read_start + sfr->rmapped - 1 + 1, readlen, sfr->score, edit, readseq);
+	free(edit);
 
 	free(readseq);
-	free(edit);
 
 	str = strbuf_string(sb, NULL);
 	strbuf_destroy(sb);

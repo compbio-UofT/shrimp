@@ -91,7 +91,7 @@ typedef struct read_entry {
   struct read_hit *	final_unpaired_hits;
   int			n_final_unpaired_hits;
 
-  double	mq_denominator;
+  //double	mq_denominator;
   int           n_anchors[2];
   int           n_hits[2];
   int           n_ranges;

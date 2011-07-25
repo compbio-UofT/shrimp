@@ -228,19 +228,23 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
     {
       char * tmp_output;
 
-      tmp_output = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
-				 genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
-				 re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
-      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "%s\n", tmp_output);
-      free(tmp_output);
-
-      if (Pflag) { //pretty print output
-	tmp_output = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
-				   genome_contigs[rh->cn], genome_len[rh->cn],
-				   (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
-				   re->read_len, re->initbp[rh->st], rh->gen_st);
+      if (rh != NULL) {
+	tmp_output = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
+				   genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
+				   re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
 	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "%s\n", tmp_output);
 	free(tmp_output);
+
+	if (Pflag) { //pretty print output
+	  tmp_output = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
+				     genome_contigs[rh->cn], genome_len[rh->cn],
+				     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
+				     re->read_len, re->initbp[rh->st], rh->gen_st);
+	  *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "%s\n", tmp_output);
+	  free(tmp_output);
+	}
+      } else { // this is an unmapped read (part of a pair)
+	*output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, ">%s\n", re->name);
       }
     }
   else // SAM output

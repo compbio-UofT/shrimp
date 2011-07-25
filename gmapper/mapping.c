@@ -1567,6 +1567,7 @@ read_pass2(struct read_entry * re,
   // sort by non-increasing score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_score_cmp);
 
+  /*
   if (compute_mapping_qualities && *n_hits_pass2 > 0) {
     // compute Z
     re->mq_denominator = hits_pass2[0]->sfrp->posterior;
@@ -1585,8 +1586,8 @@ read_pass2(struct read_entry * re,
     for ( ; i < *n_hits_pass2; i++) {
       hits_pass2[i]->mapping_quality = 0;
     }
-
   }
+  */
 
   // trim excess mappings
   if (*n_hits_pass2 > options->num_outputs)
@@ -1711,8 +1712,11 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
     if (n_hits_pass2 > 0) {
       if (options[option_index].pass2.save_outputs)
 	read_save_final_hits(re, hits_pass2, n_hits_pass2);
-      else
+      else {
 	read_output(re, hits_pass2, n_hits_pass2);
+	for (i = 0; i < n_hits_pass2; i++)
+	  hits_pass2[i]->sfrp->in_use = false;
+      }
     }
 
     // free pass1 structs
@@ -2322,8 +2326,13 @@ handle_readpair(pair_entry * pe,
     if (n_hits_pass2 > 0) {
       if (options[option_index].pairing.save_outputs)
 	readpair_save_final_hits(pe, hits_pass2, n_hits_pass2);
-      else
+      else {
 	readpair_output_no_mqv(pe, hits_pass2, n_hits_pass2);
+	for (i = 0; i < n_hits_pass2; i++) {
+	  hits_pass2[i].rh[0]->sfrp->in_use = false;
+	  hits_pass2[i].rh[1]->sfrp->in_use = false;
+	}
+      }
     }
 
     for (i = 0; i < n_hits_pass1; i++) {

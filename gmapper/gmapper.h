@@ -69,7 +69,7 @@ EXTERN(char *,		load_mmap,		NULL);
 EXTERN(unsigned int,	progress,		DEF_PROGRESS);
 
 EXTERN(bool,		compute_mapping_qualities,	true);
-EXTERN(int,		score_difference_mq_cutoff,	0);
+//EXTERN(int,		score_difference_mq_cutoff,	0);
 EXTERN(bool,		all_contigs,			false);
 EXTERN(bool,		use_sanger_qvs,			true);
 EXTERN(int,		qual_vector_offset,		0);
@@ -170,7 +170,7 @@ EXTERN(unsigned int,		thread_output_heap_capacity,	DEF_THREAD_OUTPUT_HEAP_CAPACI
 EXTERN(FILE *,		unaligned_reads_file,		NULL);
 EXTERN(FILE *,		aligned_reads_file,		NULL);
 EXTERN(bool,		sam_unaligned,			false);
-EXTERN(bool,		half_paired,			false); //output reads in paired mode that only have one mapping
+EXTERN(bool,		half_paired,			true); //output reads in paired mode that only have one mapping
 EXTERN(bool,		sam_r2,				false);
 EXTERN(char *,		sam_header_filename,		NULL);
 EXTERN(char *,		sam_read_group_name,		NULL);

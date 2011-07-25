@@ -595,14 +595,16 @@ Paired Mapping Mode Input
     AAATATGTTGATTTTTCAGTGTTTTTAAAGTAAAAT
 
   In particular:
-    1. There should not be separate files containing the reads in each pair.
-    2. The reads should not be simply dumped in the same file. That is, the
+    1. The reads should not be simply dumped in the same file. That is, the
     reads in each pair should not be just about anywhere in the file. They must
     be consecutive.
-    3. There should not be unpaired reads among the paired reads. If you have
+    2. There should not be unpaired reads among the paired reads. If you have
     both paired and unpaired reads, use different files and different runs.
 
   Several scripts are provided to get the reads in this format.
+
+  Alternatively, the reads in each file can be placed in two corresponding files,
+  which are then loaded using options -1 and -2.
 
   CAUTION: gmapper will NOT check any of the above. If started in paired mode,
   it will simply fetch consecutive reads and assume they form a pair.
@@ -717,6 +719,21 @@ Genome Projection
     to load, rather than loading them all, which is  what happens with the short
     form. E.g., we could use "-L db.genome,db.seed.1".
 
+  [    --save-mmap /<mmap_name> ]
+
+    Can be used only when a genome projection is loaded with -L. This saves the
+    genome projection in shared memory and keeps it resident until it is
+    explictly removed with
+
+    $ rm /dev/shm/<mmap_name>
+
+    The name parameter must start with a '/' character, and it must contain no
+    other '/' characters.
+
+  [    --load-mmap /<mmap_name> ]
+
+    Load a previously saved memory map of a genome projection.
+
 
 General Mapping
 ---------------
@@ -827,8 +844,8 @@ Filter 1: Window Generation
     reads,  which might contain  more indels,  you might  want to  significantly
     lower this threshold, and use an absolute value. For example, to allow a CMW
     to pass this filter based on two spaced kmer matches  of total length 50 and
-    one indel (with the default  scores), you should use  "-r 453". (We get  453
-    from 50 matches: +500, 1 gap open: -40, 1 gap extend: -7.)
+    one indel (with the default  scores), you should use  "-r 464". (We get  464
+    from 50 matches: +500, 1 gap open: -33, 1 ins extend: -3.)
 
 
 Filter 2: Vector SW/Ungapped Alignment
@@ -901,6 +918,14 @@ Filter 3: Scalar (Full) SW Alignment
     and if in FASTQ mode, outputs base qualities in the QUAL field, just like 
     BFAST. 
 
+  [    --indel-taboo-len <value> ]
+
+    Prevent indels from starting or ending in the tail <value> positions of a
+    read. Note: for deletions, start and end positions are the same with
+    respect to the read. Insertions might still start before the taboo zone,
+    but then they have to go all the way to the end of the read (this will
+    only ever happen with --global). Only available in colour space.
+
 
 Sets of settings
 ----------------
@@ -954,13 +979,20 @@ Paired Mode
     each   read.  In SAM  output,  the  insert size  is  recalculated using  the
     standard definition for SAM.
  
-  [    --half-paired ]
-    Try to map in pairs. If a pair does not map, try aligning each read indepen-
-    dently, reporting these independent alignments.
+  [    --no-half-paired ]
+
+    Do NOT try to map individual reads. If a pair does not map, do NOT try to
+    align each read independently. (The default is to try.)
 
   [    --sam-r2 ]
     Report the SAM r2 field for letter space alignments. Report a similar x2 fi-
     eld for colour space alignments.
+
+  [    --insert-size-dist <mean,stddev> ]
+
+    Specifies the mean and standard deviation of  the  insert  sizes.  They  are
+    assumed to come from a normal distribution. These values are used in mapping
+    quality computation.
 
 
 Thread Control
@@ -1000,6 +1032,11 @@ Input Control
 
     Use the given file as input for the downstream reads in paired mode.
 
+  [    --min-avg-qv <value> ]
+
+    The minimum average quality value of a read for it to even be considered for
+    mapping. The default is 10.
+
 
 Output Control
 --------------
@@ -1036,6 +1073,36 @@ Output Control
   [ --al <filename> ]
 
     Print aligned reads to target file.
+
+  [    --progress <value> ]
+
+    Display a progress line each <value> reads. the default is 100,000.
+
+
+Mapping Qualities
+-----------------
+
+  [    --no-mapping-qualities ]
+
+    Do not compute mapping qualities. By default, they are computed.
+
+  [    --all-contigs ]
+
+    This flag specifies that all contigs of interest are included in  this  run.
+    When this is not the case  (which is the default),  gmapper  includes  extra
+    fields in its SAM output in order to  make  possible  the  recalculation  of
+    mapping qualities when merging mappings from different files.
+
+  [    --single-best-mapping ]
+
+    If mapping qualities are computed,  this flag tells gmapper to  only  output
+    the "best" mapping for each read (or pair, in paired mode).
+
+    Note:  in  paired  mode,  if   --single-best-mapping   is  given   but   not
+    --all-contigs, gmapper outputs  the  best  mapping  from  each  class:  best
+    paired, best unpaired for the first read, and best unpaired for  the  second
+    read. These extra mappings are used  to  recompute  mapping  qualities  when
+    merging.
 
 
 Diagnostics

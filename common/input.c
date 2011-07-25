@@ -73,7 +73,7 @@ editstr_to_sfr(const char *editstr, struct sw_full_results *sfrp)
 		if (inparen) {
 			if (editstr[i] == ')') {
 				scratch[j] = '\0';
-				if (strcspn(scratch, "ACGTUMRWSYKVHDBXNacgtumrwsykvhdbxn") != 0) {
+				if (strcspn(scratch, "ACGTUMRWSYKVHDBXNacgtumrwsykvhdbn") != 0) {
 					free(scratch);
 					return (false);
 				}
