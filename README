@@ -72,7 +72,7 @@ Table of Contents
 --------------------------------------------------------------------------------
 
 SHRiMP2 is a  software package for  mapping reads from a  donor genome against a
-target (refernce) genome.  SHRiMP2  was primarily developed  to work  with short
+target (reference) genome. SHRiMP2  was primarily developed  to work  with short
 reads produced by  Next Generation Sequencing (NGS)  machines. The main features
 of SHRiMP2 include:
 
@@ -97,7 +97,7 @@ accurate   identification  of  mismatches  (SNPs), micro-indels,  and crossovers
 (colour space sequencing errors.)
 
 SHRiMP2 primarily targets sensitivity, but it has come a long way to achieve it
-at a reasonable speed. To illustrate its performace:
+at a reasonable speed. To illustrate its performance:
 
   Sensitivity: SHRiMP2 achieves 94.4% precision  and  78.6% recall when  mapping
   simulated colour space reads of 50 base pairs (bp) each containing 1 SNP _and_
@@ -115,10 +115,10 @@ at a reasonable speed. To illustrate its performace:
   parallel.  (These are all rough estimates.)
 
 
-SHRiMP2 consists of the read mapper progam gmapper, along with a series of tools
-and scripts. In this README file, we primarily describe gmapper. Descriptions of
-tools remaing from SHRiMP1 are available in README.SHRiMP132. Descriptions of
-various helper scripts are in the script directory utils/.
+SHRiMP2  consists  of  the  read  mapper  program  gmapper,  along with a series
+of tools  and  scripts.   In this README file,  we primarily  describe  gmapper.
+Descriptions of tools remaining from SHRiMP1 are available in  README.SHRiMP132.
+Descriptions of various helper scripts are in the script directory utils/.
 
 
 --------------------------------------------------------------------------------
@@ -364,7 +364,7 @@ The options used above have the following meaning:
     .genome and .seed[1-4]
   -N 8 : Use 8 threads of control, fully utilizing 2 quad-core CPUs.
   -p opp-in : Enabled paired mode, where the two reads in each pair are on
-    "opp"-osite starnds, pointing "in"-wards.
+    "opp"-osite strands, pointing "in"-wards.
   -I 50,500 : Set minimum and maximum allowed insert size.
   -m 20 -i -25 -g -40 -e -10 : Set specific Smith-Waterman scores for match,
     mismatch, gap open and gap extend.
@@ -432,7 +432,7 @@ and crossover scores are now relevant);
 - mappings that do not achieve a score of 50% of the maximum are discarded (not
 many of those, because the initial seed match already guarantees a decent
 score);
-- the 2 top hits (-o 2) per read are ouput.
+- the 2 top hits (-o 2) per read are output.
 
 In SHRiMP 2.0.4, a new command-line option was introduced that can be used to
 load several miRNA-specific settings: "-M mirna" or "--mode mirna" is
@@ -467,7 +467,7 @@ We have a look at the mappings:
 ----------------------------------------------
 
 SHRiMP2 is  designed to be quite   sensitive, but without  complete disregard to
-speed. The following  is an ADVANCED  EXAMPLE showing  some  setttings that will
+speed.  The following  is an ADVANCED  EXAMPLE showing  some  settings that will
 make it OVERLY sensitive.
 
 CAUTION: Not all of these settings need to be  applied at the  same time to make
@@ -562,7 +562,7 @@ Output Files
   output file in the order of best to worst.
 
   When running gmapper in multi-threaded mode, mappings of different reads might
-  appear in  the output file intermingled, as  follows (only  displaing the name
+  appear in  the output file intermingled, as  follows (only displaying the name
   and the score):
 
     $ grep "^>" map.out | head -n 8
@@ -639,10 +639,10 @@ Paired Mapping Mode Output
 5. Parameters
 --------------------------------------------------------------------------------
 
-The following parameters govern the  behaviour of  gmapper.  For more  throrough
+The following parameters govern the  behaviour of  gmapper.   For more  thorough
 descriptions of the algorithms involved, see the next Section.
 
-The list is organized conceputally by the "area" where parameters operate.
+The list is organized conceptually by the "area" where parameters operate.
 
 
 Genome Projection
@@ -651,8 +651,8 @@ Genome Projection
   [ -s/--seeds <seed1,seed2,....> ]
 
     Each spaced seed is a  contiguous string of 0s  and 1s. Several spaced seeds
-    can be specified either by separating them by commas as a single paramter to
-    -s,  or  by giving -s several   times. By default, gmapper  uses  a set of 4
+    can be specified either  by separating them by commas  as a single parameter
+    to -s, or  by giving -s several times.  By default, gmapper uses  a set of 4
     spaced seeds of weight 12. Several sets  of default seeds are available  for
     certain weights. These can be loaded by, e.g. "-s w16",  to load the default
     set of seeds of weight 16.
@@ -724,7 +724,7 @@ Genome Projection
 
     Can be used to save and subsequently load a genome projection  to  and  from
     shared memory.  The projection will remain resident in shared  memory  until
-    explictly removed with
+    explicitly removed with
 
     $ rm /dev/shm/<mmap_name>
 
@@ -895,7 +895,7 @@ Filter 3: Scalar (Full) SW Alignment
 
   [ --strata ]
 
-    Only output the highest scoring mappings for any given read, upto
+    Only output the highest scoring mappings for any given read, up to
     <num_outputs> mappings per read.
 
   [ -a/--anchor-width <anchor_width> ]
@@ -914,8 +914,8 @@ Filter 3: Scalar (Full) SW Alignment
 
   [    --global ]
 
-    Color-space only. Perform a full global alginment in the last phase of 
-    alginments (full scalar).
+    Color-space only. Perform a full global alignment in the last phase of 
+    alignments (full scalar).
 
   [    --bfast ]
 
@@ -1261,7 +1261,7 @@ more than 2 anchors for each CMW no longer provides justifiable speed benefits.
 In paired mapping mode, filter 1  is run independently for each  read in a pair.
 In this case,   in window generation  mode  "-n 4" (the  default),  both runs of
 filter 1 occur  in (unpaired) mode  2. In window  generation modes "-n 2" or "-n
-3", both runs of filter 1 occur in (unapired) mode 1.
+3", both runs of filter 1 occur in (unpaired) mode 1.
 
 The <window_generation_threshold> parameter specifies the minimum score that has
 to be achieved by  an optimistic estimate of the  real match score in order  for
@@ -1293,7 +1293,7 @@ CMW (which already passed the filter) by more than <window_overlap>. This is set
 by -l.
 
 To speed up the mapping of a single read against repetitive regions of a genome,
-every time the SW algorihtm  is run, the  resulting score is  saved in a  cache,
+every time the SW algorithm  is run, the  resulting score is  saved in a  cache,
 indexed by the hash value of the  genomic window. Subsequently, prior to running
 the SW algorithm on another genomic window (and the same  read!), its hash value
 is   computed and the cache   is looked up  for  a previous score. Conflicts are
@@ -1312,14 +1312,14 @@ space, the  final full alignment   is always done   in letter space. Since  each
 letter depends on the previous letter and colour, any  error on the colour space
 read will affect all following letters when converting to letter space. For this
 reason, we perform the alignment of all four  possible letter space translations
-of   the  read    and permit    jumping between  matricies,    at  the   cost of
+of   the   read    and permit    jumping between  matrices,    at  the   cost of
 <crossover_score>.  A     CMW passes this   filter if   its score is    at least
 <full_sw_threshold>.  This is set by   -h. At  the  end,  the top  <num_outputs>
 remaining CMWs are output.
 
 The full SW alignment is the costliest of the filters applied, with running time
 proportional to the product  of the lengths  of the read  and  the CMW.  A small
-optimization is achieved by restricting the dynmaic programming to run through a
+optimization is achieved by restricting the dynamic programming to run through a
 series of  "necks" or diagonal  tubes  centered along the  original anchors that
 triggered the creation of the CMW in filter 1. By  default, gmapper uses anchors
 with total extra width 8. In ungapped mode, the extra width is set 0. To disable
