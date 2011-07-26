@@ -1,5 +1,8 @@
 2.2.0: Jul, 2011
 	- Added mapping quality values and base quality values (see README.)
+	- ***NOTE***: mapping quality computation is NOT currently available during merging. This will be fixed very soon.
+	  If merging and MQs are both relevant to you (in particular, if you split the reference into pieces to fit in RAM,)
+	  please consider waiting to update for the next minor release.
 	- Various algorithmic improvements behind the scenes.
 	- Changed default scoring scheme. Scores optimized for mapping against hg.
 	- Changed default thresholds.
