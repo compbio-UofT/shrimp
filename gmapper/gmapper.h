@@ -86,7 +86,7 @@ EXTERN(bool,		Pflag,			false);		/* pretty print results */
 EXTERN(bool,		Rflag,			false);		/* add read sequence to output*/
 EXTERN(bool,		Tflag,			true);		/* reverse sw full tie breaks */
 EXTERN(bool,		Dflag,			false);		/* print statistics for each thread */
-EXTERN(bool,		Eflag,			false);		/* output sam format */
+EXTERN(bool,		Eflag,			true);		/* output sam format */
 EXTERN(bool,		Xflag,			false);		/* print insert histogram */
 EXTERN(bool,		Yflag,			false);		/* print genome projection histogram */
 EXTERN(bool,		Vflag,			true);		/* automatic genome index trimming */
@@ -95,6 +95,7 @@ EXTERN(bool,		Gflag,			false);		/* global alignment flag ! */
 EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
 EXTERN(bool,		extra_sam_fields,	false);
 EXTERN(bool,		single_best_mapping,	false);
+EXTERN(bool,		improper_mappings,	true);
 
 /* Scores */
 EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);

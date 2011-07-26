@@ -962,7 +962,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
   int i, j, cn, max_idx;
   int w_len;
   int short_len = 0, long_len = 0;
-  int heavy_mp;
+  int heavy_mp = false; // init not needed
   struct anchor a[3];
 
   assert(re != NULL && options != NULL);
@@ -1161,11 +1161,10 @@ static void
 read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options * options)
 {
   int i;
-  int last_good_cn;
-  unsigned int last_good_g_off;
+  int last_good_cn = -1;
+  unsigned int last_good_g_off = 0; // init not needed
 
   f1_hash_tag++;
-  last_good_cn = -1;
 
   for (i = 0; i < re->n_hits[st]; i++) {
     if (options->only_paired && re->hits[st][i].pair_min < 0) {
@@ -1771,6 +1770,9 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
 	tmp.score_max = re1->hits[st1][i].score_max + re2->hits[st2][j].score_max;
 	tmp.pct_score = (1000 * 100 * tmp.score)/tmp.score_max;
 	tmp.key = (IS_ABSOLUTE(options->pass1_threshold)? tmp.score : tmp.pct_score);
+	tmp.improper_mapping = false;
+	tmp.rh_idx[0] = -1;
+	tmp.rh_idx[1] = -1;
 
 	if (tmp.score >= (int)abs_or_pct(options->pass1_threshold, tmp.score_max)
 	    && (*load < options->pass1_num_outputs || tmp.key > a[0].key)) {

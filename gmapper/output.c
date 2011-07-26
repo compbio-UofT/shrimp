@@ -364,7 +364,9 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	bool primary_alignment = false;
 	bool platform_quality_fail = false;
 	bool pcr_duplicate = false;
+#ifndef NDEBUG
 	int stored_alignments = MIN(num_outputs,satisfying_alignments); //IH
+#endif
 	//if the read has no mapping or if not in half_paired mode and the mate has no mapping
 	if (query_unmapped || (!half_paired && paired_read && mate_unmapped)) {
 		mapq=0;
@@ -902,11 +904,14 @@ read_output(struct read_entry * re, struct read_hit * * hits_pass2, int n_hits_p
     }
   }
 
+  bool good_unpair = false;
   for (i = first; i < last; i++) {
     struct read_hit * rh = hits_pass2[i];
-    if (pair_mode == PAIR_NONE)
+    if (pair_mode == PAIR_NONE) {
       hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2, false);
-    else {
+      if (rh->sfrp->mqv >= 10)
+	good_unpair = true;
+    } else {
       if (re->first_in_pair) {
 	hit_output(re, rh, NULL, true, sam_hit_counts, n_hits_pass2, false);
 	hit_output(re->mate_pair, NULL, rh, false, NULL, 0, false);
@@ -915,6 +920,10 @@ read_output(struct read_entry * re, struct read_hit * * hits_pass2, int n_hits_p
       	hit_output(re, rh, NULL, false, sam_hit_counts, n_hits_pass2, false);
      }
     }
+  }
+  if (pair_mode == PAIR_NONE && good_unpair) {
+#pragma omp atomic
+    total_reads_matched_conf++;
   }
 }
 
@@ -965,7 +974,7 @@ get_idx_mp_max_mqv(pair_entry * pe, int nip, int idx)
   assert(pe->final_paired_hit_pool[nip][idx].n_paired_hit_idx > 0);
 
   int best_other_mqv = -1;
-  int i, idx_pair;
+  int i, idx_pair = -1; // init not needed
   read_hit * rhp = &pe->final_paired_hit_pool[nip][idx];
   for (i = 0; i < rhp->n_paired_hit_idx; i++) {
     read_hit * rh_mpP = &pe->final_paired_hit_pool[1 - nip][pe->final_paired_hits[rhp->paired_hit_idx[i]].rh_idx[1 - nip]];
@@ -1043,9 +1052,11 @@ readpair_output(pair_entry * pe)
 	  best_nip = 0;
 	else
 	  best_nip = 1;
-	idx_pair = get_idx_mp_max_mqv(pe, best_nip, max_idx_paired[best_nip]);
-	first[2] = idx_pair;
-	last[2] = idx_pair + 1;
+	if (max_mqv_paired[best_nip] >= 0) {
+	  idx_pair = get_idx_mp_max_mqv(pe, best_nip, max_idx_paired[best_nip]);
+	  first[2] = idx_pair;
+	  last[2] = idx_pair + 1;
+	}
       }
       else
       {
@@ -1105,7 +1116,7 @@ readpair_output(pair_entry * pe)
 	  int best_other_mqv = -1;
 	  if (idx_best_other >= 0)
 	    best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
-	  if (best_other_mqv < 10) {
+	  if (!improper_mappings || best_other_mqv < 10) {
 	    // output unpaired hit
 	    last[2] = 0;
 	    last[1-best_nip] = 0;
@@ -1140,6 +1151,8 @@ readpair_output(pair_entry * pe)
   }
 
   // time to output stuff
+  bool good_pair = false;
+  bool good_unpair = false;
   for (i = first[2]; i < last[2]; i++) {
     read_hit * rh1 = pe->final_paired_hits[i].rh[0];
     read_hit * rh2 = pe->final_paired_hits[i].rh[1];
@@ -1149,6 +1162,12 @@ readpair_output(pair_entry * pe)
 
     hit_output(pe->re[0], rh1,  rh2, true, sam_hit_counts[0], pe->n_final_paired_hits, pe->final_paired_hits[i].improper_mapping);
     hit_output(pe->re[1], rh2,  rh1, false, sam_hit_counts[1], pe->n_final_paired_hits, pe->final_paired_hits[i].improper_mapping);
+
+    if (!pe->final_paired_hits[i].improper_mapping && (rh1->sfrp->mqv >= 10 || rh2->sfrp->mqv >= 10)) {
+      good_pair = true;
+    } else if (pe->final_paired_hits[i].improper_mapping && (rh1->sfrp->mqv >= 10 || rh2->sfrp->mqv >= 10)) {
+      good_unpair = true;
+    }
   }
   for (nip = 0; nip < 2; nip++)
     for (i = first[nip]; i < last[nip]; i++) {
@@ -1162,5 +1181,17 @@ readpair_output(pair_entry * pe)
   	hit_output(rep->mate_pair, NULL, rhp, true, NULL, 0, false);
   	hit_output(rep, rhp, NULL, false, sam_hit_counts[1], rep->n_final_unpaired_hits, false);
       }
+
+      if (rhp->sfrp->mqv >= 10) {
+	good_unpair = true;
+      }
     }
+
+  if (good_pair) {
+#pragma omp atomic
+    total_pairs_matched_conf++;
+  } else if (good_unpair) {
+#pragma omp atomic
+    total_reads_matched_conf++;
+  }
 }

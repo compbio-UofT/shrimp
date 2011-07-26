@@ -1277,7 +1277,7 @@ logit(int display_errno, char const * msg, ...)
   va_list fmtargs;
   char new_msg[strlen(msg) + 1000];
 
-  sprintf(new_msg, "logit: %s%s%s\n", msg,
+  sprintf(new_msg, "note: %s%s%s\n", msg,
 	  display_errno? ": " : "",
 	  display_errno? strerror(errno) : "");
 

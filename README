@@ -720,19 +720,24 @@ Genome Projection
     form. E.g., we could use "-L db.genome,db.seed.1".
 
   [    --save-mmap /<mmap_name> ]
+  [    --load-mmap /<mmap_name> ]
 
-    Can be used only when a genome projection is loaded with -L. This saves the
-    genome projection in shared memory and keeps it resident until it is
+    Can be used to save and subsequently load a genome projection  to  and  from
+    shared memory.  The projection will remain resident in shared  memory  until
     explictly removed with
 
     $ rm /dev/shm/<mmap_name>
 
-    The name parameter must start with a '/' character, and it must contain no
-    other '/' characters.
+    When saving to shared memory,  the genome projection must  be  first  loaded
+    with -L (not directly from a fasta file). The name parameter must start with
+    a '/' character, and it must contain no other '/' characters.
 
-  [    --load-mmap /<mmap_name> ]
+    This functionality is useful only when  many  individual  gmapper  runs  are
+    performed against the same large genome projection,  to the point where  the
+    projection loading part (with -L) is a bottleneck.
 
-    Load a previously saved memory map of a genome projection.
+    For reasons we did not fully investigate,  loading  does not work on certain
+    machines. Consequently, the functionality should be considered experimental.
 
 
 General Mapping
@@ -978,10 +983,15 @@ Paired Mode
     Note: These parameters are only used to limit the  search space where to map
     each   read.  In SAM  output,  the  insert size  is  recalculated using  the
     standard definition for SAM.
+
+  [    --half-paired ]
+
+    In paired mode, if a pair does not map, try to map each read individually.
+    (This is on by default as of v2.2.0).
  
   [    --no-half-paired ]
 
-    Do NOT try to map individual reads. If a pair does not map, do NOT try to
+    Do NOT try to map individual reads.  If a pair does not map,  do NOT try  to
     align each read independently. (The default is to try.)
 
   [    --sam-r2 ]
@@ -992,7 +1002,7 @@ Paired Mode
 
     Specifies the mean and standard deviation of  the  insert  sizes.  They  are
     assumed to come from a normal distribution. These values are used in mapping
-    quality computation.
+    quality computation. The defaults are: mean=200, stddev=100.
 
 
 Thread Control
@@ -1041,6 +1051,10 @@ Input Control
 Output Control
 --------------
 
+  [    --shrimp-format ]
+
+    Select old SHRiMP output format.
+
   [ -P/--pretty ]
 
     Select SHRiMP output format, and pretty-print alignments.
@@ -1051,7 +1065,7 @@ Output Control
 
   [ -E/--sam ]
 
-    Select SAM output format.
+    Select SAM output format. (This is on by default as of v2.2.0.)
 
   [ --sam-unaligned ]
 
@@ -1103,6 +1117,14 @@ Mapping Qualities
     paired, best unpaired for the first read, and best unpaired for  the  second
     read. These extra mappings are used  to  recompute  mapping  qualities  when
     merging.
+
+  [    --no-improper-mappings ]
+
+    Only relevant in paired mode, when --all-contigs and --single-best-mapping
+    are both given. By default, if SHRiMP decides the best mapping of a pair is
+    a singleton, it will attempt to pair it up with the best mapping of the
+    other read, if the latter is strong enough. This enables mapping in the
+    presence of large structural variations. The flag disables this behaviour.
 
 
 Diagnostics
@@ -1317,6 +1339,43 @@ allowed interval.
 The final mapping score for a  pair equals the sum  of the mapping scores of the
 individual reads. (We do not currently score  insert sizes.) Following filter 3,
 the top <num_outputs> remaining paired hits for each pair are output.
+
+
+Mapping Quality Values
+----------------------
+
+As of v2.2.0, SHRiMP computes by default quality values for mappings, as well as
+for individual base calls. In letter space, base quality values are the same as
+the input base quality values. In colour space, base quality values are derived
+by running a forward-backward algorithm in order to compute the posterior
+probability of every base call.
+
+Mapping quality values are  based  on  the  probability  a  certain  mapping  is
+correct.  For unpaired reads,  the probability a certain mapping is  correct  is
+derived as the posterior of that mapping divided by the sum of the posteriors of
+all other mappings of that read. For reference, see:  Li H., Ruan J., Durbin R.,
+"Mapping short DNA sequencing reads and calling variants using  mapping  quality
+scores" doi: 10.1101/gr.078212.108.
+
+For paired reads, a more elaborate computation is performed. Mappings are placed
+into three classes: paired, unpaired for the first read, and unpaired for the
+second read. Various weights are used to carefully select between the classes,
+taking into account the posteriors of the mappings, the read lengths, as well as
+prior assumptions on the sensitivity of SHRiMP. In the end, of all classes of
+mappings for a certain pair of reads, at most one will have quality value
+greater than or equal to 4. When --single-best-mapping is used, only one best
+mapping is output for each pair. (Note, the quality of this best mapping might
+still be less than 4. If those are undesirable, they should be filtered
+downstream from the SAM output file.)
+
+When using --single-best-mapping, if SHRiMP decides that the best mapping for a
+pair of reads is a singleton mapping (only one of the reads being mapped),
+SHRiMP will also look at the best singleton mapping of the other read. If that
+one is by itself strong enough, SHRiMP will forcefully pair up those mappings,
+and mark them as an "improper" mapping. (Specifically, bit 0x2 in the FLAG field
+of the SAM output will be 0). Such mappings do not respect any assumptions about
+the insert size distribution, and they can even be on different chromosomes.
+To disable this behaviour, see --no-improper-mappings.
 
 
 --------------------------------------------------------------------------------

@@ -1,11 +1,24 @@
-2.1.1c: Feb 21, 2010
+2.2.0: Jul, 2011
+	- Added mapping quality values and base quality values (see README.)
+	- Various algorithmic improvements behind the scenes.
+	- Changed default scoring scheme. Scores optimized for mapping against hg.
+	- Changed default thresholds.
+	- Changed default to SAM format output. For the old shrimp format, see --shrimp-format.
+	- Changed default to half-paired mode: paired reads will first be mapped as pairs, then also as singletons.
+	  To select only the best mapping, see --single-best-mapping. Half-paired mode will slow down
+	  gmapper compared to its previous versions, but we felt it is desirable to have it.
+	  If you only need paired mappings, see --no-half-paired.
+	- Changed the default set of seeds to 3 seeds of weight 12, (Thank you Marta Gardea.)
+	- Removed limit on the number of OMP threads. (It used to be 50.)
+
+2.1.1c: Feb 21, 2011
 	- Fixed col-bw issue, where mate pair insert size was not computed correctly
 
-2.1.1b: Feb 17, 2010
+2.1.1b: Feb 17, 2011
 	- Fixed a getopt issue with ICC compiled binaries, did not allow for options to be passed to shrimp
 	or mergesam
 
-2.1.1: Feb 8, 2010
+2.1.1: Feb 8, 2011
 	- Read trimming implemented, on the fly
 	- Mergesam has been re-written from scratch to support faster operations
 	- New heap structure put into place for filtering final alignments - fixed several bugs

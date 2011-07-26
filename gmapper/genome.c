@@ -277,12 +277,12 @@ up_align(size_t size)
 }
 
 static void
-add_to_mmap(void * * addr, char * * crt_end, size_t size, void * src = NULL)
+add_to_mmap(char * addr, char * * crt_end, size_t size, char * src = NULL)
 {
-  *addr = *crt_end;
+  *(char **)addr = *crt_end;
   *crt_end += up_align(size);
   if (src != NULL) {
-    memcpy(*addr, src, size);
+    memcpy(*(char **)addr, src, size);
   }
 }
 
@@ -496,23 +496,23 @@ genome_load_map_save_mmap(char * map_name, char const * mmap_name)
   char * crt_end = (char *)h->map_start + up_align(sizeof(map_header));
 
   // genome_len: 1-dim; already loaded
-  add_to_mmap((void **)&h->genome_len, &crt_end, num_contigs * sizeof(genome_len[0]), genome_len);
+  add_to_mmap((char*)&h->genome_len, &crt_end, num_contigs * sizeof(genome_len[0]), (char*)genome_len);
 
   // contig_offsets: 1-dim; already loaded
-  add_to_mmap((void **)&h->contig_offsets, &crt_end, num_contigs * sizeof(contig_offsets[0]), contig_offsets);
+  add_to_mmap((char*)&h->contig_offsets, &crt_end, num_contigs * sizeof(contig_offsets[0]), (char*)contig_offsets);
 
   // contig_names: 2-dim, already loaded
-  add_to_mmap((void **)&h->contig_names, &crt_end, num_contigs * sizeof(contig_names[0]));
+  add_to_mmap((char*)&h->contig_names, &crt_end, num_contigs * sizeof(contig_names[0]));
   for (cn = 0; cn < num_contigs; cn++) {
-    add_to_mmap((void **)&h->contig_names[cn], &crt_end, (strlen(contig_names[cn]) + 1) * sizeof(char), contig_names[cn]);
+    add_to_mmap((char*)&h->contig_names[cn], &crt_end, (strlen(contig_names[cn]) + 1) * sizeof(char), (char*)contig_names[cn]);
   }
 
   // genome_XX_contigs_YY: 2-dim; not loaded; block in file (except for _cs_rc)
-  add_to_mmap((void **)&h->genome_contigs, &crt_end, num_contigs * sizeof(genome_contigs[0]));
-  add_to_mmap((void **)&h->genome_contigs_rc, &crt_end, num_contigs * sizeof(genome_contigs_rc[0]));
+  add_to_mmap((char*)&h->genome_contigs, &crt_end, num_contigs * sizeof(genome_contigs[0]));
+  add_to_mmap((char*)&h->genome_contigs_rc, &crt_end, num_contigs * sizeof(genome_contigs_rc[0]));
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-    add_to_mmap((void **)&h->genome_cs_contigs, &crt_end, num_contigs * sizeof(genome_cs_contigs[0]));
-    add_to_mmap((void **)&h->genome_cs_contigs_rc, &crt_end, num_contigs * sizeof(genome_cs_contigs_rc[0]));
+    add_to_mmap((char*)&h->genome_cs_contigs, &crt_end, num_contigs * sizeof(genome_cs_contigs[0]));
+    add_to_mmap((char*)&h->genome_cs_contigs_rc, &crt_end, num_contigs * sizeof(genome_cs_contigs_rc[0]));
   }
 
   // read blocks from file -- THESE ARE NOT ALIGNED on 8 bytes, only on 4!!
@@ -520,16 +520,16 @@ genome_load_map_save_mmap(char * map_name, char const * mmap_name)
   uint32_t total;
   xgzread(genome_file, &total, sizeof(uint32_t));
 
-  add_to_mmap((void **)&h->genome_contigs[0], &crt_end, (size_t)total * sizeof(uint32_t));
+  add_to_mmap((char*)&h->genome_contigs[0], &crt_end, (size_t)total * sizeof(uint32_t));
   xgzread(genome_file, h->genome_contigs[0], (size_t)total * sizeof(uint32_t));
   ptr1 = (uint32_t *)h->genome_contigs[0];
 
-  add_to_mmap((void **)&h->genome_contigs_rc[0], &crt_end, (size_t)total * sizeof(uint32_t));
+  add_to_mmap((char*)&h->genome_contigs_rc[0], &crt_end, (size_t)total * sizeof(uint32_t));
   xgzread(genome_file, h->genome_contigs_rc[0], (size_t)total * sizeof(uint32_t));
   ptr2 = (uint32_t *)h->genome_contigs_rc[0];
 
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-    add_to_mmap((void **)&h->genome_cs_contigs[0], &crt_end, (size_t)total * sizeof(uint32_t));
+    add_to_mmap((char*)&h->genome_cs_contigs[0], &crt_end, (size_t)total * sizeof(uint32_t));
     xgzread(genome_file, h->genome_cs_contigs[0], (size_t)total * sizeof(uint32_t));
     ptr3 = (uint32_t *)h->genome_cs_contigs[0];
   }  
@@ -548,37 +548,37 @@ genome_load_map_save_mmap(char * map_name, char const * mmap_name)
   if (shrimp_mode == MODE_COLOUR_SPACE) {
     for (cn = 0; cn < num_contigs; cn++) {
       uint32_t * res = bitfield_to_colourspace(h->genome_contigs_rc[cn], genome_len[cn], false);
-      add_to_mmap((void **)&h->genome_cs_contigs_rc[cn], &crt_end, BPTO32BW(genome_len[cn]) * sizeof(uint32_t), res);
+      add_to_mmap((char*)&h->genome_cs_contigs_rc[cn], &crt_end, BPTO32BW(genome_len[cn]) * sizeof(uint32_t), (char*)res);
     }
   }
   // done with per-contig data
 
   // next, seeds
-  add_to_mmap((void **)&h->seed, &crt_end, n_seeds * sizeof(struct seed_type), seed);
+  add_to_mmap((char*)&h->seed, &crt_end, n_seeds * sizeof(struct seed_type), (char*)seed);
   if (Hflag) {
     init_seed_hash_mask();
-    add_to_mmap((void **)&h->seed_hash_mask, &crt_end, n_seeds * sizeof(seed_hash_mask[0]));
+    add_to_mmap((char*)&h->seed_hash_mask, &crt_end, n_seeds * sizeof(seed_hash_mask[0]));
     for (sn = 0; sn < n_seeds; sn++) {
-      add_to_mmap((void **)&h->seed_hash_mask[sn], &crt_end, BPTO32BW(max_seed_span) * sizeof(uint32_t), seed_hash_mask[sn]);
+      add_to_mmap((char*)&h->seed_hash_mask[sn], &crt_end, BPTO32BW(max_seed_span) * sizeof(uint32_t), (char*)seed_hash_mask[sn]);
     }
   }
 
   // genomemap_len, genomemap: these are not loaded yet
-  add_to_mmap((void **)&h->genomemap_len, &crt_end, n_seeds * sizeof(genomemap_len[0]));
-  add_to_mmap((void **)&h->genomemap, &crt_end, n_seeds * sizeof(genomemap[0]));
+  add_to_mmap((char*)&h->genomemap_len, &crt_end, n_seeds * sizeof(genomemap_len[0]));
+  add_to_mmap((char*)&h->genomemap, &crt_end, n_seeds * sizeof(genomemap[0]));
   for (sn = 0; sn < n_seeds; sn++) {
     capacity = power4(Hflag? HASH_TABLE_POWER : seed[sn].weight);
 
-    add_to_mmap((void **)&h->genomemap_len[sn], &crt_end, capacity * sizeof(genomemap_len[0][0]));
+    add_to_mmap((char*)&h->genomemap_len[sn], &crt_end, capacity * sizeof(genomemap_len[0][0]));
     xgzread(seed_file[sn], h->genomemap_len[sn], capacity * sizeof(genomemap_len[0][0]));
 
-    add_to_mmap((void **)&h->genomemap[sn], &crt_end, capacity * sizeof(genomemap[0][0]));
+    add_to_mmap((char*)&h->genomemap[sn], &crt_end, capacity * sizeof(genomemap[0][0]));
 
     // genomemap is block-alloc-ed
     uint32_t total;
     xgzread(seed_file[sn], &total, sizeof(uint32_t));
 
-    add_to_mmap((void **)&h->genomemap[sn][0], &crt_end, (size_t)total * sizeof(uint32_t));
+    add_to_mmap((char*)&h->genomemap[sn][0], &crt_end, (size_t)total * sizeof(uint32_t));
     xgzread(seed_file[sn], h->genomemap[sn][0], (size_t)total * sizeof(uint32_t));
 
     uint32_t * ptr = (uint32_t *)h->genomemap[sn][0];

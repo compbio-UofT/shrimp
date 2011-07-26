@@ -417,7 +417,7 @@ launch_scan_threads()
 	  nreads_mod += load;
 	  if (nreads_mod >= progress) {
 	    llint time_usecs = gettimeinusecs();
-	    fprintf(stderr, "\r%lld %d %d.", nreads,
+	    fprintf(stderr, "%lld %d %d.\r", nreads,
 		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6),
 		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6 * (1/(double)num_threads)) );
 	    last_nreads = nreads;
@@ -664,6 +664,13 @@ thres_to_buff(char * buff, double * thres)
   return buff;
 }
 
+static char *
+bool_to_buff(char * buff, bool * val)
+{
+  sprintf(buff, "%s", *val ? "true" : "false");
+  return buff;
+}
+
 
 static void
 print_insert_histogram()
@@ -809,9 +816,15 @@ print_statistics()
     f2_total_invocs += tps[i].f2_invocs;
     f2_total_cells += tps[i].f2_cells;
 
-    fwbw_total_secs += tps[i].fwbw_secs;
-    fwbw_total_invocs += tps[i].fwbw_invocs;
-    fwbw_total_cells += tps[i].fwbw_cells;
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      fwbw_total_secs += tps[i].fwbw_secs;
+      fwbw_total_invocs += tps[i].fwbw_invocs;
+      fwbw_total_cells += tps[i].fwbw_cells;
+    } else {
+      fwbw_total_secs = 0;
+      fwbw_total_invocs = 0;
+      fwbw_total_cells = 0;
+    }
   }
   f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
   f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
@@ -877,6 +890,7 @@ print_statistics()
 
   fprintf(stderr, "\n");
 
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr, "%sForward-Backward:\n", my_tab);
   fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
           "Run-time:", fwbw_total_secs);
@@ -886,8 +900,8 @@ print_statistics()
           "Cells Computed:", (double)fwbw_total_cells / 1.0e6);
   fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
           "Cells per Second:", fwbw_total_cellspersec / 1.0e6);
-
   fprintf(stderr, "\n");
+  }
 
   fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
   fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
@@ -1194,33 +1208,19 @@ print_pairing_options(struct pairing_options * options)
 {
   char buff[2][100];
 
-  fprintf(stderr, "[\n\tpairing:%s, min_insert:%d, max_insert:%d,\n\tpass1_num_outputs:%d,",
-	  pair_mode_string[options->pair_mode], options->min_insert_size, options->max_insert_size,
-	  options->pass1_num_outputs);
-  /*
-  if (IS_ABSOLUTE(options->pass1_threshold)) {
-    fprintf(stderr, " pass1_threshold:%u,\n", (uint)-options->pass1_threshold);
-  } else {
-    fprintf(stderr, " pass1_threshold:%.02f%%,\n", options->pass1_threshold);
-  }
-  */
-  fprintf(stderr, " pass1_threshold:%s,\n", thres_to_buff(buff[0], &options->pass1_threshold));
-  fprintf(stderr, "\tpass2_num_outputs:%d,", options->pass2_num_outputs);
-  if (IS_ABSOLUTE(options->pass2_threshold)) {
-    fprintf(stderr, " pass2_threshold:%u,", (uint)-options->pass2_threshold);
-  } else {
-    fprintf(stderr, " pass2_threshold:%.02f%%,", options->pass2_threshold);
-  }
-  fprintf(stderr, " strata:%s, save_outputs:%s\n\tstop_count:%d,",
-	  options->strata? "true" : "false",
-	  options->save_outputs? "true" : "false",
-          options->stop_count);
-  if (IS_ABSOLUTE(options->stop_threshold)) {
-    fprintf(stderr, " stop_threshold:%u", (uint)-options->stop_threshold);
-  } else {
-    fprintf(stderr, " stop_threshold:%.02f%%", options->stop_threshold);
-  }
-  fprintf(stderr, "\n]\n");
+  fprintf(stderr, "[\n");
+  fprintf(stderr, "  pairing:%s\n", pair_mode_string[options->pair_mode]);
+  fprintf(stderr, "  min_insert:%d\n", options->min_insert_size);
+  fprintf(stderr, "  max_insert:%d\n", options->max_insert_size);
+  fprintf(stderr, "  pass1_num_outputs:%d\n", options->pass1_num_outputs);
+  fprintf(stderr, "  pass1_threshold:%s\n", thres_to_buff(buff[0], &options->pass1_threshold));
+  fprintf(stderr, "  pass2_num_outputs:%d\n", options->pass2_num_outputs);
+  fprintf(stderr, "  pass2_threshold:%s\n", thres_to_buff(buff[0], &options->pass2_threshold));
+  fprintf(stderr, "  strata:%s\n", bool_to_buff(buff[0], &options->strata));
+  fprintf(stderr, "  save_outputs:%s\n", bool_to_buff(buff[0], &options->save_outputs));
+  fprintf(stderr, "  stop_count:%d\n", options->stop_count);
+  fprintf(stderr, "  stop_threshold:%s\n", thres_to_buff(buff[0], &options->stop_threshold));
+  fprintf(stderr, "]\n");
 }
 
 
@@ -1231,71 +1231,70 @@ print_read_mapping_options(struct read_mapping_options_t * options, bool is_pair
 
   fprintf(stderr, "[\n");
 
-  fprintf(stderr, "\tregions:[recompute:%s", options->regions.recompute? "true" : "false");
+  fprintf(stderr, "  regions:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->regions.recompute));
   //if (!options->regions.recompute)
-    fprintf(stderr, "]\n");
+  //fprintf(stderr, "  ]\n");
   //else
   //  fprintf(stderr, ", min_seed:%d, max_seed:%d]\n",
   //    options->regions.min_seed, options->regions.max_seed);
 
-  fprintf(stderr, "\tanchor_list:[recompute:%s",
-	  options->anchor_list.recompute? "true" : "false");
+  fprintf(stderr, "  anchor_list:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->anchor_list.recompute));
   if (options->anchor_list.recompute) {
-    fprintf(stderr, ", collapse:%s, use_region_counts:%s, use_mp_region_counts:%d",
-	    options->anchor_list.collapse? "true" : "false",
-	    options->anchor_list.use_region_counts? "true" : "false",
-	    options->anchor_list.use_mp_region_counts);
+    fprintf(stderr, "    collapse:%s\n", bool_to_buff(buff[0], &options->anchor_list.collapse));
+    fprintf(stderr, "    use_region_counts:%s\n", bool_to_buff(buff[0], &options->anchor_list.use_region_counts));
+    fprintf(stderr, "    use_mp_region_counts:%d\n", options->anchor_list.use_mp_region_counts);
   }
-  fprintf(stderr, "]\n");
+  //fprintf(stderr, "  ]\n");
 
-  fprintf(stderr, "\thit_list:[recompute:%s",
-	  options->hit_list.recompute? "true" : "false");
+  fprintf(stderr, "  hit_list:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->hit_list.recompute));
   if (options->hit_list.recompute) {
-    fprintf(stderr, ", gapless:%s, match_mode:%d, threshold:%s",
-	    options->hit_list.gapless? "true" : "false",
-	    options->hit_list.match_mode,
-	    thres_to_buff(buff[0], &options->hit_list.threshold));
+    fprintf(stderr, "    gapless:%s\n", bool_to_buff(buff[0], &options->hit_list.gapless));
+    fprintf(stderr, "    match_mode:%d\n", options->hit_list.match_mode);
+    fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->hit_list.threshold));
   }
-  fprintf(stderr, "]\n");
+  //fprintf(stderr, "  ]\n");
 
-  fprintf(stderr, "\tpass1:[recompute:%s",
-	  options->pass1.recompute? "true" : "false");
+  fprintf(stderr, "  pass1:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->pass1.recompute));
   if (options->pass1.recompute) {
-    fprintf(stderr, ", threshold:%s, window_overlap:%s, min_matches:%d, gapless:%s",
-	    thres_to_buff(buff[0], &options->pass1.threshold),
-	    thres_to_buff(buff[1], &options->pass1.window_overlap),
-	    options->pass1.min_matches,
-	    options->pass1.gapless? "true" : "false");
+    fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->pass1.threshold));
+    fprintf(stderr, "    window_overlap:%s\n", thres_to_buff(buff[1], &options->pass1.window_overlap));
+    fprintf(stderr, "    min_matches:%d\n", options->pass1.min_matches);
+    fprintf(stderr, "    gapless:%s\n", bool_to_buff(buff[0], &options->pass1.gapless));
     if (is_paired) {
-      fprintf(stderr, ", only_paired:%s",
-	    options->pass1.only_paired? "true" : "false");
+      fprintf(stderr, "    only_paired:%s\n", bool_to_buff(buff[0], &options->pass1.only_paired));
     }
     if (!is_paired) {
-      fprintf(stderr, ", num_outputs:%d",
-	      options->pass1.num_outputs);
+      fprintf(stderr, "    num_outputs:%d\n", options->pass1.num_outputs);
     }
   }
-  fprintf(stderr, "]\n");
+  //fprintf(stderr, "  ]\n");
 
-  fprintf(stderr, "\tpass2:[");
-  fprintf(stderr, "threshold:%s",
-	  thres_to_buff(buff[0], &options->pass2.threshold));
+  fprintf(stderr, "  pass2:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->pass2.threshold));
   if (!is_paired) {
-    fprintf(stderr, ", strata:%s, save_outputs:%s, num_outputs:%d",
-	    options->pass2.strata? "true" : "false",
-	    options->pass2.save_outputs? "true" : "false",
-	    options->pass2.num_outputs);
+    fprintf(stderr, "    strata:%s\n", bool_to_buff(buff[0], &options->pass2.strata));
+    fprintf(stderr, "    save_outputs:%s\n", bool_to_buff(buff[0], &options->pass2.save_outputs));
+    fprintf(stderr, "    num_outputs:%d\n", options->pass2.num_outputs);
   }
-  fprintf(stderr, "]\n");
+  //fprintf(stderr, "  ]\n");
 
   if (!is_paired) {
-    fprintf(stderr, "\tstop:[stop_count:%d",
-	    options->pass2.stop_count);
+    fprintf(stderr, "  stop:\n");
+    //fprintf(stderr, "  [\n");
+    fprintf(stderr, "    stop_count:%d\n", options->pass2.stop_count);
     if (options->pass2.stop_count > 0) {
-      fprintf(stderr, ", stop_threshold:%s",
-	      thres_to_buff(buff[0], &options->pass2.stop_threshold));
+      fprintf(stderr, "    stop_threshold:%s\n", thres_to_buff(buff[0], &options->pass2.stop_threshold));
     }
-    fprintf(stderr, "]\n");
+    //fprintf(stderr, "  ]\n");
   }
 
   fprintf(stderr, "]\n");
@@ -1323,12 +1322,12 @@ print_settings() {
   fprintf(stderr, "\n");
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Window Length:", thres_to_buff(buff, &window_len));
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Window length:", thres_to_buff(buff, &window_len));
 
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash filter calls:", hash_filter_calls? "yes" : "no");
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor width:", anchor_width,
 	  anchor_width == -1? " (disabled)" : "");
-  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Indel Taboo Len:", indel_taboo_len,
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Indel taboo Len:", indel_taboo_len,
 	  indel_taboo_len == 0? " (disabled)" : "");
   if (list_cutoff < DEF_LIST_CUTOFF) {
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Index list cutoff length:", list_cutoff);
@@ -1342,7 +1341,7 @@ print_settings() {
   if (Qflag) {
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
   }
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute Mapping Qualities:", compute_mapping_qualities? "yes" : "no");
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute mapping qualities:", compute_mapping_qualities? "yes" : "no");
   if (compute_mapping_qualities)
   {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "All contigs:", all_contigs? "yes" : "no");
@@ -1682,7 +1681,7 @@ int main(int argc, char **argv){
 	bool match_score_set, mismatch_score_set, xover_score_set;
 	bool match_mode_set = false;
 
-	my_alloc_init(4l*1024l*1024l*1024l, 100l*1024l*1024l);
+	my_alloc_init(64l*1024l*1024l*1024l, 64l*1024l*1024l*1024l);
 
 	shrimp_args.argc=argc;
 	shrimp_args.argv=argv;
@@ -1923,6 +1922,7 @@ int main(int argc, char **argv){
 			break;
 		case 'P':
 			Pflag = true;
+			Eflag = false;
 			break;
 		case 'R':
 			Rflag = true;
@@ -2022,9 +2022,10 @@ int main(int argc, char **argv){
 		    exit(1);
 		  }
 		  break;
-		case 'E':
-			Eflag = true;
-			break;
+		case 'E': // on by default; accept option for bw compatibility
+		  logit(0, "as of v2.2.0, -E/--sam is on by default");
+		  Eflag = true;
+		  break;
 		case 'z':
 		  list_cutoff = atoi(optarg);
 		  if (list_cutoff == 0) {
@@ -2173,6 +2174,16 @@ int main(int argc, char **argv){
 		  break;
 		case 39:
 		  compute_mapping_qualities = false;
+		  break;
+		case 40:
+		  Eflag = false;
+		  break;
+		case 41: // half-paired: accept option for bw compatibility
+		  logit(0, "as of v2.2.0, --half-paired is on by default");
+		  half_paired = true;
+		  break;
+		case 42: // no-improper-mappings
+		  improper_mappings = false;
 		  break;
 		default:
 			usage(progname, false);
@@ -2389,7 +2400,7 @@ int main(int argc, char **argv){
 	    ||
 	    (!IS_ABSOLUTE(window_gen_threshold) && !IS_ABSOLUTE(sw_full_threshold)
 	     && window_gen_threshold > sw_full_threshold)) {
-	  fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
+	  //fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
 	}
 
 	if ((a_gap_open_set && !b_gap_open_set) || (a_gap_extend_set && !b_gap_extend_set)) {
@@ -2879,10 +2890,12 @@ int main(int argc, char **argv){
 #ifdef MYALLOC_ENABLE_CRT
 	fprintf(stderr, "crt_mem: %lld\n", (long long)crt_mem);
 #endif
+#ifndef NDEBUG
 	fprintf(stderr, "mem_genomemap: max=%lld crt=%lld\n", (long long)count_get_max(&mem_genomemap), (long long)count_get_count(&mem_genomemap));
 	fprintf(stderr, "mem_mapping: max=%lld crt=%lld\n", (long long)count_get_max(&mem_mapping), (long long)count_get_count(&mem_mapping));
 	fprintf(stderr, "mem_thread_buffer: max=%lld crt=%lld\n", (long long)count_get_max(&mem_thread_buffer), (long long)count_get_count(&mem_thread_buffer));
 	fprintf(stderr, "mem_small: max=%lld crt=%lld\n", (long long)count_get_max(&mem_small), (long long)count_get_count(&mem_small));
 	fprintf(stderr, "mem_sw: max=%lld crt=%lld\n", (long long)count_get_max(&mem_sw), (long long)count_get_count(&mem_sw));
+#endif
 	return 0;
 }

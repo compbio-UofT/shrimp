@@ -9,6 +9,10 @@
 #include <string.h>
 #include "../common/stats.h"
 
+#ifdef NDEBUG
+#define MYALLOC_DISABLE_CRT
+#endif
+
 #ifndef MYALLOC_DISABLE_CRT
 #define MYALLOC_ENABLE_CRT
 #endif
