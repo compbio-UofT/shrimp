@@ -148,7 +148,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	assert(m_ll->length==0);
 	//heap_pa * h=thread_heaps+omp_get_thread_num();
 	h->load=0;
-	heap_pa_elem e;
+	//heap_pa_elem e;
 	pretty * pa = NULL;
 	pretty * unaligned_pa=NULL;
 	double zs[LL_ALL*options.number_of_sam_files*SAM2PRETTY_NUM_ZS];

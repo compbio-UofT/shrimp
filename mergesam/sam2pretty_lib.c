@@ -1,4 +1,4 @@
-
+//jul 27 2011
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
@@ -241,6 +241,9 @@ pretty * pretty_copy_base(pretty * parent) {
 	}
 	if (child->read_group!=NULL) {
 		child->read_group=strdup(child->read_group);
+	}
+	if (child->cs_edit_string!=NULL) {
+		child->cs_edit_string=strdup(child->cs_edit_string);
 	}	
 	child->pretty_genome_string=NULL;
 	child->pretty_read_string=NULL;
@@ -629,6 +632,7 @@ void pretty_ls(pretty * pa) {
 						
 		}
 	}
+	free(source_string);
 	pa->pretty_read_string[current_pretty_read_string_index]='\0';
 	pa->clipped_read_start=1;
 	pa->pretty_clipped_read_start=1;
@@ -891,7 +895,7 @@ pretty * pretty_sub_prettys(pretty * parent) {
 			last=i+2;
 		}
 	}
-	if (last!=i+1) {
+	if (last!=1 && last!=i+1) {
 		pretty * new_node = pretty_sub_pretty(parent,last,i);
 		if (tail==NULL) {
 			head=new_node;
@@ -1535,6 +1539,8 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 				if (next_tab!=NULL) {
 					next_tab++;
 				}
+				pa->aux=next_tab;
+			} else if (next_tab!=NULL) {
 				pa->aux=next_tab;
 			} else {
 				pa->aux=NULL;
