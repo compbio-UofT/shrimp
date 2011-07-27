@@ -196,3 +196,29 @@ z2(R0,R1,v0_i,*) :=
 
 As before, this is multiplied by (z4(R0) * z4(R1) / class_denom) * (1 / z3(R0,R1))
 to compute p'_corr and the mqvs.
+
+
+Part 2d. Improper Pairing
+-------------------------
+
+To allow for mapping in the presence of large variants we also implement this
+mechanism, enabled by default, which can be disabled by an option.
+
+If we deal with paired reads AND the CL options --all-contigs AND
+--single-best-mapping are both given, AND after mqv recalculation, the best
+mapping for a pair is a singleton (say, R0), then:
+
+Look at the best singleton mapping for R1. If that "on its own" has mqv>=10(**),
+pair it up forcefully with the best mapping of R0. Note, for (**), the real mqv
+of the singleton mapping of R1 cannot be >=4. However, "on its own" means
+without the class-selection factor (z4(R0) * z4(R0,R1) * z5(R1) / class_denom);
+only the "raw" z0/z1.
+
+In the output, the mqvs for both mappings will be computed using the formulas
+above, i.e., the mapping of R1 will not get the "on its own" mqv, but the real
+one, which will be <4. Furthermore, for this pair, bit 0x2 in the SAM FLAG field
+will be cleared, which has the meaning that "not all fragments were properly
+mapped".
+
+If the mappings are on different chromosomes, SAM format defines the insert size
+to be 0. Also, in this case, the mate contig name will no longer be "=".
