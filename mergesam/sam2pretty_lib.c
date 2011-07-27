@@ -1509,7 +1509,8 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 			}
 			pa->score=atoi(start_of_string+5);
 			pa->has_score=true;
-			if (next_tab!=NULL && next_tab[1]=='Z' && next_tab[2]=='0') {
+			//TODO ERROR NEED TO FIX THIS!!!!!
+			if (1==0 && next_tab!=NULL && next_tab[1]=='Z' && next_tab[2]=='0') {
 				pa->has_z=true;
 				int i; 
 				for (i=0; i<5; i++) {
