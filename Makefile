@@ -12,6 +12,7 @@ SVN_VERSION=$(shell svnversion)
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
 
 #CXX=/opt/intel/cce/10.1.015/bin/icc
+#CXXFLAGS=-g -m64 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
 #CXX=/filer/misko/intel_suite/compilerpro-12.0.0.084/bin/intel64/icc
 
 LD=$(CXX)
@@ -19,8 +20,7 @@ LDFLAGS=-lm -lz -lstdc++ -lrt
 LN=ln
 
 all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
-     bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
-#all: bin/gmapper
+    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/fasta2fastq bin/mergesam utils/temp-sink 
 
 #
 # mapper /
@@ -44,20 +44,47 @@ gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h gmapper/g
     common/debug.h common/f1-wrapper.h common/version.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
-bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o
+bin/lineindex: mergesam/lineindex.o mergesam/lineindex_lib.o mergesam/file_buffer.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
-mergesam/mergesam.o: mergesam/mergesam.c 
+bin/fasta2fastq: mergesam/file_buffer.o mergesam/fasta_reader.o mergesam/fasta2fastq.o mergesam/lineindex_lib.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+
+mergesam/fasta2fastq.o: mergesam/fasta2fastq.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-mergesam/mergesam_heap.o: mergesam/mergesam_heap.c  mergesam/mergesam_heap.h 
+mergesam/lineindex.o: mergesam/lineindex.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/lineindex_lib.o: mergesam/lineindex_lib.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/fasta_reader.o: mergesam/fasta_reader.c mergesam/fasta_reader.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o mergesam/fastx_readnames.o mergesam/sam_reader.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+mergesam/mergesam.o: mergesam/mergesam.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/mergesam_heap.o: mergesam/mergesam_heap.c  mergesam/mergesam_heap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 mergesam/file_buffer.o: mergesam/file_buffer.c mergesam/file_buffer.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+mergesam/sam_reader.o: mergesam/sam_reader.c mergesam/sam_reader.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/fastx_readnames.o: mergesam/fastx_readnames.c mergesam/fastx_readnames.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+
 
 #
 # probcalc 
