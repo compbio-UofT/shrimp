@@ -1,0 +1,198 @@
+Each individual mapping comes with a posterior probability,
+post(u)=Pr[Y=y|X=x,U=u], where X is the reference, U is the location, and Y is
+the read. We refer to this quantity as z0, or z0(u).
+
+Let tnlog(x) := (int)(1000.0 * -log(x))
+
+
+Part 1: Unpaired reads
+======================
+
+
+Part 1a: Original computation
+-----------------------------
+
+Let u_1,...,u_k be the mapping locations for read R. The probability the
+mapping at location u_i is correct is:
+
+p_corr(R,u_i) := z0(R,u_i) / (\sum_{i=1}^k z0(R,u_i))
+
+Then, MQV(R,u_i) := -10 * \log_10(1 - p_corr)
+
+
+Part 1b: Extra SAM fields
+-------------------------
+
+With the mapping of R at u_i in chunk j, we store:
+Z0_j(R,u_i) = tnlog(z0(u_i))
+Z1_j(R) = tnlog(sum_{i=1}^k z0(u_i))
+
+
+Part 1c: Merging
+----------------
+
+z1(R) := sum_j z1_j(R)
+z0(R,u_i) := z0_j(R,u_i) for the chunk j containing u_i
+
+Then, p_corr(R,u_i) := z0(R,u_i) / z1(R)
+
+Note: A single (the top) mapping from each chunk is sufficient for merging.
+
+
+Part 2: Paired reads
+====================
+
+
+Part 2a. Original computation
+-----------------------------
+
+Let u0_1,...,u0_k0 be the singleton mapping locations of R0;
+Let u1_1,...,u1_k1 be the singleton mapping locations of R1;
+Let v0_1,...,v0_l0 and v1_1,...,v1_l1 be the paired mapping locations of R0
+and R1, respectively.
+Let N(v0_i) be the set of mapping locations of R1 paired with the mapping
+location v0_i for R0. Let N(v1_i) be defined similarly.
+
+
+For singleton mappings of R0,
+
+p_corr(R0,R1,u0_i,-) := z0(R0,u0_i) / sum_{i=1}^k0 z0(R0,u0_i)
+
+Similarly, for singleton mappings of R1,
+
+p_corr(R0,R1,-,u1_i) := z0(R1,u1_i) / sum_{i=1}^k1 z0(R1,u1_i)
+
+Let z1(R0) and z1(R1) be the two denominators above, respectively.
+
+
+For paired mappings, we first renormalized observed insert sizes by computing
+ins_sz_denom := \sum_{i=0}^l0 \sum_{j \in N(v0_i)} pr_ins_sz(ins_sz(v0_i,v1_j))
+
+The latter is computed as
+pr_ins_sz(x) := max(normal_cdf(x+10) - normal_cdf(x-10), e-200).
+
+Define
+z2(R0,R1,v0_i,*) := z0(R0,v0_i) * \
+  \sum_{j \in N(v0_i)} ( (pr_ins_sz(ins_sz(v0_i,v1_j)) / ins_sz_denom) * z0(R1,v1_j) )
+
+Similarly, define z2(R0,R1,*,v1_j).
+
+Let z3(R0,R1) := \sum_{i=1}^l0 z2(R0,R1,v0_i,*)
+(Note, this sum is over z2's of R0 only! In fact, the sum over z2's of R1 should
+give the exact same result.)
+
+Now, let
+p_corr(R0,R1,v0_i,*) := z2(R0,R1,v0_i,*) / z3(R0,R1)
+
+and
+p_corr(R0,R1,*,v1_j) := z2(R0,R1,*,v1_j) / z3(R0,R1)
+
+
+So far, we obtained likelihoods for unpaired mappings and for paired mappings
+separately. We combine them as follows.
+
+
+Let z4(R0) be the probability that a mapping with the same score or higher as
+the best singleton mapping of R0 occurs by chance. If there are no singleton
+mappings of R0, let z4(R0) := 1. Let z4(R1) be defined similarly.
+
+Let z4(R0,R1) be the probability that a paired mapping with the same scores as
+the best paired mapping of R0,R1 arises in the genome by chance. If there are no
+paired mappings, let z4(R0,R1) := 1.
+
+Let z5(R0) be the probability that the mapper completely missed the correct
+mapping of R1. Le z5(R1) be defined similarly.
+
+Currently, we roughly estimate z5(R0) as:
+10^-10 if |R1|<40;
+10^-14 if 40<=|R1|<60; and
+10^-17 if 60<=|R1|.
+
+
+Now, for a singleton mapping of R0 to be the correct mapping of the pair R0,R1,
+it must be that the top singleton mapping of R1 is random AND the top paired
+mapping is random AND the mapper missed the correct mapping of R1. For a paired
+mapping to be correct, it must be that the top singleton mappings are both
+random.
+
+We put these together as follows. Let
+class_denom :=
+  (singleton mappings for R0? z4(R1)*z4(R0,R1)*z5(R0) : 0) +
+  (singleton mappings for R1? z4(R0)*z4(R0,R1)*z5(R1) : 0) +
+  (paired mappings? z4(R0)*z4(R1) : 0)
+
+Finally, for singleton mappings of R0,
+p'_corr(R0,R1,v0_i,-) := ( z4(R1)*z4(R0,R1)*z5(R0) / class_denom ) * p_corr(R0,R1,v0_i,-)
+
+For singleton mappings of R1,
+p'_corr(R0,R1,-,v1_j) := ( z4(R0)*z4(R0,R1)*z5(R1) / class_denom ) * p_corr(R0,R1,-,v1_j)
+
+For paired mappings of R0,
+p'_corr(R0,R1,v0_i,*) := ( z4(R0)*z4(R1) / class_denom ) * p_corr(R0,R1,v0_i,*)
+
+For paired mappings of R1,
+p'_corr(R0,R1,*,v1_j) := ( z4(R0)*z4(R1) / class_denom ) * p_corr(R0,R1,*,v1_j)
+
+
+By algebra, at most one mapping of R0 and at most one mapping of R1 can have
+qv>=4. Moreover, if both have such mappings, those mappings must necessarily be paired.
+
+
+Part 2b. Extra SAM fields
+-------------------------
+
+With the unpaired mapping of R0 at u0_i in chunk j, we store:
+Z0_j(R0,u0_i) := tnlog(z0(R0,u0_i))
+Z1_j(R0) := tnlog(sum_{i=1}^k z0(R0,u0_i))
+Z4_j(R0) := tnlog(z4(R0))
+Z5_j(R0) := tnlog(z5(R0))
+
+Similarly for an unpaired mapping of R1.
+
+With a paired mapping of R0 at v0_i in chunk j, we store:
+Z2_j(R0,R1,v0_i,*) := tnlog(z2(R0,R1,v0_i,*))
+Z3_j(R0,R1) := tnlog(z3(R0,R1))
+Z4_j(R0,R1) := tnlog(z4(R0,R1))
+
+
+Part 2c. Merging
+----------------
+
+First of all, if there is any singleton mapping of R0 in any chunk, the SAM
+fields for such a mapping will contain z5_j(R0), which is the same for all j.
+Likewise for z5_j(R1).
+
+If chunk j contains no singleton mappings of R0, set z4_j(R0) := 1. Then, z4(R0)
+:= min_j z4_j(R0). (Note, in negative log space, the min becomes a max.)
+Likewise for z4(R1) and even for z4(R0,R1) (where we consider paired mappings).
+
+class_denom is computed as before.
+
+
+Next, z1(R0) := sum_j z1_j(R0). Likewise for z1(R1).
+
+
+Finally, for paired mappings, we take only the best paired mapping in each
+chunk. For this, compute
+max { max{p'_corr(R0,R1,v0_i,*) : i} , max{p'_corr(R0,R1,*,v1_j) : j} }
+Say it is achieved by p'_corr(R0,R1,v0_i,*) for some i. Find the best pairing
+for it, that is, find max{p'_corr(R0,R1,*,v1_j) : j \in N(v0_i)}. Now only
+consider the paired mapping with R0 at v0_i, and R1 at v1_j. Repeat this for
+every chunk k, to get a set of paired mappings.
+
+As opposed to the case of the original mqv calculation within each chunk, the
+bipartite graph of paired mappings is now a perfect matching. We still reweight
+mappings by the insert size as follows:
+
+Let
+ins_sz_denom := sum_k pr_ins_sz(ins_sz(best paired mapping in chunk k))
+
+Let
+z3(R0,R1) := sum_k z3_k(R0,R1)
+
+Now, for the mapping of R0 at v0_j, R1 at v1_j, in chunk k,
+z2(R0,R1,v0_i,*) :=
+  (pr_ins_sz(ins_sz(v0_i,v1_j)) / ins_sz_denom) * z2_k(R0,R1,v0_i,*)
+
+As before, this is multiplied by (z4(R0) * z4(R1) / class_denom) * (1 / z3(R0,R1))
+to compute p'_corr and the mqvs.
