@@ -155,7 +155,20 @@ xmalloc(size_t size)
 	}
 
 	return (ptr);
-} 
+}
+
+void * xmalloc_m(size_t size, char const * error_msg)
+{
+  void * p;
+
+  p = malloc(size);
+  if (p == NULL) {
+    fprintf(stderr, "error: malloc failed: %s [%s]\n", strerror(errno), error_msg);
+    exit(1);
+  }
+  return p;
+}
+
 
 void *
 xmalloc_c(size_t size, count_t * c)
@@ -177,6 +190,18 @@ xcalloc(size_t size)
   }
 
   return ptr;
+}
+
+void * xcalloc_m(size_t size, char const * error_msg)
+{
+  void * p;
+
+  p = calloc(size, 1);
+  if (p == NULL) {
+    fprintf(stderr, "error: calloc failed: %s [%s]\n", strerror(errno), error_msg);
+    exit(1);
+  }
+  return p;
 }
 
 void *
@@ -1208,3 +1233,79 @@ edit2cigar(char * edit,uint16_t read_start,uint16_t read_end,uint16_t read_lengt
 	}
 }
 
+
+// pre: array is (q)sorted
+size_t removedups(void * a, size_t n, size_t sz, int (*cmp)(void const *, void const *))
+{
+  char * p = (char *)a;
+  size_t m = 0;
+  size_t i, j;
+  i = 0;
+  while (i < n) {
+    j = i+1;
+    while (j < n && !cmp(p+i*sz, p+j*sz)) j++;
+    if (m < i)
+      memcpy(p+m*sz, p+i*sz, sz);
+    m++;
+    i = j;
+  }
+  return m;
+}
+
+
+void
+crash(int exit_code, int display_errno, char const * msg, ...)
+{
+  va_list fmtargs;
+  char new_msg[strlen(msg) + 1000];
+
+  sprintf(new_msg, "error: %s%s%s\n", msg,
+	  display_errno? ": " : "",
+	  display_errno? strerror(errno) : "");
+
+  va_start(fmtargs, msg);
+  vfprintf(stderr, new_msg, fmtargs);
+  va_end(fmtargs);
+
+  exit(exit_code);
+}
+
+
+void
+logit(int display_errno, char const * msg, ...)
+{
+  va_list fmtargs;
+  char new_msg[strlen(msg) + 1000];
+
+  sprintf(new_msg, "note: %s%s%s\n", msg,
+	  display_errno? ": " : "",
+	  display_errno? strerror(errno) : "");
+
+  va_start(fmtargs, msg);
+  vfprintf(stderr, new_msg, fmtargs);
+  va_end(fmtargs);
+}
+
+
+long long
+nchoosek(int n, int k)
+{
+  long long res = 1;
+  int i;
+  for (i = 0; i < k; i++)
+    res *= (n - i);
+  for (i = 0; i < k; i++)
+    res /= (i + 1);
+  return res;
+}
+
+
+double
+log_nchoosek(int n, int k)
+{
+  double res = 0.0;
+  int i;
+  for (i = 0; i < k; i++)
+    res += log(n - i) - log(i + 1);
+  return res;
+}

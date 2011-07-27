@@ -29,6 +29,8 @@ long long unsigned chunk_size[MAX_CONTIGS];
 int n_seeds = 4;
 int weight[20] = { 12, 12, 12, 12 };
 
+double overhead_mem = 1.5;
+
 struct contig {
   char * name;
   unsigned int size;
@@ -160,20 +162,20 @@ main(int argc, char *argv[]) {
 
   for (i = 0; i < n_seeds; i++) {
     double crt;
-    long long unsigned entries;
-    entries = 1llu << (2 * weight[i]);
+    long long int entries;
+    entries = 1ll << (2 * weight[i]);
     crt = ((double)(entries * (sizeof(void *) + sizeof(uint32_t))))/(1024.0 * 1024.0 * 1024.0);
-    fprintf(stderr, "seed %d: number of entries: %llu, index size: %.3f GB\n", i, entries, crt);
+    fprintf(stderr, "seed %d: number of entries: %lld, index size: %.3f GB\n", i, entries, crt);
     index_size += crt;
   }
 
-  // save 0.5GB for keeping reads and other data
-  if (target_size < 0.5 + index_size) {
+  // save some memory (1.5GB) for keeping reads and other data, including O/S
+  if (target_size < overhead_mem + index_size) {
     fprintf(stderr, "error: not enough memory for current settings\n");
     exit(1);
   }
 
-  long long unsigned target_len = (long long unsigned)(((target_size - 0.5 - index_size)/(double)n_seeds) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
+  long long unsigned target_len = (long long unsigned)(((target_size - overhead_mem - index_size)/(double)n_seeds) * 1024.0 * 1024.0 * 1024.0)/sizeof(uint32_t);
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
 
@@ -234,7 +236,7 @@ main(int argc, char *argv[]) {
 
   fprintf(stderr, "target genome length per chunk: %llu\n", target_len);
   fprintf(stderr, "estimated memory usage per chunk: %.3f GB\n",
-	  (double)(target_len * sizeof(uint32_t) * n_seeds)/(1024.0 * 1024.0 * 1024.0) + index_size + 0.5);
+	  (double)(target_len * sizeof(uint32_t) * n_seeds)/(1024.0 * 1024.0 * 1024.0) + index_size + overhead_mem);
 	  
 
   target_chunks = greedy_fit(target_len);

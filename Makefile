@@ -3,20 +3,24 @@
 #CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
 
 ifndef CXXFLAGS
-#CXXFLAGS=-g -fopenmp
-CXXFLAGS=-O3 -DNDEBUG
+CXXFLAGS=-g
+#CXXFLAGS=-O3 -DNDEBUG
 override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
 endif
-override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
+
+SVN_VERSION=$(shell svnversion)
+override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
+
 #CXX=/opt/intel/cce/10.1.015/bin/icc
 #CXX=/filer/misko/intel_suite/compilerpro-12.0.0.084/bin/intel64/icc
 
 LD=$(CXX)
-LDFLAGS=-lm -lz -lstdc++
+LDFLAGS=-lm -lz -lstdc++ -lrt
 LN=ln
 
 all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \
-    bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam
+     bin/shrimp_var bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
+#all: bin/gmapper
 
 #
 # mapper /
@@ -27,16 +31,16 @@ mapper/mapper.o: mapper/mapper.c mapper/mapper.h
 #
 # gmapper /
 #
-bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o \
+bin/gmapper: gmapper/gmapper.o gmapper/seeds.o gmapper/genome.o gmapper/mapping.o gmapper/output.o \
     common/fasta.o common/util.o \
     common/bitmap.o common/sw-vector.o common/sw-gapless.o common/sw-full-cs.o \
     common/sw-full-ls.o common/output.o common/anchors.o common/input.o \
-    common/read_hit_heap.o
+    common/read_hit_heap.o common/sw-post.o common/my-alloc.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 	$(LN) -sf gmapper bin/gmapper-cs
 	$(LN) -sf gmapper bin/gmapper-ls
 
-gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h \
+gmapper/gmapper.o: gmapper/gmapper.c common/bitmap.h gmapper/gmapper.h gmapper/gmapper-defaults.h \
     common/debug.h common/f1-wrapper.h common/version.h
 	$(CXX) $(CXXFLAGS) -DCXXFLAGS="\"$(CXXFLAGS)\"" -c -o $@ $<
 
@@ -109,12 +113,21 @@ shrimp2sam/shrimp2sam.o: shrimp2sam/shrimp2sam.c common/version.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
-# bin/split-contigs
+# utils/split-contigs
 #
 utils/split-contigs: utils/split-contigs.o common/fasta.o common/util.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 utils/split-contigs.o: utils/split-contigs.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+#
+# utils/temp-sink
+#
+utils/temp-sink: utils/temp-sink.o
+	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
+
+utils/temp-sink.o: utils/temp-sink.c
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -127,6 +140,9 @@ gmapper/genome.o: gmapper/genome.c gmapper/genome.h gmapper/gmapper.h
 	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 gmapper/mapping.o: gmapper/mapping.c gmapper/mapping.h gmapper/gmapper.h
+	$(LD) $(CXXFLAGS) -c -o $@ $<
+
+gmapper/output.o: gmapper/output.c gmapper/output.h gmapper/gmapper.h
 	$(LD) $(CXXFLAGS) -c -o $@ $<
 
 #
@@ -179,13 +195,19 @@ common/anchors.o: common/anchors.c common/anchors.h common/util.h
 common/bitmap.o: common/bitmap.c common/bitmap.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+common/sw-post.o: common/sw-post.c common/sw-post.h common/util.h common/fasta.h common/sw-full-common.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+common/my-alloc.o: common/my-alloc.c common/my-alloc.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
 #
 # cleanup
 #
 clean:
 	rm -f bin/colourise bin/probcalc bin/gmapper* \
 	    bin/prettyprint* bin/probcalc_mp bin/shrimp_var \
-	    bin/shrimp2sam utils/split-contigs bin/mergesam
+	    bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f

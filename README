@@ -72,7 +72,7 @@ Table of Contents
 --------------------------------------------------------------------------------
 
 SHRiMP2 is a  software package for  mapping reads from a  donor genome against a
-target (refernce) genome.  SHRiMP2  was primarily developed  to work  with short
+target (reference) genome. SHRiMP2  was primarily developed  to work  with short
 reads produced by  Next Generation Sequencing (NGS)  machines. The main features
 of SHRiMP2 include:
 
@@ -97,7 +97,7 @@ accurate   identification  of  mismatches  (SNPs), micro-indels,  and crossovers
 (colour space sequencing errors.)
 
 SHRiMP2 primarily targets sensitivity, but it has come a long way to achieve it
-at a reasonable speed. To illustrate its performace:
+at a reasonable speed. To illustrate its performance:
 
   Sensitivity: SHRiMP2 achieves 94.4% precision  and  78.6% recall when  mapping
   simulated colour space reads of 50 base pairs (bp) each containing 1 SNP _and_
@@ -115,10 +115,10 @@ at a reasonable speed. To illustrate its performace:
   parallel.  (These are all rough estimates.)
 
 
-SHRiMP2 consists of the read mapper progam gmapper, along with a series of tools
-and scripts. In this README file, we primarily describe gmapper. Descriptions of
-tools remaing from SHRiMP1 are available in README.SHRiMP132. Descriptions of
-various helper scripts are in the script directory utils/.
+SHRiMP2  consists  of  the  read  mapper  program  gmapper,  along with a series
+of tools  and  scripts.   In this README file,  we primarily  describe  gmapper.
+Descriptions of tools remaining from SHRiMP1 are available in  README.SHRiMP132.
+Descriptions of various helper scripts are in the script directory utils/.
 
 
 --------------------------------------------------------------------------------
@@ -364,7 +364,7 @@ The options used above have the following meaning:
     .genome and .seed[1-4]
   -N 8 : Use 8 threads of control, fully utilizing 2 quad-core CPUs.
   -p opp-in : Enabled paired mode, where the two reads in each pair are on
-    "opp"-osite starnds, pointing "in"-wards.
+    "opp"-osite strands, pointing "in"-wards.
   -I 50,500 : Set minimum and maximum allowed insert size.
   -m 20 -i -25 -g -40 -e -10 : Set specific Smith-Waterman scores for match,
     mismatch, gap open and gap extend.
@@ -432,7 +432,7 @@ and crossover scores are now relevant);
 - mappings that do not achieve a score of 50% of the maximum are discarded (not
 many of those, because the initial seed match already guarantees a decent
 score);
-- the 2 top hits (-o 2) per read are ouput.
+- the 2 top hits (-o 2) per read are output.
 
 In SHRiMP 2.0.4, a new command-line option was introduced that can be used to
 load several miRNA-specific settings: "-M mirna" or "--mode mirna" is
@@ -467,7 +467,7 @@ We have a look at the mappings:
 ----------------------------------------------
 
 SHRiMP2 is  designed to be quite   sensitive, but without  complete disregard to
-speed. The following  is an ADVANCED  EXAMPLE showing  some  setttings that will
+speed.  The following  is an ADVANCED  EXAMPLE showing  some  settings that will
 make it OVERLY sensitive.
 
 CAUTION: Not all of these settings need to be  applied at the  same time to make
@@ -562,7 +562,7 @@ Output Files
   output file in the order of best to worst.
 
   When running gmapper in multi-threaded mode, mappings of different reads might
-  appear in  the output file intermingled, as  follows (only  displaing the name
+  appear in  the output file intermingled, as  follows (only displaying the name
   and the score):
 
     $ grep "^>" map.out | head -n 8
@@ -595,14 +595,16 @@ Paired Mapping Mode Input
     AAATATGTTGATTTTTCAGTGTTTTTAAAGTAAAAT
 
   In particular:
-    1. There should not be separate files containing the reads in each pair.
-    2. The reads should not be simply dumped in the same file. That is, the
+    1. The reads should not be simply dumped in the same file. That is, the
     reads in each pair should not be just about anywhere in the file. They must
     be consecutive.
-    3. There should not be unpaired reads among the paired reads. If you have
+    2. There should not be unpaired reads among the paired reads. If you have
     both paired and unpaired reads, use different files and different runs.
 
   Several scripts are provided to get the reads in this format.
+
+  Alternatively, the reads in each file can be placed in two corresponding files,
+  which are then loaded using options -1 and -2.
 
   CAUTION: gmapper will NOT check any of the above. If started in paired mode,
   it will simply fetch consecutive reads and assume they form a pair.
@@ -637,10 +639,10 @@ Paired Mapping Mode Output
 5. Parameters
 --------------------------------------------------------------------------------
 
-The following parameters govern the  behaviour of  gmapper.  For more  throrough
+The following parameters govern the  behaviour of  gmapper.   For more  thorough
 descriptions of the algorithms involved, see the next Section.
 
-The list is organized conceputally by the "area" where parameters operate.
+The list is organized conceptually by the "area" where parameters operate.
 
 
 Genome Projection
@@ -649,8 +651,8 @@ Genome Projection
   [ -s/--seeds <seed1,seed2,....> ]
 
     Each spaced seed is a  contiguous string of 0s  and 1s. Several spaced seeds
-    can be specified either by separating them by commas as a single paramter to
-    -s,  or  by giving -s several   times. By default, gmapper  uses  a set of 4
+    can be specified either  by separating them by commas  as a single parameter
+    to -s, or  by giving -s several times.  By default, gmapper uses  a set of 4
     spaced seeds of weight 12. Several sets  of default seeds are available  for
     certain weights. These can be loaded by, e.g. "-s w16",  to load the default
     set of seeds of weight 16.
@@ -716,6 +718,26 @@ Genome Projection
     advantage of the long form of -L is that one may  specify which of the seeds
     to load, rather than loading them all, which is  what happens with the short
     form. E.g., we could use "-L db.genome,db.seed.1".
+
+  [    --save-mmap /<mmap_name> ]
+  [    --load-mmap /<mmap_name> ]
+
+    Can be used to save and subsequently load a genome projection  to  and  from
+    shared memory.  The projection will remain resident in shared  memory  until
+    explicitly removed with
+
+    $ rm /dev/shm/<mmap_name>
+
+    When saving to shared memory,  the genome projection must  be  first  loaded
+    with -L (not directly from a fasta file). The name parameter must start with
+    a '/' character, and it must contain no other '/' characters.
+
+    This functionality is useful only when  many  individual  gmapper  runs  are
+    performed against the same large genome projection,  to the point where  the
+    projection loading part (with -L) is a bottleneck.
+
+    For reasons we did not fully investigate,  loading  does not work on certain
+    machines. Consequently, the functionality should be considered experimental.
 
 
 General Mapping
@@ -827,8 +849,8 @@ Filter 1: Window Generation
     reads,  which might contain  more indels,  you might  want to  significantly
     lower this threshold, and use an absolute value. For example, to allow a CMW
     to pass this filter based on two spaced kmer matches  of total length 50 and
-    one indel (with the default  scores), you should use  "-r 453". (We get  453
-    from 50 matches: +500, 1 gap open: -40, 1 gap extend: -7.)
+    one indel (with the default  scores), you should use  "-r 464". (We get  464
+    from 50 matches: +500, 1 gap open: -33, 1 ins extend: -3.)
 
 
 Filter 2: Vector SW/Ungapped Alignment
@@ -873,7 +895,7 @@ Filter 3: Scalar (Full) SW Alignment
 
   [ --strata ]
 
-    Only output the highest scoring mappings for any given read, upto
+    Only output the highest scoring mappings for any given read, up to
     <num_outputs> mappings per read.
 
   [ -a/--anchor-width <anchor_width> ]
@@ -892,14 +914,22 @@ Filter 3: Scalar (Full) SW Alignment
 
   [    --global ]
 
-    Color-space only. Perform a full global alginment in the last phase of 
-    alginments (full scalar).
+    Color-space only. Perform a full global alignment in the last phase of 
+    alignments (full scalar).
 
   [    --bfast ]
 
     Color-space only. Try to align like BFAST. This enables global alignments
     and if in FASTQ mode, outputs base qualities in the QUAL field, just like 
     BFAST. 
+
+  [    --indel-taboo-len <value> ]
+
+    Prevent indels from starting or ending in the tail <value> positions of a
+    read. Note: for deletions, start and end positions are the same with
+    respect to the read. Insertions might still start before the taboo zone,
+    but then they have to go all the way to the end of the read (this will
+    only ever happen with --global). Only available in colour space.
 
 
 Sets of settings
@@ -953,14 +983,26 @@ Paired Mode
     Note: These parameters are only used to limit the  search space where to map
     each   read.  In SAM  output,  the  insert size  is  recalculated using  the
     standard definition for SAM.
- 
+
   [    --half-paired ]
-    Try to map in pairs. If a pair does not map, try aligning each read indepen-
-    dently, reporting these independent alignments.
+
+    In paired mode, if a pair does not map, try to map each read individually.
+    (This is on by default as of v2.2.0).
+ 
+  [    --no-half-paired ]
+
+    Do NOT try to map individual reads.  If a pair does not map,  do NOT try  to
+    align each read independently. (The default is to try.)
 
   [    --sam-r2 ]
     Report the SAM r2 field for letter space alignments. Report a similar x2 fi-
     eld for colour space alignments.
+
+  [    --insert-size-dist <mean,stddev> ]
+
+    Specifies the mean and standard deviation of  the  insert  sizes.  They  are
+    assumed to come from a normal distribution. These values are used in mapping
+    quality computation. The defaults are: mean=200, stddev=100.
 
 
 Thread Control
@@ -1000,9 +1042,18 @@ Input Control
 
     Use the given file as input for the downstream reads in paired mode.
 
+  [    --min-avg-qv <value> ]
+
+    The minimum average quality value of a read for it to even be considered for
+    mapping. The default is 10.
+
 
 Output Control
 --------------
+
+  [    --shrimp-format ]
+
+    Select old SHRiMP output format.
 
   [ -P/--pretty ]
 
@@ -1014,7 +1065,7 @@ Output Control
 
   [ -E/--sam ]
 
-    Select SAM output format.
+    Select SAM output format. (This is on by default as of v2.2.0.)
 
   [ --sam-unaligned ]
 
@@ -1036,6 +1087,44 @@ Output Control
   [ --al <filename> ]
 
     Print aligned reads to target file.
+
+  [    --progress <value> ]
+
+    Display a progress line each <value> reads. the default is 100,000.
+
+
+Mapping Qualities
+-----------------
+
+  [    --no-mapping-qualities ]
+
+    Do not compute mapping qualities. By default, they are computed.
+
+  [    --all-contigs ]
+
+    This flag specifies that all contigs of interest are included in  this  run.
+    When this is not the case  (which is the default),  gmapper  includes  extra
+    fields in its SAM output in order to  make  possible  the  recalculation  of
+    mapping qualities when merging mappings from different files.
+
+  [    --single-best-mapping ]
+
+    If mapping qualities are computed,  this flag tells gmapper to  only  output
+    the "best" mapping for each read (or pair, in paired mode).
+
+    Note:  in  paired  mode,  if   --single-best-mapping   is  given   but   not
+    --all-contigs, gmapper outputs  the  best  mapping  from  each  class:  best
+    paired, best unpaired for the first read, and best unpaired for  the  second
+    read. These extra mappings are used  to  recompute  mapping  qualities  when
+    merging.
+
+  [    --no-improper-mappings ]
+
+    Only relevant in paired mode, when --all-contigs and --single-best-mapping
+    are both given. By default, if SHRiMP decides the best mapping of a pair is
+    a singleton, it will attempt to pair it up with the best mapping of the
+    other read, if the latter is strong enough. This enables mapping in the
+    presence of large structural variations. The flag disables this behaviour.
 
 
 Diagnostics
@@ -1172,7 +1261,7 @@ more than 2 anchors for each CMW no longer provides justifiable speed benefits.
 In paired mapping mode, filter 1  is run independently for each  read in a pair.
 In this case,   in window generation  mode  "-n 4" (the  default),  both runs of
 filter 1 occur  in (unpaired) mode  2. In window  generation modes "-n 2" or "-n
-3", both runs of filter 1 occur in (unapired) mode 1.
+3", both runs of filter 1 occur in (unpaired) mode 1.
 
 The <window_generation_threshold> parameter specifies the minimum score that has
 to be achieved by  an optimistic estimate of the  real match score in order  for
@@ -1204,7 +1293,7 @@ CMW (which already passed the filter) by more than <window_overlap>. This is set
 by -l.
 
 To speed up the mapping of a single read against repetitive regions of a genome,
-every time the SW algorihtm  is run, the  resulting score is  saved in a  cache,
+every time the SW algorithm  is run, the  resulting score is  saved in a  cache,
 indexed by the hash value of the  genomic window. Subsequently, prior to running
 the SW algorithm on another genomic window (and the same  read!), its hash value
 is   computed and the cache   is looked up  for  a previous score. Conflicts are
@@ -1223,14 +1312,14 @@ space, the  final full alignment   is always done   in letter space. Since  each
 letter depends on the previous letter and colour, any  error on the colour space
 read will affect all following letters when converting to letter space. For this
 reason, we perform the alignment of all four  possible letter space translations
-of   the  read    and permit    jumping between  matricies,    at  the   cost of
+of   the   read    and permit    jumping between  matrices,    at  the   cost of
 <crossover_score>.  A     CMW passes this   filter if   its score is    at least
 <full_sw_threshold>.  This is set by   -h. At  the  end,  the top  <num_outputs>
 remaining CMWs are output.
 
 The full SW alignment is the costliest of the filters applied, with running time
 proportional to the product  of the lengths  of the read  and  the CMW.  A small
-optimization is achieved by restricting the dynmaic programming to run through a
+optimization is achieved by restricting the dynamic programming to run through a
 series of  "necks" or diagonal  tubes  centered along the  original anchors that
 triggered the creation of the CMW in filter 1. By  default, gmapper uses anchors
 with total extra width 8. In ungapped mode, the extra width is set 0. To disable
@@ -1250,6 +1339,43 @@ allowed interval.
 The final mapping score for a  pair equals the sum  of the mapping scores of the
 individual reads. (We do not currently score  insert sizes.) Following filter 3,
 the top <num_outputs> remaining paired hits for each pair are output.
+
+
+Mapping Quality Values
+----------------------
+
+As of v2.2.0, SHRiMP computes by default quality values for mappings, as well as
+for individual base calls. In letter space, base quality values are the same as
+the input base quality values. In colour space, base quality values are derived
+by running a forward-backward algorithm in order to compute the posterior
+probability of every base call.
+
+Mapping quality values are  based  on  the  probability  a  certain  mapping  is
+correct.  For unpaired reads,  the probability a certain mapping is  correct  is
+derived as the posterior of that mapping divided by the sum of the posteriors of
+all other mappings of that read. For reference, see:  Li H., Ruan J., Durbin R.,
+"Mapping short DNA sequencing reads and calling variants using  mapping  quality
+scores" doi: 10.1101/gr.078212.108.
+
+For paired reads, a more elaborate computation is performed. Mappings are placed
+into three classes: paired, unpaired for the first read, and unpaired for the
+second read. Various weights are used to carefully select between the classes,
+taking into account the posteriors of the mappings, the read lengths, as well as
+prior assumptions on the sensitivity of SHRiMP. In the end, of all classes of
+mappings for a certain pair of reads, at most one will have quality value
+greater than or equal to 4. When --single-best-mapping is used, only one best
+mapping is output for each pair. (Note, the quality of this best mapping might
+still be less than 4. If those are undesirable, they should be filtered
+downstream from the SAM output file.)
+
+When using --single-best-mapping, if SHRiMP decides that the best mapping for a
+pair of reads is a singleton mapping (only one of the reads being mapped),
+SHRiMP will also look at the best singleton mapping of the other read. If that
+one is by itself strong enough, SHRiMP will forcefully pair up those mappings,
+and mark them as an "improper" mapping. (Specifically, bit 0x2 in the FLAG field
+of the SAM output will be 0). Such mappings do not respect any assumptions about
+the insert size distribution, and they can even be on different chromosomes.
+To disable this behaviour, see --no-improper-mappings.
 
 
 --------------------------------------------------------------------------------

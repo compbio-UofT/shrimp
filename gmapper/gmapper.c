@@ -39,9 +39,17 @@
 #include "../common/output.h"
 #include "../common/input.h"
 #include "../common/read_hit_heap.h"
+#include "../common/sw-post.h"
 
 /* heaps */
-DEF_HEAP(uint32_t, char*, out)
+/*
+typedef struct ptr_and_sz {
+  void * ptr;
+  size_t sz;
+} ptr_and_sz;
+*/
+//DEF_HEAP(uint32_t, char *, out)
+DEF_HEAP(uint32_t, struct ptr_and_sz, out)
 
 
 
@@ -63,674 +71,98 @@ hit_edit_distance(struct read_hit * rh) {
 	return edit_distance;	
 }
 
-//TODO move this to utils
-void reverse(char* s, char* t) {
-       int l=strlen(s);
-       int i;
-       for (i=0; i<l; i++) {
-               switch (s[i]) {
-                       case 'A': t[l-i-1]='T'; break;
-                       case 'a': t[l-i-1]='t'; break;
-                       case 'T': t[l-i-1]='A'; break;
-                       case 't': t[l-i-1]='a'; break;
-
-                       case 'C': t[l-i-1]='G'; break;
-                       case 'c': t[l-i-1]='g'; break;
-                       case 'G': t[l-i-1]='C'; break;
-                       case 'g': t[l-i-1]='c'; break;
-
-                       case '-': t[l-i-1]='-'; break;
-
-                       case 'N': t[l-i-1]='N'; break;
-                       case 'n': t[l-i-1]='n'; break;
-		       case '.': t[l-i-1]='.'; break;
-
-                       case 'R': t[l-i-1]='Y'; break;
-                       case 'r': t[l-i-1]='y'; break;
-                       case 'Y': t[l-i-1]='R'; break;
-                       case 'y': t[l-i-1]='r'; break;
-
-                       case 'S': t[l-i-1]='S'; break;
-                       case 's': t[l-i-1]='s'; break;
-                       case 'W': t[l-i-1]='W'; break;
-                       case 'w': t[l-i-1]='w'; break;
-
-                       case 'K': t[l-i-1]='M'; break;
-                       case 'k': t[l-i-1]='m'; break;
-                       case 'M': t[l-i-1]='K'; break;
-                       case 'm': t[l-i-1]='k'; break;
-
-                       case 'B': t[l-i-1]='V'; break;
-                       case 'b': t[l-i-1]='v'; break;
-                       case 'V': t[l-i-1]='B'; break;
-                       case 'v': t[l-i-1]='b'; break;
-
-                       case 'D': t[l-i-1]='H'; break;
-                       case 'd': t[l-i-1]='h'; break;
-                       case 'H': t[l-i-1]='D'; break;
-                       case 'h': t[l-i-1]='d'; break;
-	
-                       default:
-                               fprintf(stderr,"There has been a error in getting reverse complement of %s\n",s);
-                               exit(1);
-               }
-       }
-       t[l]='\0';
-       //printf("%s vs %s\n", s , t);
-       strcpy(s,t);
-}
-
-/*
-	read_start and read_end are 1 based
-*/
-cigar_t * make_cigar(int read_start, int read_end , int read_length, char* qralign,char* dbalign) {
-	cigar_t * cigar = (cigar_t*)xmalloc(sizeof(cigar_t));
-	cigar->size=2; 
-	assert(cigar->size>=2); //for start and end without loop
-	cigar->ops=(char*)xmalloc(sizeof(char)*cigar->size);
-	cigar->lengths=(uint32_t*)xmalloc(sizeof(uint32_t)*cigar->size);
-	int used=0;
-	if (read_start>1) {
-		assert(cigar->size-used>0);
-		cigar->ops[used]='S';
-		cigar->lengths[used]=read_start-1;
-		used++;
-	}
-	int i=0; int qralign_length=strlen(qralign);
-	while (i<qralign_length) {
-		int length; char op;
-		if (qralign[i]=='-') {
-			for (length=0; qralign[i+length]=='-' && i+length<qralign_length; length++);
-			op='D';
-		} else if (dbalign[i]=='-') {
-			for (length=0; dbalign[i+length]=='-' && i+length<qralign_length; length++);
-			op='I';
-		} else {
-			for (length=0; dbalign[i+length]!='-' && qralign[i+length]!='-' && i+length<qralign_length; length++);
-			op='M';
-		}
-		while ((used+1)>=cigar->size) { //make it bigger, want to make sure have enough for one more after loop!
-			assert(cigar->size!=0);
-			cigar->size*=2;
-			cigar->ops=(char*)xrealloc(cigar->ops,sizeof(char)*cigar->size);
-			cigar->lengths=(uint32_t*)xrealloc(cigar->lengths,sizeof(uint32_t)*cigar->size);			
-		}
-		cigar->ops[used]=op;
-		cigar->lengths[used]=length;
-		i+=length;
-		used++;		
-	}
-	if (read_end!=read_length) {
-		assert(used<cigar->size); //by loop invariant and initial size >=2
-		cigar->ops[used]='S';
-		cigar->lengths[used]=read_length-read_end; 
-		used++;
-	}
-	cigar->ops=(char*)xrealloc(cigar->ops,sizeof(char)*used);
-	cigar->lengths=(uint32_t*)xrealloc(cigar->lengths,sizeof(uint32_t)*used);
-	cigar->size=used;
-	return cigar;
-} 
-
-
-void reverse_cigar(cigar_t * cigar) {
-	char ops[cigar->size];
-	uint32_t lengths[cigar->size];
-	memcpy(ops,cigar->ops,sizeof(char)*cigar->size);
-	memcpy(lengths,cigar->lengths,sizeof(uint32_t)*cigar->size);
-	int i;	
-	for (i=0; i<cigar->size; i++) {
-		cigar->ops[i]=ops[cigar->size-i-1];
-		cigar->lengths[i]=lengths[cigar->size-i-1];
-	}
-	return;
-}
-
-char* make_cigar_string(cigar_t * cigar) {
-	int string_length=cigar->size; //1 char for each op
-	int i;
-	for (i=0; i<cigar->size; i++) {
-		int j=0,length;
-		for (length=cigar->lengths[i]; length>0; j++)
-			length/=10;
-		string_length+=j;
-	}
-	string_length++; // for null term
-	char * ret = (char*)xmalloc(sizeof(char)*(string_length));
-	int used=0;
-	for (i=0; i<cigar->size; i++) {
-		//printf("%d%c\n",cigar->lengths[i],cigar->ops[i]);
-		used+=sprintf(ret+used,"%d%c",cigar->lengths[i],cigar->ops[i]);
-	}
-	//printf("%d vs %d, %d\n",used,string_length,cigar->size);
-	assert(used+1==string_length);
-	ret[used]='\0';
-	return ret;
-}
-
-void free_cigar(cigar_t * cigar) {
-	if (cigar->size>0) {
-		assert(cigar->ops!=NULL);
-		assert(cigar->lengths!=NULL);
-		free(cigar->ops);
-		free(cigar->lengths);
-	}
-	free(cigar);
-}
-
-
-/*
- * Print given hit.
- *
- */
-void
-hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp,
-	   char ** output1, char ** output2, bool first_in_pair, int* hits, int satisfying_alignments)
-/*
- * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
- * It is capable of outputting regular shrimp output, pretty print output, and sam output
- *
- * re is the read_entry for the current read
- * rh is the read_hit for the current read
- * rh_mp is the read_hit for the current reads mate pair
- *
- * output1 is a pointer to a string to be used for the firest line of output
- * output1 is a pointer to a string to be used for remaining output lines (used for pretty print)
- *
- * paired is true if this read is paired
- * first is true if this is the first read in the pair
- *
- */
-{
-  assert(re !=NULL);
-  if(!Eflag) {
-  	assert(rh != NULL);
-  	assert(rh->sfrp != NULL);
-  	*output1 = output_normal(re->name, contig_names[rh->cn], rh->sfrp,
-			   genome_len[rh->cn], shrimp_mode == MODE_COLOUR_SPACE, re->read[rh->st],
-			   re->read_len, re->initbp[rh->st], rh->gen_st, Rflag);
-	if (Pflag) {
-		//pretty print output
-		*output2 = output_pretty(re->name, contig_names[rh->cn], rh->sfrp,
-				     genome_contigs[rh->cn], genome_len[rh->cn],
-				     (shrimp_mode == MODE_COLOUR_SPACE), re->read[rh->st],
-				     re->read_len, re->initbp[rh->st], rh->gen_st);
-	}
-  } else {
-	int thread_id = omp_get_thread_num();
-	char ** output_buffer = thread_output_buffer_filled+thread_id;
- 	char * output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
-	while ( (size_t)(output_buffer_end - *output_buffer) < thread_output_buffer_safety) { 
-		//fprintf(stderr,"%d incrementing buffer, free space %llu\n",thread_id,output_buffer_end - *output_buffer );
-		size_t new_size = thread_output_buffer_sizes[thread_id]+thread_output_buffer_increment;
-		size_t filled = thread_output_buffer_filled[thread_id]-thread_output_buffer[thread_id];
-		//fprintf(stderr, "there are %llu bytes used\n",filled);
-		thread_output_buffer[thread_id]=(char*)realloc(thread_output_buffer[thread_id],new_size);
-		if (thread_output_buffer[thread_id]==NULL) {
-			fprintf(stderr,"Hit output : realloc failed!\n");
-			exit(1);
-		}
-		thread_output_buffer_sizes[thread_id]=new_size;
-		thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id]+filled;
-		output_buffer = thread_output_buffer_filled+thread_id;
-		output_buffer_end = thread_output_buffer[thread_id] + thread_output_buffer_sizes[thread_id] - 1 + 1;
-	}	
-	//TODO change this size?
-	//int buffer_size=MAX(longest_read_len,1000)*8;
-	//*output1 = (char *)xmalloc(sizeof(char *)*buffer_size);
-	//qname
-	char * read_name = re->name;
-	char qname[strlen(read_name)+1];
-	strcpy(qname,read_name);
-	//flag
-	int flag;
-	//rname
-	char const * rname = "*";
-	//pos
-	int pos=0;
-	//mapq
-	int mapq=255;
-	//cigar
-	char * cigar="*";
-	cigar_t * cigar_binary=NULL;
-	//mrnm
-	const char * mrnm = "*"; //mate reference name
-	//mpos
-	int mpos=0;
-	//isize
-	int isize=0;
-	//seq
-	assert(shrimp_mode==MODE_COLOUR_SPACE || (signed int)strlen(re->seq)==re->read_len);
-	assert(shrimp_mode==MODE_LETTER_SPACE || (signed int)strlen(re->seq)==re->read_len+1);
-	char seq[re->read_len+1];
-	if (shrimp_mode == MODE_LETTER_SPACE) {
-		int i; 
-		for (i=0; i<re->read_len; i++) {
-			char c = re->seq[i];				
-			switch(c) {
-				case 'R':
-				case 'Y':
-				case 'S':
-				case 'W':
-				case 'K':
-				case 'M':
-				case 'B':
-				case 'D':
-				case 'H':
-				case 'V':
-					seq[i]='N';
-					break;
-				default:
-					if (c>='a') {
-						c-=32;
-					}
-					seq[i]=c;
-					break;	
-			}
-		} 
-		assert(i==re->read_len);
-		seq[re->read_len]='\0';
-	} else {
-		seq[0]='*'; seq[1]='\0';
-	}
-	//qual
-	int read_length = re->read_len;
-	char qual[read_length+10];
-	strcpy(qual,"*");
-	//initialize flags	
-	bool paired_read = re->paired;
-	struct read_entry * re_mp = re->mate_pair;
-	assert(!paired_read || re_mp!=NULL);
-	bool paired_alignment = paired_read && (rh!=NULL && rh_mp!=NULL); //paired mapping, not paired read!
-	//bool proper_pair = (paired_read && !query_unmapped && !mate_unmapped);
-	//bool query_unmapped = (re->n_hits[0] + re->n_hits[1])>0 ? false : true;
-	bool query_unmapped = (rh==NULL);
-	bool mate_unmapped=false;
-	bool reverse_strand = false;
-	bool reverse_strand_mp = false;
-	int genome_end_mp=0; int genome_start_mp=0;
-	if (paired_read) {
-		int min_read_name_length=MIN(strlen(read_name),strlen(re_mp->name));
-		int i;
-		for (i=0; i<min_read_name_length; i++) {
-			if (read_name[i]==re_mp->name[i]) {
-				qname[i]=read_name[i];
-			} else {
-				break;
-			}
-		}
-		if (i>0 && (qname[i-1]==':' || qname[i-1]=='/')) {
-			i--;
-		}
-		qname[i]='\0';
-		//mate_unmapped=(re_mp->n_hits[0]+re_mp->n_hits[1])>0 ? false : true;
-		mate_unmapped= (rh_mp==NULL);
-		if (!mate_unmapped) {
-			//char * read_name_mp = re->name;
-			//char * rname_mp = contig_names[rh_mp->cn];
-			int read_start_mp = rh_mp->sfrp->read_start+1; //1based
-			//int read_length_mp = re_mp->read_len;
-			int read_end_mp = read_start_mp + rh_mp->sfrp->rmapped -1; //1base
-			int genome_length_mp = genome_len[rh_mp->cn];
-			reverse_strand_mp = (rh_mp->gen_st ==1);
-			if (!reverse_strand_mp) {
-				genome_start_mp = rh_mp->sfrp->genome_start+1; // 0 based -> 1 based
-			} else {
-				int genome_right_most_coordinate = genome_length_mp - rh_mp->sfrp->genome_start;
-				//rh->sfrp->deletions is deletions in the reference
-				// This is when the read has extra characters that dont match into ref
-				genome_start_mp = genome_right_most_coordinate - (read_end_mp - read_start_mp - rh_mp->sfrp->deletions + rh_mp->sfrp->insertions);
-			}
-			genome_end_mp=genome_start_mp+rh_mp->sfrp->gmapped-1;
-			mpos=genome_start_mp;
-			mrnm = contig_names[rh_mp->cn];
-		}
-	}
-	bool second_in_pair = (paired_read && !first_in_pair);
-	bool primary_alignment = false;
-	bool platform_quality_fail = false;
-	bool pcr_duplicate = false;
-	int stored_alignments = MIN(num_outputs,satisfying_alignments); //IH
-	//if the read has no mapping or if not in half_paired mode and the mate has no mapping
-	if (query_unmapped || (!sam_half_paired && paired_read && mate_unmapped)) {
-		mapq=0;
-		if (Qflag && shrimp_mode == MODE_LETTER_SPACE ){
-			strcpy(qual,re->qual);
-		}
-		flag = 
-			( paired_read ?  0x0001 : 0) |
-			( paired_alignment ? 0x0002 : 0) |
-			( query_unmapped ? 0x0004 : 0) |
-			( mate_unmapped ? 0x0008 : 0) |
-			( reverse_strand ? 0x0010 : 0) |
-			( reverse_strand_mp ? 0x0020 : 0) |
-			( first_in_pair ? 0x0040 : 0) |
-			( second_in_pair ? 0x0080 : 0) |
-			( primary_alignment ? 0x0100 : 0) |
-			( platform_quality_fail ? 0x0200 : 0) |
-			( pcr_duplicate ? 0x0400 : 0);
-		//char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
-		//	qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-		//	isize,seq,qual);
-		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
-			"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
-			qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-			isize,seq,qual);
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			if (Qflag) {
-				//extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
-			} else {
-				//extra = extra + sprintf(extra,"\tCQ:Z:%s",qual);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",qual);
-			}
-			//extra = extra + sprintf(extra, "\tCS:Z:%s",re->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s",re->seq);
-		}
-		if (sam_r2) {
-			if (shrimp_mode == MODE_COLOUR_SPACE) {
-				//extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
-			} else {
-				//extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
-				*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
-			}
-		}
-		if (sam_read_group_name!=NULL ){
-			//extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
-		}
-		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
-		assert(satisfying_alignments==0);
-		assert(stored_alignments==0);
-		//assert(hits[0]==0);
-		//assert(hits[1]==0);
-		//assert(hits[2]==0);
-		//assert(hits[3]==0);
-		//extra = extra + sprintf(extra,"\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNH:i:%d\tIH:i:%d",hits[0],hits[1],hits[2],found_alignments,stored_alignments);
-		return;
-	}
-	assert(rh!=NULL);
-	assert( !paired_read || (!query_unmapped && !mate_unmapped) || sam_half_paired);
-	//start filling in the fields
-	rname = contig_names[rh->cn];
-	reverse_strand = (rh->gen_st == 1);
-	int read_start = rh->sfrp->read_start+1; //1based
-	int read_end = read_start + rh->sfrp->rmapped -1; //1base
-	int genome_length = genome_len[rh->cn];
-	cigar_binary = make_cigar(read_start,read_end,read_length,rh->sfrp->qralign,rh->sfrp->dbalign);
-
-	int qralign_length=strlen(rh->sfrp->qralign);
-	int i,j=0;
-	int seq_length=0;
-	if (shrimp_mode == MODE_LETTER_SPACE ) {
-		j=read_start-1;
-		seq_length=re->read_len;
-	} else if (shrimp_mode == MODE_COLOUR_SPACE ) {
-		seq_length=read_end-read_start+1;
-	}
-	assert(seq_length<=re->read_len);
-	for(i=0;i<qralign_length;i++) {
-		char c=rh->sfrp->qralign[i];
-		if (c!='-') { 
-			if (c>='a') {
-				c-=32;
-			}
-			if (c!='A' && c!='a' &&
-				c!='G' && c!='g' &&
-				c!='C' && c!='c' &&
-				c!='T' && c!='t' &&
-				c!='N' && c!='n') {
-				//see if we can figure out what its suppose to be
-				c='N';
-				if (rh->sfrp->dbalign[i]!='-') {
-					char r = rh->sfrp->dbalign[i];
-					if (r>='a') {
-						r-=32;
-					}
-					switch (r) {
-						case 'A':
-							if (c=='R' || c=='W' || c=='M' || c=='D' || c=='H' || c=='V' )
-								c='A';
-							break;
-						case 'C':
-							if (c=='Y' || c=='S' || c=='M' || c=='B' || c=='H' || c=='V')
-								c='C';
-							break;
-						case 'G':
-							if (c=='R' || c=='S' || c=='K' || c=='B' || c=='D' || c=='V')
-								c='G';
-							break;
-						case 'T':
-							if (c=='Y' || c=='W' || c=='K' || c=='B' || c=='D' || c=='H') 
-								c='T';
-							break;
-						default: 
-							fprintf(stderr,"There has been an error in printing an alignment, %c\n",r);
-							break;
-					}
-				}
-			}
-			seq[j++]=c;
-		}
-	}
-	if (shrimp_mode == MODE_LETTER_SPACE ) {
-		assert(j+(re->read_len-read_end)==seq_length);
-		seq[j+(re->read_len-read_end)]='\0';
-	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
-		assert(j==seq_length);
-		seq[seq_length]='\0';
-	}
-
-	//if its letter space need to reverse the qual string if its backwards
-	if (shrimp_mode == MODE_LETTER_SPACE) {
-		//seq=re->seq;
-		if (Qflag) {
-			if (!reverse_strand) {
-				strcpy(qual,re->qual);
-			} else {
-				int qual_len = strlen(re->qual); //not same as read_len, for color space reads... apperently.....
-				assert((qual_len+1)<(re->read_len+10));
-				int i;
-				for (i=0; i<qual_len; i++) {
-					qual[(qual_len-1)-i]=re->qual[i];
-				}
-				qual[qual_len]='\0';
-			}
-		}
-	//else in colour space dont print a qual string
-	//but get the seq differently and change 'S' to 'H' in cigar
-	} else if (shrimp_mode == MODE_COLOUR_SPACE) {
-		//also change 'S' in cigar to 'H'
-		//clip the qual values
-		for (i=0; i<cigar_binary->size; i++) {
-			if (cigar_binary->ops[i]=='S') {
-				cigar_binary->ops[i]='H';
-			}
-		}
-		if (Bflag && Qflag) {
-			int read_length=(read_end-read_start+1);
-			for (i=0; i<read_length; i++) {
-				qual[i]=re->qual[i+read_start-1];
-			}
-			qual[i]='\0';
-			for (i=0; i<read_length-1; i++) {
-				//this is different from bfast
-				//qralign is already clipped! i.e. doesn't have clipped stuff and is
-				//read orientation (not always on positive reference strand!)
-				int first_position_mismatch = rh->sfrp->qralign[i] > 96;
-				int second_position_mismatch = rh->sfrp->qralign[i+1] > 96;
-				int base_qual=0;
-				if (first_position_mismatch && second_position_mismatch ) {
-					base_qual+=0;
-				} else if (first_position_mismatch) {
-					base_qual+=qual[i+1]-qual[i];
-				} else if (second_position_mismatch) {
-					base_qual+=qual[i]-qual[i+1]+33;
-				} else {
-					base_qual+=qual[i]+qual[i+1]+10-33;
-				}
-				base_qual=MIN('`',MAX(base_qual,'"'));
-				qual[i]=base_qual;
-			}
-			if (reverse_strand) {
-				for (i=0; i<read_length/2; i++) {
-					char temp = qual[i];
-					qual[i]=qual[read_length-i-1];
-					qual[read_length-i-1]=temp;
-				}
-			}
-		}
-	}
-	//get the pos
-	int genome_start;
-	if (!reverse_strand) {
-		genome_start = rh->sfrp->genome_start+1; // 0 based -> 1 based
-	} else {
-		int genome_right_most_coordinate = genome_length - rh->sfrp->genome_start;
-		//rh->sfrp->deletions is deletions in the reference
-		// This is when the read has extra characters that dont match into ref
-		genome_start = genome_right_most_coordinate - (read_end - read_start - rh->sfrp->deletions + rh->sfrp->insertions);
-		char * tmp = (char*)xmalloc(sizeof(char)*(strlen(seq)+1));
-		reverse(seq,tmp);
-		free(tmp);
-		reverse_cigar(cigar_binary);
-	}
-	int genome_end=genome_start+rh->sfrp->gmapped-1;
-	pos=genome_start;
-	//make the cigar string
-	cigar = make_cigar_string(cigar_binary); 
-
-	//do some stats using matepair
-	if (paired_read && !mate_unmapped) {
-		assert(rh_mp!=NULL && re_mp!=NULL);
-
-		mrnm = (strcmp(rname,mrnm)==0) ? "=" : mrnm;
-		//printf("%d %d %c, %d %d %c\n",genome_start, genome_end,reverse_strand ? '-' : '+' , genome_start_mp, genome_end_mp, reverse_strand_mp ? '-' : '+');
-		int fivep = 0;
-		int fivep_mp = 0;
-		if (reverse_strand){
-			fivep = genome_end;
-		} else {
-			fivep = genome_start - 1;
-		}
-
-		if (reverse_strand_mp){
-			fivep_mp = genome_end_mp;
-		} else {
-			fivep_mp = genome_start_mp-1;
-		}
-		isize = (fivep_mp - fivep);
-	}
-	flag = 
-		( paired_read ?  0x0001 : 0) |
-		( paired_alignment ? 0x0002 : 0) |
-		( query_unmapped ? 0x0004 : 0) |
-		( mate_unmapped ? 0x0008 : 0) |
-		( reverse_strand ? 0x0010 : 0) |
-		( reverse_strand_mp ? 0x0020 : 0) |
-		( first_in_pair ? 0x0040 : 0) |
-		( second_in_pair ? 0x0080 : 0) |
-		( primary_alignment ? 0x0100 : 0) |
-		( platform_quality_fail ? 0x0200 : 0) |
-		( pcr_duplicate ? 0x0400 : 0);
-	//char *extra = *output1 + sprintf(*output1,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
-	//	qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-	//	isize,seq,qual);
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"%s\t%i\t%s\t%u\t%i\t%s\t%s\t%u\t%i\t%s\t%s",
-		qname,flag,rname,pos,mapq,cigar,mrnm,mpos,
-		isize,seq,qual);
-	//extra = extra + sprintf(extra,"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,found_alignments,stored_alignments);
-		//MERGESAM DEPENDS ON SCORE BEING FIRST!
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,
-		"\tAS:i:%d\tH0:i:%d\tH1:i:%d\tH2:i:%d\tNM:i:%d\tNH:i:%d\tIH:i:%d",
-		rh->sfrp->score,hits[0],hits[1],hits[2],rh->sfrp->mismatches+rh->sfrp->deletions+rh->sfrp->insertions,satisfying_alignments,stored_alignments);
-	if (shrimp_mode == COLOUR_SPACE){
-		//TODO
-		//int first_bp = re->initbp[0];
-		//printf("%s vs %s\n",readtostr(re->read[0],re->read_len,true,first_bp),re->seq);
-		//assert(strcmp(readtostr(re->read[0],re->read_len,true,first_bp),re->seq)==0);
-		if (Qflag) {
-			//extra = extra + sprintf(extra,"\tCQ:Z:%s",re->qual);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tCQ:Z:%s",re->qual);
-		}
-		//extra = extra + sprintf(extra, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
-		*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tCS:Z:%s\tCM:i:%d\tXX:Z:%s",re->seq,rh->sfrp->crossovers,rh->sfrp->qralign);
-	} 
-	if (sam_r2) {
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			//extra = extra + sprintf(extra, "\tX2:Z:%s",re_mp->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tX2:Z:%s",re_mp->seq);
-		} else {
-			//extra = extra + sprintf(extra, "\tR2:Z:%s",re_mp->seq);
-			*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer, "\tR2:Z:%s",re_mp->seq);
-		}
-	}
-	
-	if (sam_read_group_name!=NULL) {
-			//extra+=sprintf(extra,"\tRG:Z:%s",sam_read_group_name);
-			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
-	}
-	if (cigar_binary!=NULL) {
-		free_cigar(cigar_binary);
-		free(cigar);
-	}
-	*output_buffer += snprintf(*output_buffer,output_buffer_end-*output_buffer,"\n");	
-
-    //to calculate the insert size we need to find the five' end of the reads
-/*
-	    inp.score);
-    if(re_mp != NULL){
-    	free(name);
-    }
-    free(read);
-    free(cigar);
-    format_free(fsp);*/
-
-  }
-}
-
 
 /*
  * Free memory allocated by this read.
  */
 void 
-read_free(read_entry * re)
+read_free(struct read_entry * re)
 {
   free(re->name);
   free(re->seq);
   if (re->orig_seq!=re->seq) {
-	free(re->orig_seq);
+    free(re->orig_seq);
   }
   if (Qflag) {
-        assert(re->qual!=NULL);
-        free(re->qual);
-	if (re->qual!=re->orig_qual) {
-		free(re->orig_qual);
-	}
-        assert(re->plus_line!=NULL);
-        free(re->plus_line);
+    assert(re->qual!=NULL);
+    free(re->qual);
+    if (re->qual!=re->orig_qual) {
+      free(re->orig_qual);
+    }
+    assert(re->plus_line!=NULL);
+    free(re->plus_line);
   }
 }
 
 
 void
-read_free_full(struct read_entry * re)
+read_free_full(struct read_entry * re, count_t * counter)
 {
-  read_free(re);
+  if (shrimp_mode == MODE_COLOUR_SPACE && Qflag) {
+    if (re->crossover_score != NULL) {
+      free(re->crossover_score);
+      re->crossover_score = NULL;
+    }
+  }
+  if (re->mapidx[0] != NULL)
+    my_free(re->mapidx[0], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), counter, "mapidx [%s]", re->name);
+  if (re->mapidx[1] != NULL)
+    my_free(re->mapidx[1], n_seeds * re->max_n_kmers * sizeof(re->mapidx[0][0]), counter, "mapidx [%s]", re->name);
+
+  read_free_hit_list(re, counter);
+  read_free_anchor_list(re, counter);
+
+  if (re->n_ranges > 0)
+    free(re->ranges);
+
+  if (re->n_final_unpaired_hits > 0) {
+    int i;
+    for (i = 0; i < re->n_final_unpaired_hits; i++)
+      free_sfrp(&re->final_unpaired_hits[i].sfrp, re, counter);
+    my_free(re->final_unpaired_hits, re->n_final_unpaired_hits * sizeof(re->final_unpaired_hits[0]),
+            counter, "final_unpaired_hits [%s]", re->name);
+    re->n_final_unpaired_hits = 0;
+    re->final_unpaired_hits = NULL;
+  }
+
   free(re->read[0]);
   free(re->read[1]);
+  read_free(re);
+}
 
-  free(re->mapidx[0]);
-  free(re->mapidx[1]);
-  free(re->anchors[0]);
-  free(re->anchors[1]);
-  free(re->hits[0]);
-  free(re->hits[1]);
 
-  if (re->n_ranges > 0) {
-    free(re->ranges);
+void
+readpair_free_full(pair_entry * peP, count_t * counterP)
+{
+  int nip, i;
+
+  if (peP->n_final_paired_hits > 0) {
+    my_free(peP->final_paired_hits, peP->n_final_paired_hits * sizeof(peP->final_paired_hits[0]),
+	counterP, "final_paired_hits [%s,%s]", peP->re[0]->name, peP->re[1]->name);
+    peP->n_final_paired_hits = 0;
+    peP->final_paired_hits = NULL;
   }
+
+  for (nip = 0; nip < 2; nip++) {
+    if (peP->final_paired_hit_pool_size[nip] > 0) {
+      for (i = 0; i < peP->final_paired_hit_pool_size[nip]; i++) {
+	free_sfrp(&peP->final_paired_hit_pool[nip][i].sfrp, peP->re[nip], counterP);
+	if (peP->final_paired_hit_pool[nip][i].n_paired_hit_idx > 0) {
+	  my_free(peP->final_paired_hit_pool[nip][i].paired_hit_idx, peP->final_paired_hit_pool[nip][i].n_paired_hit_idx * sizeof(peP->final_paired_hit_pool[nip][i].paired_hit_idx[0]),
+	      counterP, "paired_hit_idx [%s]", peP->re[nip]->name);
+	  peP->final_paired_hit_pool[nip][i].n_paired_hit_idx = 0;
+	  peP->final_paired_hit_pool[nip][i].paired_hit_idx = NULL;
+	}
+      }
+      my_free(peP->final_paired_hit_pool[nip], peP->final_paired_hit_pool_size[nip] * sizeof(peP->final_paired_hit_pool[nip][0]),
+              counterP, "final_paired_hit_pool[%d] [%s,%s]", nip, peP->re[0]->name, peP->re[1]->name);
+      peP->final_paired_hit_pool_size[nip] = 0;
+      peP->final_paired_hit_pool[nip] = NULL;
+    }
+  }
+
+  read_free_full(peP->re[0], counterP);
+  read_free_full(peP->re[1], counterP);
 }
 
 
@@ -752,6 +184,7 @@ read_reverse(struct read_entry * re) {
   re->input_strand = 1 - re->input_strand;
 }
 
+/*
 static uint
 get_contig_number_from_name(char const * c)
 {
@@ -765,10 +198,12 @@ get_contig_number_from_name(char const * c)
   }
   return cn;
 }
+*/
 
 /*
  * Compute range limitations for this read.
  */
+/*
 static void
 read_compute_ranges(struct read_entry * re)
 {
@@ -821,6 +256,7 @@ read_compute_ranges(struct read_entry * re)
       re->ranges[re->n_ranges - 1].g_end = g_end;
     }
 }
+*/
 
 /* Trim a read */
 static void trim_read(struct read_entry * re) {
@@ -848,154 +284,165 @@ static void trim_read(struct read_entry * re) {
  * Launch the threads that will scan the reads
  */
 static bool
-launch_scan_threads(){
-  fasta_t fasta=NULL;
-  fasta_t left_fasta=NULL;
-  fasta_t right_fasta=NULL;
+launch_scan_threads()
+{
+  llint last_nreads, last_time_usecs;
+
+  fasta_t fasta = NULL, left_fasta = NULL, right_fasta = NULL;
 
   //open the fasta file and check for errors
   if (single_reads_file) {  
-  	fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
-	if (fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
-		return (false);
-	} else {
-		fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
-	}
+    fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
+    if (fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
+      return (false);
+    } else {
+      fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
+    }
   } else {
-	left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
-	if (left_fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
-		return (false);
-	}
-	right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
-	if (right_fasta == NULL) {
-		fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
-		return (false);
-	}
-	if (right_fasta->space != left_fasta->space) {
-		fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
-		return (false);
-	}
-	fasta=left_fasta;
-	fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
+    left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
+    if (left_fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
+      return (false);
+    }
+    right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
+    if (right_fasta == NULL) {
+      fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
+      return (false);
+    }
+    // WHY? the code above sets both ->space to shrimp_mode anyhow
+    //if (right_fasta->space != left_fasta->space) {
+    //  fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
+    //  return (false);
+    //}
+    fasta=left_fasta;
+    fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
   }
 
   if ((pair_mode != PAIR_NONE || !single_reads_file) && (chunk_size%2)!=0) {
-	fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
+    fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
   }
 
-  bool read_more = true;
-  bool more_in_left_file=true; bool more_in_right_file=true;
+  bool read_more = true, more_in_left_file = true, more_in_right_file=true;
 
   /* initiate the thread buffers */
-  thread_output_buffer_sizes = (size_t*)malloc(sizeof(size_t)*num_threads);
-  if (thread_output_buffer_sizes==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_sizes buffer!\n");
-	exit(1);
-  }
-  memset(thread_output_buffer_sizes,0, sizeof(size_t)*num_threads);	 
-  thread_output_buffer_filled = (char**)malloc(sizeof(char*)*num_threads);
-  if (thread_output_buffer_filled==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_filled buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer_filled,0, sizeof(char*)*num_threads);	
-  thread_output_buffer = (char**)malloc(sizeof(char*)*num_threads);
-  if (thread_output_buffer==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer,0, sizeof(char*)*num_threads);	
-  thread_output_buffer_chunk = (unsigned int*)malloc(sizeof(unsigned int)*num_threads);
-  if (thread_output_buffer_chunk==NULL) {
-	fprintf(stderr,"Failed to malloc thread_output_buffer_chunk buffer!\n");
-	exit(1);
-  }	 
-  memset(thread_output_buffer_chunk,0, sizeof(unsigned int)*num_threads);	
+  //thread_output_buffer_sizes = (size_t *)xcalloc_m(sizeof(size_t) * num_threads, "thread_output_buffer_sizes");
+  thread_output_buffer_sizes = (size_t *)
+    my_calloc(num_threads * sizeof(size_t),
+	      &mem_thread_buffer, "thread_output_buffer_sizes");
+  //thread_output_buffer_filled = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer_filled");
+  thread_output_buffer_filled = (char * *)
+    my_calloc(num_threads * sizeof(char *),
+	      &mem_thread_buffer, "thread_output_buffer_filled");
+  //thread_output_buffer = (char * *)xcalloc_m(sizeof(char *) * num_threads, "thread_output_buffer");
+  thread_output_buffer = (char * *)
+    my_calloc(num_threads * sizeof(char *),
+	      &mem_thread_buffer, "thread_output_buffer");
+  //thread_output_buffer_chunk = (unsigned int *)xcalloc_m(sizeof(unsigned int) * num_threads, "thread_output_buffer_chunk");
+  thread_output_buffer_chunk = (unsigned int *)
+    my_calloc(num_threads * sizeof(unsigned int),
+	      &mem_thread_buffer, "thread_output_buffer_chunk");
   
   unsigned int current_thread_chunk = 1;
   unsigned int next_chunk_to_print = 1;
   struct heap_out h; 
   heap_out_init(&h, thread_output_heap_capacity );
 
+  if (progress > 0) {
+    fprintf(stderr, "done r/hr r/core-hr\n");
+    last_nreads = 0;
+    last_time_usecs = gettimeinusecs();
+  }
+
 #pragma omp parallel shared(read_more,more_in_left_file,more_in_right_file, fasta) num_threads(num_threads)
   {
     int thread_id = omp_get_thread_num();
     struct read_entry * re_buffer;
     int load, i;
-    uint64_t before;
-    re_buffer = (struct read_entry *)xcalloc(chunk_size * sizeof(re_buffer[0]));
-    memset(re_buffer,0,chunk_size * sizeof(re_buffer[0]));
+    llint before, after;
+    //re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
+    re_buffer = (read_entry *)my_malloc(chunk_size * sizeof(re_buffer[0]), &mem_thread_buffer, "re_buffer");
 
+    while (read_more) {
+      memset(re_buffer, 0, chunk_size * sizeof(re_buffer[0]));
 
-    while (read_more){
       before = rdtsc();
 
       //Read in this threads 'chunk'
 #pragma omp critical (fill_reads_buffer)
       {
+	after = rdtsc();
+	tpg.wait_ticks += MAX(after - before, 0);
+
 	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
-	wait_ticks[omp_get_thread_num()] += rdtsc() - before;
 
 	load = 0;
 	assert(chunk_size>2);
-	while( read_more && ((single_reads_file && load < chunk_size) || (!single_reads_file && load < chunk_size-1))) {
+	while (read_more && ((single_reads_file && load < chunk_size) || (!single_reads_file && load < chunk_size-1))) {
 	  //if (!fasta_get_next_with_range(fasta, &re_buffer[load].name, &re_buffer[load].seq, &re_buffer[load].is_rna,
-	//				 &re_buffer[load].range_string, &re_buffer[load].qual))
+	  //				 &re_buffer[load].range_string, &re_buffer[load].qual))
 	  if (single_reads_file) { 
 	    if (fasta_get_next_read_with_range(fasta, &re_buffer[load])) {
-		    load++;
-		  } else { 
-		    read_more = false;
-		  }
+	      load++;
+	    } else { 
+	      read_more = false;
+	    }
 	  } else {
-		  //read from the left file
+	    //read from the left file
 	    if (fasta_get_next_read_with_range(left_fasta, &re_buffer[load])) {
-		  	load++;
-		  } else {
-		  	more_in_left_file = false;
-		  }
-		  //read from the right file
+	      load++;
+	    } else {
+	      more_in_left_file = false;
+	    }
+	    //read from the right file
 	    if (fasta_get_next_read_with_range(right_fasta, &re_buffer[load])) {
-		  	load++;
-		  } else {
-		  	more_in_right_file = false;
-		  }
-		  //make sure that one is not smaller then the other
-		  if (more_in_left_file!=more_in_right_file) {
-			fprintf(stderr,"error: when using options -1 and -2, both files specified must have the same number of entries\n");
-			exit(1);
-		  }
-		  //keep reading?
-		  read_more=more_in_left_file && more_in_right_file; 
+	      load++;
+	    } else {
+	      more_in_right_file = false;
+	    }
+	    //make sure that one is not smaller then the other
+	    if (more_in_left_file != more_in_right_file) {
+	      fprintf(stderr,"error: when using options -1 and -2, both files specified must have the same number of entries\n");
+	      exit(1);
+	    }
+	    //keep reading?
+	    read_more = more_in_left_file && more_in_right_file; 
 	  }
 	}
+
 	nreads += load;
+
+	// progress reporting
 	if (progress > 0) {
 	  nreads_mod += load;
-	  if (nreads_mod >= progress)
-	    fprintf(stderr, "\r%lld", nreads);
+	  if (nreads_mod >= progress) {
+	    llint time_usecs = gettimeinusecs();
+	    fprintf(stderr, "%lld %d %d.\r", nreads,
+		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6),
+		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6 * (1/(double)num_threads)) );
+	    last_nreads = nreads;
+	    last_time_usecs = time_usecs;
+	  }
 	  nreads_mod %= progress;
 	}
       } // end critical section
+
       if (pair_mode != PAIR_NONE)
 	assert(load % 2 == 0); // read even number of reads
 
-      thread_output_buffer_sizes[thread_id]=thread_output_buffer_initial;
-      thread_output_buffer[thread_id]=(char*)malloc(sizeof(char)*thread_output_buffer_sizes[thread_id]);
-      if (thread_output_buffer[thread_id]==NULL) {
-	fprintf(stderr,"Failed to allocate memory for actual thread_buffer!\n");
-	exit(1);
-      }
-      thread_output_buffer_filled[thread_id]=thread_output_buffer[thread_id];
-      thread_output_buffer[thread_id][0]='\0';
+      thread_output_buffer_sizes[thread_id] = thread_output_buffer_initial;
+      //thread_output_buffer[thread_id] = (char *)xmalloc_m(sizeof(char) * thread_output_buffer_sizes[thread_id], "thread_buffer");
+      thread_output_buffer[thread_id] = (char *)
+	my_malloc(thread_output_buffer_sizes[thread_id] * sizeof(char),
+		  &mem_thread_buffer, "thread_output_buffer[]");
+      thread_output_buffer_filled[thread_id] = thread_output_buffer[thread_id];
+      thread_output_buffer[thread_id][0] = '\0';
 
       for (i = 0; i < load; i++) {
 	// if running in paired mode and first foot is ignored, ignore this one, too
 	if (pair_mode != PAIR_NONE && i % 2 == 1 && re_buffer[i-1].ignore) {
-	  read_free(re_buffer+i-1);
-	  read_free(re_buffer+i);
+	  //read_free(&re_buffer[i-1]);
+	  read_free(&re_buffer[i]);
 	  continue;
 	}
 
@@ -1009,132 +456,193 @@ launch_scan_threads(){
 	
 	//Trim the reads
 	if (trim) {
-		if (pair_mode != PAIR_NONE ) {
-			if (trim_first) {
-				trim_read(re_buffer+i-1);
-			}
-			if (trim_second) {
-				trim_read(re_buffer+i);
-			}
-		} else {
-			trim_read(re_buffer+i);
-		}
-	}	
-
-	re_buffer[i].ignore = false;
-	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
+	  if (pair_mode != PAIR_NONE) {
+	    if (trim_first) {
+	      trim_read(&re_buffer[i-1]);
+	    }
+	    if (trim_second) {
+	      trim_read(&re_buffer[i]);
+	    }
+	  } else {
+	    trim_read(&re_buffer[i]);
+	  }
+	}
+	//compute average quality value
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
+	if (Qflag && min_avg_qv >= 0) {
+	  //fprintf(stderr, "read:[%s] qual:[%s]", re_buffer[i].name, re_buffer[i].qual);
+	  re_buffer[i].avg_qv = 0;
+	  for (char * c = re_buffer[i].qual; *c != 0; c++) {
+	    re_buffer[i].avg_qv += (*c - qual_delta);
+	  }
+	  //fprintf(stderr, " avg_qv:%d\n", re_buffer[i].avg_qv);
+	}
+
+	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;
-	re_buffer[i].min_kmer_pos = 0;
-	if (shrimp_mode == MODE_COLOUR_SPACE){
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
 	  re_buffer[i].read_len--;
 	  re_buffer[i].max_n_kmers -= 2; // 1st color always discarded from kmers
 	  re_buffer[i].min_kmer_pos = 1;
 	  re_buffer[i].initbp[0] = fasta_get_initial_base(shrimp_mode,re_buffer[i].seq);
 	  re_buffer[i].initbp[1] = re_buffer[i].initbp[0];
-	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0], (int8_t)re_buffer[i].initbp[1],
+	  re_buffer[i].read[1] = reverse_complement_read_cs(re_buffer[i].read[0], (int8_t)re_buffer[i].initbp[0],
+							    (int8_t)re_buffer[i].initbp[1],
 							    re_buffer[i].read_len, re_buffer[i].is_rna);
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
 	}
-	//Check if we can actually use this read
-	if (re_buffer[i].max_n_kmers<0) {
-		fprintf(stderr,"warning: Read smaller then any seed, skipping read!\n");
-		re_buffer[i].max_n_kmers=1;
-		if (pair_mode==PAIR_NONE) {
-			read_free_full(&re_buffer[i]);
-		} else if (i%2==1) {
-			read_free_full(&re_buffer[i-1]);
-			read_free_full(&re_buffer[i]);
-		} else {
-			re_buffer[i].ignore=true;
-		}
-		continue;	
-	}
-	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
-	re_buffer[i].input_strand = 0;
+	re_buffer[i].avg_qv /= re_buffer[i].read_len;
 
-	re_buffer[i].mapidx[0] = NULL;
-	re_buffer[i].mapidx[1] = NULL;
-	re_buffer[i].anchors[0] = NULL;
-	re_buffer[i].anchors[1] = NULL;
-	re_buffer[i].hits[0] = NULL;
-	re_buffer[i].hits[1] = NULL;
-	re_buffer[i].ranges = NULL;
-	re_buffer[i].n_ranges = 0;
-	re_buffer[i].final_matches = 0;
+	//Check if we can actually use this read
+	if (re_buffer[i].max_n_kmers < 0
+	    || re_buffer[i].read_len > longest_read_len
+	    || (Qflag && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
+	    ) {
+	  if (re_buffer[i].max_n_kmers < 0) {
+	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
+		    re_buffer[i].name);
+	    re_buffer[i].max_n_kmers=1;
+	  } else if (re_buffer[i].read_len > longest_read_len) {
+	    fprintf(stderr, "warning: skipping read [%s]; it has length %d, maximum allowed is %d. Use --longest-read ?\n",
+		    re_buffer[i].name, re_buffer[i].read_len, longest_read_len);
+	  } else {
+	    //fprintf(stderr, "skipping read [%s] with avg_qv:%g\n", re_buffer[i].name, (double)re_buffer[i].avg_qv);
+	  }
+	  if (pair_mode == PAIR_NONE) {
+	    #pragma omp atomic
+	    total_reads_dropped++;
+
+	    read_free_full(&re_buffer[i], &mem_mapping);
+	  } else {
+	    #pragma omp atomic
+	    total_pairs_dropped++;
+
+	    if (i%2 == 1) {
+	      read_free_full(&re_buffer[i-1], &mem_mapping);
+	      read_free_full(&re_buffer[i], &mem_mapping);
+	    } else {
+	      read_free_full(&re_buffer[i], &mem_mapping);
+	      re_buffer[i].ignore = true;
+	    }
+	  }
+	  continue;	
+	}
+
+	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
+	// compute position-based crossover scores based on qvs
+	if (shrimp_mode == MODE_COLOUR_SPACE && Qflag) {
+	  int j;
+
+	  re_buffer[i].crossover_score = (int *)xmalloc(re_buffer[i].read_len * sizeof(re_buffer[i].crossover_score[0]));
+	  for (j = 0; j < re_buffer[i].read_len; j++) {
+	    re_buffer[i].crossover_score[j] = (int)(score_alpha * log(pr_err_from_qv(re_buffer[i].qual[j] - qual_delta) / 3.0) / log(2.0));
+	    if (re_buffer[i].crossover_score[j] > -1) {
+	      re_buffer[i].crossover_score[j] = -1;
+	    } else if (re_buffer[i].crossover_score[j] < 2*crossover_score) {
+	      re_buffer[i].crossover_score[j] = 2*crossover_score;
+	    }
+	  }
+	}
 
 	if (re_buffer[i].range_string != NULL) {
-	  read_compute_ranges(&re_buffer[i]);
+	  assert(0); // not maintained
+	  //read_compute_ranges(&re_buffer[i]);
 	  free(re_buffer[i].range_string);
 	  re_buffer[i].range_string = NULL;
 	}
-
 	//free(re_buffer[i].seq);
+
+	// time to do some mapping!
 	if (pair_mode == PAIR_NONE)
 	  {
-	    if (re_buffer[i].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
-	    } else {
-	    	handle_read(&re_buffer[i]);
-	    }
+	    handle_read(&re_buffer[i], unpaired_mapping_options[0], n_unpaired_mapping_options[0]);
+	    read_free_full(&re_buffer[i], &mem_mapping);
 	  }
-	else if (i % 2 == 1) 
+	else if (i % 2 == 1)
 	  {
-	    if (re_buffer[i].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i].name,re_buffer[i].read_len,longest_read_len);
-	    } else if (re_buffer[i-1].read_len>longest_read_len) {
-		fprintf(stderr,"warning: read \"%s\" has length %d, maximum length allowed is %d. Use --longest-read ?\n",re_buffer[i-1].name,re_buffer[i-1].read_len,longest_read_len);
-	    } else {
-	
-		    if (pair_reverse[pair_mode][0])
-		      read_reverse(&re_buffer[i-1]);
-		    if (pair_reverse[pair_mode][1])
-		      read_reverse(&re_buffer[i]);
-		    re_buffer[i-1].paired=true;
-		    re_buffer[i-1].first_in_pair=true;
-		    re_buffer[i-1].mate_pair=&re_buffer[i];
-		    re_buffer[i].paired=true;
-		    re_buffer[i].first_in_pair=false;
-		    re_buffer[i].mate_pair=&re_buffer[i-1];
-		    handle_readpair(&re_buffer[i-1], &re_buffer[i]);
-	   }
+	    pair_entry pe;
+	    memset(&pe, 0, sizeof(pe));
+	    if (pair_reverse[pair_mode][0])
+	      read_reverse(&re_buffer[i-1]);
+	    if (pair_reverse[pair_mode][1])
+	      read_reverse(&re_buffer[i]);
+	    re_buffer[i-1].paired=true;
+	    re_buffer[i-1].first_in_pair=true;
+	    re_buffer[i-1].mate_pair=&re_buffer[i];
+	    re_buffer[i].paired=true;
+	    re_buffer[i].first_in_pair=false;
+	    re_buffer[i].mate_pair=&re_buffer[i-1];
+	    pe.re[0] = &re_buffer[i-1];
+	    pe.re[1] = &re_buffer[i];
+	    handle_readpair(&pe, paired_mapping_options, n_paired_mapping_options);
+	    readpair_free_full(&pe, &mem_mapping);
 	  }
       }
+
+      // free unused memory while the buffer waits in the output heap
+      size_t new_size = (thread_output_buffer_filled[thread_id] - thread_output_buffer[thread_id]) + 1;
+      thread_output_buffer[thread_id] = (char *)
+	my_realloc(thread_output_buffer[thread_id], new_size, thread_output_buffer_sizes[thread_id],
+		   &mem_thread_buffer, "thread_output_buffer[]");
+
       //fprintf(stdout,"%s",thread_output_buffer[thread_id]);
-	#pragma omp critical 
-	{
-		struct heap_out_elem tmp;
-		tmp.key=thread_output_buffer_chunk[thread_id];
-		tmp.rest=thread_output_buffer[thread_id];
-		thread_output_buffer[thread_id]=NULL;	
-		heap_out_insert(&h,&tmp);	
-		heap_out_get_min(&h,&tmp);
-		while (h.load>0 && tmp.key==next_chunk_to_print) {
-			heap_out_extract_min(&h,&tmp);
-			fprintf(stdout,"%s",tmp.rest);
-			free(tmp.rest);
-			next_chunk_to_print++;
-		}
+#pragma omp critical
+      {
+	struct heap_out_elem tmp;
+	tmp.key = thread_output_buffer_chunk[thread_id];
+	//tmp.rest = thread_output_buffer[thread_id];
+	tmp.rest.ptr = thread_output_buffer[thread_id];
+	tmp.rest.sz = new_size; //thread_output_buffer_sizes[thread_id];
+	thread_output_buffer[thread_id] = NULL;	
+	heap_out_insert(&h, &tmp);
+	heap_out_get_min(&h, &tmp);
+	while (h.load > 0 && tmp.key == next_chunk_to_print) {
+	  heap_out_extract_min(&h, &tmp);
+	  //fprintf(stdout, "%s", tmp.rest);
+	  fprintf(stdout, "%s", (char *)tmp.rest.ptr);
+	  //free(tmp.rest);
+	  my_free(tmp.rest.ptr, tmp.rest.sz,
+		  &mem_thread_buffer, "thread_output_buffer[]");
+	  next_chunk_to_print++;
 	}
+      }
     }
 
-    free(re_buffer);
+    //free(re_buffer);
+    my_free(re_buffer, chunk_size * sizeof(re_buffer[0]),
+	    &mem_thread_buffer, "re_buffer");
   } // end parallel section
+
   if (progress > 0)
     fprintf(stderr, "\n");
 
-	struct heap_out_elem tmp;
-	while (h.load>0) {
-		heap_out_extract_min(&h,&tmp);
-		fprintf(stdout,"%s",tmp.rest);
-		free(tmp.rest);
-	}
-	heap_out_destroy(&h);
-  free(thread_output_buffer_sizes);
-  free(thread_output_buffer_filled);
-  free(thread_output_buffer);
-  free(thread_output_buffer_chunk);
+  //assert(h.load == 0);
+  
+  struct heap_out_elem tmp;
+  while (h.load>0) {
+    heap_out_extract_min(&h,&tmp);
+    fprintf(stdout,"%s",(char *)tmp.rest.ptr);
+    //free(tmp.rest);
+    my_free(tmp.rest.ptr, tmp.rest.sz,
+	    &mem_thread_buffer, "thread_output_buffer[]");
+  }
+  
+  heap_out_destroy(&h);
+
+  //free(thread_output_buffer_sizes);
+  my_free(thread_output_buffer_sizes, sizeof(size_t) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_sizes");
+  //free(thread_output_buffer_filled);
+  my_free(thread_output_buffer_filled, sizeof(char *) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_filled");
+  //free(thread_output_buffer);
+  my_free(thread_output_buffer, sizeof(char *) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer");
+  //free(thread_output_buffer_chunk);
+  my_free(thread_output_buffer_chunk, sizeof(unsigned int) * num_threads,
+	  &mem_thread_buffer, "thread_output_buffer_chunk");
+
   if (single_reads_file) {
     fasta_close(fasta);
   } else {
@@ -1142,6 +650,25 @@ launch_scan_threads(){
     fasta_close(right_fasta);
   }
   return true;
+}
+
+
+static char *
+thres_to_buff(char * buff, double * thres)
+{
+  if (IS_ABSOLUTE(*thres)) {
+    sprintf(buff, "%u", -(uint)(*thres));
+  } else {
+    sprintf(buff, "%.02f%%", *thres);
+  }
+  return buff;
+}
+
+static char *
+bool_to_buff(char * buff, bool * val)
+{
+  sprintf(buff, "%s", *val ? "true" : "false");
+  return buff;
 }
 
 
@@ -1157,216 +684,320 @@ print_insert_histogram()
   }
 }
 
+typedef struct tp_stats_t {
+  uint64_t f1_invocs, f1_cells, f1_ticks;
+  double f1_secs, f1_cellspersec;
+  uint64_t f2_invocs, f2_cells, f2_ticks;
+  double f2_secs, f2_cellspersec;
+  uint64_t fwbw_invocs, fwbw_cells, fwbw_ticks;
+  double fwbw_secs, fwbw_cellspersec;
+  double scan_secs, readparse_secs, read_handle_overhead_secs;
+  double anchor_list_secs, hit_list_secs;
+  double region_counts_secs, mp_region_counts_secs, duplicate_removal_secs;
+  double pass1_secs, get_vector_hits_secs, pass2_secs;
+} tp_stats_t;
 
 static void
 print_statistics()
 {
   static char const my_tab[] = "    ";
 
-	uint64_t f1_invocs[num_threads], f1_cells[num_threads], f1_ticks[num_threads];
-	double f1_secs[num_threads], f1_cellspersec[num_threads];
-	uint64_t f1_total_invocs = 0, f1_total_cells = 0;
-	double f1_total_secs = 0, f1_total_cellspersec = 0;
-	uint64_t f1_calls_bypassed = 0;
+  //uint64_t f1_invocs[num_threads], f1_cells[num_threads], f1_ticks[num_threads];
+  //double f1_secs[num_threads], f1_cellspersec[num_threads];
+  uint64_t f1_total_invocs = 0, f1_total_cells = 0;
+  double f1_total_secs = 0, f1_total_cellspersec = 0;
+  uint64_t f1_calls_bypassed = 0;
+  //uint64_t f2_invocs[num_threads], f2_cells[num_threads], f2_ticks[num_threads];
+  //double f2_secs[num_threads], f2_cellspersec[num_threads];
+  uint64_t f2_total_invocs = 0, f2_total_cells = 0;
+  double f2_total_secs = 0, f2_total_cellspersec = 0;
+  //uint64_t fwbw_invocs[num_threads], fwbw_cells[num_threads], fwbw_ticks[num_threads];
+  //double fwbw_secs[num_threads], fwbw_cellspersec[num_threads];
+  uint64_t fwbw_total_invocs = 0, fwbw_total_cells = 0;
+  double fwbw_total_secs = 0, fwbw_total_cellspersec = 0;
+  //double scan_secs[num_threads], readparse_secs[num_threads], read_handle_overhead_secs[num_threads];
+  //double anchor_list_secs[num_threads], hit_list_secs[num_threads];
+  //double region_counts_secs[num_threads], mp_region_counts_secs[num_threads], duplicate_removal_secs[num_threads];
+  //double pass1_secs[num_threads], get_vector_hits_secs[num_threads], pass2_secs[num_threads];
+  double total_scan_secs = 0, total_wait_secs = 0, total_readparse_secs = 0;
 
-	uint64_t f2_invocs[num_threads], f2_cells[num_threads], f2_ticks[num_threads];
-	double f2_secs[num_threads], f2_cellspersec[num_threads];
-	uint64_t f2_total_invocs = 0, f2_total_cells = 0;
-	double f2_total_secs = 0, f2_total_cellspersec = 0;
+  tp_stats_t * tps = (tp_stats_t *)malloc(num_threads * sizeof(tps[0]));
+  tpg_t * tpgA = (tpg_t *)malloc(num_threads * sizeof(tpgA[0]));
 
-	double scan_secs[num_threads], readload_secs[num_threads];
-	double total_scan_secs = 0, total_wait_secs = 0, total_readload_secs = 0;
+  double hz;
+  uint64_t fasta_load_ticks;
+  fasta_stats_t fs;
 
-	double hz;
-	uint64_t fasta_load_ticks;
-	fasta_stats_t fs;
-
-	fs = fasta_stats();
-	fasta_load_ticks = fs->total_ticks;
-	free(fs);
-	hz = cpuhz();
+  fs = fasta_stats();
+  fasta_load_ticks = fs->total_ticks;
+  free(fs);
+  hz = cpuhz();
 
 #pragma omp parallel num_threads(num_threads) shared(hz)
-	{
-	  int tid = omp_get_thread_num();
+  {
+    int tid = omp_get_thread_num();
 
-	  f1_stats(&f1_invocs[tid], &f1_cells[tid], &f1_ticks[tid], NULL);
+    memcpy(&tpgA[tid], &tpg, sizeof(tpg_t));
 
-	  f1_secs[tid] = (double)f1_ticks[tid] / hz;
-	  f1_cellspersec[tid] = (double)f1_cells[tid] / f1_secs[tid];
-	  if (isnan(f1_cellspersec[tid]))
-	    f1_cellspersec[tid] = 0;
+    f1_stats(&tps[tid].f1_invocs, &tps[tid].f1_cells, &tps[tid].f1_ticks, NULL);
 
-	  if (shrimp_mode == MODE_COLOUR_SPACE)
-	    sw_full_cs_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
-	  else
-	    sw_full_ls_stats(&f2_invocs[tid], &f2_cells[tid], &f2_ticks[tid]);
+    tps[tid].f1_secs = (double)tps[tid].f1_ticks / hz;
+    tps[tid].f1_cellspersec = (double)tps[tid].f1_cells / tps[tid].f1_secs;
+    if (isnan(tps[tid].f1_cellspersec))
+      tps[tid].f1_cellspersec = 0;
 
-	  f2_secs[tid] = (double)f2_ticks[tid] / hz;
-	  f2_cellspersec[tid] = (double)f2_cells[tid] / f2_secs[tid];
-	  if (isnan(f2_cellspersec[tid]))
-	    f2_cellspersec[tid] = 0;
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      sw_full_cs_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
+      post_sw_stats(&tps[tid].fwbw_invocs, &tps[tid].fwbw_cells, &tps[tid].fwbw_ticks);
+    } else {
+      sw_full_ls_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
+    }
 
-	  scan_secs[tid] = ((double)scan_ticks[tid] / hz) - f1_secs[tid] - f2_secs[tid];
-	  scan_secs[tid] = MAX(0, scan_secs[tid]);
-	  readload_secs[tid] = ((double)total_work_usecs / 1.0e6) - ((double)scan_ticks[tid] / hz) - ((double)wait_ticks[tid] / hz);
-	}
-	f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
+    tps[tid].f2_secs = (double)tps[tid].f2_ticks / hz;
+    tps[tid].f2_cellspersec = (double)tps[tid].f2_cells / tps[tid].f2_secs;
+    if (isnan(tps[tid].f2_cellspersec))
+      tps[tid].f2_cellspersec = 0;
 
-	fprintf(stderr, "\nStatistics:\n");
+    tps[tid].fwbw_secs = (double)tps[tid].fwbw_ticks / hz;
+    tps[tid].fwbw_cellspersec = (double)tps[tid].fwbw_cells / tps[tid].fwbw_secs;
+    if (isnan(tps[tid].fwbw_cellspersec))
+      tps[tid].fwbw_cellspersec = 0;
 
-	fprintf(stderr, "%sOverall:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Load Genome Time:", (double)map_usecs / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Mapping Time:", (double)total_work_usecs / 1.0e6);
+    tps[tid].readparse_secs = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)tpg.read_handle_usecs / 1.0e6) - ((double)tpg.wait_ticks / hz);
 
-	fprintf(stderr, "\n");
+    tps[tid].scan_secs = ((double)tpg.read_handle_usecs / 1.0e6) - tps[tid].f1_secs - tps[tid].f2_secs - tps[tid].fwbw_secs;
+    tps[tid].scan_secs = MAX(0, tps[tid].scan_secs);
 
-	int i;
-	for(i = 0; i < num_threads; i++){
-	  total_scan_secs += scan_secs[i];
-	  total_readload_secs += readload_secs[i];
-	  total_wait_secs += (double)wait_ticks[i] / hz;
+    tps[tid].anchor_list_secs = (double)tpg.anchor_list_ticks / hz;
+    tps[tid].hit_list_secs = (double)tpg.hit_list_ticks / hz;
+    tps[tid].duplicate_removal_secs = (double)tpg.duplicate_removal_ticks / hz;
+    tps[tid].region_counts_secs = (double)tpg.region_counts_ticks / hz;
+    tps[tid].mp_region_counts_secs = (double)tpg.mp_region_counts_ticks / hz;
+    tps[tid].pass1_secs = (double)tpg.pass1_ticks / hz;
+    tps[tid].get_vector_hits_secs = (double)tpg.get_vector_hits_ticks / hz;
+    tps[tid].pass2_secs = (double)tpg.pass2_ticks / hz;
+    /*
+	  tps[tid].anchor_list_secs = (double)anchor_list_usecs[tid] / 1.0e6;
+          tps[tid].hit_list_secs = (double)hit_list_usecs[tid] / 1.0e6;
+          tps[tid].duplicate_removal_secs = (double)duplicate_removal_usecs[tid] / 1.0e6;
+          tps[tid].region_counts_secs = (double)region_counts_usecs[tid] / 1.0e6;
+     */
 
-	  f1_total_secs += f1_secs[i];
-	  f1_total_invocs += f1_invocs[i];
-	  f1_total_cells += f1_cells[i];
+    tps[tid].read_handle_overhead_secs = tps[tid].scan_secs
+      - tps[tid].region_counts_secs - tps[tid].anchor_list_secs - tps[tid].hit_list_secs - tps[tid].duplicate_removal_secs;
+  }
+  f1_stats(NULL, NULL, NULL, &f1_calls_bypassed);
 
-	  f2_total_secs += f2_secs[i];
-	  f2_total_invocs += f2_invocs[i];
-	  f2_total_cells += f2_cells[i];
-	}
-	f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
-	f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
+  fprintf(stderr, "\nStatistics:\n");
 
-	if (Dflag) {
-	  fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %25s %25s %9s\n", my_tab, my_tab,
-		  "", "Read Load", "Scan", "Vector SW", "Scalar SW", "Wait");
-	  fprintf(stderr, "%s%s" "%11s %9s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
-		  "", "Time", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
-	  fprintf(stderr, "\n");
-	  for(i = 0; i < num_threads; i++) {
-	    fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
-		    i, readload_secs[i], scan_secs[i], comma_integer(f1_invocs[i]), f1_secs[i],
-		    comma_integer(f2_invocs[i]), f2_secs[i], (double)wait_ticks[i] / hz);
-	  }
-	  fprintf(stderr, "\n");
-	}
+  fprintf(stderr, "%sOverall:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Load Genome Time:", (double)load_genome_usecs / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Read Mapping Time:", (double)mapping_wallclock_usecs / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Reads per hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6)));
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Reads per core-hour:", comma_integer((int)(((double)nreads/(double)mapping_wallclock_usecs) * 3600.0 * 1.0e6 * (1/(double)num_threads))));
 
-	fprintf(stderr, "%sSpaced Seed Scan:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", total_scan_secs);
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "\n");
+  int i;
+  for(i = 0; i < num_threads; i++){
+    total_scan_secs += tps[i].scan_secs;
+    total_readparse_secs += tps[i].readparse_secs;
+    total_wait_secs += (double)tpgA[i].wait_ticks / hz;
 
-	fprintf(stderr, "%sVector Smith-Waterman:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", f1_total_secs);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Invocations:", comma_integer(f1_total_invocs));
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Bypassed Calls:", comma_integer(f1_calls_bypassed));
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells Computed:", (double)f1_total_cells / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells per Second:", f1_total_cellspersec / 1.0e6);
+    f1_total_secs += tps[i].f1_secs;
+    f1_total_invocs += tps[i].f1_invocs;
+    f1_total_cells += tps[i].f1_cells;
 
-	fprintf(stderr, "\n");
+    f2_total_secs += tps[i].f2_secs;
+    f2_total_invocs += tps[i].f2_invocs;
+    f2_total_cells += tps[i].f2_cells;
 
-	fprintf(stderr, "%sScalar Smith-Waterman:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Run-time:", f2_total_secs);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Invocations:", comma_integer(f2_total_invocs));
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells Computed:", (double)f2_total_cells / 1.0e6);
-	fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
-		"Cells per Second:", f2_total_cellspersec / 1.0e6);
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      fwbw_total_secs += tps[i].fwbw_secs;
+      fwbw_total_invocs += tps[i].fwbw_invocs;
+      fwbw_total_cells += tps[i].fwbw_cells;
+    } else {
+      fwbw_total_secs = 0;
+      fwbw_total_invocs = 0;
+      fwbw_total_cells = 0;
+    }
+  }
+  f1_total_cellspersec = f1_total_secs == 0? 0 : (double)f1_total_cells / f1_total_secs;
+  f2_total_cellspersec = f2_total_secs == 0? 0 : (double)f2_total_cells / f2_total_secs;
+  fwbw_total_cellspersec = fwbw_total_secs == 0? 0 : (double)fwbw_total_cells / fwbw_total_secs;
 
-	fprintf(stderr, "\n");
+  if (Dflag) {
+    fprintf(stderr, "%sPer-Thread Stats:\n", my_tab);
+    fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %25s %25s %25s %9s\n", my_tab, my_tab,
+            "", "ReadParse", "Scan", "Reg Cnts", "MPRegCnt", "Anch List", "Hit List", "Pass1", "Vect Hits", "Pass2", "Dup Remv",
+            "Vector SW", "Scalar SW", "Post SW", "Wait");
+    fprintf(stderr, "%s%s" "%11s %9s %9s %9s %9s %9s %9s %9s %9s %9s %9s %15s %9s %15s %9s %15s %9s %9s\n", my_tab, my_tab,
+            "", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time", "Time",
+            "Invocs", "Time", "Invocs", "Time", "Invocs", "Time", "Time");
+    fprintf(stderr, "\n");
+    for(i = 0; i < num_threads; i++) {
+      fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
+	  i, tps[i].readparse_secs, tps[i].scan_secs,
+	  tps[i].region_counts_secs, tps[i].mp_region_counts_secs, tps[i].anchor_list_secs, tps[i].hit_list_secs,
+	  tps[i].pass1_secs, tps[i].get_vector_hits_secs, tps[i].pass2_secs, tps[i].duplicate_removal_secs,
+	  comma_integer(tps[i].f1_invocs), tps[i].f1_secs,
+	  comma_integer(tps[i].f2_invocs), tps[i].f2_secs,
+	  comma_integer(tps[i].fwbw_invocs), tps[i].fwbw_secs,
+	  (double)tpgA[i].wait_ticks / hz);
+    }
+    for (i = 0; i < num_threads; i++) {
+      fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
+	  i, stat_get_mean(&tpgA[i].anchor_list_init_size), stat_get_sample_stddev(&tpgA[i].anchor_list_init_size),
+	  stat_get_mean(&tpgA[i].n_anchors_discarded), stat_get_sample_stddev(&tpgA[i].n_anchors_discarded),
+	  stat_get_mean(&tpgA[i].n_big_gaps_anchor_list), stat_get_sample_stddev(&tpgA[i].n_big_gaps_anchor_list));
+    }
+    fprintf(stderr, "\n");
+  }
 
-	fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Fasta Lib Time:", (double)fasta_load_ticks / hz);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Read Load Time:", total_readload_secs);
-	fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-		"Wait Time:", total_wait_secs);
+  fprintf(stderr, "%sSpaced Seed Scan:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", total_scan_secs);
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "%sGeneral:\n", my_tab);
-	if (pair_mode == PAIR_NONE)
-	  {
-	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Reads Matched:",
-		    comma_integer(total_reads_matched),
-		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Reads Dropped:",
-		    comma_integer(total_reads_dropped),
-		    (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		    "Total Matches:",
-		    comma_integer(total_single_matches));
-	    fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab,
-		    "Avg Hits/Matched Read:",
-		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
-	    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		    "Duplicate Hits Pruned:",
-		    comma_integer(total_dup_single_matches));
-	  }
-	else // paired hits
-	  {
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Pairs Matched:",
-		    comma_integer(total_pairs_matched),
-		    (nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Pairs Dropped:",
-		    comma_integer(total_pairs_dropped),
-		    (nreads == 0) ? 0 : ((double)total_pairs_dropped / (double)(nreads/2)) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Total Paired Matches:",
-		    comma_integer(total_paired_matches));
-	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
-		    "Avg Matches/Pair Matched:",
-		    (total_pairs_matched == 0) ? 0 : ((double)total_paired_matches / (double)total_pairs_matched));
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Duplicate Paired Matches Pruned:",
-		    comma_integer(total_dup_paired_matches));
+  fprintf(stderr, "%sVector Smith-Waterman:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", f1_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(f1_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Bypassed Calls:", comma_integer(f1_calls_bypassed));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)f1_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", f1_total_cellspersec / 1.0e6);
 
-	    /*
-	    fprintf(stderr, "\n");
+  fprintf(stderr, "\n");
 
-	    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
-		    "Additional Reads Matched Unpaired:",
-		    comma_integer(total_reads_matched),
-		    (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Total Single Matches:",
-		    comma_integer(total_single_matches));
-	    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
-		    "Avg Matches/Unpaired Matched Read:",
-		    (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
-	    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
-		    "Duplicate Unpaired Matches Pruned:",
-		    comma_integer(total_dup_single_matches));
-	    */
-	  }
+  fprintf(stderr, "%sScalar Smith-Waterman:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", f2_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(f2_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)f2_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", f2_total_cellspersec / 1.0e6);
 
-	fprintf(stderr, "\n");
+  fprintf(stderr, "\n");
 
-	fprintf(stderr, "%sMemory usage:\n", my_tab);
-	fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
-		"Genomemap:",
-		comma_integer(count_get_count(&mem_genomemap)));
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+  fprintf(stderr, "%sForward-Backward:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Run-time:", fwbw_total_secs);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Invocations:", comma_integer(fwbw_total_invocs));
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells Computed:", (double)fwbw_total_cells / 1.0e6);
+  fprintf(stderr, "%s%s%-24s" "%.2f million\n", my_tab, my_tab,
+          "Cells per Second:", fwbw_total_cellspersec / 1.0e6);
+  fprintf(stderr, "\n");
+  }
 
-	if (Xflag) {
-	  print_insert_histogram();
-	}
+  fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Fasta Lib Time:", (double)fasta_load_ticks / hz);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Read Load Time:", total_readparse_secs);
+  fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
+          "Wait Time:", total_wait_secs);
+
+  fprintf(stderr, "\n");
+
+  fprintf(stderr, "%sGeneral:\n", my_tab);
+  if (pair_mode == PAIR_NONE)
+  {
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+	"Reads Matched:",
+	comma_integer(total_reads_matched),
+	(nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "... with QV >= 10:",
+            comma_integer(total_reads_matched_conf),
+            (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "Reads Dropped:",
+            comma_integer(total_reads_dropped),
+            (nreads == 0) ? 0 : ((double)total_reads_dropped / (double)nreads) * 100);
+    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+            "Total Matches:",
+            comma_integer(total_single_matches));
+    fprintf(stderr, "%s%s%-24s" "%.2f\n", my_tab, my_tab,
+            "Avg Hits/Matched Read:",
+            (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+    fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+            "Duplicate Hits Pruned:",
+            comma_integer(total_dup_single_matches));
+  }
+  else // paired hits
+  {
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+	"Pairs Matched:",
+	comma_integer(total_pairs_matched),
+	(nreads == 0) ? 0 : ((double)total_pairs_matched / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "... with QV >= 10:",
+            comma_integer(total_pairs_matched_conf),
+            (nreads == 0) ? 0 : ((double)total_pairs_matched_conf / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+            "Pairs Dropped:",
+            comma_integer(total_pairs_dropped),
+            (nreads == 0) ? 0 : ((double)total_pairs_dropped / (double)(nreads/2)) * 100);
+    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+            "Total Paired Matches:",
+            comma_integer(total_paired_matches));
+    fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+            "Avg Matches/Pair Matched:",
+            (total_pairs_matched == 0) ? 0 : ((double)total_paired_matches / (double)total_pairs_matched));
+    fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+            "Duplicate Paired Matches Pruned:",
+            comma_integer(total_dup_paired_matches));
+
+    if (half_paired) {
+      fprintf(stderr, "\n");
+
+      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+              "Additional Reads Matched Unpaired:",
+              comma_integer(total_reads_matched),
+              (nreads == 0) ? 0 : ((double)total_reads_matched / (double)nreads) * 100);
+      fprintf(stderr, "%s%s%-40s" "%s    (%.4f%%)\n", my_tab, my_tab,
+              "... with QV >= 10:",
+              comma_integer(total_reads_matched_conf),
+              (nreads == 0) ? 0 : ((double)total_reads_matched_conf / (double)nreads) * 100);
+      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+              "Total Unpaired Matches:",
+              comma_integer(total_single_matches));
+      fprintf(stderr, "%s%s%-40s" "%.2f\n", my_tab, my_tab,
+              "Avg Matches/Unpaired Matched Read:",
+              (total_reads_matched == 0) ? 0 : ((double)total_single_matches / (double)total_reads_matched));
+      fprintf(stderr, "%s%s%-40s" "%s\n", my_tab, my_tab,
+              "Duplicate Unpaired Matches Pruned:",
+              comma_integer(total_dup_single_matches));
+    }
+  }
+
+  fprintf(stderr, "\n");
+
+  fprintf(stderr, "%sMemory usage:\n", my_tab);
+  fprintf(stderr, "%s%s%-24s" "%s\n", my_tab, my_tab,
+          "Genomemap:",
+          comma_integer(count_get_count(&mem_genomemap)));
+
+  if (Xflag) {
+    print_insert_histogram();
+  }
+
+  free(tps);
+  free(tpgA);
 }
 
 static void
@@ -1411,8 +1042,8 @@ usage(char * progname, bool full_usage){
 	  "   -w/--match-window    Match Window Length           (default: %.02f%%)\n",
 	  DEF_WINDOW_LEN);
   fprintf(stderr,
-	  "   -n/--cmw-mode        Seed Matches per Window       (default: %d)\n",
-	  DEF_NUM_MATCHES);
+	  "   -n/--cmw-mode        Match Mode                    (default: unpaired:%d paired:%d)\n",
+	  DEF_MATCH_MODE_UNPAIRED, DEF_MATCH_MODE_PAIRED);
   if (full_usage) {
   fprintf(stderr,
 	  "   -l/--cmw-overlap     Match Window Overlap Length   (default: %.02f%%)\n",
@@ -1434,26 +1065,26 @@ usage(char * progname, bool full_usage){
   fprintf(stderr, "\n");
   fprintf(stderr,
 	  "   -m/--match           SW Match Score                (default: %d)\n",
-	  DEF_MATCH_VALUE);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_MATCH_SCORE : DEF_CS_MATCH_SCORE);
   fprintf(stderr,
 	  "   -i/--mismatch        SW Mismatch Score             (default: %d)\n",
-	  DEF_MISMATCH_VALUE);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_MISMATCH_SCORE : DEF_CS_MISMATCH_SCORE);
   fprintf(stderr,
 	  "   -g/--open-r          SW Gap Open Score (Reference) (default: %d)\n",
-	  DEF_A_GAP_OPEN);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_A_GAP_OPEN : DEF_CS_A_GAP_OPEN);
   fprintf(stderr,
 	  "   -q/--open-q          SW Gap Open Score (Query)     (default: %d)\n",
-	  DEF_B_GAP_OPEN);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_B_GAP_OPEN : DEF_CS_B_GAP_OPEN);
   fprintf(stderr,
 	  "   -e/--ext-r           SW Gap Extend Score(Reference)(default: %d)\n",
-	  DEF_A_GAP_EXTEND);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_A_GAP_EXTEND : DEF_CS_A_GAP_EXTEND);
   fprintf(stderr,
 	  "   -f/--ext-q           SW Gap Extend Score (Query)   (default: %d)\n",
-	  DEF_B_GAP_EXTEND);
+	  shrimp_mode == MODE_LETTER_SPACE? DEF_LS_B_GAP_EXTEND : DEF_CS_B_GAP_EXTEND);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
 	  "   -x/--crossover       SW Crossover Score            (default: %d)\n",
-	  DEF_XOVER_PENALTY);
+	  DEF_CS_XOVER_SCORE);
   }
   fprintf(stderr,
 	  "   -r/--cmw-threshold   Window Generation Threshold   (default: %.02f%%)\n",
@@ -1568,16 +1199,117 @@ usage(char * progname, bool full_usage){
 	  "      --strata          Print only the best scoring hits\n");
   fprintf(stderr,
 	  "   -?/--help            Full List of Parameters and Options\n");
-
   exit(1);
 }
 
+
+static void
+print_pairing_options(struct pairing_options * options)
+{
+  char buff[2][100];
+
+  fprintf(stderr, "[\n");
+  fprintf(stderr, "  pairing:%s\n", pair_mode_string[options->pair_mode]);
+  fprintf(stderr, "  min_insert:%d\n", options->min_insert_size);
+  fprintf(stderr, "  max_insert:%d\n", options->max_insert_size);
+  fprintf(stderr, "  pass1_num_outputs:%d\n", options->pass1_num_outputs);
+  fprintf(stderr, "  pass1_threshold:%s\n", thres_to_buff(buff[0], &options->pass1_threshold));
+  fprintf(stderr, "  pass2_num_outputs:%d\n", options->pass2_num_outputs);
+  fprintf(stderr, "  pass2_threshold:%s\n", thres_to_buff(buff[0], &options->pass2_threshold));
+  fprintf(stderr, "  strata:%s\n", bool_to_buff(buff[0], &options->strata));
+  fprintf(stderr, "  save_outputs:%s\n", bool_to_buff(buff[0], &options->save_outputs));
+  fprintf(stderr, "  stop_count:%d\n", options->stop_count);
+  fprintf(stderr, "  stop_threshold:%s\n", thres_to_buff(buff[0], &options->stop_threshold));
+  fprintf(stderr, "]\n");
+}
+
+
+static void
+print_read_mapping_options(struct read_mapping_options_t * options, bool is_paired)
+{
+  char buff[2][100];
+
+  fprintf(stderr, "[\n");
+
+  fprintf(stderr, "  regions:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->regions.recompute));
+  //if (!options->regions.recompute)
+  //fprintf(stderr, "  ]\n");
+  //else
+  //  fprintf(stderr, ", min_seed:%d, max_seed:%d]\n",
+  //    options->regions.min_seed, options->regions.max_seed);
+
+  fprintf(stderr, "  anchor_list:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->anchor_list.recompute));
+  if (options->anchor_list.recompute) {
+    fprintf(stderr, "    collapse:%s\n", bool_to_buff(buff[0], &options->anchor_list.collapse));
+    fprintf(stderr, "    use_region_counts:%s\n", bool_to_buff(buff[0], &options->anchor_list.use_region_counts));
+    fprintf(stderr, "    use_mp_region_counts:%d\n", options->anchor_list.use_mp_region_counts);
+  }
+  //fprintf(stderr, "  ]\n");
+
+  fprintf(stderr, "  hit_list:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->hit_list.recompute));
+  if (options->hit_list.recompute) {
+    fprintf(stderr, "    gapless:%s\n", bool_to_buff(buff[0], &options->hit_list.gapless));
+    fprintf(stderr, "    match_mode:%d\n", options->hit_list.match_mode);
+    fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->hit_list.threshold));
+  }
+  //fprintf(stderr, "  ]\n");
+
+  fprintf(stderr, "  pass1:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    recompute:%s\n", bool_to_buff(buff[0], &options->pass1.recompute));
+  if (options->pass1.recompute) {
+    fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->pass1.threshold));
+    fprintf(stderr, "    window_overlap:%s\n", thres_to_buff(buff[1], &options->pass1.window_overlap));
+    fprintf(stderr, "    min_matches:%d\n", options->pass1.min_matches);
+    fprintf(stderr, "    gapless:%s\n", bool_to_buff(buff[0], &options->pass1.gapless));
+    if (is_paired) {
+      fprintf(stderr, "    only_paired:%s\n", bool_to_buff(buff[0], &options->pass1.only_paired));
+    }
+    if (!is_paired) {
+      fprintf(stderr, "    num_outputs:%d\n", options->pass1.num_outputs);
+    }
+  }
+  //fprintf(stderr, "  ]\n");
+
+  fprintf(stderr, "  pass2:\n");
+  //fprintf(stderr, "  [\n");
+  fprintf(stderr, "    threshold:%s\n", thres_to_buff(buff[0], &options->pass2.threshold));
+  if (!is_paired) {
+    fprintf(stderr, "    strata:%s\n", bool_to_buff(buff[0], &options->pass2.strata));
+    fprintf(stderr, "    save_outputs:%s\n", bool_to_buff(buff[0], &options->pass2.save_outputs));
+    fprintf(stderr, "    num_outputs:%d\n", options->pass2.num_outputs);
+  }
+  //fprintf(stderr, "  ]\n");
+
+  if (!is_paired) {
+    fprintf(stderr, "  stop:\n");
+    //fprintf(stderr, "  [\n");
+    fprintf(stderr, "    stop_count:%d\n", options->pass2.stop_count);
+    if (options->pass2.stop_count > 0) {
+      fprintf(stderr, "    stop_threshold:%s\n", thres_to_buff(buff[0], &options->pass2.stop_threshold));
+    }
+    //fprintf(stderr, "  ]\n");
+  }
+
+  fprintf(stderr, "]\n");
+}
+
+
 static void
 print_settings() {
+  char buff[100];
   static char const my_tab[] = "    ";
-  int sn;
+  int sn, i;
 
   fprintf(stderr, "Settings:\n");
+
+  // Seeds
   fprintf(stderr, "%s%-40s%s (%d/%d)\n", my_tab,
 	  (n_seeds == 1) ? "Spaced Seed (weight/span)" : "Spaced Seeds (weight/span)",
 	  seed_to_string(0), seed[0].weight, seed[0].span);
@@ -1586,30 +1318,89 @@ print_settings() {
 	    seed_to_string(sn), seed[sn].weight, seed[sn].span);
   }
 
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", num_matches);
+  // Global settings
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Window length:", thres_to_buff(buff, &window_len));
 
-  if (IS_ABSOLUTE(window_len)) {
-    fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Length:", (uint)-window_len);
-  } else {
-    fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Window Length:", window_len);
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash filter calls:", hash_filter_calls? "yes" : "no");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor width:", anchor_width,
+	  anchor_width == -1? " (disabled)" : "");
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Indel taboo Len:", indel_taboo_len,
+	  indel_taboo_len == 0? " (disabled)" : "");
+  if (list_cutoff < DEF_LIST_CUTOFF) {
+  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index list cutoff length:", list_cutoff);
   }
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Region filter:", use_regions? "yes" : "no");
+  if (use_regions) {
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region size:", (1 << region_bits));
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Region overlap:", region_overlap);
+  }
+  if (Qflag) {
+  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
+  }
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute mapping qualities:", compute_mapping_qualities? "yes" : "no");
+  if (compute_mapping_qualities)
+  {
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "All contigs:", all_contigs? "yes" : "no");
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Single best mapping:", single_best_mapping? "yes" : "no");
+  }
+
+  // Scores
+  fprintf(stderr, "\n");
+  fprintf(stderr, "%s%-40s%-10d\n", my_tab, "SW Match Score:", match_score);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Mismatch Score [Prob]:", mismatch_score, pr_mismatch);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Del Open Score [Prob]:", a_gap_open_score, pr_del_open);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Ins Open Score [Prob]:", b_gap_open_score, pr_ins_open);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Del Extend Score [Prob]:", a_gap_extend_score, pr_del_extend);
+  fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Ins Extend Score [Prob]:", b_gap_extend_score, pr_ins_extend);
+  if (shrimp_mode == MODE_COLOUR_SPACE) {
+    fprintf(stderr, "%s%-40s%-10d\t[%.1e]\n", my_tab, "SW Crossover Score [Prob]:", crossover_score, pr_xover);
+  }
+
+  fprintf(stderr, "\n");
+  if (n_paired_mapping_options > 0) { // paired mapping
+    for (i = 0; i < n_paired_mapping_options; i++) {
+      fprintf(stderr, "Paired mapping options, set [%d]\n", i);
+      print_pairing_options(&paired_mapping_options[i].pairing);
+      print_read_mapping_options(&paired_mapping_options[i].read[0], true);
+      print_read_mapping_options(&paired_mapping_options[i].read[1], true);
+    }
+
+    if (n_unpaired_mapping_options[0] > 0) {
+      fprintf(stderr, "\n");
+      for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
+	fprintf(stderr, "Unpaired mapping options for first read in a pair, set [%d]\n", i);
+	print_read_mapping_options(&unpaired_mapping_options[0][i], false);
+      }
+    }
+
+    if (n_unpaired_mapping_options[1] > 0) {
+      fprintf(stderr, "\n");
+      for (i = 0; i < n_unpaired_mapping_options[1]; i++) {
+	fprintf(stderr, "Unpaired mapping options for second read in a pair, set [%d]\n", i);
+	print_read_mapping_options(&unpaired_mapping_options[1][i], false);
+      }
+    }
+  } else {
+    for (i = 0; i < n_unpaired_mapping_options[0]; i++) {
+      fprintf(stderr, "Unpaired mapping options, set [%d]\n", i);
+      print_read_mapping_options(&unpaired_mapping_options[0][i], false);
+    }
+  }
+  fprintf(stderr, "\n");
+
+  return;
+
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of Outputs per Read:", num_outputs);
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Window Generation Mode:", match_mode);
 
   if (IS_ABSOLUTE(window_overlap)) {
     fprintf(stderr, "%s%-40s%u\n", my_tab, "Window Overlap Length:", (uint)-window_overlap);
   } else {
     fprintf(stderr, "%s%-40s%.02f%%\n", my_tab, "Window Overlap Length:", window_overlap);
-  }
-
-  fprintf(stderr, "\n");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Match Score:", match_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Mismatch Score:", mismatch_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Ref):", a_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Open Score (Qry):", b_gap_open_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Ref):", a_gap_extend_score);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Gap Extend Score (Qry):", b_gap_extend_score);
-  if (shrimp_mode == MODE_COLOUR_SPACE) {
-    fprintf(stderr, "%s%-40s%d\n", my_tab, "SW Crossover Score:", crossover_score);
   }
 
   fprintf(stderr, "\n");
@@ -1650,16 +1441,6 @@ print_settings() {
 
   fprintf(stderr, "\n");
 
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Number of threads:", num_threads);
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Thread chunk size:", chunk_size);
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hash Filter Calls:", hash_filter_calls? "yes" : "no");
-  fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Anchor Width:", anchor_width,
-	  anchor_width == -1? " (disabled)" : "");
-  if (list_cutoff < DEF_LIST_CUTOFF) {
-  fprintf(stderr, "%s%-40s%u\n", my_tab, "Index List Cutoff Length:", list_cutoff);
-  }
-
 }
 
 static int
@@ -1675,12 +1456,210 @@ set_mode_from_string(char const * s) {
     a_gap_open_score = -255;
     b_gap_open_score = -255;
     hash_filter_calls = false;
-    num_matches = 1;
+    match_mode = 1;
     window_len = 100.0;
 
     return 1;
   } else {
     return 0;
+  }
+}
+
+
+static void
+get_pair_mode(char * c, int * pair_mode)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid pair mode\n");
+    exit(1);
+  }
+  if (!strcmp(c, "none")) {
+    *pair_mode = PAIR_NONE;
+  } else if (!strcmp(c, "opp-in")) {
+    *pair_mode = PAIR_OPP_IN;
+  } else if (!strcmp(c, "opp-out")) {
+    *pair_mode = PAIR_OPP_OUT;
+  } else if (!strcmp(c, "col-fw")) {
+    *pair_mode = PAIR_COL_FW;
+  } else if (!strcmp(c, "col-bw")) {
+    *pair_mode = PAIR_COL_BW;
+  } else {
+    fprintf(stderr, "error: unrecognized pair mode (%s)\n", c);
+    exit(1);
+  }
+}
+
+
+static void
+get_int(char * c, int * d)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid integer\n");
+    exit(1);
+  }
+  *d = atoi(c);
+}
+
+
+static void
+get_threshold(char * c, double * t)
+{
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid threshold\n");
+    exit(1);
+  }
+  *t = atof(c);
+  if (*t < 0.0) {
+    fprintf(stderr, "error: invalid threshold [%s]\n", c);
+    exit(1);
+  }
+  if (strcspn(c, "%.") == strlen(c))
+    *t = -(*t);	//absol.
+}
+
+
+static void
+get_bool(char * c, bool * b)
+{
+  if (!strcmp(c, "true") || !strcmp(c, "1")) {
+    *b = true;
+  } else if (!strcmp(c, "false") || !strcmp(c, "0")) {
+    *b = false;
+  } else {
+    fprintf(stderr, "error: invalid bool\n");
+    exit(1);
+  }
+}
+
+
+static void
+get_pairing_options(char * c, struct pairing_options * options)
+{
+  char * p;
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid pairing options\n");
+    exit(1);
+  }
+  p = strtok(c, ",");
+  get_pair_mode(p, &options->pair_mode);
+  p = strtok(NULL, ",");
+  get_int(p, &options->min_insert_size);
+  p = strtok(NULL, ",");
+  get_int(p, &options->max_insert_size);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass1_num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass1_threshold);
+  p = strtok(NULL, ",");
+  get_int(p, &options->pass2_num_outputs);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->pass2_threshold);
+  p = strtok(NULL, ",");
+  get_int(p, &options->stop_count);
+  p = strtok(NULL, ",");
+  get_threshold(p, &options->stop_threshold);
+  p = strtok(NULL, ",");
+  get_bool(p, &options->strata);  
+  p = strtok(NULL, ",");
+  get_bool(p, &options->save_outputs);
+}
+
+
+static void
+get_read_mapping_options(char * c, struct read_mapping_options_t * options, bool is_paired)
+{
+  char * p, * q;
+  char * save_ptr;
+  if (c == NULL) {
+    fprintf(stderr, "error: invalid read mapping options\n");
+    exit(1);
+  }
+  fprintf(stderr, "parsing read_mapping_options [%s] (%s)\n", c, is_paired? "paired" : "unpaired");
+  // regions
+  q = strtok_r(c, "/", &save_ptr);
+  logit(0, "parsing region options: %s", q);
+  p = strtok(q, ",");
+  get_bool(p, &options->regions.recompute);
+  //if (options->regions.recompute) {
+  //p = strtok(NULL, ",");
+  //get_int(p, &options->regions.min_seed);
+  //p = strtok(NULL, ",");
+  //get_int(p, &options->regions.max_seed);
+  //}
+  // anchor_list
+  q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing anchor_list options: %s", q);
+  p = strtok(q, ",");
+  get_bool(p, &options->anchor_list.recompute);
+  if (options->anchor_list.recompute) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->anchor_list.collapse);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->anchor_list.use_region_counts);
+    if (is_paired) {
+      p = strtok(NULL, ",");
+      get_int(p, &options->anchor_list.use_mp_region_counts);
+    }
+  }
+  // hit_list
+  q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing hit_list options: %s", q);
+  p = strtok(q, ",");
+  get_bool(p, &options->hit_list.recompute);
+  if (options->hit_list.recompute) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->hit_list.gapless);
+    p = strtok(NULL, ",");
+    get_int(p, &options->hit_list.match_mode);
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->hit_list.threshold);
+  }
+  // pass1
+  q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing pass1 options: %s", q);
+  p = strtok(q, ",");
+  get_bool(p, &options->pass1.recompute);
+  if (options->pass1.recompute) {
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->pass1.threshold);
+    p = strtok(NULL, ",");
+    get_threshold(p, &options->pass1.window_overlap);
+    p = strtok(NULL, ",");
+    get_int(p, &options->pass1.min_matches);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass1.gapless);
+    if (is_paired) {
+      p = strtok(NULL, ",");
+      get_bool(p, &options->pass1.only_paired);
+    }
+    if (!is_paired) {
+      p = strtok(NULL, ",");
+      get_int(p, &options->pass1.num_outputs);
+    }
+  }
+  // pass2
+  q = strtok_r(NULL, "/", &save_ptr);
+  logit(0, "parsing pass2 options: %s", q);
+  p = strtok(q, ",");
+  get_threshold(p, &options->pass2.threshold);
+  if (!is_paired) {
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass2.strata);
+    p = strtok(NULL, ",");
+    get_bool(p, &options->pass2.save_outputs);
+    p = strtok(NULL, ",");
+    get_int(p, &options->pass2.num_outputs);
+  }
+  // stop
+  if (!is_paired) {
+    q = strtok_r(NULL, "/", &save_ptr);
+    logit(0, "parsing stop options: %s", q);
+    p = strtok(q, ",");
+    get_int(p, &options->pass2.stop_count);
+    if (options->pass2.stop_count > 0) {
+      p = strtok(NULL, ",");
+      get_threshold(p, &options->pass2.stop_threshold);
+    }
   }
 }
 
@@ -1691,18 +1670,33 @@ int main(int argc, char **argv){
 
 	char *progname = argv[0];
 	char const * optstr = NULL;
-	char *c;
+	char *c, *save_c;
 	int ch;
+	int i, sn, cn;
+
+	llint before;
 
 	bool a_gap_open_set, b_gap_open_set;
 	bool a_gap_extend_set, b_gap_extend_set;
-	bool num_matches_set = false;
+	bool match_score_set, mismatch_score_set, xover_score_set;
+	bool match_mode_set = false;
+
+	my_alloc_init(64l*1024l*1024l*1024l, 64l*1024l*1024l*1024l);
 
 	shrimp_args.argc=argc;
 	shrimp_args.argv=argv;
 	set_mode_from_argv(argv, &shrimp_mode);
 
 	a_gap_open_set = b_gap_open_set = a_gap_extend_set = b_gap_extend_set = false;
+	match_score_set = mismatch_score_set = xover_score_set = false;
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  match_score = DEF_CS_MATCH_SCORE;
+	  mismatch_score = DEF_CS_MISMATCH_SCORE;
+	  a_gap_open_score = DEF_CS_A_GAP_OPEN;
+	  b_gap_open_score = DEF_CS_B_GAP_OPEN;
+	  a_gap_extend_score = DEF_CS_A_GAP_EXTEND;
+	  b_gap_extend_score = DEF_CS_B_GAP_EXTEND;
+	}
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
@@ -1786,7 +1780,7 @@ int main(int argc, char **argv){
 			sam_header_filename=optarg;
 			break;	
 		case 19:
-			sam_half_paired=true;
+			half_paired = false;
 			break;
 		case 20:
 			sam_r2=true;
@@ -1831,8 +1825,8 @@ int main(int argc, char **argv){
 			}
 			break;
 		case 'n':
-			num_matches = atoi(optarg);
-			num_matches_set = true;
+			match_mode = atoi(optarg);
+			match_mode_set = true;
 			break;
 		case 'w':
 			window_len = atof(optarg);
@@ -1846,13 +1840,15 @@ int main(int argc, char **argv){
 			break;
 		case 'o':
 			num_outputs = atoi(optarg);
-			num_tmp_outputs = 30 + num_outputs;
+			num_tmp_outputs = 20 + num_outputs;
 			break;
 		case 'm':
 			match_score = atoi(optarg);
+			match_score_set = true;
 			break;
 		case 'i':
 			mismatch_score = atoi(optarg);
+			mismatch_score_set = true;
 			break;
 		case 'g':
 			a_gap_open_score = atoi(optarg);
@@ -1873,6 +1869,7 @@ int main(int argc, char **argv){
 		case 'x':
 			assert(shrimp_mode == MODE_COLOUR_SPACE);
 			crossover_score = atoi(optarg);
+			xover_score_set = true;
 			break;
 		case 'h':
 			sw_full_threshold = atof(optarg);
@@ -1925,6 +1922,7 @@ int main(int argc, char **argv){
 			break;
 		case 'P':
 			Pflag = true;
+			Eflag = false;
 			break;
 		case 'R':
 			Rflag = true;
@@ -2006,7 +2004,7 @@ int main(int argc, char **argv){
 		  }
 		  break;
 		case 'I':
-		  c = strtok(strdup(optarg), ",");
+		  c = strtok(optarg, ",");
 		  if (c == NULL) {
 		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
 		    exit(1);
@@ -2024,9 +2022,10 @@ int main(int argc, char **argv){
 		    exit(1);
 		  }
 		  break;
-		case 'E':
-			Eflag = true;
-			break;
+		case 'E': // on by default; accept option for bw compatibility
+		  logit(0, "as of v2.2.0, -E/--sam is on by default");
+		  Eflag = true;
+		  break;
 		case 'z':
 		  list_cutoff = atoi(optarg);
 		  if (list_cutoff == 0) {
@@ -2081,12 +2080,111 @@ int main(int argc, char **argv){
 			trim_first=false;
 			break;
 		case 25:
-			expected_isize=atoi(optarg);
-			if (expected_isize<0) {
-				fprintf(stderr,"Expected insert size needs to be positive!\n");
-				exit(1);
-			}
+			c = strtok(optarg, ",");
+			if (c == NULL)
+			  crash(1, 0, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			insert_size_mean = atof(c);
+			c = strtok(NULL, ",");
+			if (c == NULL)
+			  crash(1, 0, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			insert_size_stddev = atof(c);
 			break;
+		case 26:
+		  use_regions = !use_regions;
+		  break;
+		case 27:
+		  region_overlap = atoi(optarg);
+		  if (region_overlap < 0) {
+		    fprintf(stderr, "region overlap must be non-negative!\n");
+		    exit(1);
+		  }
+		  break;
+		case 28:
+		  if (n_unpaired_mapping_options[0] > 0 || n_unpaired_mapping_options[1] > 0) {
+		    fprintf(stderr, "warning: unpaired mapping options set before paired mapping options! the latter take precedence.\n");
+		    half_paired = true;
+		  }
+		  n_paired_mapping_options++;
+		  paired_mapping_options = (struct readpair_mapping_options_t *)
+		    //xrealloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+		    my_realloc(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]), (n_paired_mapping_options - 1) * sizeof(paired_mapping_options[0]),
+			       &mem_small, "paired_mapping_options");
+		  c = strtok_r(optarg, ";", &save_c);
+		  get_pairing_options(c, &paired_mapping_options[n_paired_mapping_options - 1].pairing);
+		  c = strtok_r(NULL, ";", &save_c);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[0], true);
+		  c = strtok_r(NULL, ";", &save_c);
+		  get_read_mapping_options(c, &paired_mapping_options[n_paired_mapping_options - 1].read[1], true);
+		  // HACK SETTINGS
+		  pair_mode = paired_mapping_options[0].pairing.pair_mode;
+		  break;
+		case 29:
+		  int nip;
+		  c = strtok(optarg, ";");
+		  if (c == NULL || (*c != '0' && *c != '1')) {
+		    fprintf(stderr, "error: invalid unpaired mapping options:[%s]\n", optarg);
+		    exit(1);
+		  }
+		  if (n_paired_mapping_options > 0)
+		    half_paired = true;
+		  nip = (*c == '0'? 0 : 1);
+		  n_unpaired_mapping_options[nip]++;
+		  unpaired_mapping_options[nip] = (struct read_mapping_options_t *)
+		    //xrealloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]));
+		    my_realloc(unpaired_mapping_options[nip], n_unpaired_mapping_options[nip] * sizeof(unpaired_mapping_options[nip][0]), (n_unpaired_mapping_options[nip] - 1) * sizeof(unpaired_mapping_options[nip][0]),
+			       &mem_small, "unpaired_mapping_options[%d]", nip);
+		  c = strtok(NULL, ";");
+		  get_read_mapping_options(c, &unpaired_mapping_options[nip][n_unpaired_mapping_options[nip] - 1], false);
+		  break;
+		case 30:
+		  min_avg_qv = atoi(optarg);
+		  if (min_avg_qv < -2 || min_avg_qv > 40) {
+		    fprintf(stderr, "error: invalid minimum average quality value (%s)\n", optarg);
+		  }
+		  break;
+		case 31:
+		  extra_sam_fields = true;
+		  break;
+		case 32:
+		  region_bits = atoi(optarg);
+		  if (region_bits < 8 || region_bits > 20) {
+		    crash(1, 0, "invalid number of region bits: %s; must be between 8 and 20", optarg);
+		  }
+		  n_regions = (1 << (32 - region_bits));
+		  break;
+		case 33:
+		  progress = atoi(optarg);
+		  break;
+		case 34:
+		  save_mmap = optarg;
+		  break;
+		case 35:
+		  load_mmap = optarg;
+		  break;
+		case 36:
+		  indel_taboo_len = atoi(optarg);
+		  if (indel_taboo_len < 0)
+		    crash(1, 0, "invalid indel taboo len: [%s]", optarg);
+		  break;
+		case 37:
+		  single_best_mapping = true;
+		  break;
+		case 38:
+		  all_contigs = true;
+		  break;
+		case 39:
+		  compute_mapping_qualities = false;
+		  break;
+		case 40:
+		  Eflag = false;
+		  break;
+		case 41: // half-paired: accept option for bw compatibility
+		  logit(0, "as of v2.2.0, --half-paired is on by default");
+		  half_paired = true;
+		  break;
+		case 42: // no-improper-mappings
+		  improper_mappings = false;
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2116,20 +2214,24 @@ int main(int argc, char **argv){
 			usage(progname,false);
 		}
 	}
-	if (pair_mode != PAIR_NONE && !num_matches_set) {
-	  num_matches = 4;
+	if (!match_mode_set) {
+	  match_mode = (pair_mode == PAIR_NONE? DEF_MATCH_MODE_UNPAIRED : DEF_MATCH_MODE_PAIRED);
 	}
 	if (pair_mode == PAIR_NONE && (!trim_first || !trim_second)) {
 		fprintf(stderr,"error: cannot use --trim-first or --trim-second in unpaired mode\n");
 		usage(progname,false);
 	} 
 
-	if (Xflag) {
-	  if (pair_mode == PAIR_NONE) {
-	    fprintf(stderr, "warning: insert histogram not available in unpaired mode; ignoring\n");
-	    Xflag = false;
-	  } else {
-	    insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
+	// set up insert size histogram
+	if (Xflag && pair_mode == PAIR_NONE) {
+	  fprintf(stderr, "warning: insert histogram not available in unpaired mode; ignoring\n");
+	  Xflag = false;
+	}
+	if (pair_mode != PAIR_NONE) {
+	  insert_histogram_bucket_size = ceil_div(max_insert_size - min_insert_size + 1, 100);
+	  for (i = 0; i < 100; i++) {
+	    insert_histogram[i] = 1;
+	    insert_histogram_load += insert_histogram[i];
 	  }
 	}
 
@@ -2138,7 +2240,7 @@ int main(int argc, char **argv){
 	  usage(progname,false);
 	}
 
-	if (n_seeds == 0 && load_file == NULL) {
+	if (n_seeds == 0 && load_file == NULL && load_mmap == NULL) {
           if (mode_mirna)
             load_default_mirna_seeds();
           else
@@ -2154,14 +2256,14 @@ int main(int argc, char **argv){
 	  exit(1);
 	}
 
-	if (load_file != NULL && save_file != NULL)
+	if (load_file != NULL && (save_file != NULL || save_mmap != NULL))
 	  { // args: none
 	    if (argc != 0) {
 	      fprintf(stderr, "error: when using both -L and -S, no extra files can be given\n");
 	      usage(progname, false);
 	    }
-	  } 
-	else if (load_file != NULL)
+	  }
+	else if (load_file != NULL || load_mmap != NULL)
 	  { // args: reads file
 	    if (argc == 0 && single_reads_file) {
 	      fprintf(stderr,"error: read_file not specified\n");
@@ -2213,10 +2315,12 @@ int main(int argc, char **argv){
 	  fprintf(stderr, "warning: in paired mode, both strands must be inspected; ignoring -C and -F\n");
 	  Cflag = Fflag = true;
 	}
-	if (pair_mode == PAIR_NONE && sam_half_paired) {
+	/*
+	if (pair_mode == PAIR_NONE && half_paired) {
 	  fprintf(stderr, "error: cannot use option half-paired in non-paired mode!\n");
 	  exit(1);
 	}
+	*/
 	if (pair_mode == PAIR_NONE && sam_r2) {
 	  fprintf(stderr, "error: cannot use option sam-r2 in non-paired mode!\n");
 	  exit(1);
@@ -2254,8 +2358,9 @@ int main(int argc, char **argv){
 	  window_overlap = 100.0;
 	}
 
-	if (num_matches < 1) {
-	  fprintf(stderr, "error: invalid number of matches\n");
+	if ((pair_mode == PAIR_NONE && (match_mode < 1 || match_mode > 2))
+	    || (pair_mode != PAIR_NONE && (match_mode < 2 || match_mode > 4))) {
+	  fprintf(stderr, "error: invalid match mode [pair_mode=%d;match_mode=%d]\n", pair_mode, match_mode);
 	  exit(1);
 	}
 
@@ -2295,7 +2400,7 @@ int main(int argc, char **argv){
 	    ||
 	    (!IS_ABSOLUTE(window_gen_threshold) && !IS_ABSOLUTE(sw_full_threshold)
 	     && window_gen_threshold > sw_full_threshold)) {
-	  fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
+	  //fprintf(stderr, "warning: window generation threshold is larger than sw threshold\n");
 	}
 
 	if ((a_gap_open_set && !b_gap_open_set) || (a_gap_extend_set && !b_gap_extend_set)) {
@@ -2315,17 +2420,188 @@ int main(int argc, char **argv){
 	  fputc('\n', stderr);
 	}
 
-	if(load_file == NULL){
+	/* Set probabilities from scores */
+	if (shrimp_mode == MODE_COLOUR_SPACE) {
+	  // CS: pr_xover ~= .03 => alpha => pr_mismatch => rest
+	  pr_xover = .03;
+	  score_alpha = (double)crossover_score / (log(pr_xover/3)/log(2.0));
+	  pr_mismatch = 1.0/(1.0 + 1.0/3.0 * pow(2.0, ((double)match_score - (double)mismatch_score)/score_alpha));
+	} else {
+	  // LS: pr_mismatch ~= .01 => alpha => rest
+	  pr_mismatch = .01;
+	  score_alpha = ((double)match_score - (double)mismatch_score)/(log((1 - pr_mismatch)/(pr_mismatch/3.0))/log(2.0));
+	}
+	score_beta = (double)match_score - 2 * score_alpha - score_alpha * log(1 - pr_mismatch)/log(2.0);
+	pr_del_open = pow(2.0, (double)a_gap_open_score/score_alpha);
+	pr_ins_open = pow(2.0, (double)b_gap_open_score/score_alpha);
+	pr_del_extend = pow(2.0, (double)a_gap_extend_score/score_alpha);
+	pr_ins_extend = pow(2.0, ((double)b_gap_extend_score - score_beta)/score_alpha);
+
+	//score_difference_mq_cutoff = (int)rint(10.0 * score_alpha);
+
+#ifdef DEBUG_SCORES
+	fprintf(stderr, "probabilities from scores:\talpha=%.9g\tbeta=%.9g\n", score_alpha, score_beta);
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+	  fprintf(stderr, "pr_xover=%.9g\n", pr_xover);
+	fprintf(stderr, "pr_mismatch=%.9g\npr_del_open=%.9g\tpr_del_extend=%.9g\t(pr_del1=%.9g)\npr_ins_open=%.9g\tpr_ins_extend=%.9g\t(pr_ins1=%.9g)\n",
+		pr_mismatch,
+		pr_del_open, pr_del_extend, pr_del_open*pr_del_extend, 
+		pr_ins_open, pr_ins_extend, pr_ins_open*pr_ins_extend);
+
+	// sanity check:
+	fprintf(stderr, "scores from probabilities:\n");
+	fprintf(stderr, "match_score=%g\nmismatch_score=%g\n",
+		2 * score_alpha + score_beta + score_alpha * log(1 - pr_mismatch) / log(2.0),
+		2 * score_alpha + score_beta + score_alpha * log(pr_mismatch/3) / log(2.0));
+	if (shrimp_mode == MODE_COLOUR_SPACE)
+	  fprintf(stderr, "crossover_score=%g\n", score_alpha * log(pr_xover/3) / log(2.0));
+	fprintf(stderr, "a_gap_open_score=%g\ta_gap_extend_score=%g\nb_gap_open_score=%g\tb_gap_extend_score=%g\n",
+		score_alpha * log(pr_del_open) / log(2.0),
+		score_alpha * log(pr_del_extend) / log(2.0),
+		score_alpha * log(pr_ins_open) / log(2.0),
+		score_alpha * log(pr_ins_extend) / log(2.0) + score_beta);
+#endif
+
+	// set up new options structure
+	// THIS SHOULD EVENTUALLY BE MERGED INTO OPTION READING
+	if (n_unpaired_mapping_options[0] == 0 && n_paired_mapping_options == 0) {
+	  if (pair_mode == PAIR_NONE)
+	    {
+	      n_unpaired_mapping_options[0]++;
+	      //unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+	      unpaired_mapping_options[0] = (struct read_mapping_options_t *)
+		my_calloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+			  &mem_small, "unpaired_mapping_options[0]");
+
+	      unpaired_mapping_options[0][0].regions.recompute = (match_mode == 2 && use_regions);
+	      //unpaired_mapping_options[0][0].regions.min_seed = -1;
+	      //unpaired_mapping_options[0][0].regions.max_seed = -1;
+	      unpaired_mapping_options[0][0].anchor_list.recompute = true;
+	      unpaired_mapping_options[0][0].anchor_list.collapse = true;
+	      unpaired_mapping_options[0][0].anchor_list.use_region_counts = (match_mode == 2 && use_regions);
+	      unpaired_mapping_options[0][0].anchor_list.use_mp_region_counts = 0;
+	      unpaired_mapping_options[0][0].hit_list.recompute = true;
+	      unpaired_mapping_options[0][0].hit_list.gapless = gapless_sw;
+	      unpaired_mapping_options[0][0].hit_list.match_mode = match_mode;
+	      unpaired_mapping_options[0][0].hit_list.threshold = window_gen_threshold;
+	      unpaired_mapping_options[0][0].pass1.recompute =  true;
+	      unpaired_mapping_options[0][0].pass1.only_paired = false;
+	      unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+	      unpaired_mapping_options[0][0].pass1.min_matches = match_mode; // this is 1 or 2 in unpaired mode
+	      unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+	      unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+	      unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+	      unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+	      unpaired_mapping_options[0][0].pass2.save_outputs = false;
+	      unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+	      unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+	      unpaired_mapping_options[0][0].pass2.stop_count = 0;
+	    }
+	  else
+	    {
+	      n_paired_mapping_options++;
+	      //paired_mapping_options = (struct readpair_mapping_options_t *)xcalloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]));
+	      paired_mapping_options = (struct readpair_mapping_options_t *)
+		my_calloc(n_paired_mapping_options * sizeof(paired_mapping_options[0]),
+			  &mem_small, "paired_mapping_options");
+
+	      paired_mapping_options[0].pairing.pair_mode = pair_mode;
+	      paired_mapping_options[0].pairing.min_insert_size = min_insert_size;
+	      paired_mapping_options[0].pairing.max_insert_size = max_insert_size;
+	      paired_mapping_options[0].pairing.strata = strata_flag;
+	      paired_mapping_options[0].pairing.save_outputs = compute_mapping_qualities;
+	      paired_mapping_options[0].pairing.pass1_num_outputs = num_tmp_outputs;
+	      paired_mapping_options[0].pairing.pass2_num_outputs = num_outputs;
+	      paired_mapping_options[0].pairing.pass1_threshold = sw_vect_threshold;
+	      paired_mapping_options[0].pairing.pass2_threshold = sw_full_threshold;
+
+	      paired_mapping_options[0].read[0].regions.recompute = use_regions && match_mode != 2;
+	      //paired_mapping_options[0].read[0].regions.min_seed = -1;
+	      //paired_mapping_options[0].read[0].regions.max_seed = -1;
+	      paired_mapping_options[0].read[0].anchor_list.recompute = true;
+	      paired_mapping_options[0].read[0].anchor_list.collapse = true;
+	      paired_mapping_options[0].read[0].anchor_list.use_region_counts = use_regions && match_mode != 2;
+	      if (use_regions) {
+		paired_mapping_options[0].read[0].anchor_list.use_mp_region_counts = (match_mode == 4 && !half_paired? 1
+										      : match_mode == 3 && half_paired? 2
+										      : match_mode == 3 && !half_paired? 3
+										      : 0);
+	      }
+	      paired_mapping_options[0].read[0].hit_list.recompute = true;
+	      paired_mapping_options[0].read[0].hit_list.gapless = gapless_sw;
+	      paired_mapping_options[0].read[0].hit_list.match_mode = (match_mode == 4? 2
+								       : match_mode == 3? 3
+								       : 1);
+	      paired_mapping_options[0].read[0].hit_list.threshold = window_gen_threshold;
+	      paired_mapping_options[0].read[0].pass1.recompute = true;
+	      paired_mapping_options[0].read[0].pass1.only_paired = true;
+	      paired_mapping_options[0].read[0].pass1.gapless = gapless_sw;
+	      paired_mapping_options[0].read[0].pass1.min_matches = (match_mode == 4? 2 : 1);
+	      paired_mapping_options[0].read[0].pass1.threshold = sw_vect_threshold;
+	      paired_mapping_options[0].read[0].pass1.window_overlap = window_overlap;
+	      paired_mapping_options[0].read[0].pass2.strata = strata_flag;
+	      paired_mapping_options[0].read[0].pass2.threshold = sw_full_threshold * 0.5;
+	      paired_mapping_options[0].read[1] = paired_mapping_options[0].read[0];
+
+	      if (!half_paired)
+		{
+		  paired_mapping_options[0].pairing.stop_count = 0;
+		}
+	      else // half_paired
+		{
+		  paired_mapping_options[0].pairing.stop_count = 1;
+		  paired_mapping_options[0].pairing.stop_threshold = 101.0; //paired_mapping_options[0].pairing.pass2_threshold;
+
+		  n_unpaired_mapping_options[0]++;
+		  n_unpaired_mapping_options[1]++;
+		  //unpaired_mapping_options[0] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]));
+		  unpaired_mapping_options[0] = (struct read_mapping_options_t *)
+		    my_calloc(n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+			      &mem_small, "unpaired_mapping_options[0]");
+		  //unpaired_mapping_options[1] = (struct read_mapping_options_t *)xcalloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]));
+		  unpaired_mapping_options[1] = (struct read_mapping_options_t *)
+		    my_calloc(n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[1][0]),
+			      &mem_small, "unpaired_mapping_options[1]");
+
+		  unpaired_mapping_options[0][0].regions.recompute = false;
+		  unpaired_mapping_options[0][0].anchor_list.recompute = false;
+		  unpaired_mapping_options[0][0].hit_list.recompute = false;
+		  unpaired_mapping_options[0][0].pass1.recompute = true;
+		  unpaired_mapping_options[0][0].pass1.gapless = gapless_sw;
+		  unpaired_mapping_options[0][0].pass1.min_matches = 2;
+		  unpaired_mapping_options[0][0].pass1.only_paired = false;
+		  unpaired_mapping_options[0][0].pass1.num_outputs = num_tmp_outputs;
+		  unpaired_mapping_options[0][0].pass1.threshold = sw_vect_threshold;
+		  unpaired_mapping_options[0][0].pass1.window_overlap = window_overlap;
+		  unpaired_mapping_options[0][0].pass2.strata = strata_flag;
+		  unpaired_mapping_options[0][0].pass2.save_outputs = compute_mapping_qualities;
+		  unpaired_mapping_options[0][0].pass2.num_outputs = num_outputs;
+		  unpaired_mapping_options[0][0].pass2.threshold = sw_full_threshold;
+		  unpaired_mapping_options[0][0].pass2.stop_count = 0;
+
+		  unpaired_mapping_options[1][0] = unpaired_mapping_options[0][0];
+
+		}
+	    }
+	}
+
+	if(load_file == NULL && load_mmap == NULL) {
 	  print_settings();
 	}
 
-	uint64_t before;
+	if (load_file != NULL && save_mmap != NULL) {
+	  exit(genome_load_map_save_mmap(load_file, save_mmap) == true ? 0 : 1);
+	}
+
 	before = gettimeinusecs();
-	if (load_file != NULL){
+	if (load_mmap != NULL) {
+	  genome_load_mmap(load_mmap);
+	} else if (load_file != NULL){
 		if (strchr(load_file, ',') == NULL) {
 			//use prefix
 			int buf_size = strlen(load_file) + 20;
-			char * genome_name = (char *)xmalloc(sizeof(char)*buf_size);
+			//char * genome_name = (char *)xmalloc(sizeof(char)*buf_size);
+			char genome_name[buf_size];
 			strncpy(genome_name,load_file,buf_size);
 			strncat(genome_name,".genome",buf_size);
 			fprintf(stderr,"Loading genome from %s\n",genome_name);
@@ -2333,10 +2609,12 @@ int main(int argc, char **argv){
 				fprintf(stderr, "error: loading from genome file \"%s\"\n", genome_name);
 				exit (1);
 			}
-			free(genome_name);
+			//free(genome_name);
 			int seed_count = 0;
-			char * seed_name = (char *)xmalloc(sizeof(char)*buf_size);
-			char * buff = (char *)xmalloc(sizeof(char)*buf_size);
+			//char * seed_name = (char *)xmalloc(sizeof(char)*buf_size);
+			char seed_name[buf_size];
+			//char * buff = (char *)xmalloc(sizeof(char)*buf_size);
+			char buff[buf_size];
 			strncpy(seed_name,load_file,buf_size);
 			strncat(seed_name,".seed.",buf_size);
 			sprintf(buff,"%d",seed_count);
@@ -2356,8 +2634,8 @@ int main(int argc, char **argv){
 				strncat(seed_name,buff,buf_size);
 				f = fopen(seed_name,"r");
 			}
-			free(seed_name);
-			free(buff);
+			//free(seed_name);
+			//free(buff);
 
 		} else {
 			c = strtok(load_file, ",");
@@ -2381,21 +2659,20 @@ int main(int argc, char **argv){
 		  init_seed_hash_mask();
 		}
 
-		print_settings();
+		//print_settings();
 	} else {
 		if (!load_genome(genome_files,ngenome_files)){
 			exit(1);
 		}
 	}
 
-	map_usecs += (gettimeinusecs() - before);
+	load_genome_usecs += (gettimeinusecs() - before);
 
 	//
 	// Automatic genome index trimming
 	//
 	if (Vflag && save_file == NULL && list_cutoff == DEF_LIST_CUTOFF) {
 	  // this will be a mapping job; enable automatic trimming
-	  int i, sn;
 	  long long unsigned int total_genome_len = 0;
 	  int max_seed_weight = 0;
 
@@ -2418,7 +2695,12 @@ int main(int argc, char **argv){
 	  if ((uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight)) > list_cutoff) {
 	    list_cutoff = (uint32_t)((100llu * total_genome_len)/power(4, max_seed_weight));
 	  }
-	  fprintf(stderr, "Automatically trimming genome index lists longer than: %u\n", list_cutoff);
+	  //fprintf(stderr, "    %-40s%d\n", "Trimming index lists longer than:", list_cutoff);
+	  //fprintf(stderr, "\n");
+	}
+
+	if (load_file != NULL || load_mmap != NULL) {
+	  print_settings();
 	}
 
 	if (Yflag)
@@ -2426,16 +2708,20 @@ int main(int argc, char **argv){
 
 	if (save_file != NULL) {
 	  if (list_cutoff != DEF_LIST_CUTOFF) {
-	    fprintf(stderr, "Trimming genome map lists longer than %u\n", list_cutoff);
+	    fprintf(stderr, "\nTrimming index lists longer than: %u\n", list_cutoff);
 	    trim_genome();
 	  }
 
 	  fprintf(stderr,"Saving genome map to %s\n",save_file);
-	  if(save_genome_map(save_file)){
-	    exit(0);
+	  if(!save_genome_map(save_file)){
+	    exit(1);
 	  }
-	  exit(1);
+	  exit(0);
 	}
+
+	// compute total genome size
+	for (cn = 0; cn < num_contigs; cn++)
+	  total_genome_size += genome_len[cn];
 
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;
@@ -2443,126 +2729,173 @@ int main(int argc, char **argv){
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-	  //hash_mark = 0;
-	  //window_cache = (struct window_cache_entry *)xcalloc(1048576 * sizeof(window_cache[0]));
+	  // init thread-private globals
+	  memset(&tpg, 0, sizeof(tpg_t));
 
-		if (f1_setup(max_window_len, longest_read_len,
-			     a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-			     match_score, mismatch_score,
-			     shrimp_mode == MODE_COLOUR_SPACE, false)) {
-			fprintf(stderr, "failed to initialise vector "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
+	  /* region handling */
+	  if (use_regions) {
+	    region_map_id = 0;
+	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
+	      for (int st = 0; st < 2; st++)
+		//region_map[number_in_pair][st] = (int32_t *)xcalloc(n_regions * sizeof(region_map[0][0][0]));
+		region_map[number_in_pair][st] = (region_map_t *)
+		  my_calloc(n_regions * sizeof(region_map[0][0][0]),
+			    &mem_mapping, "region_map");
+	  }
 
-		int ret;
-		if (shrimp_mode == MODE_COLOUR_SPACE) {
-			/* XXX - a vs. b gap */
-			ret = sw_full_cs_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, match_score, mismatch_score,
-					crossover_score, false, anchor_width);
-		} else {
-			ret = sw_full_ls_setup(max_window_len, longest_read_len,
-					a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-					match_score, mismatch_score, false, anchor_width);
-		}
-		if (ret) {
-			fprintf(stderr, "failed to initialise scalar "
-					"Smith-Waterman (%s)\n", strerror(errno));
-			exit(1);
-		}
+	  if (f1_setup(max_window_len, longest_read_len,
+		       a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+		       match_score, shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score,
+		       shrimp_mode == MODE_COLOUR_SPACE, false)) {
+	    fprintf(stderr, "failed to initialise vector Smith-Waterman (%s)\n", strerror(errno));
+	    exit(1);
+	  }
+
+	  int ret;
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
+	    /* XXX - a vs. b gap */
+	    ret = sw_full_cs_setup(max_window_len, longest_read_len,
+				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				   match_score, mismatch_score,
+				   crossover_score, false, anchor_width, indel_taboo_len);
+	  } else {
+	    ret = sw_full_ls_setup(max_window_len, longest_read_len,
+				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
+				   match_score, mismatch_score, false, anchor_width);
+	  }
+	  if (ret) {
+	    fprintf(stderr, "failed to initialise scalar Smith-Waterman (%s)\n", strerror(errno));
+	    exit(1);
+	  }
+
+	  /* post_sw */
+	  if (shrimp_mode == MODE_COLOUR_SPACE) {
+	    post_sw_setup(max_window_len + longest_read_len,
+			  pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
+			  Qflag, use_sanger_qvs, qual_vector_offset, qual_delta, true);
+	  }
+
 	}
 
 
 	char * output;
 	if (Eflag){
-		int i;
-		if (sam_header_filename!=NULL) {
-			FILE * sam_header_file = fopen(sam_header_filename,"r");
-			if (sam_header_file==NULL) {
-				perror("Failed to open sam header file ");
-				exit(1);
-			}
-			size_t buffer_size=2046;
-			char buffer[buffer_size];
-			size_t read; bool ends_in_newline=true;
-			while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
-				buffer[read]='\0';
-				fprintf(stdout,"%s",buffer);
-				if (buffer[read-1]=='\n') {
-					ends_in_newline=true;
-				} else {
-					ends_in_newline=false;
-				}
-			}
-			if (!ends_in_newline) {
-				fprintf(stdout,"\n");
-			}
-		} else {
-			//Print sam header
-			fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
+	  int i;
+	  if (sam_header_filename!=NULL) {
+	    FILE * sam_header_file = fopen(sam_header_filename,"r");
+	    if (sam_header_file==NULL) {
+	      perror("Failed to open sam header file ");
+	      exit(1);
+	    }
+	    size_t buffer_size=2046;
+	    char buffer[buffer_size];
+	    size_t read; bool ends_in_newline=true;
+	    while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
+	      buffer[read]='\0';
+	      fprintf(stdout,"%s",buffer);
+	      if (buffer[read-1]=='\n') {
+		ends_in_newline=true;
+	      } else {
+		ends_in_newline=false;
+	      }
+	    }
+	    fclose(sam_header_file);
+	    if (!ends_in_newline) {
+	      fprintf(stdout,"\n");
+	    }
+	  } else {
+	    //Print sam header
+	    fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
 
-			for(i = 0; i < num_contigs; i++){
-				fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
-			}
-		}
-		//read group
-		if (sam_read_group_name!=NULL) {
-			fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
-		}
-		//print command line args used to invoke SHRiMP
-		fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
-		for (i=0; i<(shrimp_args.argc-1); i++) {
-			fprintf(stdout,"%s ",shrimp_args.argv[i]);
-		}
-		fprintf(stdout,"%s\n",shrimp_args.argv[i]);
+	    for(i = 0; i < num_contigs; i++){
+	      fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
+	    }
+	  }
+	  //read group
+	  if (sam_read_group_name!=NULL) {
+	    fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
+	  }
+	  //print command line args used to invoke SHRiMP
+	  fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
+	  for (i=0; i<(shrimp_args.argc-1); i++) {
+	    fprintf(stdout,"%s ",shrimp_args.argv[i]);
+	  }
+	  fprintf(stdout,"%s\n",shrimp_args.argv[i]);
 	} else {
-		output = output_format_line(Rflag);
-		puts(output);
-		free(output);
+	  output = output_format_line(Rflag);
+	  puts(output);
+	  free(output);
 	}
 	before = gettimeinusecs();
 	bool launched = launch_scan_threads();
 	if (!launched) {
-		fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
-		exit(1);
+	  fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
+	  exit(1);
 	}
-	total_work_usecs += (gettimeinusecs() - before);
+	mapping_wallclock_usecs += (gettimeinusecs() - before);
 	
-	//if (load_file==NULL) {
-		free_genome();
-	//}
 	print_statistics();
-#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
-		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
+#pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,	\
+			    match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
-		sw_vector_cleanup();
-		if (shrimp_mode==MODE_COLOUR_SPACE) {
-			sw_full_cs_cleanup();
-		}
-		sw_full_ls_cleanup();
-		f1_free();	
+	  sw_vector_cleanup();
+	  if (shrimp_mode==MODE_COLOUR_SPACE) {
+	    sw_full_cs_cleanup();
+	    post_sw_cleanup();
+	  }
+	  sw_full_ls_cleanup();
+	  f1_free();
+
+	  if (use_regions) {
+	    for (int number_in_pair = 0; number_in_pair < 2; number_in_pair++)
+	      for (int st = 0; st < 2; st++)
+		//free(region_map[number_in_pair][st]);
+		my_free(region_map[number_in_pair][st], n_regions * sizeof(region_map[0][0][0]),
+			&mem_mapping, "region_map");
+	  }
 	}
-	int i;
-	for (i=0; i<num_contigs; i++){
-		free(contig_names[i]);
-		if (i==0 || load_file==NULL) {
-			free(genome_contigs[i]);
-			free(genome_contigs_rc[i]);
-		}
+
+	if (load_mmap != NULL) {
+	  // munmap?
+	} else {
+	  free_genome();
+
+	  //free(seed);
+	  if (Hflag) {
+	    int sn;
+	    for (sn = 0; sn < n_seeds; sn++) {
+	      my_free(seed_hash_mask[sn], BPTO32BW(max_seed_span) * sizeof(seed_hash_mask[sn][0]),
+		      &mem_small, "seed_hash_mask[%d]", sn);
+	    }
+	    my_free(seed_hash_mask, n_seeds * sizeof(seed_hash_mask[0]),
+		    &mem_small, "seed_hash_mask");
+	  }
+	  my_free(seed, n_seeds * sizeof(seed[0]),
+		  &mem_small, "seed");
 	}
-	if (shrimp_mode==MODE_COLOUR_SPACE) {
-		for (i=0; i<num_contigs && (i==0 || load_file==NULL); i++){
-			free(genome_cs_contigs[i]);
-		}
-		free(genome_cs_contigs);
-		free(genome_initbp);
-	}
-	free(genome_len);
-	free(genome_contigs_rc);
-	free(genome_contigs);
-	free(contig_names);
-	free(contig_offsets);
-	free(seed);
+
+	//free(paired_mapping_options);
+	my_free(paired_mapping_options, n_paired_mapping_options * sizeof(paired_mapping_options[0]),
+		&mem_small, "paired_mapping_options");
+	//free(unpaired_mapping_options[0]);
+	my_free(unpaired_mapping_options[0], n_unpaired_mapping_options[0] * sizeof(unpaired_mapping_options[0][0]),
+		&mem_small, "unpaired_mapping_options[0]");
+	//free(unpaired_mapping_options[1]);
+	my_free(unpaired_mapping_options[1], n_unpaired_mapping_options[1] * sizeof(unpaired_mapping_options[0][0]),
+		&mem_small, "unpaired_mapping_options[1]");
+
+	if (sam_read_group_name != NULL)
+	  free(sam_read_group_name);
+
+#ifdef MYALLOC_ENABLE_CRT
+	fprintf(stderr, "crt_mem: %lld\n", (long long)crt_mem);
+#endif
+#ifndef NDEBUG
+	fprintf(stderr, "mem_genomemap: max=%lld crt=%lld\n", (long long)count_get_max(&mem_genomemap), (long long)count_get_count(&mem_genomemap));
+	fprintf(stderr, "mem_mapping: max=%lld crt=%lld\n", (long long)count_get_max(&mem_mapping), (long long)count_get_count(&mem_mapping));
+	fprintf(stderr, "mem_thread_buffer: max=%lld crt=%lld\n", (long long)count_get_max(&mem_thread_buffer), (long long)count_get_count(&mem_thread_buffer));
+	fprintf(stderr, "mem_small: max=%lld crt=%lld\n", (long long)count_get_max(&mem_small), (long long)count_get_count(&mem_small));
+	fprintf(stderr, "mem_sw: max=%lld crt=%lld\n", (long long)count_get_max(&mem_sw), (long long)count_get_count(&mem_sw));
+#endif
 	return 0;
 }

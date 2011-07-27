@@ -11,12 +11,11 @@
 #define SIZE_MPOS 9
 #define SIZE_ISIZE 10
 #define SIZE_32bit 10
-#define SIZE_DOUBLE 12
 
 #include <stdint.h>
 #include <stdbool.h>
 
-#define SAM2PRETTY_NUM_ZS	5
+
 
 typedef struct pretty pretty;
 struct pretty {
@@ -56,10 +55,6 @@ struct pretty {
 	char * read_name;
 	size_t read_name_length;
 	int32_t isize;
-
-	int fileno;
-	bool has_z;
-	double z[SAM2PRETTY_NUM_ZS];
 
 	//int32_t strand; //0 is postive, 1 is reverse
 	int32_t mapq;
@@ -140,8 +135,6 @@ struct pretty {
 	bool sam_header;
 };
 
-extern bool sam2pretty_lib_verbose;
-
 int32_t pretty_remap_header(FILE* f,char* contig_name,uint32_t offset_start, uint32_t offset_end);
 int32_t pretty_header(FILE* f,char* contig_name,uint32_t sequence_size);
 pretty * pretty_sub_prettys(pretty * parent);
@@ -160,10 +153,8 @@ void pretty_free_fast(pretty* pa);
 void pretty_match(pretty* pa);
 int32_t pretty_remap(pretty * pa, uint32_t offset_start, uint32_t offset_end);
 void pretty_print_sam(FILE * f, pretty * pa);
-void pretty_print_sam_force_ls(FILE * f, pretty * pa);
 pretty * pretty_new();
 void pretty_print_sam_update(pretty * pa,bool inplace);
 void pretty_print_sam_unaligned(pretty * pa,bool inplace);
 void pretty_from_aux_inplace(pretty * pa);
-void pretty_print_sam_fastx(pretty* pa, bool inplace );
 #endif

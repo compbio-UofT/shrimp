@@ -1,7 +1,5 @@
-/*	$Id: fasta.h,v 1.12 2009/06/16 23:26:21 rumble Exp $	*/
-
-#ifndef _FASTA_H_
-#define _FASTA_H_
+#ifndef _FASTA_H
+#define _FASTA_H
 
 /*
  * Force use of C linking for util.c, even if using g++.
@@ -56,10 +54,15 @@
 
 #define FASTA_PER_LINE 80
 
+
+extern int fasta_basemap_char_to_int[128];
+extern char fasta_basemap_int_to_char[2][16];
+
+
 typedef struct _fasta_t {
 	gzFile fp;
 	char  *file;
-	shrimp_mode_t space;
+	int space;
 	char   buffer[8*1024*1024];
 	char   translate[256];
 	bool   leftover;
@@ -79,12 +82,13 @@ typedef struct _fasta_stats_t {
 } * fasta_stats_t;
 
 
-fasta_t	  fasta_open(const char *, shrimp_mode_t, bool);
+fasta_t	  fasta_open(const char *, int, bool);
 void	  fasta_close(fasta_t);
 //bool	  fasta_get_next_with_range(fasta_t, char **, char **, bool *, char **, char **);
 bool	  fasta_get_next_read_with_range(fasta_t, read_entry * re);
 int	  fasta_get_initial_base(int, char *);
 uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t, bool);
+uint32_t *bitfield_to_colourspace(uint32_t *, uint32_t, bool);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
 fasta_stats_t fasta_stats(void);
 char      base_translate(int, bool);
@@ -106,6 +110,27 @@ fasta_get_next_contig(fasta_t file, char **name, char **seq, bool *is_rna) {
 	return ret;	
 	
 }
+
+static inline int
+char_to_base(char c)
+{
+  //assert((int)c >= 0 && (int)c < 128);
+  return fasta_basemap_char_to_int[(int)c];
+}
+
+static inline char
+base_to_char(int base, int space)
+{
+  assert(space == LETTER_SPACE || space == COLOUR_SPACE);
+  if (space == LETTER_SPACE) {
+    assert((base >= BASE_LS_MIN && base <= BASE_LS_MAX) || base == BASE_N);
+    return fasta_basemap_int_to_char[0][base];
+  } else {
+    assert((base >= BASE_CS_MIN && base <= BASE_CS_MAX) || base == BASE_N);
+    return fasta_basemap_int_to_char[1][base];
+  }
+}
+
 
 #ifdef __cplusplus
 //} /* extern "C" */

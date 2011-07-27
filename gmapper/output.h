@@ -1,5 +1,5 @@
-#ifndef _GENOME_H
-#define _GENOME_H
+#ifndef _OUTPUT_H
+#define _OUTPUT_H
 
 #ifdef __cplusplus
 //extern "C" {
@@ -11,7 +11,7 @@
 
 #undef EXTERN
 #undef STATIC
-#ifdef _MODULE_GENOME
+#ifdef _MODULE_OUTPUT
 #define EXTERN(_type, _id, _init_val) _type _id = _init_val
 #define STATIC(_type, _id, _init_val) static _type _id = _init_val
 #else
@@ -19,17 +19,12 @@
 #define STATIC(_type, _id, _init_val)
 #endif
 
-  
-bool		save_genome_map_seed(const char *, int);
-bool		load_genome_map_seed(const char *);
-bool		save_genome_map(const char *);
-bool		load_genome_map(const char *);
-void		print_genomemap_stats();
-void		free_genome();
-bool		load_genome(char **, int);
-void		trim_genome();
-bool		genome_load_map_save_mmap(char *, char const *);
-bool		genome_load_mmap(char const *);
+
+//void	hit_output(struct read_entry *, struct read_hit *, struct read_hit *,
+//		   char * *, char * *, bool, int *, int, bool);
+void	read_output(read_entry *, struct read_hit * *, int);
+void	readpair_output_no_mqv(pair_entry *, struct read_hit_pair *, int);
+void	readpair_output(pair_entry *);
 
 
 #ifdef __cplusplus

@@ -2,7 +2,13 @@
 
 #ifndef _SW_FULL_COMMON_H
 #define _SW_FULL_COMMON_H
+
 #include <assert.h>
+#include <string.h>
+#include "../gmapper/gmapper-definitions.h"
+#include "../common/my-alloc.h"
+#include "../common/stats.h"
+
 
 struct sw_full_results {
 	/* Common fields */
@@ -16,12 +22,28 @@ struct sw_full_results {
 	int deletions;				/* # of deletions */
 	int score;				/* final SW score */
 
+	int	posterior_score;
+	int	pct_posterior_score;
+
 	char *dbalign;				/* genome align string */
 	char *qralign;				/* read align string */
+	char * qual;	/* base qualities string, used in CS only */
+	double posterior;
+
+	// fields used for MQ calculation
+	int	mqv;	// mapping quality value; we use 255 for N/A
+	double	z0;	// posterior
+	double	z1;	// sum of posteriors
+	double	z2;	// sum hits paired with this of insert*posterior*posterior
+	double	z3;	// sum of z2s
+	double	pr_top_random;
+	double	pr_missed_mp;
 
 	/* Colour space fields */
 	int crossovers;				/* # of mat. xovers */
 	bool dup;
+
+  bool	in_use; // when set, this sfrp is part of a pair selected for output
 };
 
 static inline bool
@@ -60,14 +82,16 @@ sw_full_results_equal(struct sw_full_results *sfr1, struct sw_full_results *sfr2
  * Free sfrp for given hit.
  */
 static inline void
-free_sfrp(struct sw_full_results * * sfrp)
+free_sfrp(struct sw_full_results * * sfrp, struct read_entry * re, count_t * counter = NULL)
 {
   assert(sfrp != NULL);
+  assert(re != NULL);
 
   if (*sfrp != NULL) {
     free((*sfrp)->dbalign);
     free((*sfrp)->qralign);
-    free(*sfrp);
+    free((*sfrp)->qual);
+    my_free(*sfrp, sizeof(**sfrp), counter, "sfrp [%s]", re->name);
     *sfrp = NULL;
   }
 }

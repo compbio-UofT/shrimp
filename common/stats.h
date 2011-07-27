@@ -19,7 +19,11 @@ typedef struct {
 /*
  * Simple count
  */
-typedef int64_t count_t;
+//typedef int64_t count_t;
+typedef struct {
+  int64_t crt;
+  int64_t max;
+} count_t;
 
 //typedef int32_t count32_t;
 
@@ -83,10 +87,13 @@ stat_get_sample_stddev(stat_t * a) {
 
 static inline count_t *
 count_init(count_t * c) {
-  if (c == NULL)
+  if (c == NULL) {
     c = (count_t *)calloc(sizeof(count_t), 1);
-  else
-    *c = 0;
+  } else {
+    //*c = 0;
+    c->crt = 0;
+    c->max = 0;
+  }
 
   return c;
 }
@@ -95,21 +102,35 @@ static inline void
 count_increment(count_t * c) {
   assert(c != NULL);
 
-  (*c)++;
+  //(*c)++;
+  c->crt++;
+  if (c->crt > c->max)
+    c->max = c->crt;
 }
 
 static inline void
 count_add(count_t * c, int64_t val) {
   assert(c != NULL);
 
-  *c += val;
+  //*c += val;
+  c->crt += val;
+  if (c->crt > c->max)  
+    c->max = c->crt;
 }
 
 static inline int64_t
 count_get_count(count_t * c) {
   assert(c != NULL);
 
-  return *c;
+  //return *c;
+  return c->crt;
+}
+
+static inline int64_t
+count_get_max(count_t * c) {
+  assert(c != NULL);
+
+  return c->max;
 }
 
 

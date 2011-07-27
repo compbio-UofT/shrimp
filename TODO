@@ -2,3 +2,4 @@
 - Rescue mode: if pair not mapped, try more sensitive window generation mode: 3 or 2.
 - Split mapping mode. (Major)
 - Rename window generation modes (2 is used for paired and unpaired with different meanings).
+- Indel taboo zone in letter space.

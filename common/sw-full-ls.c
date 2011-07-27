@@ -79,6 +79,7 @@ init_cell(int idx, int local_alignment) {
 }
 
 
+#ifdef DEBUG_SW
 static void print_sw(int lena, int lenb) {
 	int i,j;
 	printf("      %5s ","-");
@@ -144,6 +145,8 @@ static void print_sw_backtrace(int lena, int lenb) {
 		printf("\n");
 	}
 }
+#endif
+
 
 static int
 full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret, bool revcmpl,
@@ -629,10 +632,9 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
     struct anchor * anchors, int anchors_cnt, int local_alignment)
 {
 	struct sw_full_results scratch;
-	llint before;
 	int i, j, k;
 
-	before = rdtsc();
+	llint before = rdtsc(), after;
 
 	if (!initialised)
 		abort();
@@ -642,10 +644,10 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	assert(glen > 0 && glen <= dblen);
 	assert(rlen > 0 && rlen <= qrlen);
 
-	if (sfr == NULL)
-		sfr = &scratch;
-
-	memset(sfr, 0, sizeof(*sfr));
+	if (sfr == NULL) {
+	  sfr = &scratch;
+	  memset(sfr, 0, sizeof(*sfr));
+	}
 	memset(backtrace, 0, (dblen + qrlen) * sizeof(backtrace[0]));
 
 	dbalign[0] = qralign[0] = '\0';
@@ -666,5 +668,6 @@ sw_full_ls(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	sfr->qralign = xstrdup(qralign);
 
 	//swcells += (glen * rlen);
-	swticks += (rdtsc() - before);
+	after = rdtsc();
+	swticks += MAX(after - before, 0);
 }
