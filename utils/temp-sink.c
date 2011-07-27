@@ -24,7 +24,7 @@ size_t total_tmp, total_dest, total_in, total_out, total_out2;
 
 
 void
-logit(FILE * f, int stop, int exit_code, char * msg, ...)
+logit(FILE * f, int stop, int exit_code, char const * msg, ...)
 {
   va_list fmtargs;
 

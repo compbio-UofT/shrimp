@@ -234,7 +234,7 @@ common/my-alloc.o: common/my-alloc.c common/my-alloc.h
 clean:
 	rm -f bin/colourise bin/probcalc bin/gmapper* \
 	    bin/prettyprint* bin/probcalc_mp bin/shrimp_var \
-	    bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink
+	    bin/shrimp2sam utils/split-contigs bin/mergesam utils/temp-sink bin/fasta2fastq
 	find . -name '*.o' |xargs rm -f
 	find . -name  '*.core' |xargs rm -f
 	find . -name '*.pyc' |xargs rm -f
