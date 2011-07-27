@@ -372,7 +372,8 @@ The options used above have the following meaning:
 
 After the mapping jobs complete, we merge the results with:
 
-  $ $SHRIMP_FOLDER/bin/mergesam --letter-space reads.500kx2.36bp.ls.fa map.db?of4.sam > map.sam
+  $ $SHRIMP_FOLDER/bin/mergesam --letter-space \
+    reads.500kx2.36bp.ls.fa map.db?of4.sam > map.sam
 
 Above, the merging script we used corresponds to "same query set" (same reads)
 and "different databases" (disjoint chunks of hg18).
@@ -603,8 +604,8 @@ Paired Mapping Mode Input
 
   Several scripts are provided to get the reads in this format.
 
-  Alternatively, the reads in each file can be placed in two corresponding files,
-  which are then loaded using options -1 and -2.
+  Alternatively,  the  reads in  each file  can be  placed  in two corresponding
+  files, which are then loaded using options -1 and -2.
 
   CAUTION: gmapper will NOT check any of the above. If started in paired mode,
   it will simply fetch consecutive reads and assume they form a pair.
@@ -1069,12 +1070,13 @@ Output Control
 
   [ --sam-unaligned ]
 
-    If SAM output format is also selected dump unaligned reads to the SAM output.
+    If SAM  output format is  also selected  dump   unaligned reads to  the  SAM
+    output.
 
   [ --sam-header <filename> ]
 
-    Output the filename as header instead of regular SHRiMP / SAM header. Includes
-    additional lines defining a read group if need be.
+    Output   the  filename  as header    instead    of regular   SHRiMP  /   SAM
+    header. Includes additional lines defining a read group if need be.
   
   [ --read-group read_group,pool_name ]
 
@@ -1120,10 +1122,10 @@ Mapping Qualities
 
   [    --no-improper-mappings ]
 
-    Only relevant in paired mode, when --all-contigs and --single-best-mapping
-    are both given. By default, if SHRiMP decides the best mapping of a pair is
-    a singleton, it will attempt to pair it up with the best mapping of the
-    other read, if the latter is strong enough. This enables mapping in the
+    Only relevant in paired  mode, when --all-contigs  and --single-best-mapping
+    are both given. By default, if SHRiMP decides the best  mapping of a pair is
+    a singleton,  it will attempt  to pair it  up with  the best mapping  of the
+    other read,  if the latter  is  strong enough. This   enables mapping in the
     presence of large structural variations. The flag disables this behaviour.
 
 
@@ -1345,9 +1347,9 @@ Mapping Quality Values
 ----------------------
 
 As of v2.2.0, SHRiMP computes by default quality values for mappings, as well as
-for individual base calls. In letter space, base quality values are the same as
-the input base quality values. In colour space, base quality values are derived
-by running a forward-backward algorithm in order to compute the posterior
+for individual base calls. In letter space, base  quality values are the same as
+the input base quality values. In colour space,  base quality values are derived
+by running  a  forward-backward  algorithm in order    to compute the  posterior
 probability of every base call.
 
 Mapping quality values are  based  on  the  probability  a  certain  mapping  is
@@ -1358,24 +1360,24 @@ all other mappings of that read. For reference, see:  Li H., Ruan J., Durbin R.,
 scores" doi: 10.1101/gr.078212.108.
 
 For paired reads, a more elaborate computation is performed. Mappings are placed
-into three classes: paired, unpaired for the first read, and unpaired for the
-second read. Various weights are used to carefully select between the classes,
+into three classes:  paired, unpaired for the first  read, and  unpaired for the
+second read.  Various weights are used  to carefully select between the classes,
 taking into account the posteriors of the mappings, the read lengths, as well as
-prior assumptions on the sensitivity of SHRiMP. In the end, of all classes of
-mappings for a certain pair of reads, at most one will have quality value
-greater than or equal to 4. When --single-best-mapping is used, only one best
-mapping is output for each pair. (Note, the quality of this best mapping might
-still be less than 4. If those are undesirable, they should be filtered
+prior  assumptions on the sensitivity  of SHRiMP. In the  end, of all classes of
+mappings  for a  certain pair  of  reads, at  most one  will have quality  value
+greater than or equal  to 4.  When --single-best-mapping  is used, only one best
+mapping is output for each pair.  (Note, the  quality of this best mapping might
+still be  less  than  4. If  those  are  undesirable,  they should  be  filtered
 downstream from the SAM output file.)
 
-When using --single-best-mapping, if SHRiMP decides that the best mapping for a
-pair of reads is a singleton mapping (only one of the reads being mapped),
-SHRiMP will also look at the best singleton mapping of the other read. If that
-one is by itself strong enough, SHRiMP will forcefully pair up those mappings,
+When using --single-best-mapping, if SHRiMP decides that the  best mapping for a
+pair of  reads is a  singleton  mapping (only one  of  the reads being  mapped),
+SHRiMP will also look at  the best singleton mapping of  the other read. If that
+one is by itself strong  enough, SHRiMP will  forcefully pair up those mappings,
 and mark them as an "improper" mapping. (Specifically, bit 0x2 in the FLAG field
 of the SAM output will be 0). Such mappings do not respect any assumptions about
-the insert size distribution, and they can even be on different chromosomes.
-To disable this behaviour, see --no-improper-mappings.
+the insert size distribution, and they can even be on different chromosomes.  To
+disable this behaviour, see --no-improper-mappings.
 
 
 --------------------------------------------------------------------------------
