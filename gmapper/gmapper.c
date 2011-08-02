@@ -1340,6 +1340,7 @@ print_settings() {
   }
   if (Qflag) {
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
+  fprintf(stderr, "%s%-40s%d\n", my_tab, "Base qv delta:", qual_delta);
   }
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute mapping qualities:", compute_mapping_qualities? "yes" : "no");
   if (compute_mapping_qualities)
@@ -1680,6 +1681,7 @@ int main(int argc, char **argv){
 	bool a_gap_extend_set, b_gap_extend_set;
 	bool match_score_set, mismatch_score_set, xover_score_set;
 	bool match_mode_set = false;
+	bool qual_delta_set = false;
 
 	my_alloc_init(64l*1024l*1024l*1024l, 64l*1024l*1024l*1024l);
 
@@ -2185,6 +2187,9 @@ int main(int argc, char **argv){
 		case 42: // no-improper-mappings
 		  improper_mappings = false;
 		  break;
+		case 43: // qual value offset
+		  qual_delta = atoi(optarg);
+		  qual_delta_set = true;
 		default:
 			usage(progname, false);
 		}
@@ -2192,6 +2197,14 @@ int main(int argc, char **argv){
 
 	argc -= optind;
 	argv += optind;
+
+	// set default quality value delta
+	if (Qflag && !qual_delta_set) {
+	  if (shrimp_mode == MODE_LETTER_SPACE)
+	    qual_delta = DEF_LS_QUAL_DELTA;
+	  else
+	    qual_delta = DEF_CS_QUAL_DELTA;
+	}
 
 	if (Gflag && gapless_sw) {
 		fprintf(stderr,"error: cannot use global (or bfast) and ungapped mode at the same time!\n");

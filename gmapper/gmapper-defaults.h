@@ -38,6 +38,9 @@
 #define DEF_ANCHOR_WIDTH	8	/* width around anchors in full SW */
 #define DEF_INDEL_TABOO_LEN	0
 
+#define DEF_LS_QUAL_DELTA	64
+#define DEF_CS_QUAL_DELTA	33
+
 /* SW Scores */
 #define DEF_LS_MATCH_SCORE	10
 #define DEF_LS_MISMATCH_SCORE	-15
@@ -142,7 +145,8 @@
 	{"no-mapping-qualities",0,0,39},\
 	{"shrimp-format",0,0,40},\
 	{"half-paired",0,0,41},\
-	{"no-improper-mappings",0,0,42}\
+	{"no-improper-mappings",0,0,42},\
+	{"qv-offset",1,0,43}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \
