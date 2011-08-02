@@ -2190,6 +2190,7 @@ int main(int argc, char **argv){
 		case 43: // qual value offset
 		  qual_delta = atoi(optarg);
 		  qual_delta_set = true;
+		  break;
 		default:
 			usage(progname, false);
 		}
