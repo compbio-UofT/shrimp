@@ -142,6 +142,9 @@ struct option long_op[] =
 		{"stack-size",1,0,'s'},
 		{"unaligned-fastx",0,0,'u'},
 		{"aligned-fastx",0,0,'a'},
+		{"single-best",0,0,'S'},
+		{"insert-size-mean",1,0,'z'},
+		{"insert-size-stdev",1,0,'Z'},
                 {0,0,0,0}
         };
 
@@ -224,6 +227,9 @@ int main (int argc, char ** argv) {
 	options.read_rate=DEF_READ_RATE;
 	options.alignments_stack_size=DEF_ALIGNMENTS_STACK_SIZE;
 	options.threads=1;
+	options.single_best=false;
+	options.insert_size_mean=DEF_INSERT_SIZE_MEAN;
+	options.insert_size_stdev=DEF_INSERT_SIZE_STDEV;
 	found_sam_headers=false;
         int op_id;
         char short_op[] = "o:QN:Es:au";
@@ -232,6 +238,9 @@ int main (int argc, char ** argv) {
 		switch (c) {
 		case 'Q':
 			options.fastq=true;
+			break;
+		case 'S':
+			options.single_best=true;
 			break;
 		case 6:
 			options.buffer_size=string_to_byte_size(optarg);
@@ -321,6 +330,12 @@ int main (int argc, char ** argv) {
 		case 'u':
 			options.unaligned_fastx=true;
 			break;
+		case 'z':
+			options.insert_size_mean=atof(optarg);
+			break;
+		case 'Z':
+			options.insert_size_stdev=atof(optarg);
+			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
 			usage(argv[0]);
@@ -329,6 +344,10 @@ int main (int argc, char ** argv) {
         	c = getopt_long(argc, argv, short_op, long_op, &op_id);
 	}
 
+	if (options.single_best) {
+		options.max_outputs=1;
+		fprintf(stderr,"Setting max outputs to 1! because of single_best\n");	
+	}
 
 	if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
 		fprintf(stderr,"can only enter either --colour-space or --letter-space not both!\n");
@@ -505,10 +524,21 @@ int main (int argc, char ** argv) {
 			for (i=0; i<reads_to_process; i++) {
 				pretty * pa=master_ll[i].head;
 				while (pa!=NULL) {
-					if (pa->mate_pair!=NULL) {
-						fprintf(stdout,"%s\n",pa->mate_pair->sam_string);		
+					if (pa->paired_sequencing) {
+						if (pa->first_in_pair) {
+							fprintf(stdout,"%s\n",pa->sam_string);		
+							if (pa->mate_pair!=NULL) {
+								fprintf(stdout,"%s\n",pa->mate_pair->sam_string);		
+							}
+						} else {
+							if (pa->mate_pair!=NULL) {
+								fprintf(stdout,"%s\n",pa->mate_pair->sam_string);		
+							}
+							fprintf(stdout,"%s\n",pa->sam_string);		
+						}
+					} else {
+						fprintf(stdout,"%s\n",pa->sam_string);		
 					}
-					fprintf(stdout,"%s\n",pa->sam_string);		
 					pa=pa->next;
 				}
 			}

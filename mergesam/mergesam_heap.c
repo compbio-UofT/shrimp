@@ -8,13 +8,13 @@
 static inline bool e_compare(heap_pa_elem * a, heap_pa_elem * b) {
 	if (a->score>=b->score) {
 		return false;
-	} else if (a->score==b->score) {
+	} /*else if (a->score==b->score) {
 		if (a->isize_score<=b->isize_score) {
 			return false;
 		} else {
 			return true;
 		}
-	}
+	}*/
 	return true;
 }
 

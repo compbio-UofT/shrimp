@@ -1180,12 +1180,11 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_h2) {
 		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
 	}
-	if (pa->has_z) {
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z0
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z1
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z2
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z3
-		buffer_size+=SIZE_DOUBLE+SIZE_TAB+SIZE_SAM_AUX; //Z4
+	int i;
+	for (i=0; i<SAM2PRETTY_NUM_ZS; i++) {
+		if ((pa->has_zs&(1<<i))!=0) {
+			buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX; //Z
+		}	
 	}
 	if (pa->aux!=NULL) {
 		buffer_size+=SIZE_TAB+strlen(pa->aux);
@@ -1206,13 +1205,11 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 	if (pa->has_score) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
 	}	
-	if (pa->has_z) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ0:f:%.5e",pa->z[0]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ1:f:%.5e",pa->z[1]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ2:f:%.5e",pa->z[2]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ3:f:%.5e",pa->z[3]);
-		position+=snprintf(buffer+position,buffer_size-position,"\tZ4:f:%.5e",pa->z[4]);
-	} 
+	for (i=0; i<SAM2PRETTY_NUM_ZS; i++) {
+		if ((pa->has_zs&(1<<i))!=0) {
+			position+=snprintf(buffer+position,buffer_size-position,"\tZ%d:X:%d",i,pa->z[i]);
+		}	
+	}
 	if (pa->has_edit_distance) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
 	}	 
@@ -1274,6 +1271,7 @@ void pretty_print_sam_update(pretty * pa, bool inplace) {
 			fprintf(stderr,"%s\n",pa->sam_string);
 			fprintf(stderr,"|%s|\n",buffer);
 			fprintf(stderr,"|%s|\n",pa->aux);
+			fprintf(stderr,"%d\n",pa->has_zs);
 			exit(1);
 		}
 		strcpy(pa->sam_string,buffer);
@@ -1388,24 +1386,28 @@ static inline void switch_and_fill(int32_t k, char * data, pretty * pa) {
 			pa->h2=atoi(data);
 			break;
 		case ('Z'<<8)+'0':
-			pa->has_z=true;
-			pa->z[0]=atof(data);
+			pa->has_zs|=HAS_Z0;
+			pa->z[0]=atoi(data);
 			break;
 		case ('Z'<<8)+'1':
-			pa->has_z=true;	
-			pa->z[1]=atof(data);
+			pa->has_zs|=HAS_Z1;	
+			pa->z[1]=atoi(data);
 			break;
 		case ('Z'<<8)+'2':
-			pa->has_z=true;
-			pa->z[2]=atof(data);
+			pa->has_zs|=HAS_Z2;
+			pa->z[2]=atoi(data);
 			break;
 		case ('Z'<<8)+'3':
-			pa->has_z=true;	
-			pa->z[3]=atof(data);
+			pa->has_zs|=HAS_Z3;	
+			pa->z[3]=atoi(data);
 			break;
 		case ('Z'<<8)+'4':
-			pa->has_z=true;	
-			pa->z[4]=atof(data);
+			pa->has_zs|=HAS_Z4;	
+			pa->z[4]=atoi(data);
+			break;
+		case ('Z'<<8)+'5':
+			pa->has_zs|=HAS_Z5;	
+			pa->z[5]=atoi(data);
 			break;
 		default: 
 			break;
@@ -1500,7 +1502,7 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 	pa->read_qualities=start_of_string;
 	//get the score
 	pa->aux=NULL;
-	if (next_tab!=NULL) {
+	if (next_tab!=NULL && next_tab+6<length_of_string+sam_string) {
 		start_of_string=++next_tab;
 		next_tab=(char*)memchr(start_of_string,'\t',length_of_string-(next_tab-sam_string));
 		if (start_of_string[0]=='A' && start_of_string[1]=='S') {
@@ -1510,12 +1512,22 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 			pa->score=atoi(start_of_string+5);
 			pa->has_score=true;
 			//TODO ERROR NEED TO FIX THIS!!!!!
-			if (1==0 && next_tab!=NULL && next_tab[1]=='Z' && next_tab[2]=='0') {
-				pa->has_z=true;
-				int i; 
-				for (i=0; i<5; i++) {
+			assert(pa->has_zs==0);
+			if (next_tab!=NULL && (next_tab-sam_string)+6<length_of_string) {
+				int i;
+				for (i=0; next_tab!=NULL && i<SAM2PRETTY_NUM_ZS; i++) {
+					if (next_tab[1]!='Z') {
+						break;
+					}
+					int z_index=next_tab[2]-48;
+					if ((pa->has_zs&(1<<z_index))!=0) {
+						fprintf(stderr,"A fatal error occured parsing this sam line!\n");
+						exit(1);
+					}
+					pa->has_zs|=(1<<z_index);
+					
 					start_of_string=++next_tab;
-					assert(next_tab!=NULL);
+					
 					if (length_of_string-(next_tab-sam_string)<6) {
 						fprintf(stderr,"There has been an error in parsing ZX fields\n");
 						exit(1);
@@ -1529,14 +1541,8 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 						fprintf(stderr,"there has been an error parsing ZX fields! there must be 5 of them!\n");
 						exit(1);
 					}
-					pa->z[i]=atof(start_of_string+5);	
-					//increment
-					if (next_tab==NULL && i!=5) {
-						fprintf(stderr,"there has been an error in parsing ZX fields, ran short\n");
-						exit(1);
-					}
+					pa->z[z_index]=atoi(start_of_string+5);	
 				}
-				fprintf(stderr,"found %e %e\n",pa->z[0], pa->z[1]);
 				if (next_tab!=NULL) {
 					next_tab++;
 				}

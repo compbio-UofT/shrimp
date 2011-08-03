@@ -3,6 +3,8 @@
 #define DEF_MAX_ALIGNMENTS	-1
 #define DEF_MAX_OUTPUTS	20
 #define DEF_INSERT_SIZE -1
+#define DEF_INSERT_SIZE_MEAN 200
+#define DEF_INSERT_SIZE_STDEV 100
 #define GROWTH_FACTOR 1.3
 #define SIZE_READ_NAME 255
 //#define MIN(a,b) (((a) < (b)) ? (a) : (b))
@@ -33,11 +35,14 @@ typedef struct runtime_options {
 	int expected_insert_size;
 	int threads;
 	int number_of_sam_files;
+	double insert_size_mean;
+	double insert_size_stdev;
 	//output options
 	bool strata;
 	bool half_paired;
 	bool sam_unaligned;
 	bool sam_format;
+	bool single_best;
 	int32_t max_alignments;
 	int32_t max_outputs;
 	//determined at runtime options
