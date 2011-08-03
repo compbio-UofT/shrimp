@@ -116,6 +116,7 @@ typedef struct read_entry {
   bool		ignore;
   bool		paired;
   bool		first_in_pair;
+  bool		mapped;
   struct read_entry * mate_pair;
 } read_entry;
 
@@ -176,6 +177,7 @@ typedef struct pair_entry {
   struct read_hit_pair *	final_paired_hits;
   int				final_paired_hit_pool_size[2];
   int				n_final_paired_hits;
+  bool				mapped;
 } pair_entry;
 
 

@@ -183,7 +183,7 @@ reverse(char* s, char* t)  // USING TWO ARRAYS FOR THIS IS BAD CODE!!!
  */
 void
 hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp,
-	   bool first_in_pair, int* hits, int satisfying_alignments, bool improper_mapping = false)
+	   bool first_in_pair, int* hits, int satisfying_alignments, bool improper_mapping)
 /*
  * This function sets the strings output1 and output2 to be the output for the current read and if in sam mode its matepair
  * It is capable of outputting regular shrimp output, pretty print output, and sam output
@@ -198,7 +198,7 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
  */
 {
   assert(re != NULL);
-  assert((rh != NULL && rh->sfrp != NULL) || (rh_mp != NULL && rh_mp->sfrp != NULL));
+  //assert((rh != NULL && rh->sfrp != NULL) || (rh_mp != NULL && rh_mp->sfrp != NULL));
 
   int thread_id = omp_get_thread_num();
   char ** output_buffer = &thread_output_buffer_filled[thread_id];

@@ -1716,6 +1716,7 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
 	for (i = 0; i < n_hits_pass2; i++)
 	  hits_pass2[i]->sfrp->in_use = false;
       }
+      re->mapped = true;
     }
 
     // free pass1 structs
@@ -2335,6 +2336,7 @@ handle_readpair(pair_entry * pe,
 	  hits_pass2[i].rh[1]->sfrp->in_use = false;
 	}
       }
+      pe->mapped = true;
     }
 
     for (i = 0; i < n_hits_pass1; i++) {
@@ -2359,4 +2361,25 @@ handle_readpair(pair_entry * pe,
 
   // OUTPUT
   readpair_output(pe);
+
+  if (aligned_reads_file != NULL && (pe->mapped || re1->mapped || re2->mapped)) {
+#pragma omp critical (aligned_reads_file)
+    {
+      fasta_write_read(aligned_reads_file, re1);
+      fasta_write_read(aligned_reads_file, re2);
+    }
+  }
+  if ((unaligned_reads_file != NULL || sam_unaligned) && !(pe->mapped || re1->mapped || re2->mapped)) {
+#pragma omp critical (unaligned_reads_file)
+    {
+      if (unaligned_reads_file != NULL) {
+	fasta_write_read(unaligned_reads_file, re1);
+	fasta_write_read(unaligned_reads_file, re2);
+      }
+    }
+    if (sam_unaligned) {
+      hit_output(re1, NULL, NULL, true, NULL, 0);
+      hit_output(re2, NULL, NULL, false, NULL, 0);
+    }
+  }
 }
