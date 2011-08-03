@@ -637,9 +637,9 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	  else // paired mode
 	  {
 	    if (rh != NULL && rh_mp != NULL && !improper_mapping) {
-	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ2:i:%d\tZ3:i:%d\tZ4:i:%d",
+	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ2:i:%d\tZ3:i:%d\tZ4:i:%d\tZ6:i:%d",
 		  double_to_neglog(rh->sfrp->z2), double_to_neglog(rh->sfrp->z3),
-		  double_to_neglog(rh->sfrp->pr_top_random));
+		  double_to_neglog(rh->sfrp->pr_top_random), double_to_neglog(rh->sfrp->insert_size_denom));
 	    } else {
 	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ0:i:%d\tZ1:i:%d\tZ4:i:%d\tZ5:i:%d",
 		  double_to_neglog(rh->sfrp->z0), double_to_neglog(rh->sfrp->z1),
@@ -760,10 +760,16 @@ compute_paired_mqv(pair_entry * pe)
   }
 
   // renormalize insert sizes into a distribution
-  insert_size_denom = 0;
+  insert_size_denom = 0.0;
   for (i = 0; i < pe->n_final_paired_hits; i++) {
     double pr_ins = get_pr_insert_size(pe->final_paired_hits[i].insert_size);
     insert_size_denom += pr_ins;
+  }
+  // write denom to all sfr structs of paired mappings
+  for (nip = 0; nip < 2; nip++) {
+    for (i = 0; i < pe->final_paired_hit_pool_size[nip]; i++) {
+      pe->final_paired_hit_pool[nip][i].sfrp->insert_size_denom = insert_size_denom;
+    }
   }
 
   // compute paired posteriors
