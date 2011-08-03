@@ -103,21 +103,29 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 	h->load=0;
 	heap_pa_elem e;
 	pretty * pa=NULL;
+	//keep track of the best pair for each file
 	pretty * best_pair_for_file[options.number_of_sam_files];
 	if (options.single_best) {
 		memset(best_pair_for_file,0,sizeof(pretty*)*options.number_of_sam_files);
 	}
+	//sum up the z3s over open SAM files
 	bool z3s_summed[options.number_of_sam_files];
 	double z3_sum=0;
 	memset(z3s_summed,0,sizeof(bool)*options.number_of_sam_files);
+	//set up the z4 min with its max value
 	double z4_min=1.0;
 	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
+		//local_ll - the linked list of SAM structures for a given read, file and mapping class
+		// here we iterate over all files for a specific read and mapping class
 		pp_ll * local_ll = ll[i]+PAIRED;
 		if (local_ll->length>0) {
 			pa = local_ll->head;
+			//iterate over all SAM structs in this list
 			while (pa!=NULL) {
+				//all of these should be 'properly paired' - this means here that both sides of the read are mapped
 				assert(pa->proper_pair);
+				// if single_best is on, just grab the best mapping for each file
 				if (options.single_best) {
 					pretty * max_pa=NULL;
 					if (pa->mapq>pa->mate_pair->mapq) {
@@ -129,7 +137,6 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 					if (best_pair_for_file[max_pa->fileno]==NULL || best_pair_for_file[max_pa->fileno]->mapq<max_pa->mapq) {
 						best_pair_for_file[max_pa->fileno]=max_pa;
 					}
-					//e.score=MAX(pa->mapq,pa->mate_pair->mapq);
 				} else {
 					e.score=pa->score+pa->mate_pair->score;
 					e.rest=pa;
@@ -149,18 +156,20 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 				}
 				//take the min of z4
 				z4_min=-MAX(-z4_min,-inv_tnlog(pa->z[4]));
-				//put it on the heap
+
 				pa=pa->next;
 			}
 		}
 	}
-	for (i=0; i<h->load; i++) {
-		//TODO BASE 10
-		pretty * pa = h->array[i].rest;
-		pa->z[3]=pa->mate_pair->z[3]=tnlog(z3_sum);
-		pa->z[4]=pa->mate_pair->z[4]=tnlog(z4_min);	
-	}
 	if (options.single_best) {
+		//update everything in the best_lists with the new values
+		for (i=0; i<options.number_of_sam_files; i++) {
+			pretty * pa = best_pair_for_file[i];
+			if (pa!=NULL) {
+				pa->z[3]=pa->mate_pair->z[3]=tnlog(z3_sum);
+				pa->z[4]=pa->mate_pair->z[4]=tnlog(z4_min);	
+			}
+		}
 		double ins_sz_denom=0.0;
 		for (i=0; i<options.number_of_sam_files; i++) {
 			if (best_pair_for_file[i]!=NULL) {
@@ -184,6 +193,13 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 			e.rest=best_pair_for_file[best_index];
 			assert(e.rest!=NULL);
 			heap_pa_insert_bounded(h,&e);
+		}
+	} else {
+		//update everything on the heap with the new values
+		for (i=0; i<h->load; i++) {
+			pretty * pa = h->array[i].rest;
+			pa->z[3]=pa->mate_pair->z[3]=tnlog(z3_sum);
+			pa->z[4]=pa->mate_pair->z[4]=tnlog(z4_min);	
 		}
 	}
 	//dump the results in the first files linked list
@@ -213,36 +229,44 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 	h->load=0;
 	heap_pa_elem e;
 	pretty * pa=NULL;
-	pretty * best_pair_for_file[options.number_of_sam_files];
-	if (options.single_best) {
-		memset(best_pair_for_file,0,sizeof(pretty*)*options.number_of_sam_files);
-	}
+	//keep track of which files we have summed z1 from
 	bool z1s_summed[options.number_of_sam_files];
-	double z1_sum=0;
 	memset(z1s_summed,0,sizeof(bool)*options.number_of_sam_files);
+	//the running z1 sum tally
+	double z1_sum=0;
+	//initialize the z4 min to its max value
 	double z4_min=1.0;
 	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
+		//local_ll - the linked list of SAM structures for a given read, file and mapping class
+		// here we iterate over all files for a specific read and mapping class
 		pp_ll * local_ll = ll[i]+map_class;
 		if (local_ll->length>0) {
+			//iterate over all entries in the linked list
 			pa = local_ll->head;
 			while (pa!=NULL) {
 				assert(!pa->paired_sequencing || !pa->proper_pair);
-				assert(pa->mapped);
-				//Add in MAPQ code to grab stats here?
+				assert(pa->mapped); //should be gauranteed this, just how things are setup
+				//if we have not summed this file into z1, do so now
+				assert((pa->has_zs&(1<<1))!=0); //assert this SAM entry has the z1 field
 				if (!z1s_summed[pa->fileno]) {
 					assert((pa->has_zs&(1<<1))!=0);
 					z1_sum+=inv_tnlog(pa->z[1]);
 					z1s_summed[pa->fileno]=true;
 				}
-				assert((pa->has_zs&(1<<4))!=0);
+				
+				//update the MIN : TODO use proper MIN instead of negative MAX
+				assert((pa->has_zs&(1<<4))!=0); //assert this SAM entry has the z4 field
 				z4_min=-MAX(-z4_min,-inv_tnlog(pa->z[4]));
+
+				//insert this read into the heap
 				if (options.single_best) {
 					e.score=pa->z[0];
 				} else {
 					e.score=pa->score+(pa->mate_pair!=NULL ? pa->mate_pair->score : 0);
 				}
 				e.rest=pa;
+
 				assert(!options.single_best || options.max_outputs==1);
 				if (options.strata) {
 					heap_pa_insert_bounded_strata(h,&e);
@@ -253,7 +277,7 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 			}
 		}
 	}
-	//put in the new z1s
+	//update the z1 and z4s for all entries on the heap
 	for (i=0; i<h->load; i++) {
 		assert(z1_sum!=0);
 		pretty * pa = h->array[i].rest;
@@ -413,6 +437,15 @@ static inline void remove_offending_fields(pretty * pa) {
 	pa->has_h2=false;
 }
 
+
+//This function is entered with the following
+//ll - an array of linked lists
+//	it has a set of linked lists for each open SAM file
+//      it is indexed like this
+//             ll[fileno]+map_class
+//	this returns a linked list of SAM entry structures for this read, for this file, for this class
+//m_ll - a final list where to store SAM structures to be printed (happens outside of this function), they are printed by just printing the sam structures sam_string, so all rendering must be done in here, more specifically in an update sam string function call at the end
+//h - a heap for convience
 void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	//want to make a heap
 	//check first if paired of not
@@ -422,6 +455,9 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	//heap_pa_elem e;
 	pretty * pa = NULL;
 	pretty * unaligned_pa=NULL;
+	//consolidate in this case means get the relevant mappings
+	// for example in the case options.single_best is set only get 
+	// the best one for each class
 	if (options.paired) {
 		consolidate_paired(ll,&unaligned_pa,h);
 		if (options.half_paired) { 
@@ -433,6 +469,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 	} else if (options.unpaired) {
 		consolidate_single(ll,UNPAIRED,&unaligned_pa,h);
 	}
+	//this part of the if clause deals with printing unmapped SAM entries or fasta or fastq format instead of SAM
 	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_fastx)) {
 		if (unaligned_pa==NULL) {
 			if (!options.half_paired) { 
@@ -473,18 +510,26 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 				}
 			}
 		}
+	//The usual CASE, where we want to print SAM format
 	} else if (!options.unaligned_fastx) {
 		//here we can do some magic with the invidiual linked lists
+		//in the case of paired sequencing
 		pp_ll * paired_list=ll[0]+PAIRED;
-		pp_ll * unpaired_list=ll[0]+UNPAIRED;
 		pp_ll * first_leg_list=ll[0]+FIRST_LEG;
 		pp_ll * second_leg_list=ll[0]+SECOND_LEG;
+		//in the case of unpaired sequencing
+		pp_ll * unpaired_list=ll[0]+UNPAIRED;
+
+		//here is the spot to compute class priors and finalize the mapq value for the mappings
+		//TODO class priors	
+
+		//here we just trivially prepare the final outputed list
+		//this would be adjusted in case of 'all_contigs' where we would
+		//just add one of the final classes
 		pp_ll_append_list(m_ll,paired_list);
 		pp_ll_append_list(m_ll,unpaired_list);
 		pp_ll_append_list(m_ll,first_leg_list);
 		pp_ll_append_list(m_ll,second_leg_list);
-		//here is the spot to compute class priors and finalize the mapq value for the mappings
-		//TODO ASAP	
 
 		//past here is only rendering of the final output string
 		pa=m_ll->head;
@@ -496,6 +541,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 				pretty_print_sam_fastx(pa, true);
 			} else {
 				remove_offending_fields(pa);
+				//render the new sam string in place
 				pretty_print_sam_update(pa, true);
 			}
 			//revert_sam_string(pa);
@@ -507,6 +553,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h) {
 					pretty_print_sam_fastx(pa->mate_pair, true);
 				} else {
 					remove_offending_fields(pa->mate_pair);
+					//render the new sam string in place
 					pretty_print_sam_update(pa->mate_pair, true);
 				}
 				//revert_sam_string(pa->mate_pair);
