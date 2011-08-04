@@ -150,7 +150,8 @@
 	{"sam-header-hd",1,0,44},\
 	{"sam-header-sq",1,0,45},\
 	{"sam-header-rg",1,0,46},\
-	{"sam-header-pg",1,0,47}\
+	{"sam-header-pg",1,0,47},\
+	{"no-autodetect-input",0,0,48}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

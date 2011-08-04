@@ -292,7 +292,7 @@ launch_scan_threads()
 
   //open the fasta file and check for errors
   if (single_reads_file) {  
-    fasta = fasta_open(reads_filename, shrimp_mode, Qflag);
+    fasta = fasta_open(reads_filename, shrimp_mode, Qflag, autodetect_input? &Qflag : NULL);
     if (fasta == NULL) {
       fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
       return (false);
@@ -300,7 +300,7 @@ launch_scan_threads()
       fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
     }
   } else {
-    left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag);
+    left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag, autodetect_input? &Qflag : NULL);
     if (left_fasta == NULL) {
       fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
       return (false);
@@ -2225,6 +2225,9 @@ int main(int argc, char **argv){
 		  sam_header_pg = fopen(optarg, "r");
 		  if (sam_header_pg == NULL)
 		    crash(1, 1, "cannot open sam header file with PG lines [%s]", optarg);
+		  break;
+		case 48: // no-autodetect-input
+		  autodetect_input = false;
 		  break;
 		default:
 			usage(progname, false);

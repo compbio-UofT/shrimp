@@ -82,7 +82,7 @@ typedef struct _fasta_stats_t {
 } * fasta_stats_t;
 
 
-fasta_t	  fasta_open(const char *, int, bool);
+fasta_t	  fasta_open(const char *, int, bool, bool * = NULL);
 void	  fasta_close(fasta_t);
 //bool	  fasta_get_next_with_range(fasta_t, char **, char **, bool *, char **, char **);
 bool	  fasta_get_next_read_with_range(fasta_t, read_entry * re);

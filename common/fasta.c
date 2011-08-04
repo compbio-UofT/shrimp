@@ -54,11 +54,12 @@ char fasta_basemap_int_to_char[2][16] = {
 
 
 fasta_t
-fasta_open(const char *file, int space, bool fastq)
+fasta_open(const char *file, int space, bool fastq, bool * fastq_var)
 {
 	fasta_t fasta = NULL;
 	struct stat sb;
 	gzFile fp;
+	int c;
 	uint64_t before = rdtsc();
 
 	assert(space == COLOUR_SPACE || space == LETTER_SPACE);
@@ -72,7 +73,7 @@ fasta_open(const char *file, int space, bool fastq)
 			return NULL;
 		}
 		if (!S_ISREG(sb.st_mode)) {
-			fprintf(stderr,"warning: \"%s\" is not a regular file!\n",file);
+		  logit(0, "input file [%s] is not a regular file", file);
 			/* why don't we allow named pipes?
 			fprintf(stderr,"error: \"%s\" is not a regular file!\n",file);
 			total_ticks += (rdtsc() - before);
@@ -85,6 +86,38 @@ fasta_open(const char *file, int space, bool fastq)
 		fprintf(stderr,"error: Failed to open \"%s\" for reading!\n",file);
 		total_ticks += (rdtsc() - before);
 		return NULL;		
+	}
+
+	// autodetect fasta/fastq format
+	if (fastq_var != NULL) {
+	  c = gzgetc(fp);
+	  while (c == '#' || c == ';') {
+	    // discard this line
+	    while (c != -1 && c != '\n')
+	      c = gzgetc(fp);
+
+	    if (gzeof(fp))
+	      break;
+	    if (c == -1)
+	      crash(1, 1, "did not find the end of a comment line in the input file [%s]. try disabling input autodetection", file);
+
+	    c = gzgetc(fp);
+	  }
+	  if (!gzeof(fp)) {
+	    if (c == -1)
+	      crash(1, 1, "did not find a non-comment line in the input file [%s]. try disabling input autodetection", file);
+	    if (c == '@') {
+	      logit(0, "detected fastq format in input file [%s]", file);
+	      *fastq_var = true;
+	      fastq = true;
+	    } else if (c == '>') {
+	      logit(0, "detected fasta format in input file [%s]", file);
+	      *fastq_var = false;
+	      fastq = false;
+	    } else
+	      crash(1, 0, "unrecognized character [%c] in input file [%s]. try disabling input autodetection", (char)c, file);
+	    gzungetc(c, fp);
+	  }
 	}
 
 	fasta = (fasta_t)xmalloc(sizeof(*fasta));
