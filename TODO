@@ -3,3 +3,4 @@
 - Split mapping mode. (Major)
 - Rename window generation modes (2 is used for paired and unpaired with different meanings).
 - Indel taboo zone in letter space.
+- Sort reads when using --un, --al.

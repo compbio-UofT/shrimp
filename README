@@ -1077,18 +1077,30 @@ Output Control
 
     Output   the  filename  as header    instead    of regular   SHRiMP  /   SAM
     header. Includes additional lines defining a read group if need be.
+
+  [ --sam-header-XX <filename> ]
+
+    Where XX is one of "hd", "sq", "rg", "pg". Replace the normal gmapper output
+    for that line with the contents of that file.
+
+    Note: If --sam-header is given, all headers are taken from  that file and no
+    additional ones  are printed.  If some --sam-header-XX   are given  and some
+    aren't, the given  ones  are taken  from the associated  files, and  the not
+    given ones are filled in by gmapper.
   
   [ --read-group read_group,pool_name ]
 
-    Include in the same output the corresponding read_group and pool_name.
+    Include in the SAM  output the corresponding  read_group and pool_name. This
+    is ignored if either --sam-header or --sam-header-rg are given.
 
   [ --un <filename> ]
-
-    Print unaligned reads to target file.
-
   [ --al <filename> ]
 
-    Print aligned reads to target file.
+    Print unaligned/aligned reads to target file in the same format as the input
+    (fasta or fastq).
+
+    NOTE: Currently, the  reads in these files  are not guaranteed to  be sorted
+    in the same order as in the input when multiple threads are used!
 
   [    --progress <value> ]
 
