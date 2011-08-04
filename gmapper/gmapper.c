@@ -1728,6 +1728,21 @@ int main(int argc, char **argv){
 	}
 
 	
+	//get a copy of the command line
+	size_t size_of_command_line=0;
+	for (i=0; i<argc; i++) {
+		size_of_command_line+=strlen(argv[i])+1;
+	}
+	size_of_command_line++;
+	char command_line[size_of_command_line];
+	size_t offset=0;
+	for (i=0; i<argc; i++) {
+		offset+=sprintf(command_line+offset,"%s",argv[i]);
+		if (i+1!=argc) {
+			offset+=sprintf(command_line+offset," ");
+		}
+	}
+	assert(offset+1<=size_of_command_line);
 
 	while ((ch = getopt_long(argc,argv,optstr,getopt_long_options,NULL)) != -1){
 		switch (ch) {
@@ -2831,10 +2846,11 @@ int main(int argc, char **argv){
 	  }
 	  //print command line args used to invoke SHRiMP
 	  fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
-	  for (i=0; i<(shrimp_args.argc-1); i++) {
-	    fprintf(stdout,"%s ",shrimp_args.argv[i]);
-	  }
-	  fprintf(stdout,"%s\n",shrimp_args.argv[i]);
+	  fprintf(stdout,"%s\n",command_line);
+	  //for (i=0; i<(shrimp_args.argc-1); i++) {
+	  //  fprintf(stdout,"%s ",shrimp_args.argv[i]);
+	  //}
+	  //fprintf(stdout,"%s\n",shrimp_args.argv[i]);
 	} else {
 	  output = output_format_line(Rflag);
 	  puts(output);

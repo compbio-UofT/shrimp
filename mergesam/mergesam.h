@@ -1,10 +1,11 @@
 #ifndef __MERGESAM_H__
 #define __MERGESAM_H__
-#define DEF_MAX_ALIGNMENTS	-1
-#define DEF_MAX_OUTPUTS	20
+
+
+#define DEF_MAX_OUTPUTS	10
+
 #define DEF_INSERT_SIZE -1
-#define DEF_INSERT_SIZE_MEAN 200
-#define DEF_INSERT_SIZE_STDEV 100
+
 #define GROWTH_FACTOR 1.3
 #define SIZE_READ_NAME 255
 //#define MIN(a,b) (((a) < (b)) ? (a) : (b))
@@ -36,7 +37,7 @@ typedef struct runtime_options {
 	int threads;
 	int number_of_sam_files;
 	double insert_size_mean;
-	double insert_size_stdev;
+	double insert_size_stddev;
 	//output options
 	bool strata;
 	bool half_paired;
@@ -52,4 +53,10 @@ typedef struct runtime_options {
 	bool aligned_fastx;
 };
 extern runtime_options options;
+
+typedef struct output_buffer {
+	size_t size;
+	size_t used;
+	char * base;
+};
 #endif

@@ -1,8 +1,11 @@
-#ifndef __SAM_READER__
-#define __SAM_READER__
 #include "file_buffer.h"
 #include "fastx_readnames.h"
 #include "sam2pretty_lib.h"
+#include "mergesam_heap.h"
+#include "mergesam.h"
+
+#ifndef __SAM_READER__
+#define __SAM_READER__
 
 typedef struct pp_ll pp_ll;
 struct pp_ll {
@@ -25,7 +28,7 @@ struct sam_reader {
 	int fileno;
 };
 void parse_sam(sam_reader * sr,fastx_readnames * fxrn);
-void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa * h);
+void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa * h,output_buffer * ob);
 void grow_sam_pretty(sam_reader * sr);
 int sam_header_sort(const void * a, const void *b);
 void sam_close(sam_reader * sr);

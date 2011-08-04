@@ -1,11 +1,22 @@
-//jul 27 2011
+//aug 03 2011
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include "sam2pretty_lib.h"
+#include "render.h"
+
+double inv_tnlog(int x) { 
+        return exp(-(x/1000.0)); 
+} 
+ 
+int tnlog(double x) { 
+        return (int)(1000.0 * -log(x)); 
+}
+
 
 bool sam2pretty_lib_verbose=false;
 
@@ -1015,269 +1026,6 @@ pretty * pretty_sub_pretty(pretty * parent, int32_t from, int32_t to) {
 }
 
 
-void pretty_print_sam_unaligned(pretty * pa,bool inplace) {
-	size_t buffer_size=13*SIZE_TAB+SIZE_NEWLINE+SIZE_NULL+strlen(pa->read_name)+SIZE_FLAG+
-		1+1+SIZE_MAPQ+1+1+1+1+1+1;
-	if (pa->colour_space) {
-		if (pa->has_cs_qualities) {
-			buffer_size+=strlen(pa->cs_qualities)+SIZE_TAB+SIZE_SAM_AUX;
-		}
-		buffer_size+=strlen(pa->cs_string)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_read_group) {
-		buffer_size+=strlen(pa->read_group)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_r2) {
-		buffer_size+=strlen(pa->r2);
-	}
-	char buffer[buffer_size];
-	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
-		pa->read_name,
-		pa->flags | 0x4 | 0x8,
-		"*",
-		0,
-		0,
-		"*",
-		"*",
-		0,
-		0,
-		"*",
-		"*");
-	if (pa->colour_space) {
-		if (pa->has_cs_qualities) {
-			position+=snprintf(buffer+position,buffer_size-position,"\tCQ:Z:%s",pa->cs_qualities);
-		}
-		position+=snprintf(buffer+position,buffer_size-position,"\tCS:Z:%s",pa->cs_string);
-	}
-	if (pa->has_read_group) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
-	}
-	if (pa->has_r2) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tR2:Z:%s",pa->r2);
-	}
-	if (!inplace) {
-		position+=snprintf(buffer+position,buffer_size-position,"\n");
-		if (pa->sam_string!=NULL) {
-			free(pa->sam_string);
-		}
-		if (buffer_size<position) {
-			fprintf(stderr,"Failed to properly bound memory needed for updated sam alignment\n");
-			exit(1);
-		}
-		pa->sam_string=(char*)malloc(sizeof(char)*(position+1));
-		if (pa->sam_string==NULL) {
-			fprintf(stderr,"Failed to allocate memory to store same string!\n");
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-	} else {
-		if (position>pa->sam_string_length) {
-			fprintf(stderr,"failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-
-	}
-}
-
-
-void pretty_print_sam_fastx(pretty* pa, bool inplace ) { 
-	char * read; char * qualities=NULL;
-	if (pa->colour_space) {
-		read=pa->cs_string;
-		if (pa->has_cs_qualities) {
-			qualities=pa->cs_qualities;
-			assert(strlen(pa->cs_string)-1==strlen(pa->cs_qualities));
-		}
-	} else {
-		read=pa->read_string;
-		if (pa->read_qualities[0]!='*') {
-			qualities=pa->read_qualities;
-		}
-	}
-	size_t buffer_size=1+strlen(pa->read_name)+1
-		+strlen(read)+1;
-	if (qualities!=NULL) {
-		buffer_size+=1+1
-			+strlen(qualities)+1;
-	}	
-	assert(buffer_size<1000);
-	char buffer[buffer_size];
-	size_t position;
-	if (qualities==NULL) {
-		//fasta
-		position=snprintf(buffer,buffer_size,">%s\n%s\n",pa->read_name,read);
-	} else {
-		//fastq
-		position=snprintf(buffer,buffer_size,"@%s\n%s\n+\n%sX\n",pa->read_name,read,qualities);
-	} 
-	if (!inplace) {
-		position+=snprintf(buffer+position,buffer_size-position,"\n");
-		if (pa->sam_string!=NULL) {
-			free(pa->sam_string);
-		}
-		if (buffer_size<position) {
-			fprintf(stderr,"Failed to properly bound memory needed for updated sam alignment\n");
-			exit(1);
-		}
-		pa->sam_string=(char*)malloc(sizeof(char)*(position+1));
-		if (pa->sam_string==NULL) {
-			fprintf(stderr,"Failed to allocate memory to store same string!\n");
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-	} else {
-		if (position>pa->sam_string_length) {
-			fprintf(stderr,"Failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-	}
-}
-
-void pretty_print_sam_update(pretty * pa, bool inplace) {
-	size_t buffer_size=13*SIZE_TAB+SIZE_NEWLINE+SIZE_NULL+strlen(pa->read_name)+SIZE_FLAG+
-		strlen(pa->reference_name)+SIZE_POS+SIZE_MAPQ+strlen(pa->cigar)+
-		strlen(pa->mate_reference_name)+SIZE_MPOS+SIZE_ISIZE+strlen(pa->read_string)+
-		strlen(pa->read_qualities);
-	assert(buffer_size<1000);
-	if (pa->has_score) {
-		buffer_size+=SIZE_TAB+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_edit_distance) {
-		buffer_size+=SIZE_TAB+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->colour_space) {
-		if (pa->has_cs_qualities) {
-			buffer_size+=strlen(pa->cs_qualities)+SIZE_TAB+SIZE_SAM_AUX;
-		}
-		buffer_size+=strlen(pa->cs_string)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_cs_mismatches) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_cs_edit_string) {
-		buffer_size+=strlen(pa->cs_edit_string)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_read_group) {
-		buffer_size+=strlen(pa->read_group)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_r2) {
-		buffer_size+=strlen(pa->r2)+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_ih) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_hi) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_h0) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_h1) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	if (pa->has_h2) {
-		buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX;
-	}
-	int i;
-	for (i=0; i<SAM2PRETTY_NUM_ZS; i++) {
-		if ((pa->has_zs&(1<<i))!=0) {
-			buffer_size+=SIZE_32bit+SIZE_TAB+SIZE_SAM_AUX; //Z
-		}	
-	}
-	if (pa->aux!=NULL) {
-		buffer_size+=SIZE_TAB+strlen(pa->aux);
-	}
-	char buffer[buffer_size];
-	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
-		pa->read_name,
-		pa->flags,
-		pa->reference_name,
-		pa->genome_start_unpadded,
-		pa->mapq,
-		pa->cigar,
-		pa->mate_reference_name,
-		pa->mate_genome_start_unpadded,
-		pa->isize,
-		pa->read_string,
-		pa->read_qualities);
-	if (pa->has_score) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tAS:i:%d",pa->score);
-	}	
-	for (i=0; i<SAM2PRETTY_NUM_ZS; i++) {
-		if ((pa->has_zs&(1<<i))!=0) {
-			position+=snprintf(buffer+position,buffer_size-position,"\tZ%d:X:%d",i,pa->z[i]);
-		}	
-	}
-	if (pa->has_edit_distance) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tNM:i:%d",pa->edit_distance);
-	}	 
-	if (pa->colour_space) {
-		if (pa->has_cs_qualities) {
-			position+=snprintf(buffer+position,buffer_size-position,"\tCQ:Z:%s",pa->cs_qualities);
-		}
-		position+=snprintf(buffer+position,buffer_size-position,"\tCS:Z:%s",pa->cs_string);
-	}
-	if (pa->has_cs_mismatches) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tCM:i:%d",pa->cs_mismatches);
-	}
-	if (pa->has_cs_edit_string) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tXX:Z:%s",pa->cs_edit_string);
-	}
-	if (pa->has_r2) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tR2:Z:%s",pa->r2);
-	}
-	if (pa->has_hi) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tHI:i:%d",pa->hi);
-	}
-	if (pa->has_ih) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tIH:i:%d",pa->ih);
-	}
-	if (pa->has_h0) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tH0:i:%d",pa->h0);
-	}
-	if (pa->has_h1) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tH1:i:%d",pa->h1);
-	}
-	if (pa->has_h2) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tH2:i:%d",pa->h2);
-	}
-	if (pa->has_read_group) {
-		position+=snprintf(buffer+position,buffer_size-position,"\tRG:Z:%s",pa->read_group);
-	}
-	if (pa->aux!=NULL) {
-		position+=snprintf(buffer+position,buffer_size-position,"\t%s",pa->aux);
-	}
-	if (!inplace) {
-		position+=snprintf(buffer+position,buffer_size-position,"\n");
-		if (pa->sam_string!=NULL) {
-			free(pa->sam_string);
-		}
-		if (buffer_size<position) {
-			fprintf(stderr,"Failed to properly bound memory needed for updated sam alignment\n");
-			exit(1);
-		}
-		pa->sam_string=(char*)malloc(sizeof(char)*(position+1));
-		if (pa->sam_string==NULL) {
-			fprintf(stderr,"Failed to allocate memory to store same string!\n");
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-	} else {
-		if (position>pa->sam_string_length) {
-			fprintf(stderr,"Failed in place update! %lu vs %lu\n",position,pa->sam_string_length);
-			fprintf(stderr,"%s\n",pa->read_name);
-			fprintf(stderr,"%s\n",pa->sam_string);
-			fprintf(stderr,"|%s|\n",buffer);
-			fprintf(stderr,"|%s|\n",pa->aux);
-			fprintf(stderr,"%d\n",pa->has_zs);
-			exit(1);
-		}
-		strcpy(pa->sam_string,buffer);
-
-	}
-}
 
 void pretty_print_sam_force_ls(FILE * f, pretty * pa) {
 	pretty pa_dup=*pa;
@@ -1387,27 +1135,31 @@ static inline void switch_and_fill(int32_t k, char * data, pretty * pa) {
 			break;
 		case ('Z'<<8)+'0':
 			pa->has_zs|=HAS_Z0;
-			pa->z[0]=atoi(data);
+			pa->z[0]=inv_tnlog(atoi(data));
 			break;
 		case ('Z'<<8)+'1':
 			pa->has_zs|=HAS_Z1;	
-			pa->z[1]=atoi(data);
+			pa->z[1]=inv_tnlog(atoi(data));
 			break;
 		case ('Z'<<8)+'2':
 			pa->has_zs|=HAS_Z2;
-			pa->z[2]=atoi(data);
+			pa->z[2]=inv_tnlog(atoi(data));
 			break;
 		case ('Z'<<8)+'3':
 			pa->has_zs|=HAS_Z3;	
-			pa->z[3]=atoi(data);
+			pa->z[3]=inv_tnlog(atoi(data));
 			break;
 		case ('Z'<<8)+'4':
 			pa->has_zs|=HAS_Z4;	
-			pa->z[4]=atoi(data);
+			pa->z[4]=inv_tnlog(atoi(data));
 			break;
 		case ('Z'<<8)+'5':
 			pa->has_zs|=HAS_Z5;	
-			pa->z[5]=atoi(data);
+			pa->z[5]=inv_tnlog(atoi(data));
+			break;
+		case ('Z'<<8)+'6':
+			pa->has_zs|=HAS_Z6;	
+			pa->z[6]=inv_tnlog(atoi(data));
 			break;
 		default: 
 			break;
@@ -1541,7 +1293,7 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 						fprintf(stderr,"there has been an error parsing ZX fields! there must be 5 of them!\n");
 						exit(1);
 					}
-					pa->z[z_index]=atoi(start_of_string+5);	
+					pa->z[z_index]=inv_tnlog(atoi(start_of_string+5));	
 				}
 				if (next_tab!=NULL) {
 					next_tab++;

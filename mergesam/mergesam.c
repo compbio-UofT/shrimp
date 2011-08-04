@@ -4,15 +4,16 @@
 #include <string.h>
 #include <getopt.h>
 #include <assert.h>
+#include <ctype.h>
+#include <omp.h>
+#include "mergesam.h"
 #include "sam2pretty_lib.h"
 #include "file_buffer.h"
-#include "mergesam.h"
-#include "mergesam_heap.h"
 #include "fastx_readnames.h"
 #include "sam_reader.h"
 #include "../common/util.h"
-#include <ctype.h>
-#include <omp.h>
+#include "../gmapper/gmapper-defaults.h"
+#include "mergesam_heap.h"
 
 runtime_options options;
 
@@ -143,8 +144,9 @@ struct option long_op[] =
 		{"unaligned-fastx",0,0,'u'},
 		{"aligned-fastx",0,0,'a'},
 		{"single-best",0,0,'S'},
-		{"insert-size-mean",1,0,'z'},
-		{"insert-size-stdev",1,0,'Z'},
+		{"insert-size-dist",1,0,'Z'},
+		//{"insert-size-mean",1,0,'z'},
+		//{"insert-size-stddev",1,0,'Z'},
                 {0,0,0,0}
         };
 
@@ -229,7 +231,7 @@ int main (int argc, char ** argv) {
 	options.threads=1;
 	options.single_best=false;
 	options.insert_size_mean=DEF_INSERT_SIZE_MEAN;
-	options.insert_size_stdev=DEF_INSERT_SIZE_STDEV;
+	options.insert_size_stddev=DEF_INSERT_SIZE_STDDEV;
 	found_sam_headers=false;
         int op_id;
         char short_op[] = "o:QN:Es:au";
@@ -330,11 +332,21 @@ int main (int argc, char ** argv) {
 		case 'u':
 			options.unaligned_fastx=true;
 			break;
-		case 'z':
-			options.insert_size_mean=atof(optarg);
-			break;
-		case 'Z':
-			options.insert_size_stdev=atof(optarg);
+		case 'D':
+			{
+                        char * c = strtok(optarg, ",");
+                        if (c == NULL) {
+                          fprintf(stderr, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			  exit(1);
+			}
+                        options.insert_size_mean = atof(c);
+                        c = strtok(NULL, ",");
+                        if (c == NULL) {
+                          fprintf(stderr, "argmuent for insert-size-dist should be \"mean,stddev\" [%s]", optarg);
+			  exit(1);
+			}
+                        options.insert_size_stddev = atof(c);
+			}
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
@@ -429,7 +441,7 @@ int main (int argc, char ** argv) {
 	}
 
 	//calculate alignments cutoff
-	int32_t alignments_cutoff=options.max_alignments==-1 ? options.max_outputs : MIN(options.max_alignments,options.max_outputs);
+	int32_t alignments_cutoff=options.max_alignments==0 ? options.max_outputs : MIN(options.max_alignments,options.max_outputs);
 
 
 	//max the heaps for each thread
@@ -440,9 +452,21 @@ int main (int argc, char ** argv) {
 		exit(1);
 	}
 	for (i=0; i<options.threads; i++ ) {
-		heap_pa_init(thread_heaps+i,alignments_cutoff+1);
+		heap_pa_init(thread_heaps+i,alignments_cutoff+(options.single_best ? 0 : 1));
 		fprintf(stderr,"INIT THREAD_HEAP %p\n",thread_heaps+i);
 	}	
+
+	//initialize the thread buffers for each thread
+	output_buffer obs[options.threads];
+	for (i=0; i<options.threads; i++) {
+		obs[i].size=options.buffer_size*GROWTH_FACTOR+1;
+		obs[i].base=(char*)malloc(sizeof(char)*obs[i].size);
+		if (obs[i].base==NULL) {
+			fprintf(stderr,"Failed to allocate memory for the output buffers!\n");
+			exit(1);
+		}
+		obs[i].used=0;
+	}
 
 	size_t reads_processed=0;
 	clock_t start_time=clock();
@@ -512,7 +536,8 @@ int main (int argc, char ** argv) {
 			#pragma omp parallel for schedule(guided) //schedule(static,10)
 			for (i=0; i<reads_to_process; i++) {	
 				const size_t read_id=(fxrn.reads_seen+i)%options.read_rate;
-				pp_ll_combine_and_check(master_ll+i,pp_ll_index+read_id*options.number_of_sam_files,thread_heaps+omp_get_thread_num());
+				int thread_num = omp_get_thread_num();
+				pp_ll_combine_and_check(master_ll+i,pp_ll_index+read_id*options.number_of_sam_files,thread_heaps+thread_num,obs+thread_num);
 				int j;
 				for (j=0; j<options.number_of_sam_files; j++) {
 					memset(pp_ll_index[read_id*options.number_of_sam_files+j],0,sizeof(pp_ll)*LL_ALL);

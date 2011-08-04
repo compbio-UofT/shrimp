@@ -732,6 +732,7 @@ get_pr_insert_size(double insert_size)
   //if (bucket > 99) bucket = 99;
   //res = (double)insert_histogram[bucket] / (double)insert_histogram_load;
   if (res < 1e-200) res = 1e-200;
+  //fprintf(stderr,"INVOKED WITH %e, %e %e, res %e\n",insert_size,insert_size_mean, insert_size_stddev,res);
   return res;
 }
 

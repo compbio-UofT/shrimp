@@ -1,3 +1,7 @@
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
 #ifndef __SAM2PRETTY_H__
 #define __SAM2PRETTY_H__
 
@@ -13,10 +17,7 @@
 #define SIZE_32bit 10
 #define SIZE_DOUBLE 12
 
-#include <stdint.h>
-#include <stdbool.h>
-
-#define SAM2PRETTY_NUM_ZS	6
+#define SAM2PRETTY_NUM_ZS	7
 
 #define HAS_Z0	1<<0
 #define HAS_Z1	1<<1
@@ -24,6 +25,7 @@
 #define HAS_Z3	1<<3
 #define HAS_Z4	1<<4
 #define HAS_Z5	1<<5
+#define HAS_Z6	1<<6
 
 typedef struct pretty pretty;
 struct pretty {
@@ -66,7 +68,7 @@ struct pretty {
 
 	int fileno;
 	int has_zs;
-	int z[SAM2PRETTY_NUM_ZS];
+	double z[SAM2PRETTY_NUM_ZS];
 
 	//int32_t strand; //0 is postive, 1 is reverse
 	int32_t mapq;
@@ -173,4 +175,10 @@ void pretty_print_sam_update(pretty * pa,bool inplace);
 void pretty_print_sam_unaligned(pretty * pa,bool inplace);
 void pretty_from_aux_inplace(pretty * pa);
 void pretty_print_sam_fastx(pretty* pa, bool inplace );
+
+double inv_tnlog(int x);
+
+int tnlog(double x);
+
+
 #endif

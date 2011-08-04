@@ -51,19 +51,11 @@ bin/fasta2fastq: mergesam/file_buffer.o mergesam/fasta_reader.o mergesam/fasta2f
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 
-mergesam/fasta2fastq.o: mergesam/fasta2fastq.c
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-mergesam/lineindex.o: mergesam/lineindex.c
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
-
-mergesam/lineindex_lib.o: mergesam/lineindex_lib.c
-	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 mergesam/fasta_reader.o: mergesam/fasta_reader.c mergesam/fasta_reader.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
-bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o mergesam/fastx_readnames.o mergesam/sam_reader.o
+bin/mergesam: mergesam/file_buffer.o mergesam/sam2pretty_lib.o mergesam/mergesam_heap.o mergesam/mergesam.o mergesam/fastx_readnames.o mergesam/sam_reader.o mergesam/render.o
 	$(LD) $(CXXFLAGS) -o $@ $+ $(LDFLAGS)
 
 mergesam/mergesam.o: mergesam/mergesam.c
@@ -84,6 +76,17 @@ mergesam/fastx_readnames.o: mergesam/fastx_readnames.c mergesam/fastx_readnames.
 mergesam/sam2pretty_lib.o: mergesam/sam2pretty_lib.c mergesam/sam2pretty_lib.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
+mergesam/fasta2fastq.o: mergesam/fasta2fastq.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/lineindex.o: mergesam/lineindex.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/lineindex_lib.o: mergesam/lineindex_lib.c
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+mergesam/render.o: mergesam/render.c mergesam/render.h mergesam/sam2pretty_lib.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 
 #
