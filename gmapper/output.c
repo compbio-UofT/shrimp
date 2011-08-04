@@ -639,11 +639,11 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 	    if (rh != NULL && rh_mp != NULL && !improper_mapping) {
 	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ2:i:%d\tZ3:i:%d\tZ4:i:%d\tZ6:i:%d",
 		  double_to_neglog(rh->sfrp->z2), double_to_neglog(rh->sfrp->z3),
-		  double_to_neglog(rh->sfrp->pr_top_random), double_to_neglog(rh->sfrp->insert_size_denom));
+		  double_to_neglog(rh->sfrp->pr_top_random_at_location), double_to_neglog(rh->sfrp->insert_size_denom));
 	    } else {
 	      *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZ0:i:%d\tZ1:i:%d\tZ4:i:%d\tZ5:i:%d",
 		  double_to_neglog(rh->sfrp->z0), double_to_neglog(rh->sfrp->z1),
-		  double_to_neglog(rh->sfrp->pr_top_random), double_to_neglog(rh->sfrp->pr_missed_mp));
+		  double_to_neglog(rh->sfrp->pr_top_random_at_location), double_to_neglog(rh->sfrp->pr_missed_mp));
 	    }
 	  }
 	}
@@ -808,12 +808,12 @@ compute_paired_mqv(pair_entry * pe)
 	max_idx = i;
     // find pr a mapping of that score arises by chance
     pr_top_random[nip] = pr_random_mapping_given_score(pe->re[nip], pe->re[nip]->final_unpaired_hits[max_idx].sfrp->posterior_score);
+    // write the coefficient back
+    for (i = 0; i < pe->re[nip]->n_final_unpaired_hits; i++)
+      pe->re[nip]->final_unpaired_hits[i].sfrp->pr_top_random_at_location = pr_top_random[nip];
     pr_top_random[nip] *= (double)total_genome_size;
     if (pr_top_random[nip] > 1)
       pr_top_random[nip] = 1.0;
-    // write the coefficient back
-    for (i = 0; i < pe->re[nip]->n_final_unpaired_hits; i++)
-      pe->re[nip]->final_unpaired_hits[i].sfrp->pr_top_random = pr_top_random[nip];
   }
 
   // for paired, both mappings must be random
@@ -823,14 +823,14 @@ compute_paired_mqv(pair_entry * pe)
     tmp *= 1000;
     if (tmp < pr_top_random[2]) pr_top_random[2] = tmp;
   }
+  // write it back
+  for (i = 0; i < pe->n_final_paired_hits; i++) {
+    pe->final_paired_hit_pool[0][pe->final_paired_hits[i].rh_idx[0]].sfrp->pr_top_random_at_location = pr_top_random[2];
+    pe->final_paired_hit_pool[1][pe->final_paired_hits[i].rh_idx[1]].sfrp->pr_top_random_at_location = pr_top_random[2];
+  }
   pr_top_random[2] *= (double)total_genome_size;
   if (pr_top_random[2] > 1)
     pr_top_random[2] = 1.0;
-  // write it back
-  for (i = 0; i < pe->n_final_paired_hits; i++) {
-    pe->final_paired_hit_pool[0][pe->final_paired_hits[i].rh_idx[0]].sfrp->pr_top_random = pr_top_random[2];
-    pe->final_paired_hit_pool[1][pe->final_paired_hits[i].rh_idx[1]].sfrp->pr_top_random = pr_top_random[2];
-  }
 
   // finally, for unpaired mappings, compute the prob the algo missed the mate mapping
   for (nip = 0; nip < 2; nip++) {

@@ -36,7 +36,7 @@ struct sw_full_results {
 	double	z1;	// sum of posteriors
 	double	z2;	// sum hits paired with this of insert*posterior*posterior
 	double	z3;	// sum of z2s
-	double	pr_top_random;
+	double	pr_top_random_at_location;
 	double	pr_missed_mp;
 	double	insert_size_denom;
 
