@@ -1733,6 +1733,26 @@ handle_read(struct read_entry * re, struct read_mapping_options_t * options, int
   //}
 
   tpg.read_handle_usecs += gettimeinusecs() - before;
+
+  if (pair_mode == PAIR_NONE) {
+    if (aligned_reads_file != NULL && re->mapped) {
+#pragma omp critical (aligned_reads_file)
+      {
+        fasta_write_read(aligned_reads_file, re);
+      }
+    }
+    if ((unaligned_reads_file != NULL || sam_unaligned) && !re->mapped) {
+#pragma omp critical (unaligned_reads_file)
+      {
+        if (unaligned_reads_file != NULL) {
+          fasta_write_read(unaligned_reads_file, re);
+        }
+      }
+      if (sam_unaligned) {
+        hit_output(re, NULL, NULL, false, NULL, 0);
+      }
+    }
+  }
 }
 
 

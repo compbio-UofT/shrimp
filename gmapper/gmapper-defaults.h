@@ -146,7 +146,11 @@
 	{"shrimp-format",0,0,40},\
 	{"half-paired",0,0,41},\
 	{"no-improper-mappings",0,0,42},\
-	{"qv-offset",1,0,43}\
+	{"qv-offset",1,0,43},\
+	{"sam-header-hd",1,0,44},\
+	{"sam-header-sq",1,0,45},\
+	{"sam-header-rg",1,0,46},\
+	{"sam-header-pg",1,0,47}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

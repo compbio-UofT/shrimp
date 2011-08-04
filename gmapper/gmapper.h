@@ -176,6 +176,10 @@ EXTERN(bool,		sam_r2,				false);
 EXTERN(char *,		sam_header_filename,		NULL);
 EXTERN(char *,		sam_read_group_name,		NULL);
 EXTERN(char *,		sam_sample_name,		NULL);
+EXTERN(FILE *,		sam_header_hd,			NULL);
+EXTERN(FILE *,		sam_header_sq,			NULL);
+EXTERN(FILE *,		sam_header_rg,			NULL);
+EXTERN(FILE *,		sam_header_pg,			NULL);
 
 
 /* Statistics */

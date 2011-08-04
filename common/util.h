@@ -115,6 +115,7 @@ void		crash(int, int, char const *, ...);
 void		logit(int, char const *, ...);
 long long	nchoosek(int, int);
 double		log_nchoosek(int, int);
+void		cat(FILE *, FILE *);
 
 
 /* for optarg (and to shut up icc) */

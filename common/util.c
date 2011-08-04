@@ -1309,3 +1309,24 @@ log_nchoosek(int n, int k)
     res += log(n - i) - log(i + 1);
   return res;
 }
+
+void
+cat(FILE * src, FILE * dest)
+{
+  size_t buffer_size = 2046;
+  char buffer[buffer_size];
+  size_t read;
+  bool ends_in_newline = true;
+  while ((read = fread(buffer, 1, buffer_size - 1, src))) {
+    buffer[read] = '\0';
+    fprintf(dest, "%s", buffer);
+    if (buffer[read - 1] == '\n') {
+      ends_in_newline = true;
+    } else {
+      ends_in_newline = false;
+    }
+  }
+  if (!ends_in_newline) {
+    fprintf(dest,"\n");
+  }
+}

@@ -2206,6 +2206,26 @@ int main(int argc, char **argv){
 		  qual_delta = atoi(optarg);
 		  qual_delta_set = true;
 		  break;
+		case 44: // sam-header-hd
+		  sam_header_hd = fopen(optarg, "r");
+		  if (sam_header_hd == NULL)
+		    crash(1, 1, "cannot open sam header file with HD lines [%s]", optarg);
+		  break;
+		case 45: // sam-header-sq
+		  sam_header_sq = fopen(optarg, "r");
+		  if (sam_header_sq == NULL)
+		    crash(1, 1, "cannot open sam header file with SQ lines [%s]", optarg);
+		  break;
+		case 46: // sam-header-rg
+		  sam_header_rg = fopen(optarg, "r");
+		  if (sam_header_rg == NULL)
+		    crash(1, 1, "cannot open sam header file with RG lines [%s]", optarg);
+		  break;
+		case 47: // sam-header-pg
+		  sam_header_pg = fopen(optarg, "r");
+		  if (sam_header_pg == NULL)
+		    crash(1, 1, "cannot open sam header file with PG lines [%s]", optarg);
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2810,47 +2830,45 @@ int main(int argc, char **argv){
 	char * output;
 	if (Eflag){
 	  int i;
-	  if (sam_header_filename!=NULL) {
-	    FILE * sam_header_file = fopen(sam_header_filename,"r");
-	    if (sam_header_file==NULL) {
+	  if (sam_header_filename != NULL) {
+	    FILE * sam_header_file = fopen(sam_header_filename, "r");
+	    if (sam_header_file == NULL) {
 	      perror("Failed to open sam header file ");
 	      exit(1);
 	    }
-	    size_t buffer_size=2046;
-	    char buffer[buffer_size];
-	    size_t read; bool ends_in_newline=true;
-	    while ((read=fread(buffer,1,buffer_size-1,sam_header_file))) {
-	      buffer[read]='\0';
-	      fprintf(stdout,"%s",buffer);
-	      if (buffer[read-1]=='\n') {
-		ends_in_newline=true;
-	      } else {
-		ends_in_newline=false;
+	    cat(sam_header_file, stdout);
+	    fclose(sam_header_file);
+	  } else {
+	    // HD line
+	    if (sam_header_hd != NULL) {
+	      cat(sam_header_hd, stdout);
+	    } else {
+	      fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
+	    }
+
+	    // SQ lines
+	    if (sam_header_sq != NULL) {
+	      cat(sam_header_sq, stdout);
+	    } else {
+	      for(i = 0; i < num_contigs; i++){
+		fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
 	      }
 	    }
-	    fclose(sam_header_file);
-	    if (!ends_in_newline) {
-	      fprintf(stdout,"\n");
-	    }
-	  } else {
-	    //Print sam header
-	    fprintf(stdout,"@HD\tVN:%s\tSO:%s\n","1.0","unsorted");
 
-	    for(i = 0; i < num_contigs; i++){
-	      fprintf(stdout,"@SQ\tSN:%s\tLN:%u\n",contig_names[i],genome_len[i]);
+	    // RG lines
+	    if (sam_header_rg != NULL) {
+	      cat(sam_header_rg, stdout);
+	    } else if (sam_read_group_name != NULL) {
+	      fprintf(stdout, "@RG\tID:%s\tSM:%s\n", sam_read_group_name, sam_sample_name);
+	    }
+
+	    // PG lines
+	    if (sam_header_pg != NULL) {
+	      cat(sam_header_pg, stdout);
+	    } else {
+	      fprintf(stdout, "@PG\tID:%s\tVN:%s\tCL:%s\n", "gmapper", SHRIMP_VERSION_STRING, command_line);
 	    }
 	  }
-	  //read group
-	  if (sam_read_group_name!=NULL) {
-	    fprintf(stdout,"@RG\tID:%s\tSM:%s\n",sam_read_group_name,sam_sample_name);
-	  }
-	  //print command line args used to invoke SHRiMP
-	  fprintf(stdout,"@PG\tID:%s\tVN:%s\tCL:","gmapper",SHRIMP_VERSION_STRING);
-	  fprintf(stdout,"%s\n",command_line);
-	  //for (i=0; i<(shrimp_args.argc-1); i++) {
-	  //  fprintf(stdout,"%s ",shrimp_args.argv[i]);
-	  //}
-	  //fprintf(stdout,"%s\n",shrimp_args.argv[i]);
 	} else {
 	  output = output_format_line(Rflag);
 	  puts(output);
@@ -2916,6 +2934,20 @@ int main(int argc, char **argv){
 
 	if (sam_read_group_name != NULL)
 	  free(sam_read_group_name);
+
+	// close some files
+	if (aligned_reads_file != NULL)
+	  fclose(aligned_reads_file);
+	if (unaligned_reads_file != NULL)
+	  fclose(unaligned_reads_file);
+	if (sam_header_hd != NULL)
+	  fclose(sam_header_hd);
+	if (sam_header_sq != NULL)
+	  fclose(sam_header_sq);
+	if (sam_header_rg != NULL)
+	  fclose(sam_header_rg);
+	if (sam_header_pg != NULL)
+	  fclose(sam_header_pg);
 
 #ifdef MYALLOC_ENABLE_CRT
 	fprintf(stderr, "crt_mem: %lld\n", (long long)crt_mem);
