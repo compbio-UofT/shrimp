@@ -91,7 +91,7 @@ EXTERN(bool,		Xflag,			false);		/* print insert histogram */
 EXTERN(bool,		Yflag,			false);		/* print genome projection histogram */
 EXTERN(bool,		Vflag,			true);		/* automatic genome index trimming */
 EXTERN(bool,		Qflag,			false);		/* use fastq reads */
-EXTERN(bool,		Gflag,			false);		/* global alignment flag ! */
+EXTERN(bool,		Gflag,			true);		/* global alignment flag ! */
 EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
 EXTERN(bool,		extra_sam_fields,	false);
 EXTERN(bool,		single_best_mapping,	false);

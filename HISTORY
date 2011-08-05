@@ -12,6 +12,8 @@
 	  gmapper compared to its previous versions, but we felt it is desirable to have it.
 	  If you only need paired mappings, see --no-half-paired.
 	- Changed the default set of seeds to 3 seeds of weight 12, (Thank you Marta Gardea.)
+	- Changed default Smith-Waterman mode to global. This forces the entire read to map to the reference.
+	  For the old (local) alignment mode, see --local. Notably, mapping qualities are unavailable in this mode.
 	- Removed limit on the number of OMP threads. (It used to be 50.)
 
 2.1.1c: Feb 21, 2011

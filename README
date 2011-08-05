@@ -915,8 +915,17 @@ Filter 3: Scalar (Full) SW Alignment
 
   [    --global ]
 
-    Color-space only. Perform a full global alignment in the last phase of 
-    alignments (full scalar).
+    Perform a full global alignment in the last phase of alignments.
+
+    NOTE: This is on by default as of v2.2.0.
+
+  [    --local ]
+
+    Perform local alignment instead of global. In this mode, the ends of a read
+    do not necessarily need to match the reference.  Mapping qualities are  not
+    available in this mode.
+
+    NOTE: This used to be the default setting prior to v2.2.0.
 
   [    --bfast ]
 

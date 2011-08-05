@@ -1333,6 +1333,7 @@ print_settings() {
   fprintf(stderr, "%s%-40s%u\n", my_tab, "Index list cutoff length:", list_cutoff);
   }
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Gapless mode:", gapless_sw? "yes" : "no");
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Global alignment:", Gflag? "yes" : "no");
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Region filter:", use_regions? "yes" : "no");
   if (use_regions) {
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Region size:", (1 << region_bits));
@@ -1775,6 +1776,7 @@ int main(int argc, char **argv){
 			max_alignments=atoi(optarg);
 			break;
 		case 15:
+			logit(0, "as of v2.2.0, --global is on by default");
 			Gflag = true;
 			break;
 		case 16:
@@ -2229,6 +2231,9 @@ int main(int argc, char **argv){
 		case 48: // no-autodetect-input
 		  autodetect_input = false;
 		  break;
+		case 124: // local alignment
+		  Gflag = false;
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2243,6 +2248,11 @@ int main(int argc, char **argv){
 	    qual_delta = DEF_LS_QUAL_DELTA;
 	  else
 	    qual_delta = DEF_CS_QUAL_DELTA;
+	}
+
+	if (!Gflag && compute_mapping_qualities) {
+	  logit(0, "mapping qualities are not available in local alignment mode; disabling them");
+	  compute_mapping_qualities = false;
 	}
 
 	if (Gflag && gapless_sw) {
