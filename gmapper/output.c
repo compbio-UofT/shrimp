@@ -862,7 +862,7 @@ compute_paired_mqv(pair_entry * pe)
   for (i = 0; i < pe->n_final_paired_hits; i++) {
     for (nip = 0; nip < 2; nip++) {
       read_hit * rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hits[i].rh_idx[nip]];
-      double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / rhp->sfrp->z3);
+      double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / (insert_size_denom * rhp->sfrp->z3));
       rhp->sfrp->mqv = qv_from_pr_corr(p_corr);
     }
   }
