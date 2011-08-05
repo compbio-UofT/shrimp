@@ -31,6 +31,41 @@ typedef struct sam_reader sam_reader;
 sam_reader ** sam_files;
 char * sam_header_filename=NULL;
 
+int64_t genome_length=0;
+
+
+char * command_line=NULL;
+
+
+int64_t genome_length_from_headers(char ** sam_lines, int header_entries) {
+	int64_t g_length=0;
+	int i; 
+	for (i=0; i<header_entries; i++) {
+		char * line = sam_lines[i];
+		if (line[0]=='@' && line[1]=='S' && line[2]=='Q') {
+			int x;
+			for (x=4; line[x]!='L' && line[x]!='\0'; x++);
+			if (line[x]=='\0') {
+				fprintf(stderr,"Invalid sam header format\n");
+				exit(1);
+			}	
+			assert(line[x]=='L');
+			assert(line[++x]!='\0'); //N
+			assert(line[++x]!='\0'); //:
+			assert(line[++x]!='\0');
+			int y=x;
+			while (line[y]!='\t' && line[y]!='\0' && line[y]!='\n') {
+				y++;
+			}
+			char old_char = line[y];
+			line[y]='\0';
+			g_length+=atoi(line+x);
+			line[y]=old_char;
+		}
+	}
+	return g_length;
+} 
+
 
 void process_sam_headers() {
 	if (found_sam_headers && sam_header_filename==NULL) {
@@ -40,7 +75,7 @@ void process_sam_headers() {
 			header_entries+=sam_files[i]->sam_headers->length;
 		}
 		//get pointers to each header line
-		char ** sam_lines=(char**)malloc(sizeof(char*)*header_entries);
+		char ** sam_lines=(char**)malloc(sizeof(char*)*(header_entries+1)); //add in the command line
 		if (sam_lines==NULL) {
 			fprintf(stderr,"Failed to allocate memory for sam_header entries!\n");
 			exit(1);
@@ -53,8 +88,10 @@ void process_sam_headers() {
 				pa=pa->next;
 			}
 		}
+		assert(command_line!=NULL);
+		sam_lines[index++]=command_line;
 		//want to sort the headers here
-		qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);	
+		qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);
 		//want to print the headers here
 		assert(index>0);
 		fprintf(stdout,"%s\n",sam_lines[0]);
@@ -64,6 +101,9 @@ void process_sam_headers() {
 				fprintf(stdout,"%s\n",sam_lines[i]);
 			}	
 		}	
+		//get the genome length!!!
+		genome_length=genome_length_from_headers(sam_lines, header_entries);	
+		fprintf(stderr,"Calculated genome length to be , %ld\n",genome_length);
 		free(sam_lines);
 		memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
 		found_sam_headers=false;
@@ -212,6 +252,22 @@ static size_t inline string_to_byte_size(char * s) {
 }
 
 int main (int argc, char ** argv) {
+	int i;
+	char pg_line_prefix[]="@PG     ID:mergesam      VN:2.2.0        CL:";
+	size_t command_line_length=strlen(pg_line_prefix);
+	for (i=0; i<argc; i++) {
+		command_line_length+=strlen(argv[i])+1;
+	}
+	command_line=(char*)malloc(sizeof(char)*command_line_length);
+	if (command_line==NULL) {
+		fprintf(stderr,"Failed to allocate memory to store command line arguments\n");
+		exit(1);
+	}
+	command_line[0]='\0';
+	strcpy(command_line,pg_line_prefix);
+	for (i=0; i<argc; i++) {
+		strcat(command_line,argv[i]);
+	}	
 	options.max_alignments=DEF_MAX_ALIGNMENTS;
 	options.max_outputs=DEF_MAX_OUTPUTS;
 	options.expected_insert_size=DEF_INSERT_SIZE;	
@@ -429,7 +485,6 @@ int main (int argc, char ** argv) {
 		fprintf(stderr,"Failed to allocate memory for pp_ll_index!\n");
 		exit(1);
 	}	
-	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
 		sam_files[i]=sam_open(argv[i],&fxrn);
 		sam_files[i]->sam_headers=sam_headers+i;
@@ -497,11 +552,13 @@ int main (int argc, char ** argv) {
 			//READ IN DATA
 			#pragma omp parallel for schedule(guided)
 			for (i=0; i<options.number_of_sam_files; i++) {
+				obs[omp_get_thread_num()].used=0;
 				if (sam_files[i]->fb->frb.eof!=1 || sam_files[i]->fb->unseen_end!=sam_files[i]->fb->unseen_inter) {
 					fill_fb(sam_files[i]->fb);	
 					parse_sam(sam_files[i],&fxrn);
 				}
 			}
+			process_sam_headers();	
 			
 			//find the minimum number of complete read alignments in memory
 			have_non_eof_file=false;
@@ -512,7 +569,18 @@ int main (int argc, char ** argv) {
 					have_non_eof_file=true;
 				}
 			}
-			//fprintf(stderr,"Processing %d reads entries on this interation..\n",reads_to_process);
+			if (!have_non_eof_file) {
+				reads_to_process=fxrn.reads_filled-fxrn.reads_seen;
+				for (i=0; i<options.number_of_sam_files; i++) {
+					if (sam_files[i]->last_tested>fxrn.reads_seen) {
+						reads_to_process=MAX(reads_to_process,sam_files[i]->last_tested-fxrn.reads_seen);
+					}
+				}
+				if (reads_to_process==0) {
+					break;
+				}
+			}
+			//fprintf(stderr,"Processing %d reads entries on this iteration..\n",reads_to_process);
 			if (reads_to_process>0) {
 				for (i=0; i<options.number_of_sam_files; i++) {
 					const size_t read_id=(fxrn.reads_seen+reads_to_process-1)%options.read_rate;
@@ -531,7 +599,7 @@ int main (int argc, char ** argv) {
 				fprintf(stderr,"FAIL! can't have both paired and unpaired data in input file!\n");
 				exit(1);
 			}
-			
+			//fprintf(stderr,"reads to process %lu\n",reads_to_process);
 			//prepare output
 			#pragma omp parallel for schedule(guided) //schedule(static,10)
 			for (i=0; i<reads_to_process; i++) {	
@@ -545,7 +613,6 @@ int main (int argc, char ** argv) {
 			}
 
 			//output
-			process_sam_headers();	
 			for (i=0; i<reads_to_process; i++) {
 				pretty * pa=master_ll[i].head;
 				while (pa!=NULL) {

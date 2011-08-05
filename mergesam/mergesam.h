@@ -59,4 +59,6 @@ typedef struct output_buffer {
 	size_t used;
 	char * base;
 };
+
+extern int64_t genome_length;
 #endif

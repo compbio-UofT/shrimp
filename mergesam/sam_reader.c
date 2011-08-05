@@ -8,7 +8,7 @@
 #include "sam_reader.h"
 #include "render.h"
 #include "../common/util.h"
-
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 bool found_sam_headers;
 
@@ -149,6 +149,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 			pa = local_ll->head;
 			//iterate over all SAM structs in this list
 			while (pa!=NULL) {
+				assert(pa->first_in_pair);
 				//all of these should be 'properly paired' - this means here that both sides of the read are mapped
 				assert(pa->proper_pair);
 				assert((pa->has_zs&(1<<3))!=0); //make sure we have z3
@@ -180,7 +181,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 					global_ins_denom+=pa->z[6];
 				}
 				//take the min of z4
-				z4_min=-MAX(-z4_min,-pa->z[4]);
+				z4_min=MIN(z4_min,pa->z[4]);
 
 				pa=pa->next;
 			}
@@ -202,16 +203,17 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 		//	}
 		//}
 		int best_index=-1;
-		double best_mp_z2=0;
+		int best_mp_z2=0;
 		double best_z2=0;
 		for (i=0; i<options.number_of_sam_files; i++) {
 			if (best_pair_for_file[i]!=NULL) {
 				pretty * pa = best_pair_for_file[i];
-				//TODO, how often break TIES??
-				double new_z2=pa->z[2]*pa->z[6]/global_ins_denom;
-				double new_mp_z2=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
-				//TODO UPDATE Z2
-				if (best_index==-1 || best_z2 < new_z2 || (best_z2==new_z2 && best_mp_z2<new_mp_z2)) {
+				//int new_z2=tnlog(pa->z[2]*pa->z[6]/global_ins_denom);
+				//int new_mp_z2=tnlog(pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom);
+				int new_z2=tnlog(pa->z[2]);
+				int new_mp_z2=tnlog(pa->mate_pair->z[2]);
+				//UPDATE Z2 later on, only for best mapping
+				if (best_index==-1 || best_z2 > new_z2 || (best_z2==new_z2 && best_mp_z2>new_mp_z2)) {
 					best_z2=new_z2;
 					best_mp_z2=new_mp_z2;
 					best_index=i;
@@ -220,8 +222,8 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 		}	
 		if (best_index!=-1) {
 			pretty *pa =  best_pair_for_file[best_index];
-			pa->z[2]=best_z2;
-			pa->mate_pair->z[2]=best_mp_z2;
+			//pa->z[2]=pa->z[2]*pa->z[6]/global_ins_denom;
+			//pa->mate_pair->z[2]=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
 			pa->z[6]=global_ins_denom;
 			pa->mate_pair->z[6]=global_ins_denom;
 			h->load=0;
@@ -235,8 +237,8 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 		for (i=0; i<h->load; i++) {
 			pretty * pa = h->array[i].rest;
 			//update the z2
-			pa->z[2]=pa->z[2]*pa->z[6]/global_ins_denom;
-			pa->mate_pair->z[2]=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
+			//pa->z[2]=pa->z[2]*pa->z[6]/global_ins_denom;
+			//pa->mate_pair->z[2]=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
 			//update the rest
 			pa->z[3]=pa->mate_pair->z[3]=z3_sum;
 			pa->z[4]=pa->mate_pair->z[4]=z4_min;	
@@ -276,7 +278,7 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 	//the running z1 sum tally
 	double z1_sum=0;
 	//initialize the z4 min to its max value
-	double z4_min=1.0;
+	pretty * max_pa=NULL;
 	int i;
 	for (i=0; i<options.number_of_sam_files; i++) {
 		//local_ll - the linked list of SAM structures for a given read, file and mapping class
@@ -297,9 +299,12 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 				}
 				
 				//update the MIN : TODO use proper MIN instead of negative MAX
-				if (map_class!=UNPAIRED) {
-					assert((pa->has_zs&(1<<4))!=0); //assert this SAM entry has the z4 field
-					z4_min=-MAX(-z4_min,-pa->z[4]);
+				//if (map_class!=UNPAIRED) {
+				//	assert((pa->has_zs&(1<<4))!=0); //assert this SAM entry has the z4 field
+				//	z4_min=MIN(z4_min,pa->z[4]);
+				//}
+				if (max_pa==NULL || max_pa->z[0]<pa->z[0]) {
+					max_pa=pa;
 				}
 
 				//insert this read into the heap
@@ -320,13 +325,18 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 			}
 		}
 	}
+	if (max_pa==NULL) {
+		return;
+	}
+	assert(max_pa!=NULL);
+	double z4=max_pa->z[4];
 	//update the z1 and z4s for all entries on the heap
 	for (i=0; i<h->load; i++) {
 		assert(z1_sum!=0);
 		pretty * pa = h->array[i].rest;
 		pa->z[1]=z1_sum;
 		if (map_class!=UNPAIRED) {
-			pa->z[4]=z4_min;	
+			pa->z[4]=z4;
 		}
 	}
 	if (options.single_best) {
@@ -409,31 +419,44 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 	
 	//here is the spot to compute class priors and finalize the mapq value for the mappings
 	//TODO class priors	
-	double paired_scale = (!first_empty ? first_leg_list->head->z[4] : 1.0 ) * (!second_empty ? second_leg_list->head->z[4] : 1.0 ) ;
+	double paired_scale = (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) ;
 	double first_leg_scale = 0.0;
 	if (!first_empty) {
-		first_leg_scale = (paired_list->length > 0 ? paired_list->head->z[4] : 1.0 ) * (!second_empty ? second_leg_list->head->z[4] : 1.0 ) * (first_leg_list->head->z[5]) ;	
+		//fprintf(stderr,"compute first %e %e\n",first_leg_list->head->z[4],first_leg_list->head->z[5]);
+		first_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (first_leg_list->head->z[5]) ;	
 	}	
 	double second_leg_scale = 0.0;
 	if (!second_empty) {
-		second_leg_scale = (paired_list->length > 0 ? paired_list->head->z[4] : 1.0 ) * (!first_empty ? first_leg_list->head->z[4] : 1.0 ) * (second_leg_list->head->z[5]) ;	
+		second_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (second_leg_list->head->z[5]) ;	
+		//fprintf(stderr,"compute second %e %e %e %ld\n",second_leg_list->head->z[4],second_leg_list->head->z[5],second_leg_scale,genome_length);
 	}
 	double class_denom = (!paired_empty ? paired_scale : 0.0) + (!first_empty ? first_leg_scale : 0.0 ) + (!second_empty ? second_leg_scale : 0.0);
 
+	pretty * best_alignment=NULL;
+	//fprintf(stderr,"class %e , pair %e, first %e, second %e\n",class_denom,paired_scale,first_leg_scale,second_leg_scale);
 	if (class_denom>0) {
 		pretty * pa;
 		//update the paired mapping qualities
 		if (!paired_empty) {
 			for (pa=paired_list->head; pa!=NULL; pa=pa->next) {
+				//fprintf(stderr,"z2 %e %d, z3 %e %d\n",pa->z[2],tnlog(pa->z[2]),pa->z[3],tnlog(pa->z[3]));
+				//fprintf(stderr,"mp z2 %e %d , z3 %e %d\n",pa->mate_pair->z[2],tnlog(pa->mate_pair->z[2]),pa->mate_pair->z[3],tnlog(pa->mate_pair->z[3]));
 				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom));
 				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom));
-			}	
+				pretty * max_pa = (pa->mapq > pa->mate_pair->mapq ? pa : pa->mate_pair);
+				if (best_alignment==NULL || max_pa->mapq>best_alignment->mapq) {
+					best_alignment=max_pa;
+				}
+			}
 		}
 		//update the first leg
 		if (!first_empty) {
 			for (pa=first_leg_list->head; pa!=NULL; pa=pa->next) {
 				assert(pa->mapped && !pa->mate_pair->mapped);
 				pa->mapq=qv_from_pr_corr((pa->z[0]*first_leg_scale)/(pa->z[1]*class_denom));	
+				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+					best_alignment=pa;
+				}
 			}
 		}
 		//update the second leg
@@ -441,12 +464,18 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			for (pa=second_leg_list->head; pa!=NULL; pa=pa->next) {
 				assert(pa->mapped && !pa->mate_pair->mapped);
 				pa->mapq=qv_from_pr_corr((pa->z[0]*second_leg_scale)/(pa->z[1]*class_denom));	
+				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+					best_alignment=pa;
+				}
 			}
 		}
 		//update unpaired
 		if (unpaired_list!=NULL) {
 			for (pa=unpaired_list->head; pa!=NULL; pa=pa->next) {
 				pa->mapq=qv_from_pr_corr(pa->z[0]/pa->z[1]);	
+				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+					best_alignment=pa;
+				}
 			}
 		}
 	}	
@@ -454,6 +483,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 	//here we just trivially prepare the final outputed list
 	//this would be adjusted in case of 'all_contigs' where we would
 	//just add one of the final classes
+	//TODO 
 	pp_ll_append_list(m_ll,paired_list);
 	pp_ll_append_list(m_ll,first_leg_list);
 	pp_ll_append_list(m_ll,second_leg_list);
@@ -553,7 +583,11 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 		if (pa->proper_pair) {
 			assert(pa->mapped && pa->mp_mapped);
 			//both sides mapped
-			pp_ll_append(ll+PAIRED,pa);
+			if (pa->first_in_pair) {
+				pp_ll_append(ll+PAIRED,pa);
+			} else {
+				pp_ll_append(ll+PAIRED,pa->mate_pair);
+			}
 		} else if ((options.half_paired || options.sam_unaligned || options.unaligned_fastx)  && (pa->mapped || pa->mp_mapped)) {
 			//lets figure out which leg
 			assert(!pa->mapped || !pa->mp_mapped);
