@@ -218,6 +218,7 @@ size_t render_sam_bound(pretty * pa ) {
 }
 
 size_t render_sam_string(pretty * pa, char * buffer, size_t buffer_size) {
+	pa->flags=pretty_get_flag(pa);
 	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
 		pa->flags,
@@ -225,7 +226,7 @@ size_t render_sam_string(pretty * pa, char * buffer, size_t buffer_size) {
 		pa->genome_start_unpadded,
 		pa->mapq,
 		pa->cigar,
-		pa->mate_reference_name,
+		(strcmp(pa->reference_name,pa->mate_reference_name)==0 ? "=" : pa->mate_reference_name),
 		pa->mate_genome_start_unpadded,
 		pa->isize,
 		pa->read_string,
@@ -236,7 +237,7 @@ size_t render_sam_string(pretty * pa, char * buffer, size_t buffer_size) {
 	int i;	
 	for (i=0; i<SAM2PRETTY_NUM_ZS; i++) {
 		if ((pa->has_zs&(1<<i))!=0) {
-			position+=snprintf(buffer+position,buffer_size-position,"\tZ%d:X:%d",i,tnlog(pa->z[i]));
+			position+=snprintf(buffer+position,buffer_size-position,"\tZ%d:i:%d",i,tnlog(pa->z[i]));
 		}	
 	}
 	if (pa->has_edit_distance) {

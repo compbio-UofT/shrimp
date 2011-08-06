@@ -59,6 +59,33 @@ void pretty_stats(pretty * pa) {
 }
 
 
+int pretty_get_flag(pretty * pa ) {
+	int flag=0;
+	//0x0001 the read is paired in sequencing, no matter whether it is mapped in a pair
+	flag|= (pa->paired_sequencing ? 0x0001 : 0);
+	//0x0002 the read is mapped in a proper pair (depends on the protocol, normally inferred during alignment) 1
+	flag|=(pa->proper_pair ? 0x0002 : 0);
+	//0x0004 the query sequence itself is unmapped
+	flag|=(pa->mapped ? 0 : 0x0004);
+	//0x0008 the mate is unmapped 1
+	flag|=(pa->mp_mapped ? 0 : 0x0008);
+	//0x0010 strand of the query (0 for forward; 1 for reverse strand)
+	flag|=(pa->reverse ? 0x0010 : 0);
+	//0x0020 strand of the mate 1
+	flag|=(pa->mp_reverse ? 0x0020 : 0);
+	//0x0040 the read is the first read in a pair 1,2
+	flag|=(pa->first_in_pair ? 0x0040 : 0);
+	//0x0080 the read is the second read in a pair 1,2
+	flag|=(pa->second_in_pair ? 0x0080 : 0);
+	//0x0100 the alignment is not primary (a read having split hits may have multiple primary alignment records)
+	flag|=(pa->primary_alignment ? 0x0100 : 0);
+	//0x0200 the read fails platform/vendor quality checks
+	flag|=(pa->platform_quality_fail ? 0x0200 : 0);
+	//0x0400 the read is either a PCR duplicate or an optical duplicate
+	flag|=(pa->pcr_duplicate ? 0x0400 : 0);
+	return flag;
+}
+
 void pretty_match(pretty * pa) {
 	if (pa->pretty_length==0) {
 		return;

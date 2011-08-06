@@ -175,6 +175,7 @@ void pretty_print_sam_update(pretty * pa,bool inplace);
 void pretty_print_sam_unaligned(pretty * pa,bool inplace);
 void pretty_from_aux_inplace(pretty * pa);
 void pretty_print_sam_fastx(pretty* pa, bool inplace );
+int pretty_get_flag(pretty * pa );
 
 double inv_tnlog(int x);
 

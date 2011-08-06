@@ -8,7 +8,6 @@
 #include "sam_reader.h"
 #include "render.h"
 #include "../common/util.h"
-#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 bool found_sam_headers;
 
@@ -156,12 +155,37 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 				assert((pa->has_zs&(1<<6))!=0); //make sure we have z6
 				// if single_best is on, just grab the best mapping for each file
 				if (options.single_best) {
+					
+					//sum of mapqs
 					int mapq_score=pa->mapq+pa->mate_pair->mapq;
 					int fileno=pa->fileno;
 					if (best_pair_for_file[fileno]==NULL || 
 						best_pair_for_file[fileno]->mapq+best_pair_for_file[fileno]->mate_pair->mapq<mapq_score) {
+						if (pa->mapq>pa->mate_pair->mapq || (pa->mapq==pa->mate_pair->mapq && pa->score>pa->mate_pair->score)) {
+							best_pair_for_file[fileno]=pa;
+						} else {
+							best_pair_for_file[fileno]=pa->mate_pair;
+						}
+					}
+					
+					/*
+					//z2 scores
+					int z2_scores=tnlog(pa->z[2])+tnlog(pa->mate_pair->z[2]);
+					int fileno=pa->fileno;
+					if (best_pair_for_file[fileno]==NULL || 
+						tnlog(best_pair_for_file[fileno]->z[2])+tnlog(best_pair_for_file[fileno]->mate_pair->mapq)<z2_scores) {
 						best_pair_for_file[fileno]=pa;
 					}
+					*/
+					/*
+					//scores
+					int scores=pa->score+pa->mate_pair->score;
+					int fileno=pa->fileno;
+					if (best_pair_for_file[fileno]==NULL || 
+						best_pair_for_file[fileno]->score+best_pair_for_file[fileno]->mate_pair->score<scores) {
+						best_pair_for_file[fileno]=pa;
+					}
+					*/
 				} else {
 					e.score=pa->mapq+pa->mate_pair->mapq;
 					e.second_score=pa->score+pa->mate_pair->score;
@@ -212,6 +236,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 				//int new_mp_z2=tnlog(pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom);
 				int new_z2=tnlog(pa->z[2]);
 				int new_mp_z2=tnlog(pa->mate_pair->z[2]);
+				//fprintf(stdout, "%s %d %d\n",pa->read_name,new_z2,new_mp_z2);
 				//UPDATE Z2 later on, only for best mapping
 				if (best_index==-1 || best_z2 > new_z2 || (best_z2==new_z2 && best_mp_z2>new_mp_z2)) {
 					best_z2=new_z2;
@@ -219,9 +244,10 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 					best_index=i;
 				}
 			}
-		}	
+		}
 		if (best_index!=-1) {
 			pretty *pa =  best_pair_for_file[best_index];
+			//fprintf(stdout,"CHOOSE %s %s\n",pa->read_name,pa->reference_name);
 			//pa->z[2]=pa->z[2]*pa->z[6]/global_ins_denom;
 			//pa->mate_pair->z[2]=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
 			pa->z[6]=global_ins_denom;
@@ -308,19 +334,17 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 				}
 
 				//insert this read into the heap
-				if (options.single_best) {
-					e.score=1000*pa->z[0];
-				} else {
+				if (!options.single_best) {
 					e.score=pa->score;
+					e.rest=pa;
+					e.second_score=0;
+					if (options.strata) {
+						heap_pa_insert_bounded_strata(h,&e);
+					} else {
+						heap_pa_insert_bounded(h,&e);
+					}
 				}
-				e.rest=pa;
-				e.second_score=0;
 				assert(!options.single_best || options.max_outputs==1);
-				if (options.strata) {
-					heap_pa_insert_bounded_strata(h,&e);
-				} else {
-					heap_pa_insert_bounded(h,&e);
-				}
 				pa=pa->next;
 			}
 		}
@@ -330,6 +354,10 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 	}
 	assert(max_pa!=NULL);
 	double z4=max_pa->z[4];
+	if (options.single_best) {
+		h->load=1;
+		h->array[0].rest=max_pa;
+	}
 	//update the z1 and z4s for all entries on the heap
 	for (i=0; i<h->load; i++) {
 		assert(z1_sum!=0);
@@ -338,9 +366,6 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 		if (map_class!=UNPAIRED) {
 			pa->z[4]=z4;
 		}
-	}
-	if (options.single_best) {
-		assert(h->load==0 || h->load==1);
 	}
 	//dump the results in the first files linked list
 	pp_ll * results_ll = ll[0]+map_class;
@@ -441,8 +466,8 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			for (pa=paired_list->head; pa!=NULL; pa=pa->next) {
 				//fprintf(stderr,"z2 %e %d, z3 %e %d\n",pa->z[2],tnlog(pa->z[2]),pa->z[3],tnlog(pa->z[3]));
 				//fprintf(stderr,"mp z2 %e %d , z3 %e %d\n",pa->mate_pair->z[2],tnlog(pa->mate_pair->z[2]),pa->mate_pair->z[3],tnlog(pa->mate_pair->z[3]));
-				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom));
-				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom));
+				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom*pa->z[6]));
+				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom*pa->mate_pair->z[6]));
 				pretty * max_pa = (pa->mapq > pa->mate_pair->mapq ? pa : pa->mate_pair);
 				if (best_alignment==NULL || max_pa->mapq>best_alignment->mapq) {
 					best_alignment=max_pa;
@@ -483,11 +508,45 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 	//here we just trivially prepare the final outputed list
 	//this would be adjusted in case of 'all_contigs' where we would
 	//just add one of the final classes
-	//TODO 
-	pp_ll_append_list(m_ll,paired_list);
-	pp_ll_append_list(m_ll,first_leg_list);
-	pp_ll_append_list(m_ll,second_leg_list);
-	pp_ll_append_list(m_ll,unpaired_list);
+	if (options.all_contigs) {
+		if (best_alignment!=NULL) {
+			if (best_alignment->paired_sequencing && !best_alignment->mp_mapped) {
+				pp_ll * list_to_check=(best_alignment->first_in_pair ? second_leg_list : first_leg_list);
+				pretty * best_alignment_best_pair=NULL;
+				for (pa=list_to_check->head; pa!=NULL; pa=pa->next) {
+					if (best_alignment_best_pair==NULL || pa->mapq>best_alignment_best_pair->mapq) {
+						best_alignment_best_pair=pa;	
+					}	
+				}
+				//found something to pair it to!!!!
+				if (best_alignment_best_pair!=NULL) {
+					//TODO : POSSIBLE BUG
+					//int mapq = qv_from_pr_corr(best_alignment_best_pair->z[0]/best_alignment_best_pair->z[1]); //i think this is right?
+					int mapq = qv_from_pr_corr(exp((-best_alignment_best_pair->z[0]+best_alignment_best_pair->z[1])/1000)); //this is what is in SHRiMP ?
+					//fprintf(stderr,"Considering pairing! %d %d %d\n",tnlog(best_alignment_best_pair->z[0]),tnlog(best_alignment_best_pair->z[1]),mapq);
+					if (mapq>=10) {
+						best_alignment->mate_pair=best_alignment_best_pair;
+						best_alignment->mp_mapped=true;
+						best_alignment->mp_reverse=best_alignment->mate_pair->reverse;
+						best_alignment->mate_reference_name=best_alignment->mate_pair->reference_name;	
+
+						best_alignment->mate_pair->mate_pair=best_alignment;
+						best_alignment->mate_pair->mp_mapped=true;
+						best_alignment->mate_pair->mp_reverse=best_alignment->reverse;
+						best_alignment->mate_pair->mate_reference_name=best_alignment->reference_name;					
+
+						assert(best_alignment->mate_pair->mapped);
+					}
+				}
+			}
+			pp_ll_append(m_ll,best_alignment);		
+		}
+	} else {
+		pp_ll_append_list(m_ll,paired_list);
+		pp_ll_append_list(m_ll,first_leg_list);
+		pp_ll_append_list(m_ll,second_leg_list);
+		pp_ll_append_list(m_ll,unpaired_list);
+	}
 
 	//this part of the if clause deals with printing unmapped SAM entries or fasta or fastq format instead of SAM
 	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_fastx)) {

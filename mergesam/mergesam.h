@@ -44,6 +44,7 @@ typedef struct runtime_options {
 	bool sam_unaligned;
 	bool sam_format;
 	bool single_best;
+	bool all_contigs;
 	int32_t max_alignments;
 	int32_t max_outputs;
 	//determined at runtime options

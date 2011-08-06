@@ -185,6 +185,7 @@ struct option long_op[] =
 		{"aligned-fastx",0,0,'a'},
 		{"single-best",0,0,'S'},
 		{"insert-size-dist",1,0,'Z'},
+		{"all-contigs",0,0,'A'},
 		//{"insert-size-mean",1,0,'z'},
 		//{"insert-size-stddev",1,0,'Z'},
                 {0,0,0,0}
@@ -272,6 +273,7 @@ int main (int argc, char ** argv) {
 	options.max_outputs=DEF_MAX_OUTPUTS;
 	options.expected_insert_size=DEF_INSERT_SIZE;	
 	options.fastq=false;
+	options.all_contigs=false;
 	options.strata=false;
 	options.half_paired=false;
 	options.sam_unaligned=false;
@@ -403,6 +405,9 @@ int main (int argc, char ** argv) {
 			}
                         options.insert_size_stddev = atof(c);
 			}
+			break;
+		case 'A':
+			options.all_contigs=true;
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
@@ -579,7 +584,9 @@ int main (int argc, char ** argv) {
 				if (reads_to_process==0) {
 					break;
 				}
+				reads_to_process=MIN(reads_to_process,options.read_rate);
 			}
+			assert(reads_to_process<=options.read_rate);
 			//fprintf(stderr,"Processing %d reads entries on this iteration..\n",reads_to_process);
 			if (reads_to_process>0) {
 				for (i=0; i<options.number_of_sam_files; i++) {
@@ -593,7 +600,6 @@ int main (int argc, char ** argv) {
 				exit(1);	
 			}
 	
-			assert(reads_to_process<=options.read_rate);
 
 			if (options.paired && options.unpaired) {
 				fprintf(stderr,"FAIL! can't have both paired and unpaired data in input file!\n");
