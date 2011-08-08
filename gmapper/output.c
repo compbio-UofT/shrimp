@@ -1108,7 +1108,7 @@ readpair_output(pair_entry * pe)
 	  first[2] = idx_pair;
 	  last[2] = idx_pair + 1;
 	}
-	else
+	else if (max_mqv_unpaired[best_nip] >= 10)
 	{
 	  // max mqv is in an unpaired hit
 	  // see if it can be paired with best one from read1
@@ -1122,7 +1122,8 @@ readpair_output(pair_entry * pe)
 	  }
 	  int best_other_mqv = -1;
 	  if (idx_best_other >= 0)
-	    best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
+	    //best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
+	    best_other_mqv = qv_from_pr_corr(max_other_z0 / pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1);
 	  if (!improper_mappings || best_other_mqv < 10) {
 	    // output unpaired hit
 	    last[2] = 0;
