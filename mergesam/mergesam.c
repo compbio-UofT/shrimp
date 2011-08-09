@@ -81,26 +81,46 @@ void process_sam_headers() {
 			exit(1);
 		}	
 		int index=0;
+		int pg_id=0;
 		for (i=0; i<options.number_of_sam_files; i++) {
 			pretty * pa = sam_files[i]->sam_headers->head;
 			while(pa!=NULL) {
+				char * s = pa->sam_string; 
+				if (strncmp(s,"@PG	ID:",strlen("@PG	ID:"))==0) {
+					assert(pg_id<100000000);
+					char * x = (char*)malloc(sizeof(char)*(strlen(s)+13));
+					sprintf(x,"%s%d-%s","@PG	ID:",pg_id++,s+strlen("@PG	ID:"));
+					pa->sam_string=x;	
+				}
 				sam_lines[index++]=pa->sam_string;
 				pa=pa->next;
 			}
 		}
 		assert(command_line!=NULL);
-		sam_lines[index++]=command_line;
+		//sam_lines[index++]=command_line;
 		//want to sort the headers here
 		qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);
 		//want to print the headers here
 		assert(index>0);
 		fprintf(stdout,"%s\n",sam_lines[0]);
+		bool printed_pg_self=false;
 		for (i=1; i<index; i++) {
 			int ret=strcmp(sam_lines[i],sam_lines[i-1]);
+			if (!printed_pg_self && strncmp(sam_lines[i],"@PG",strlen("@PG"))==0) {
+				fprintf(stdout,"%s\n",command_line);
+				printed_pg_self=true;
+			}
 			if (ret!=0) {
 				fprintf(stdout,"%s\n",sam_lines[i]);
 			}	
+			if (strncmp(sam_lines[i],"@PG	ID:",strlen("@PG	ID:"))==0) {
+				free(sam_lines[i]);
+			}
 		}	
+		if (!printed_pg_self) {
+			fprintf(stdout,"%s\n",command_line);
+			printed_pg_self=true;
+		}
 		//get the genome length!!!
 		genome_length=genome_length_from_headers(sam_lines, header_entries);	
 		fprintf(stderr,"Calculated genome length to be , %ld\n",genome_length);
@@ -254,7 +274,7 @@ static size_t inline string_to_byte_size(char * s) {
 
 int main (int argc, char ** argv) {
 	int i;
-	char pg_line_prefix[]="@PG     ID:mergesam      VN:2.2.0        CL:";
+	char pg_line_prefix[]="@PG	ID:mergesam	VN:2.2.0	CL:";
 	size_t command_line_length=strlen(pg_line_prefix);
 	for (i=0; i<argc; i++) {
 		command_line_length+=strlen(argv[i])+1;
@@ -519,7 +539,7 @@ int main (int argc, char ** argv) {
 	//initialize the thread buffers for each thread
 	output_buffer obs[options.threads];
 	for (i=0; i<options.threads; i++) {
-		obs[i].size=options.buffer_size*GROWTH_FACTOR+1;
+		obs[i].size=((size_t)(options.buffer_size*GROWTH_FACTOR))+1;
 		obs[i].base=(char*)malloc(sizeof(char)*obs[i].size);
 		if (obs[i].base==NULL) {
 			fprintf(stderr,"Failed to allocate memory for the output buffers!\n");
