@@ -227,20 +227,17 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 		//	}
 		//}
 		int best_index=-1;
-		int best_mp_z2=0;
 		double best_z2=0;
 		for (i=0; i<options.number_of_sam_files; i++) {
 			if (best_pair_for_file[i]!=NULL) {
 				pretty * pa = best_pair_for_file[i];
 				//int new_z2=tnlog(pa->z[2]*pa->z[6]/global_ins_denom);
 				//int new_mp_z2=tnlog(pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom);
-				int new_z2=tnlog(pa->z[2]);
-				int new_mp_z2=tnlog(pa->mate_pair->z[2]);
+				double new_z2=MAX(pa->z[2],pa->mate_pair->z[2]);
 				//fprintf(stdout, "%s %d %d\n",pa->read_name,new_z2,new_mp_z2);
 				//UPDATE Z2 later on, only for best mapping
-				if (best_index==-1 || best_z2 > new_z2 || (best_z2==new_z2 && best_mp_z2>new_mp_z2)) {
+				if (best_index==-1 || best_z2 < new_z2) {
 					best_z2=new_z2;
-					best_mp_z2=new_mp_z2;
 					best_index=i;
 				}
 			}
@@ -466,8 +463,8 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			for (pa=paired_list->head; pa!=NULL; pa=pa->next) {
 				//fprintf(stderr,"z2 %e %d, z3 %e %d\n",pa->z[2],tnlog(pa->z[2]),pa->z[3],tnlog(pa->z[3]));
 				//fprintf(stderr,"mp z2 %e %d , z3 %e %d\n",pa->mate_pair->z[2],tnlog(pa->mate_pair->z[2]),pa->mate_pair->z[3],tnlog(pa->mate_pair->z[3]));
-				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom*pa->z[6]));
-				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom*pa->mate_pair->z[6]));
+				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom/**pa->z[6]*/));
+				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom/**pa->mate_pair->z[6]*/));
 				pretty * max_pa = (pa->mapq > pa->mate_pair->mapq ? pa : pa->mate_pair);
 				if (best_alignment==NULL || max_pa->mapq>best_alignment->mapq) {
 					best_alignment=max_pa;
@@ -510,7 +507,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 	//just add one of the final classes
 	if (options.all_contigs) {
 		if (best_alignment!=NULL) {
-			if (best_alignment->paired_sequencing && !best_alignment->mp_mapped) {
+			if (best_alignment->paired_sequencing && !best_alignment->mp_mapped && best_alignment->mapq>=10) {
 				pp_ll * list_to_check=(best_alignment->first_in_pair ? second_leg_list : first_leg_list);
 				pretty * best_alignment_best_pair=NULL;
 				for (pa=list_to_check->head; pa!=NULL; pa=pa->next) {
@@ -521,8 +518,8 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 				//found something to pair it to!!!!
 				if (best_alignment_best_pair!=NULL) {
 					//TODO : POSSIBLE BUG
-					//int mapq = qv_from_pr_corr(best_alignment_best_pair->z[0]/best_alignment_best_pair->z[1]); //i think this is right?
-					int mapq = qv_from_pr_corr(exp((-best_alignment_best_pair->z[0]+best_alignment_best_pair->z[1])/1000)); //this is what is in SHRiMP ?
+					int mapq = qv_from_pr_corr(best_alignment_best_pair->z[0]/best_alignment_best_pair->z[1]); //i think this is right?
+					//int mapq = qv_from_pr_corr(exp((-best_alignment_best_pair->z[0]+best_alignment_best_pair->z[1])/1000)); //this is what is in SHRiMP ?
 					//fprintf(stderr,"Considering pairing! %d %d %d\n",tnlog(best_alignment_best_pair->z[0]),tnlog(best_alignment_best_pair->z[1]),mapq);
 					if (mapq>=10) {
 						best_alignment->mate_pair=best_alignment_best_pair;

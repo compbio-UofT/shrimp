@@ -862,7 +862,7 @@ compute_paired_mqv(pair_entry * pe)
   for (i = 0; i < pe->n_final_paired_hits; i++) {
     for (nip = 0; nip < 2; nip++) {
       read_hit * rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hits[i].rh_idx[nip]];
-      double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / (insert_size_denom * rhp->sfrp->z3));
+      double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / (/*insert_size_denom * */rhp->sfrp->z3));
       rhp->sfrp->mqv = qv_from_pr_corr(p_corr);
     }
   }
@@ -1108,7 +1108,7 @@ readpair_output(pair_entry * pe)
 	  first[2] = idx_pair;
 	  last[2] = idx_pair + 1;
 	}
-	else if (max_mqv_unpaired[best_nip] >= 10)
+	else
 	{
 	  // max mqv is in an unpaired hit
 	  // see if it can be paired with best one from read1
@@ -1124,7 +1124,7 @@ readpair_output(pair_entry * pe)
 	  if (idx_best_other >= 0)
 	    //best_other_mqv = qv_from_pr_corr(exp((-max_other_z0 + pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1) / 1000));
 	    best_other_mqv = qv_from_pr_corr(max_other_z0 / pe->re[1 - best_nip]->final_unpaired_hits[idx_best_other].sfrp->z1);
-	  if (!improper_mappings || best_other_mqv < 10) {
+	  if (!improper_mappings || max_mqv_unpaired[best_nip] < 10 || best_other_mqv < 10) {
 	    // output unpaired hit
 	    last[2] = 0;
 	    last[1-best_nip] = 0;

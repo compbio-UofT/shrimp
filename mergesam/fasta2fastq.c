@@ -3,6 +3,7 @@
 #include <string.h>
 #include <getopt.h>
 #include <assert.h>
+#include <time.h>
 #include "file_buffer.h"
 #include "fasta2fastq.h"
 #include "lineindex_lib.h"
@@ -10,6 +11,15 @@
 #include <omp.h>
 
 runtime_options options;
+
+
+typedef struct {
+	size_t size;
+	size_t used;
+	char * base;
+} thread_buffer;
+
+thread_buffer * thread_buffers;
 
 void to_ascii_33(char * s) {
 	char * prev=s;
@@ -53,9 +63,9 @@ static void  inline update_last_line(lineindex_table * li, file_buffer * fb, int
 	while(fb->base[fb->unseen_start%fb->size]!='\0' && fb->unseen_start<fb->unseen_end) {
 		fb->unseen_start++;
 	}
-	while (fb->base[fb->unseen_start%fb->size]=='\0' && fb->unseen_start<fb->unseen_end) {
-		fb->unseen_start++;
-	}
+	//while(fb->base[fb->unseen_start%fb->size]=='\0' && fb->unseen_start<fb->unseen_end) {
+	//	fb->unseen_start++;
+	//}
 	return;
 }
 
@@ -94,6 +104,8 @@ struct option long_op[] =
         };
 
 static inline bool fill_fb(file_buffer * fb) {
+	time_t io_start_time=time(NULL);
+	fprintf(stderr,"IO start ....");
 	bool has_changed=false;
 	while (!fb->exhausted) {
 		fill_read_buffer(&fb->frb);
@@ -104,6 +116,7 @@ static inline bool fill_fb(file_buffer * fb) {
 		}
 		has_changed=has_changed || fb->changed;
 	}
+	fprintf(stderr,"IO end .... %lu seconds\n",(time(NULL)-io_start_time));
 	return has_changed;
 	//fprintf(stdout,"Filled %lu to %lu of %lu |%s|\n",fb->unseen_start, fb->unseen_end, fb->size,fb->base);
 }
@@ -239,32 +252,99 @@ int main (int argc, char ** argv) {
 	//master table
 	lineindex_table * fasta_li = lineindex_init(1);
 
-	size_t reads_processed=0;
+
+	//set up the thread_buffers
+	thread_buffers=(thread_buffer*)malloc(sizeof(thread_buffer)*options.threads);
+	if (thread_buffers==NULL) {
+		fprintf(stderr,"Failed to malloc memory for thread buffers!\n");
+		exit(1);
+	}
+	for (i=0; i<options.threads; i++ ) {
+		thread_buffers[i].size=(options.buffer_size/options.threads+1000)*1.3;
+		thread_buffers[i].base=(char*)malloc(sizeof(char)*thread_buffers[i].size);
+		if (thread_buffers[i].base==NULL) {
+			fprintf(stderr,"Failed to allocate memory for thread buffers!\n");
+			exit(1);
+		}
+	}
+
 	//get the hit list, process it, do it again!
 	fprintf(stderr,"Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
 	file_buffer * qual_fb = fb_open(qual_filename,options.buffer_size,options.read_size); 
 	file_buffer * fasta_fb = fb_open(fasta_filename,options.buffer_size,options.read_size); 
-	int lines_processed=-1;
-	while (lines_processed!=0) {
+	size_t lines_processed=0;
+	clock_t start_time=clock();
+	clock_t last_time=clock();
+	size_t iterations=0;
+	bool first_loop=true;
+	while (lines_processed!=0 || first_loop) {
+		first_loop=false;
 		//index lines
 		fill_fb_and_index(qual_li, qual_thread_lineindexes,qual_fb);
 		fill_fb_and_index(fasta_li, fasta_thread_lineindexes,fasta_fb);
 		lines_processed=qual_li->end-qual_li->start;
 		//print lines
-		for (i=0; i<lines_processed; i++) {
-			fprintf(stdout,"@%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]+1);
-			char * qual_string=qual_li->table[(qual_li->start+i)%qual_li->size];
-			if (qual_string[0]!='>') {
-				to_ascii_33(qual_li->table[(qual_li->start+i)%qual_li->size]);
-				fprintf(stdout,"+\n%s\n",qual_li->table[(qual_li->start+i)%qual_li->size]);
-			}
+		//figure out which thread handles which
+		int lines_to_print[options.threads];
+		int start[options.threads];
+		for (i=0; i<options.threads; i++) {
+			start[i]=(i==0 ?  0 : start[i-1]+lines_to_print[i-1]);
+			lines_to_print[i]=lines_processed/options.threads+(lines_processed%options.threads > i ? 1 : 0);
+			//fprintf(stderr,"Thread %d , start %d , lines %d\n",i,start[i],lines_to_print[i]);
 		}
+		#pragma omp parallel  
+		{
+		int thread_id = omp_get_thread_num();
+		thread_buffer * ob = thread_buffers+thread_id;
+		ob->used=0;
+		ob->base[0]='\0';
+		int i;
+		for (i=start[thread_id]; i<start[thread_id]+lines_to_print[thread_id]; i++) {
+			//fprintf(stderr,"Running %d on %d, %d\n",thread_id,i,(fasta_li->start+i)%fasta_li->size);
+			//fprintf(stdout,"@%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]+1);
+			char * to_print=fasta_li->table[(fasta_li->start+i)%fasta_li->size];
+			char * qual_string=qual_li->table[(qual_li->start+i)%qual_li->size];
+			//fprintf(stderr,"F |%s| vs |%s| \n",to_print,qual_string);
+			while (strlen(to_print)+strlen(qual_string)+ob->used>ob->size) {
+				ob->size*=1.3;
+				ob->base=(char*)realloc(ob->base,sizeof(char)*ob->size);
+				if (ob->base==NULL) {
+					fprintf(stderr,"Failed to allocate memory for thread_buffer expand\n");
+					exit(1);
+				}
+			}
+			//qual string moves between read names and quals, check if we are printing a read name or qual
+			if (qual_string[0]=='>') {
+				ob->used+=sprintf(ob->base+ob->used,"@%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]+1);
+			} else {
+				to_ascii_33(qual_li->table[(qual_li->start+i)%qual_li->size]);
+				ob->used+=sprintf(ob->base+ob->used,"%s\n",fasta_li->table[(fasta_li->start+i)%fasta_li->size]);
+				ob->used+=sprintf(ob->base+ob->used,"+\n%s\n",qual_li->table[(qual_li->start+i)%qual_li->size]);
+			}
+			//fprintf(stderr,"%s and %s\n",to_print,qual_string);
+			//assert(qual_string[0]!='>');
+		}
+		}
+		
+		//print the blocks
+		for (i=0; i<options.threads; i++) {
+			fprintf(stdout,"%s",thread_buffers[i].base);
+		}
+		
 		update_last_line(qual_li,qual_fb,lines_processed);
 		update_last_line(fasta_li,fasta_fb,lines_processed);
 		//fprintf(stderr,"%lu %lu\n",qual_fb->unseen_start,qual_fb->unseen_end);
 		//fprintf(stderr,"END OF IT |%s|\n",qual_fb->base+qual_fb->unseen_start%qual_fb->size);
 		qual_li->start+=lines_processed;
 		fasta_li->start+=lines_processed;
+		iterations++;
+		if ( (clock()-last_time)/options.threads > CLOCKS_PER_SEC/4) {
+			double lines_per_second=qual_li->start/( (double)(clock()-start_time)/(CLOCKS_PER_SEC*options.threads));
+			double lines_per_iteration=qual_li->start/(double)iterations;
+			fprintf(stderr,"Processing overall at %lf reads / second, %lf reads / iteration, processed %lu, lines on this iteration %lu\n",lines_per_second,lines_per_iteration,qual_li->start,lines_processed);
+			last_time=clock();
+		}
+
 	}
 	//free the line-indexes
 	for (i=0; i<options.threads; i++) {
