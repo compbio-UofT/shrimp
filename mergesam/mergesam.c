@@ -97,6 +97,8 @@ void process_sam_headers() {
 			}
 		}
 		assert(command_line!=NULL);
+		genome_length=genome_length_from_headers(sam_lines, header_entries);	
+		fprintf(stderr,"Calculated genome length to be , %ld\n",genome_length);
 		//sam_lines[index++]=command_line;
 		//want to sort the headers here
 		qsort(sam_lines, header_entries, sizeof(char*),sam_header_sort);
@@ -105,7 +107,7 @@ void process_sam_headers() {
 		fprintf(stdout,"%s\n",sam_lines[0]);
 		bool printed_pg_self=false;
 		for (i=1; i<index; i++) {
-			int ret=strcmp(sam_lines[i],sam_lines[i-1]);
+			int ret=sam_lines[i-1]!=NULL ? strcmp(sam_lines[i],sam_lines[i-1]) : 1;
 			if (!printed_pg_self && strncmp(sam_lines[i],"@PG",strlen("@PG"))==0) {
 				fprintf(stdout,"%s\n",command_line);
 				printed_pg_self=true;
@@ -115,6 +117,7 @@ void process_sam_headers() {
 			}	
 			if (strncmp(sam_lines[i],"@PG	ID:",strlen("@PG	ID:"))==0) {
 				free(sam_lines[i]);
+				sam_lines[i]=NULL;
 			}
 		}	
 		if (!printed_pg_self) {
@@ -122,8 +125,6 @@ void process_sam_headers() {
 			printed_pg_self=true;
 		}
 		//get the genome length!!!
-		genome_length=genome_length_from_headers(sam_lines, header_entries);	
-		fprintf(stderr,"Calculated genome length to be , %ld\n",genome_length);
 		free(sam_lines);
 		memset(sam_headers,0,sizeof(pp_ll)*options.number_of_sam_files);	
 		found_sam_headers=false;
@@ -687,6 +688,7 @@ int main (int argc, char ** argv) {
 	free(sam_files);
 	for (i=0; i<options.threads; i++) {
 		heap_pa_destroy(thread_heaps+i);
+		free(obs[i].base);
 	}
 	free(thread_heaps);
 	fb_close(fxrn.fb);

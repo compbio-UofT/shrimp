@@ -771,6 +771,8 @@ void sam_close(sam_reader * sr) {
 	fb_close(sr->fb);
 	free(sr->pretty_stack);
 	free(sr->pp_lls);
+	free(sr->inter_offsets);
+	free(sr->pretty_stack_ends);
 	free(sr);
 }
 
