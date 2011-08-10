@@ -1,3 +1,4 @@
+#define _MODULE_GMAPPER
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
@@ -13,6 +14,8 @@
 #include "sam_reader.h"
 #include "../common/util.h"
 #include "../gmapper/gmapper-defaults.h"
+#include "../gmapper/gmapper.h"
+
 #include "mergesam_heap.h"
 
 runtime_options options;
@@ -29,7 +32,8 @@ pp_ll * master_ll;
 heap_pa * thread_heaps;
 typedef struct sam_reader sam_reader;
 sam_reader ** sam_files;
-char * sam_header_filename=NULL;
+//char * sam_header_filename=NULL;
+//sam_header_filename=NULL;
 
 int64_t genome_length=0;
 
@@ -37,7 +41,8 @@ int64_t genome_length=0;
 char * command_line=NULL;
 
 
-char * reads_filename;
+//char * reads_filename;
+//reads_filename=NULL;
 
 void auto_detect_fastq(gzFile fp) {
 	// autodetect fasta/fastq format
@@ -174,76 +179,94 @@ void process_sam_headers() {
 
 void usage(char * s) {
 	fprintf(stderr, 
-	"usage: %s [options/parameters] [--colour-space/--letter-space] <r> <s1> <s2> ...\n", s);
+	"usage: %s [options/parameters] <r> <s1> <s2> ...\n", s);
 	fprintf(stderr,
 	"   <r>     Reads filename, if paired then one of the two paired files\n");
 	fprintf(stderr,
 	"   <s?>    A SAM file input for mergigng\n");
 	fprintf(stderr,
-	"Parameters:      (all sizes are in bytes unless specified)\n");
+	"Runtime:      (all sizes are in bytes unless specified)\n");
 	fprintf(stderr,
 	"      --buffer-size    File buffer size in memory per file   (Default: %d)\n",DEF_BUFFER_SIZE);
-//	fprintf(stderr,
-//	"      --read-size      Read size, read into buffer with this (Default: %d)\n",DEF_READ_SIZE);
+	fprintf(stderr,
+	"      --read-size      Read size, read into buffer with this (Default: %d)\n",DEF_READ_SIZE);
 	fprintf(stderr, 
 	"   -s/--stack-size     Input alignment stack size            (Default: %d)\n",DEF_ALIGNMENTS_STACK_SIZE);
 	fprintf(stderr,
 	"      --read-rate      How many reads to process at once     (Default: %d)\n",DEF_READ_RATE);
 	fprintf(stderr,
-	"      --expected-isize Expected insert size, for tie-break   (Default: disabled)\n");
+	"Output options:\n");
 	fprintf(stderr,
-	"   -N/--threads        The number of threads to use          (Default: 1)\n");
+	"      --un                    Output unaligned FAST(A/Q) file       (Default: disabled)\n");
 	fprintf(stderr,
-	"   -o/--report         The maximum alignments to report      (Default: %d)\n",DEF_MAX_OUTPUTS);
+	"      --al                    Output aligned FAST(A/Q) file         (Default: disabled)\n");
 	fprintf(stderr,
-	"      --max-alignments Max. align. per read  (-1=all)        (Default: %d)\n",DEF_MAX_ALIGNMENTS); 
+	"      --sam-unaligned         Unaligned reads in SAM output         (Default: disabled)\n");
 	fprintf(stderr,
-	"      --sam-header     Use file as SAM header\n");
-	fprintf(stderr,"\nOptions:\n");
+	"   -o/--report                The maximum alignments to report      (Default: %d)\n",DEF_MAX_OUTPUTS);
 	fprintf(stderr,
-	"      --help           This usage screen\n");
+	"   -N/--threads               The number of threads to use          (Default: 1)\n");
 	fprintf(stderr,
-	"   -Q/--fastq          Reads are in fastq format             (Default: disabled)\n");
+	"   -E/--sam                   Output in SAM format                  (Default: disabled)\n");
 	fprintf(stderr,
-	"   -E/--sam            Output in SAM format                  (Default: disabled)\n");
+	"   -Q/--fastq                 Reads are in fastq format             (Default: auto-detect)\n");
 	fprintf(stderr,
-	"      --sam-unaligned  Unaligned reads in SAM output         (Default: disabled)\n");
+	"      --strata                Print only the best scoring hits\n");
 	fprintf(stderr,
-	"      --half-paired    Output half mapped read pairs         (Default: disabled)\n");
+	"      --max-alignments        Max. align. per read  (0=all)        (Default: %d)\n",DEF_MAX_ALIGNMENTS); 
 	fprintf(stderr,
-	"      --strata         Print only the best scoring hits\n");
+	"      --no-half-paired        Do not output half-paired alignments (Default: disabled)\n");
 	fprintf(stderr,
-	"      --unaligned-fastx\n");
+	"      --insert-size-dist      Use mean,stdev for insert size dist. (Default: %d,%d)\n",DEF_INSERT_SIZE_MEAN,DEF_INSERT_SIZE_STDDEV); 
 	fprintf(stderr,
-	"      --aligned-fastx\n");
+	"      --single-best-mapping   See documentation, output onlt *best (Default: disabled)\n");
+	fprintf(stderr,
+	"      --all-contigs           Output given no more merging after   (Default: disabled)\n");
+	fprintf(stderr,
+	"      --half-paired           Output half-paired mappings          (Default: enabled)\n");
+	fprintf(stderr,
+	"      --no-mapping-qualities  Do not compute mapping qualities     (Default: disabled)\n");
+	fprintf(stderr,
+	"      --leave-mapq            Leave the mapq field as it was       (Default: disabled)\n");
+	fprintf(stderr,
+	"      --sam-header            Use file as SAM header\n");
+	fprintf(stderr,
+	"      --no-improper-mappings  Do not pair up half-paired mappings  (Default: disabled)\n");
+	fprintf(stderr,
+	"      --no-autodetect-input   Do not try to auto-detect FAST(A/Q)  (Default: disabled)\n");
+	fprintf(stderr,
+	"      --help                  This usage screen\n");
 	exit(1);
 }
 
 
 struct option long_op[] =
         {
-		{"fastq", 0, 0, 'Q'},
-		{"sam",0,0,'E'},
-		{"threads",1,0,'N'},
+		{"un",1,0,10},
+		{"al",1,0,11},
+		{"sam-unaligned",0,0,12},
 		{"report",1,0,'o'},
-		{"max-alignments",1,0,1},
+		{"threads",1,0,'N'},
+		{"sam",0,0,'E'},
+		{"fastq", 0, 0, 'Q'},
+		{"strata",0,0,9},
+		{"max-alignments",1,0,14},
+		{"no-half-paired",0,0,19},
+		{"insert-size-dist",1,0,25},
+		{"single-best-mapping",0,0,37},
+		{"all-contigs",0,0,38},
+		{"half-paired",0,0,41},
+		{"no-mapping-qualities",0,0,39},
 		{"sam-header",1,0,2},
+		{"no-improper-mappings",0,0,42},
+		{"no-autodetect-input",0,0,48},
+		
+		{"leave-mapq-untouched",0,0,3},
                 {"help", 0, 0, 5},
 		{"buffer-size", 1, 0, 6},
 		{"read-size", 1, 0, 7},
 		{"read-rate",1,0,8},
-		{"expected-isize",1,0,9},
-		{"half-paired",0,0,10},
-		{"sam-unaligned",0,0,11},
-		{"strata",0,0,12},
 		{"stack-size",1,0,'s'},
-		{"unaligned-fastx",0,0,'u'},
-		{"aligned-fastx",0,0,'a'},
-		{"single-best",0,0,'S'},
-		{"insert-size-dist",1,0,'Z'},
-		{"all-contigs",0,0,'A'},
-		//{"insert-size-mean",1,0,'z'},
-		//{"insert-size-stddev",1,0,'Z'},
                 {0,0,0,0}
         };
 
@@ -325,16 +348,29 @@ int main (int argc, char ** argv) {
 	for (i=0; i<argc; i++) {
 		strcat(command_line,argv[i]);
 	}	
-	options.max_alignments=DEF_MAX_ALIGNMENTS;
+	options.unaligned_reads_file=NULL;
+	options.aligned_reads_file=NULL;
+	options.sam_unaligned=sam_unaligned;
 	options.max_outputs=DEF_MAX_OUTPUTS;
-	options.expected_insert_size=DEF_INSERT_SIZE;	
-	options.fastq=false;
-	options.fastq_set=false;
-	options.all_contigs=false;
-	options.strata=false;
-	options.half_paired=false;
-	options.sam_unaligned=false;
-	options.sam_format=false;
+	options.threads=DEF_NUM_THREADS;
+	options.sam_format=Eflag;
+	options.fastq=Qflag;
+	options.fastq_set=autodetect_input ? false : true; //has the fastq flag been set, i.e. has it been set to fastq=false or fastq=true 
+	options.strata=strata_flag;
+	options.max_alignments=DEF_MAX_ALIGNMENTS;
+	options.half_paired=half_paired; //for no half paired default setting
+	options.single_best=single_best_mapping;
+	options.insert_size_mean=DEF_INSERT_SIZE_MEAN;
+	options.insert_size_stddev=DEF_INSERT_SIZE_STDDEV;
+	options.all_contigs=all_contigs;
+	/* see above */ //options.half_paired=half_paired; //for no half paired default setting
+	options.no_mapping_qualities=compute_mapping_qualities ? false : true;
+	sam_header_filename=NULL;
+	options.no_improper_mappings=improper_mappings ? false : true;
+	options.no_autodetect_input=autodetect_input ? false : true;
+
+	options.leave_mapq=false;
+
 	options.paired=false;
 	options.unpaired=false;
 	options.colour_space=false;
@@ -344,50 +380,57 @@ int main (int argc, char ** argv) {
 	options.read_size=DEF_READ_SIZE;
 	options.read_rate=DEF_READ_RATE;
 	options.alignments_stack_size=DEF_ALIGNMENTS_STACK_SIZE;
-	options.threads=1;
-	options.single_best=false;
-	options.insert_size_mean=DEF_INSERT_SIZE_MEAN;
-	options.insert_size_stddev=DEF_INSERT_SIZE_STDDEV;
 	found_sam_headers=false;
         int op_id;
         char short_op[] = "o:QN:Es:au";
         char c = getopt_long(argc, argv, short_op, long_op, &op_id);
         while (c != EOF) {
 		switch (c) {
+		//fastq
 		case 'Q':
 			options.fastq=true;
 			break;
-		case 'S':
+		//no-auto-detect
+		case 48:
+			options.no_autodetect_input=true;
+			break;
+		//single-best
+		case 37:
 			options.single_best=true;
 			break;
+		//buffer-size
 		case 6:
 			options.buffer_size=string_to_byte_size(optarg);
 			break;
+		//read-size
 		case 7:
 			options.read_size=string_to_byte_size(optarg);
 			break;
+		//read-rate
 		case 8:
 			options.read_rate=atol(optarg);
 			break;
-		case 9:
-			options.expected_insert_size=atoi(optarg);
-			if (options.expected_insert_size<0) {
-				fprintf(stderr,"Please specify a insert size >= 0!\n");
-				usage(argv[0]);
-			}
-			break;
+		//threads
 		case 'N':
 			options.threads=atoi(optarg);
 			break;
-		case 10:
+		//half-paired
+		case 41:
 			options.half_paired=true;
 			break;
-		case 11:
+		//no-half-paired
+		case 19:
+			options.half_paired=false;	
+			break;
+		//sam-unaligned	
+		case 12:
 			options.sam_unaligned=true;
 			break;
-		case 12:
+		//strata
+		case 9:
 			options.strata=true;
 			break;
+		//report
 		case 'o':
 			options.max_outputs=atoi(optarg);
 			if (options.max_outputs<=0) {
@@ -395,16 +438,19 @@ int main (int argc, char ** argv) {
 				usage(argv[0]);
 			}
 			break;
-		case 1:
+		//max-alignments
+		case 14:
 			options.max_alignments=atoi(optarg);
 			if (options.max_alignments<=0) {
 				fprintf(stderr,"Please specify a max_alignments that is positive!\n");
 				usage(argv[0]);
 			}
 			break;
+		//help
 		case 5:
 			usage(argv[0]);
 			break;
+		//sam-header
 		case 2:
 			{
 			sam_header_filename=optarg;
@@ -429,26 +475,33 @@ int main (int argc, char ** argv) {
 				fprintf(stdout,"\n");
 			}
 			}
+		//sam format
 		case 'E':
 			options.sam_format=true;
 			break;
-		case 3:
-			options.colour_space=true;
-			break;
-		case 4:
-			options.letter_space=true;
-			break;
+		//stack-size
 		case 's':
 			options.alignments_stack_size=atoi(optarg);
 			assert(options.alignments_stack_size>0);
 			break;
-		case 'a':
-			options.aligned_fastx=true;
+		//al
+		case 11:
+			options.aligned_reads_file=fopen(optarg,"w");
+			if (options.aligned_reads_file==NULL) {
+				fprintf(stderr,"Failed to open file for writting %s\n",optarg);
+				exit(1);
+			}
 			break;
-		case 'u':
-			options.unaligned_fastx=true;
+		//un
+		case 10:
+			options.unaligned_reads_file=fopen(optarg,"w");
+			if (options.unaligned_reads_file==NULL) {
+				fprintf(stderr,"Failed to open file for writting %s\n",optarg);
+				exit(1);
+			}
 			break;
-		case 'D':
+		//insert-size-dist
+		case 25:
 			{
                         char * c = strtok(optarg, ",");
                         if (c == NULL) {
@@ -464,8 +517,21 @@ int main (int argc, char ** argv) {
                         options.insert_size_stddev = atof(c);
 			}
 			break;
-		case 'A':
+		//all-contigs
+		case 38:
 			options.all_contigs=true;
+			break;
+		//no-mapping-qualities
+		case 39:
+			options.no_mapping_qualities=true;
+			break;
+		//no-improper-mappings
+		case 42:
+			options.no_improper_mappings=true;
+			break;	
+		//leave-mapq
+		case 3:
+			options.leave_mapq=true;
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
@@ -477,7 +543,7 @@ int main (int argc, char ** argv) {
 
 	if (options.single_best) {
 		options.max_outputs=1;
-		fprintf(stderr,"Setting max outputs to 1! because of single_best\n");	
+		fprintf(stderr," + Setting max outputs per class to 1, because of single_best.\n");	
 	}
 
 	/*if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
@@ -485,25 +551,23 @@ int main (int argc, char ** argv) {
 		usage(argv[0]);
 	}*/
 	if (!options.sam_format) {
-		fprintf(stderr,"%s currently only supports sam format, please use '--sam' or '-E'\n",argv[0]);
+		fprintf(stderr," + %s currently only supports sam format, please use '--sam' or '-E'\n",argv[0]);
 		usage(argv[0]);
 	}
 
 	omp_set_num_threads(options.threads); 
-	fprintf(stderr,"Set to %d threads!\n",options.threads);
-		
+	fprintf(stderr," + Running with %d threads!\n",options.threads);
 	
 	if (argc<=optind+1) {
-		fprintf(stderr,"Please specify reads file and at least one sam file!\n");
+		fprintf(stderr," ! Please specify reads file and at least one sam file!\n");
 		usage(argv[0]);
 	}
 
-	fprintf(stderr,"Size of %lu\n",sizeof(pretty));
 	memset(&fxrn,0,sizeof(fastx_readnames));
 	fxrn.reads_inmem=20*options.read_rate;
 	fxrn.read_names=(char*)malloc(sizeof(char)*fxrn.reads_inmem*SIZE_READ_NAME);
 	if (fxrn.read_names==NULL) {
-		fprintf(stderr,"failed to allocate memory for read_names\n");
+		fprintf(stderr," ! Failed to allocate memory for read_names\n");
 		exit(1);
 	}
 	//memset(fxrn.read_names,'Z',sizeof(char)*fxrn.reads_inmem*SIZE_READ_NAME);
@@ -514,7 +578,7 @@ int main (int argc, char ** argv) {
 	
 	//Variables for IO of read names
 	reads_filename=argv[0];
-	fprintf(stderr,"Using %s as reads filename\n",reads_filename);
+	fprintf(stderr," + Using %s as reads filename\n",reads_filename);
 	argc--;
 	argv++;
 
@@ -522,13 +586,13 @@ int main (int argc, char ** argv) {
 	//Open each sam input file	
 	sam_files=(sam_reader**)malloc(sizeof(sam_reader*)*options.number_of_sam_files);
 	if (sam_files==NULL) {
-		fprintf(stderr,"failed to allocate memory for sam_files!\n");
+		fprintf(stderr," ! Failed to allocate memory for sam_files!\n");
 		exit(1);
 	}
 
 	master_ll = (pp_ll*)malloc(sizeof(pp_ll)*options.read_rate);
 	if (master_ll==NULL) {
-		fprintf(stderr,"Failed to allocate memory for master_ll\n");
+		fprintf(stderr," ! Failed to allocate memory for master_ll\n");
 		exit(1);
 	}
 	memset(master_ll,0,sizeof(pp_ll)*options.read_rate);
@@ -537,7 +601,7 @@ int main (int argc, char ** argv) {
 	//allocate memory for sam_headers
 	sam_headers=(pp_ll*)malloc(sizeof(pp_ll)*options.number_of_sam_files);
 	if (sam_headers==NULL) {
-		fprintf(stderr,"Failed to allocate memory for sam_headers\n");
+		fprintf(stderr," ! Failed to allocate memory for sam_headers\n");
 		exit(1);
 	}
 	
@@ -545,7 +609,7 @@ int main (int argc, char ** argv) {
 	//index first the read then the file number	
 	pp_ll_index = (pp_ll**)malloc(sizeof(pp_ll*)*options.read_rate*options.number_of_sam_files);
 	if (pp_ll_index==NULL) {
-		fprintf(stderr,"Failed to allocate memory for pp_ll_index!\n");
+		fprintf(stderr," ! Failed to allocate memory for pp_ll_index!\n");
 		exit(1);
 	}	
 	for (i=0; i<options.number_of_sam_files; i++) {
@@ -563,15 +627,14 @@ int main (int argc, char ** argv) {
 
 
 	//max the heaps for each thread
-	fprintf(stderr,"There are %d threads\n",options.threads);
 	thread_heaps=(heap_pa* )malloc(sizeof(heap_pa)*options.threads);
 	if (thread_heaps==NULL) {
-		fprintf(stderr,"Failed to allocate memory for thread_heaps!\n");
+		fprintf(stderr," ! Failed to allocate memory for thread_heaps!\n");
 		exit(1);
 	}
 	for (i=0; i<options.threads; i++ ) {
 		heap_pa_init(thread_heaps+i,alignments_cutoff+(options.single_best ? 0 : 1));
-		fprintf(stderr,"INIT THREAD_HEAP %p\n",thread_heaps+i);
+		fprintf(stderr," + Initializing thread_heap for thread %d at address %p\n",i,thread_heaps+i);
 	}	
 
 	//initialize the thread buffers for each thread
@@ -580,7 +643,7 @@ int main (int argc, char ** argv) {
 		obs[i].size=((size_t)(options.buffer_size*GROWTH_FACTOR))+1;
 		obs[i].base=(char*)malloc(sizeof(char)*obs[i].size);
 		if (obs[i].base==NULL) {
-			fprintf(stderr,"Failed to allocate memory for the output buffers!\n");
+			fprintf(stderr," ! Failed to allocate memory for the output buffers!\n");
 			exit(1);
 		}
 		obs[i].used=0;
@@ -590,10 +653,15 @@ int main (int argc, char ** argv) {
 	clock_t start_time=clock();
 	long iterations=0;
 	//get the hit list, process it, do it again!
-	fprintf(stderr,"Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
+	fprintf(stderr," + Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
 	bool have_non_eof_file=true;
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
-	auto_detect_fastq(fxrn.fb->frb.file);
+	if (!options.no_autodetect_input) {
+		auto_detect_fastq(fxrn.fb->frb.file);
+	}
+
+	assert(options.unaligned_reads_file==NULL || options.aligned_reads_file==NULL);
+	FILE * output_file=(options.unaligned_reads_file!=NULL ? options.unaligned_reads_file : (options.aligned_reads_file!=NULL ? options.aligned_reads_file : stdout));
 	while (!fxrn.reads_exhausted && have_non_eof_file) {
 		//fprintf(stderr,"Reads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//Populate the hitlist to as large as possible
@@ -683,18 +751,18 @@ int main (int argc, char ** argv) {
 				while (pa!=NULL) {
 					if (pa->paired_sequencing) {
 						if (pa->first_in_pair) {
-							fprintf(stdout,"%s\n",pa->sam_string);		
+							fprintf(output_file,"%s\n",pa->sam_string);		
 							if (pa->mate_pair!=NULL) {
-								fprintf(stdout,"%s\n",pa->mate_pair->sam_string);		
+								fprintf(output_file,"%s\n",pa->mate_pair->sam_string);		
 							}
 						} else {
 							if (pa->mate_pair!=NULL) {
-								fprintf(stdout,"%s\n",pa->mate_pair->sam_string);		
+								fprintf(output_file,"%s\n",pa->mate_pair->sam_string);		
 							}
-							fprintf(stdout,"%s\n",pa->sam_string);		
+							fprintf(output_file,"%s\n",pa->sam_string);		
 						}
 					} else {
-						fprintf(stdout,"%s\n",pa->sam_string);		
+						fprintf(output_file,"%s\n",pa->sam_string);		
 					}
 					pa=pa->next;
 				}

@@ -52,31 +52,6 @@ get_pr_insert_size(double insert_size)
 }
 
 
-
-static inline int pa_to_mapq(pretty * pa) {
-	assert(1==0);
-	if (!pa->has_zs) {
-		//return 255;
-		return 0;
-	}
-	if (pa->z[1]==0.0) {
-		return 255;
-	}
-	//fprintf(stderr,"%.20e and %.20e\n",pa->z[0],pa->z[1]);
-	return qv_from_pr_corr(pa->z[0]/pa->z[1]);
-}
-
-double sum_logs_of_positives(double y, double x) {
-	//fprintf(stderr,"sum of logs %e %e\n",y,x);
-	if (isinf(x) && x<0) {
-		return y;
-	}
-	if (isinf(y) && y<0) {
-		return x;
-	}
-	return y + log(1+exp(x-y));
-}
-
 static inline void pp_ll_zero(pp_ll * ll) {
 	ll->head=NULL;
 	ll->tail=NULL;
@@ -129,7 +104,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 	pretty * pa=NULL;
 	//keep track of the best pair for each file
 	pretty * best_pair_for_file[options.number_of_sam_files];
-	if (options.single_best) {
+	if (!options.no_mapping_qualities) {
 		memset(best_pair_for_file,0,sizeof(pretty*)*options.number_of_sam_files);
 	}
 	//sum up the z3s over open SAM files
@@ -140,6 +115,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 	//set up the z4 min with its max value
 	double z4_min=1.0;
 	int i;
+	assert(!options.no_mapping_qualities || !options.single_best);
 	for (i=0; i<options.number_of_sam_files; i++) {
 		//local_ll - the linked list of SAM structures for a given read, file and mapping class
 		// here we iterate over all files for a specific read and mapping class
@@ -151,11 +127,15 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 				assert(pa->first_in_pair);
 				//all of these should be 'properly paired' - this means here that both sides of the read are mapped
 				assert(pa->proper_pair);
-				assert((pa->has_zs&(1<<3))!=0); //make sure we have z3
-				assert((pa->has_zs&(1<<6))!=0); //make sure we have z6
 				// if single_best is on, just grab the best mapping for each file
-				if (options.single_best) {
-					
+				if (!options.no_mapping_qualities) {
+					if ((HAS_ZPAIRED ^ pa->has_zs) != 0) {
+						fprintf(stderr,"%d ^ %d = %d\n",HAS_ZPAIRED,pa->has_zs,HAS_ZPAIRED^pa->has_zs);
+						fprintf(stderr,"PAIRED: There has been an error, cannot compute single_best if Z fields are incomplete\n");
+						fprintf(stderr,"Read %s only has z fields Z 0:%d,1:%d,2:%d,3:%d,4:%d,5:%d,6:%d\n",pa->read_name,
+							pa->has_zs&HAS_Z0,pa->has_zs&HAS_Z1,pa->has_zs&HAS_Z2,pa->has_zs&HAS_Z3,pa->has_zs&HAS_Z4,pa->has_zs&HAS_Z5,pa->has_zs&HAS_Z6);
+						exit(1);
+					}	
 					//sum of mapqs
 					int mapq_score=pa->mapq+pa->mate_pair->mapq;
 					int fileno=pa->fileno;
@@ -186,7 +166,8 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 						best_pair_for_file[fileno]=pa;
 					}
 					*/
-				} else {
+				}
+				if (!options.single_best) {
 					e.score=pa->mapq+pa->mate_pair->mapq;
 					e.second_score=pa->score+pa->mate_pair->score;
 					e.rest=pa;
@@ -198,20 +179,24 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 				}
 				assert(pa->mapped && pa->mate_pair!=NULL);
 				assert(pa->mate_pair->mapped &&  pa->mp_mapped);
-				//sum the z3 field
-				if (!summed[pa->fileno]) {
-					z3_sum+=pa->z[3];
-					summed[pa->fileno]=true;
-					global_ins_denom+=pa->z[6];
+				//check if we have the correct z fields!
+				if ((pa->has_zs ^ HAS_ZPAIRED) == 0) {
+					//sum the z3 field
+					if (!summed[pa->fileno]) {
+						z3_sum+=pa->z[3];
+						summed[pa->fileno]=true;
+						global_ins_denom+=pa->z[6];
+					}
+					//take the min of z4
+					z4_min=MIN(z4_min,pa->z[4]);
 				}
-				//take the min of z4
-				z4_min=MIN(z4_min,pa->z[4]);
 
 				pa=pa->next;
 			}
 		}
 	}
 	if (options.single_best) {
+		assert(!options.no_mapping_qualities);
 		//update everything in the best_lists with the new values
 		for (i=0; i<options.number_of_sam_files; i++) {
 			pretty * pa = best_pair_for_file[i];
@@ -263,9 +248,12 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 			//pa->z[2]=pa->z[2]*pa->z[6]/global_ins_denom;
 			//pa->mate_pair->z[2]=pa->mate_pair->z[2]*pa->mate_pair->z[6]/global_ins_denom;
 			//update the rest
-			pa->z[3]=pa->mate_pair->z[3]=z3_sum;
-			pa->z[4]=pa->mate_pair->z[4]=z4_min;	
-			pa->z[6]=pa->mate_pair->z[6]=global_ins_denom;
+			if ((pa->has_zs ^ HAS_ZPAIRED) == 0) {
+				pa->z[3]=pa->mate_pair->z[3]=z3_sum;
+				pa->z[4]=pa->mate_pair->z[4]=z4_min;	
+				pa->z[6]=pa->mate_pair->z[6]=global_ins_denom;
+
+			}
 		}
 	}
 	//dump the results in the first files linked list
@@ -283,7 +271,7 @@ static inline void consolidate_paired(pp_ll ** ll,pretty ** unaligned_pa,heap_pa
 		results_ll->length+= h->load - (h->load>options.max_outputs ? 1 : 0);
 	}
 	//return back at least one unaligned entry that can be used for unaligned stuff later 
-	if ((options.sam_unaligned || options.unaligned_fastx) && h->load>0) {
+	if ((options.sam_unaligned || options.unaligned_reads_file!=NULL) && h->load>0) {
 		*unaligned_pa=h->array[0].rest;
 	}
 }
@@ -314,11 +302,22 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 				assert(!pa->paired_sequencing || !pa->proper_pair);
 				assert(pa->mapped); //should be gauranteed this, just how things are setup
 				//if we have not summed this file into z1, do so now
-				assert((pa->has_zs&(1<<1))!=0); //assert this SAM entry has the z1 field
-				if (!z1s_summed[pa->fileno]) {
-					assert((pa->has_zs&(1<<1))!=0);
-					z1_sum+=pa->z[1];
-					z1s_summed[pa->fileno]=true;
+				if (!options.no_mapping_qualities) {
+					if ((HAS_ZUNPAIRED & pa->has_zs) != HAS_ZUNPAIRED) {
+						fprintf(stderr,"UNPAIRED: There has been an error, cannot compute single_best if Z fields are incomplete\n");
+						fprintf(stderr,"Read %s only has z fields Z 0:%d,1:%d,2:%d,3:%d,4:%d,5:%d,6:%d\n",pa->read_name,
+							pa->has_zs&HAS_Z0,pa->has_zs&HAS_Z1,pa->has_zs&HAS_Z2,pa->has_zs&HAS_Z3,pa->has_zs&HAS_Z4,pa->has_zs&HAS_Z5,pa->has_zs&HAS_Z6);
+						exit(1);
+					}
+					//assert this SAM entry has the z1 field and z0 field
+					if (!z1s_summed[pa->fileno]) {
+						assert((pa->has_zs&(1<<1))!=0);
+						z1_sum+=pa->z[1];
+						z1s_summed[pa->fileno]=true;
+					}
+					if (max_pa==NULL || max_pa->z[0]<pa->z[0]) {
+						max_pa=pa;
+					}
 				}
 				
 				//update the MIN : TODO use proper MIN instead of negative MAX
@@ -326,9 +325,6 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 				//	assert((pa->has_zs&(1<<4))!=0); //assert this SAM entry has the z4 field
 				//	z4_min=MIN(z4_min,pa->z[4]);
 				//}
-				if (max_pa==NULL || max_pa->z[0]<pa->z[0]) {
-					max_pa=pa;
-				}
 
 				//insert this read into the heap
 				if (!options.single_best) {
@@ -346,22 +342,23 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 			}
 		}
 	}
-	if (max_pa==NULL) {
-		return;
-	}
-	assert(max_pa!=NULL);
-	double z4=max_pa->z[4];
-	if (options.single_best) {
-		h->load=1;
-		h->array[0].rest=max_pa;
-	}
-	//update the z1 and z4s for all entries on the heap
-	for (i=0; i<h->load; i++) {
-		assert(z1_sum!=0);
-		pretty * pa = h->array[i].rest;
-		pa->z[1]=z1_sum;
-		if (map_class!=UNPAIRED) {
-			pa->z[4]=z4;
+	if (!options.no_mapping_qualities) {
+		if (max_pa==NULL) {
+			return;
+		}
+		if (options.single_best) {
+			h->load=1;
+			h->array[0].rest=max_pa;
+		}
+		//update the z1 and z4s for all entries on the heap
+		for (i=0; i<h->load; i++) {
+			assert(z1_sum!=0);
+			pretty * pa = h->array[i].rest;
+			pa->z[1]=z1_sum;
+			if (map_class!=UNPAIRED) {
+				assert((HAS_ZHALF ^ pa->has_zs)==0);
+				pa->z[4]=max_pa->z[4];
+			}
 		}
 	}
 	//dump the results in the first files linked list
@@ -379,7 +376,7 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 		results_ll->length+= h->load - (h->load>options.max_outputs ? 1 : 0);
 	}
 	//return back at least one unaligned entry that can be used for unaligned stuff later 
-	if ((options.sam_unaligned || options.unaligned_fastx) && h->load>0) {
+	if ((options.sam_unaligned || options.unaligned_reads_file!=NULL) && h->load>0) {
 		*unaligned_pa=h->array[0].rest;
 	}
 }
@@ -391,7 +388,6 @@ static inline void remove_offending_fields(pretty * pa) {
 	pa->has_h1=false;
 	pa->has_h2=false;
 }
-
 
 //This function is entered with the following
 //ll - an array of linked lists
@@ -439,73 +435,73 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 	bool second_empty = (second_leg_list == NULL || second_leg_list->length<=0) ;
 	bool paired_empty = (paired_list == NULL || paired_list->length<=0) ;
 	
-	//here is the spot to compute class priors and finalize the mapq value for the mappings
-	//TODO class priors	
-	double paired_scale = (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) ;
-	double first_leg_scale = 0.0;
-	if (!first_empty) {
-		//fprintf(stderr,"compute first %e %e\n",first_leg_list->head->z[4],first_leg_list->head->z[5]);
-		first_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (first_leg_list->head->z[5]) ;	
-	}	
-	double second_leg_scale = 0.0;
-	if (!second_empty) {
-		second_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (second_leg_list->head->z[5]) ;	
-		//fprintf(stderr,"compute second %e %e %e %ld\n",second_leg_list->head->z[4],second_leg_list->head->z[5],second_leg_scale,genome_length);
-	}
-	double class_denom = (!paired_empty ? paired_scale : 0.0) + (!first_empty ? first_leg_scale : 0.0 ) + (!second_empty ? second_leg_scale : 0.0);
-
 	pretty * best_alignment=NULL;
-	//fprintf(stderr,"class %e , pair %e, first %e, second %e\n",class_denom,paired_scale,first_leg_scale,second_leg_scale);
-	if (class_denom>0) {
-		pretty * pa;
-		//update the paired mapping qualities
-		if (!paired_empty) {
-			for (pa=paired_list->head; pa!=NULL; pa=pa->next) {
-				//fprintf(stderr,"z2 %e %d, z3 %e %d\n",pa->z[2],tnlog(pa->z[2]),pa->z[3],tnlog(pa->z[3]));
-				//fprintf(stderr,"mp z2 %e %d , z3 %e %d\n",pa->mate_pair->z[2],tnlog(pa->mate_pair->z[2]),pa->mate_pair->z[3],tnlog(pa->mate_pair->z[3]));
-				pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom/**pa->z[6]*/));
-				pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom/**pa->mate_pair->z[6]*/));
-				pretty * max_pa = (pa->mapq > pa->mate_pair->mapq ? pa : pa->mate_pair);
-				if (best_alignment==NULL || max_pa->mapq>best_alignment->mapq) {
-					best_alignment=max_pa;
-				}
-			}
-		}
-		//update the first leg
+	//here is the spot to compute class priors and finalize the mapq value for the mappings
+	if (!options.no_mapping_qualities) {
+		double paired_scale = (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) ;
+		double first_leg_scale = 0.0;
 		if (!first_empty) {
-			for (pa=first_leg_list->head; pa!=NULL; pa=pa->next) {
-				assert(pa->mapped && !pa->mate_pair->mapped);
-				pa->mapq=qv_from_pr_corr((pa->z[0]*first_leg_scale)/(pa->z[1]*class_denom));	
-				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
-					best_alignment=pa;
-				}
-			}
-		}
-		//update the second leg
+			//fprintf(stderr,"compute first %e %e\n",first_leg_list->head->z[4],first_leg_list->head->z[5]);
+			first_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!second_empty ? MIN(second_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (first_leg_list->head->z[5]) ;	
+		}	
+		double second_leg_scale = 0.0;
 		if (!second_empty) {
-			for (pa=second_leg_list->head; pa!=NULL; pa=pa->next) {
-				assert(pa->mapped && !pa->mate_pair->mapped);
-				pa->mapq=qv_from_pr_corr((pa->z[0]*second_leg_scale)/(pa->z[1]*class_denom));	
-				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
-					best_alignment=pa;
-				}
-			}
+			second_leg_scale = (paired_list->length > 0 ? MIN(paired_list->head->z[4]*genome_length,1.0) : 1.0 ) * (!first_empty ? MIN(first_leg_list->head->z[4]*genome_length,1.0) : 1.0 ) * (second_leg_list->head->z[5]) ;	
+			//fprintf(stderr,"compute second %e %e %e %ld\n",second_leg_list->head->z[4],second_leg_list->head->z[5],second_leg_scale,genome_length);
 		}
-		//update unpaired
-		if (unpaired_list!=NULL) {
-			for (pa=unpaired_list->head; pa!=NULL; pa=pa->next) {
-				pa->mapq=qv_from_pr_corr(pa->z[0]/pa->z[1]);	
-				if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
-					best_alignment=pa;
-				}
-			}
-		}
-	}	
+		double class_denom = (!paired_empty ? paired_scale : 0.0) + (!first_empty ? first_leg_scale : 0.0 ) + (!second_empty ? second_leg_scale : 0.0);
 
+		//fprintf(stderr,"class %e , pair %e, first %e, second %e\n",class_denom,paired_scale,first_leg_scale,second_leg_scale);
+		if (class_denom>0) {
+			pretty * pa;
+			//update the paired mapping qualities
+			if (!paired_empty) {
+				for (pa=paired_list->head; pa!=NULL; pa=pa->next) {
+					//fprintf(stderr,"z2 %e %d, z3 %e %d\n",pa->z[2],tnlog(pa->z[2]),pa->z[3],tnlog(pa->z[3]));
+					//fprintf(stderr,"mp z2 %e %d , z3 %e %d\n",pa->mate_pair->z[2],tnlog(pa->mate_pair->z[2]),pa->mate_pair->z[3],tnlog(pa->mate_pair->z[3]));
+					pa->mapq=qv_from_pr_corr((pa->z[2]*paired_scale)/(pa->z[3]*class_denom/**pa->z[6]*/));
+					pa->mate_pair->mapq=qv_from_pr_corr((pa->mate_pair->z[2]*paired_scale)/(pa->mate_pair->z[3]*class_denom/**pa->mate_pair->z[6]*/));
+					pretty * max_pa = (pa->mapq > pa->mate_pair->mapq ? pa : pa->mate_pair);
+					if (best_alignment==NULL || max_pa->mapq>best_alignment->mapq) {
+						best_alignment=max_pa;
+					}
+				}
+			}
+			//update the first leg
+			if (!first_empty) {
+				for (pa=first_leg_list->head; pa!=NULL; pa=pa->next) {
+					assert(pa->mapped && !pa->mate_pair->mapped);
+					pa->mapq=qv_from_pr_corr((pa->z[0]*first_leg_scale)/(pa->z[1]*class_denom));	
+					if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+						best_alignment=pa;
+					}
+				}
+			}
+			//update the second leg
+			if (!second_empty) {
+				for (pa=second_leg_list->head; pa!=NULL; pa=pa->next) {
+					assert(pa->mapped && !pa->mate_pair->mapped);
+					pa->mapq=qv_from_pr_corr((pa->z[0]*second_leg_scale)/(pa->z[1]*class_denom));	
+					if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+						best_alignment=pa;
+					}
+				}
+			}
+			//update unpaired
+			if (unpaired_list!=NULL) {
+				for (pa=unpaired_list->head; pa!=NULL; pa=pa->next) {
+					pa->mapq=qv_from_pr_corr(pa->z[0]/pa->z[1]);	
+					if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
+						best_alignment=pa;
+					}
+				}
+			}
+		}	
+	}
 	//here we just trivially prepare the final outputed list
 	//this would be adjusted in case of 'all_contigs' where we would
 	//just add one of the final classes
-	if (options.all_contigs) {
+	if (options.all_contigs && options.single_best && !options.no_improper_mappings) {
 		if (best_alignment!=NULL) {
 			if (best_alignment->paired_sequencing && !best_alignment->mp_mapped && best_alignment->mapq>=10) {
 				pp_ll * list_to_check=(best_alignment->first_in_pair ? second_leg_list : first_leg_list);
@@ -525,12 +521,14 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 						best_alignment->mate_pair=best_alignment_best_pair;
 						best_alignment->mp_mapped=true;
 						best_alignment->mp_reverse=best_alignment->mate_pair->reverse;
-						best_alignment->mate_reference_name=best_alignment->mate_pair->reference_name;	
+						best_alignment->mate_reference_name=best_alignment->mate_pair->reference_name;
+						best_alignment->mate_genome_start_unpadded=best_alignment->mate_pair->genome_start_unpadded;	
 
 						best_alignment->mate_pair->mate_pair=best_alignment;
 						best_alignment->mate_pair->mp_mapped=true;
 						best_alignment->mate_pair->mp_reverse=best_alignment->reverse;
 						best_alignment->mate_pair->mate_reference_name=best_alignment->reference_name;					
+						best_alignment->mate_pair->mate_genome_start_unpadded=best_alignment->genome_start_unpadded;	
 
 						assert(best_alignment->mate_pair->mapped);
 					}
@@ -545,8 +543,29 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 		pp_ll_append_list(m_ll,unpaired_list);
 	}
 
+	//remove the z fields from output if all contigs is set
+	if (options.all_contigs) {
+		pretty * pa; 
+		for (pa=m_ll->head; pa!=NULL; pa=pa->next) {
+			pa->has_zs=0;
+			if (pa->mate_pair!=NULL) {
+				pa->mate_pair->has_zs=0;
+			}
+		}
+	}
+	//remove the z fields from output if all contigs is set
+	if (options.no_mapping_qualities && !options.leave_mapq) {
+		pretty * pa; 
+		for (pa=m_ll->head; pa!=NULL; pa=pa->next) {
+			pa->mapq=255;
+			if (pa->mate_pair!=NULL) {
+				pa->mate_pair->mapq=255;
+			}
+		}
+	}
+
 	//this part of the if clause deals with printing unmapped SAM entries or fasta or fastq format instead of SAM
-	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_fastx)) {
+	if (m_ll->length==0 && (options.sam_unaligned || options.unaligned_reads_file!=NULL)) {
 		if (unaligned_pa==NULL) {
 			if (!options.half_paired) { 
 				h->load=0;
@@ -572,7 +591,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			unaligned_pa->next=NULL;
 			
 			pretty_from_aux_inplace(unaligned_pa);
-			if (options.unaligned_fastx) {
+			if (options.unaligned_reads_file!=NULL) {
 				//render_fastx(unaligned_pa, true);
 				render_fastx_to_buffer(unaligned_pa,ob);
 			} else {
@@ -581,7 +600,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			}
 			if (unaligned_pa->paired_sequencing) {
 				pretty_from_aux_inplace(unaligned_pa->mate_pair);
-				if (options.unaligned_fastx) {
+				if (options.unaligned_reads_file!=NULL) {
 					//render_fastx(unaligned_pa->mate_pair, true);
 					render_fastx_to_buffer(unaligned_pa->mate_pair,ob);
 				} else {
@@ -591,13 +610,13 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			}
 		}
 	//The usual CASE, where we want to print SAM format
-	} else if (!options.unaligned_fastx) {
-
+	} else if (options.unaligned_reads_file==NULL) {
+		
 		//past here is only rendering of the final output string
 		pa=m_ll->head;
 		while(pa!=NULL) {
 			//pretty_from_aux_inplace(pa);
-			if (options.aligned_fastx) {
+			if (options.aligned_reads_file!=NULL) {
 				pa->next=NULL;
 				pretty_from_aux_inplace(pa);
 				//render_fastx(pa, true);
@@ -612,7 +631,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			assert(pa->mapped);
 			if (pa->mate_pair!=NULL) {
 				assert(pa->mate_pair->mate_pair!=NULL);
-				if (options.aligned_fastx) {
+				if (options.aligned_reads_file!=NULL) {
 					pretty_from_aux_inplace(pa->mate_pair);
 					//render_fastx(pa->mate_pair, true);
 					render_fastx_to_buffer(pa->mate_pair, ob);
@@ -644,7 +663,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 			} else {
 				pp_ll_append(ll+PAIRED,pa->mate_pair);
 			}
-		} else if ((options.half_paired || options.sam_unaligned || options.unaligned_fastx)  && (pa->mapped || pa->mp_mapped)) {
+		} else if ((options.half_paired || options.sam_unaligned || options.unaligned_reads_file!=NULL)  && (pa->mapped || pa->mp_mapped)) {
 			//lets figure out which leg
 			assert(!pa->mapped || !pa->mp_mapped);
 			if (pa->mapped) {
@@ -661,7 +680,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 					pp_ll_append(ll+FIRST_LEG,pa->mate_pair);
 				}
 			}
-		} else if ((options.sam_unaligned || options.unaligned_fastx) && !pa->mapped && !pa->mp_mapped) {
+		} else if ((options.sam_unaligned || options.unaligned_reads_file) && !pa->mapped && !pa->mp_mapped) {
 			//unmapped paired
 			pp_ll_append(ll+UNMAPPED,pa);
 		}
@@ -669,7 +688,7 @@ static inline void pp_ll_append_and_check(pp_ll* ll,pretty * pa) {
 		if (pa->mapped) {
 			//unpaired and mapped
 			pp_ll_append(ll+UNPAIRED,pa);
-		} else if (options.sam_unaligned || options.unaligned_fastx) {
+		} else if (options.sam_unaligned || options.unaligned_reads_file) {
 			//unpaired and unmapped
 			pp_ll_append(ll+UNMAPPED,pa);
 		}

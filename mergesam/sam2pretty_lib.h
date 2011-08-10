@@ -27,6 +27,10 @@
 #define HAS_Z5	1<<5
 #define HAS_Z6	1<<6
 
+#define HAS_ZPAIRED	(HAS_Z2 | HAS_Z3 | HAS_Z4 | HAS_Z6)
+#define HAS_ZHALF	(HAS_Z0 | HAS_Z1 | HAS_Z4 | HAS_Z5)
+#define HAS_ZUNPAIRED	(HAS_Z0 | HAS_Z1)
+
 typedef struct pretty pretty;
 struct pretty {
 	//char* genome_string;

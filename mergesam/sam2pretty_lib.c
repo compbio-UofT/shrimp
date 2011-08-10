@@ -1,4 +1,4 @@
-//aug 03 2011
+//aug 10 2011
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
@@ -1360,6 +1360,7 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 	pa->platform_quality_fail = ((pa->flags & 0x0200) != 0) ? true : false ;
 	//0x0400 the read is either a PCR duplicate or an optical duplicate
 	pa->pcr_duplicate = ((pa->flags & 0x0400) != 0) ? true : false ;
+	
 	return pa;	
 }
 

@@ -126,8 +126,8 @@
 	{"mode",1,0,'M'},\
 	{"trim-front",1,0,21},\
 	{"trim-end",1,0,22},\
-	{"trim-first",1,0,23},\
-	{"trim-second",1,0,24},\
+	{"trim-first",0,0,23},\
+	{"trim-second",0,0,24},\
 	{"insert-size-dist",1,0,25},\
 	{"use-regions",0,0,26},\
 	{"region-overlap",1,0,27},\

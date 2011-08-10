@@ -25,35 +25,40 @@
 #define DEF_READ_RATE 6000
 #define DEF_ALIGNMENTS_STACK_SIZE DEF_READ_RATE*2
 typedef struct runtime_options {
-	//input options
+	//efficiency options
 	size_t buffer_size;
 	size_t read_size;
 	size_t alignments_stack_size;
 	int read_rate;
+	int threads;
+	//gmapper supported options
 	bool fastq;
 	bool fastq_set;
 	bool mode_set;
 	bool colour_space;
 	bool letter_space;
-	int expected_insert_size;
-	int threads;
-	int number_of_sam_files;
 	double insert_size_mean;
 	double insert_size_stddev;
-	//output options
 	bool strata;
 	bool half_paired;
 	bool sam_unaligned;
 	bool sam_format;
-	bool single_best;
-	bool all_contigs;
 	int32_t max_alignments;
 	int32_t max_outputs;
+	FILE * unaligned_reads_file;
+	FILE * aligned_reads_file;
+	
+	bool no_mapping_qualities;
+	bool no_improper_mappings;
+	bool no_autodetect_input;
+	//mergesam specific
+	int number_of_sam_files;
+	bool single_best;
+	bool all_contigs;
 	//determined at runtime options
 	bool paired;
 	bool unpaired; 
-	bool unaligned_fastx;
-	bool aligned_fastx;
+	bool leave_mapq;
 };
 extern runtime_options options;
 
