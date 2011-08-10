@@ -1501,7 +1501,7 @@ hit_run_post_sw(struct read_entry * re, struct read_hit * rh)
 {
   //fprintf(stderr, "running post sw for read: [%s]\n", re->name);
   if (shrimp_mode == MODE_COLOUR_SPACE) {
-    post_sw(re->read[0], re->initbp[0], re->qual, rh->sfrp);
+    post_sw(re->read[rh->st], re->initbp[rh->st], re->qual, rh->sfrp);
   } else { // LS: cheat; reuse SW score to get posterior
     rh->sfrp->posterior = pow(2.0, ((double)rh->sfrp->score - (double)rh->sfrp->rmapped * (2.0 * score_alpha + score_beta))/score_alpha);
   }

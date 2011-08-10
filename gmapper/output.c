@@ -1065,7 +1065,7 @@ readpair_output(pair_entry * pe)
 	  last[2] = idx_pair + 1;
 	}
       }
-      else
+      else // all-contigs
       {
 	// output top mapping over all classes
 
@@ -1094,6 +1094,7 @@ readpair_output(pair_entry * pe)
 
 	  idx_pair = get_idx_mp_max_mqv(pe, best_nip, max_idx[best_nip]);
 
+	/*
 	  // update the histogram of insert sizes
 	  int bucket = (pe->final_paired_hits[idx_pair].insert_size - min_insert_size) / insert_histogram_bucket_size;
 	  if (bucket < 0) bucket = 0;
@@ -1102,6 +1103,7 @@ readpair_output(pair_entry * pe)
 	  insert_histogram[bucket]++;
 #pragma omp atomic
 	  insert_histogram_load++;
+	*/
 
 	  last[0] = 0;
 	  last[1] = 0;
@@ -1175,6 +1177,17 @@ readpair_output(pair_entry * pe)
       good_pair = true;
     } else if (pe->final_paired_hits[i].improper_mapping && (rh1->sfrp->mqv >= 10 || rh2->sfrp->mqv >= 10)) {
       good_unpair = true;
+    }
+
+    if (Xflag && !pe->final_paired_hits[i].improper_mapping) {
+      // update the histogram of insert sizes
+      int bucket = (pe->final_paired_hits[i].insert_size - min_insert_size) / insert_histogram_bucket_size;
+      if (bucket < 0) bucket = 0;
+      if (bucket > 99) bucket = 99;
+#pragma omp atomic
+      insert_histogram[bucket]++;
+#pragma omp atomic
+      insert_histogram_load++;
     }
   }
   for (nip = 0; nip < 2; nip++)
