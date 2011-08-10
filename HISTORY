@@ -19,6 +19,10 @@
           be 50,2000).
 	- Fixed some bugs involving pairing mode and insert sizes.
 	- Removed limit on the number of OMP threads. (It used to be 50.)
+	- NOTE: Insert sizes in gmapper  follow the old SAM specification: 5' to
+          5'. The latest  SAM specification defines it as  leftmost to rightmost
+          mapped base in a template. These are equivalent for "opp-in" data, but
+          not for the other pairing modes.
 
 2.1.1c: Feb 21, 2011
 	- Fixed col-bw issue, where mate pair insert size was not computed correctly
