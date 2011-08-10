@@ -265,6 +265,8 @@ typedef struct pairing_options {
   int		pair_mode;
   int		min_insert_size;
   int		max_insert_size;		// for read 1 relative to read 0
+  int		opp_in_min_insert_size;
+  int		opp_in_max_insert_size;
   //int		min_num_matches;
   int		pass1_num_outputs;
   int		pass2_num_outputs;

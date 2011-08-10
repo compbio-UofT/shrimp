@@ -2162,6 +2162,7 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
     break;
 
   case PAIR_OPP_OUT:
+    /*
     re1->delta_g_off_min[0] = - options->max_insert_size						- re2->window_len;
     re1->delta_g_off_max[0] = - options->min_insert_size + (re1->window_len - re1->read_len)	- re2->read_len;
     re1->delta_g_off_min[1] =   options->min_insert_size + re1->read_len				+ (re2->read_len - re2->window_len);
@@ -2171,9 +2172,24 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
     re2->delta_g_off_min[1] = - re1->delta_g_off_max[0];
     re2->delta_g_off_max[1] = - re1->delta_g_off_min[0];
+    */
+    re1->delta_g_off_min[0] =   options->min_insert_size                                                - re2->window_len;
+    re1->delta_g_off_min[0] += re1->read_len + re2->read_len;
+    re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len)    - re2->read_len;
+    re1->delta_g_off_max[0] += re1->read_len + re2->read_len;
+    re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len                                + (re2->read_len - re2->window_len);
+    re1->delta_g_off_min[1] -= re1->read_len + re2->read_len;
+    re1->delta_g_off_max[1] = - options->min_insert_size + re1->window_len;
+    re1->delta_g_off_max[1] -= re1->read_len + re2->read_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[1];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[0];
     break;
 
   case PAIR_COL_FW:
+    /*
     re1->delta_g_off_min[0] =   options->min_insert_size						+ (re2->read_len - re2->window_len);
     re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len);
     re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len				- re2->window_len;
@@ -2183,9 +2199,24 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
     re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
     re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
+    */
+    re1->delta_g_off_min[0] =   options->min_insert_size                                                - re2->window_len;
+    re1->delta_g_off_min[0] += re2->read_len;
+    re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len)    - re2->read_len;
+    re1->delta_g_off_max[0] += re2->read_len;
+    re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len                                + (re2->read_len - re2->window_len);
+    re1->delta_g_off_min[1] -= re2->read_len;
+    re1->delta_g_off_max[1] = - options->min_insert_size + re1->window_len;
+    re1->delta_g_off_max[1] -= re2->read_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
     break;
 
   case PAIR_COL_BW:
+    /*
     re1->delta_g_off_min[0] = - options->max_insert_size						+ (re2->read_len - re2->window_len);
     re1->delta_g_off_max[0] = - options->min_insert_size + (re1->window_len - re1->read_len);
     re1->delta_g_off_min[1] =   options->min_insert_size + re1->read_len				- re2->window_len;
@@ -2195,6 +2226,22 @@ readpair_compute_mp_ranges(struct read_entry * re1, struct read_entry * re2,
     re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
     re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
     re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
+    */
+
+    re1->delta_g_off_min[0] =   options->min_insert_size                                                - re2->window_len;
+    re1->delta_g_off_min[0] += re1->read_len;
+    re1->delta_g_off_max[0] =   options->max_insert_size + (re1->window_len - re1->read_len)    - re2->read_len;
+    re1->delta_g_off_max[0] += re1->read_len;
+    re1->delta_g_off_min[1] = - options->max_insert_size + re1->read_len                                + (re2->read_len - re2->window_len);
+    re1->delta_g_off_min[1] -= re1->read_len;
+    re1->delta_g_off_max[1] = - options->min_insert_size + re1->window_len;
+    re1->delta_g_off_max[1] -= re1->read_len;
+
+    re2->delta_g_off_min[0] = - re1->delta_g_off_max[0];
+    re2->delta_g_off_max[0] = - re1->delta_g_off_min[0];
+    re2->delta_g_off_min[1] = - re1->delta_g_off_max[1];
+    re2->delta_g_off_max[1] = - re1->delta_g_off_min[1];
+
     break;
 
   default:

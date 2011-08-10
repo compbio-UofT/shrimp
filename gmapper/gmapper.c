@@ -2024,22 +2024,27 @@ int main(int argc, char **argv){
 		  break;
 		case 'I':
 		  c = strtok(optarg, ",");
-		  if (c == NULL) {
-		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
-		    exit(1);
-		  }
+		  if (c == NULL)
+		    crash(1, 0, "format for insert sizes is \"-I 200,1000\"\n");
+
 		  min_insert_size = atoi(c);
+		  if (min_insert_size < 0) {
+		    logit(0, "insert sizes must be nonnegative; check README. resetting min_insert_size from [%s] to 0", optarg);
+		    min_insert_size = 0;
+		  }
+
 		  c = strtok(NULL, ",");
-		  if (c == NULL) {
-		    fprintf(stderr, "error: format for insert sizes is \"-I 200,1000\"\n");
-		    exit(1);
-		  }
+		  if (c == NULL)
+		    crash(1, 0, "format for insert sizes is \"-I 200,1000\"\n");
+
 		  max_insert_size = atoi(c);
-		  if (min_insert_size > max_insert_size) {
-		    fprintf(stderr, "error: invalid insert sizes (min:%d,max:%d)\n",
-			    min_insert_size, max_insert_size);
-		    exit(1);
+		  if (max_insert_size < 0) {
+		    logit(0, "insert sizes must be nonnegative; check README. resetting max_insert_size from [%s] to 0", optarg);
+		    max_insert_size = 0;
 		  }
+
+		  if (min_insert_size > max_insert_size)
+		    crash(1, 0, "invalid insert sizes (min:%d,max:%d)\n", min_insert_size, max_insert_size);
 		  break;
 		case 'E': // on by default; accept option for bw compatibility
 		  logit(0, "as of v2.2.0, -E/--sam is on by default");

@@ -1,20 +1,23 @@
 2.2.0: Jul, 2011
 	- Added mapping quality values and base quality values (see README.)
-	- ***NOTE***: mapping quality computation is NOT currently available during merging. This will be fixed very soon.
-	  If merging and MQs are both relevant to you (in particular, if you split the reference into pieces to fit in RAM,)
-	  please consider waiting to update for the next minor release.
 	- Various algorithmic improvements behind the scenes.
-	- Changed default scoring scheme. Scores optimized for mapping against hg.
+	- Changed default scoring scheme. Scores optimized for mapping hg data.
 	- Changed default thresholds.
-	- Changed default to SAM format output. For the old shrimp format, see --shrimp-format.
-	- Changed default to half-paired mode: paired reads will first be mapped as pairs, then also as singletons.
-	  To select only the best mapping, see --single-best-mapping. Half-paired mode will slow down
-	  gmapper compared to its previous versions, but we felt it is desirable to have it.
-	  If you only need paired mappings, see --no-half-paired.
-	- Changed the default set of seeds to 3 seeds of weight 12, (Thank you Marta Gardea.)
-	- Changed default Smith-Waterman mode to global. This forces the entire read to map to the reference.
-	  For the old (local) alignment mode, see --local. Notably, mapping qualities are unavailable in this mode.
-	- Changed default allowable insert size interval to 0,1000. (It used to be 50,2000).
+	- Changed default to SAM format output.  For the old shrimp format,  see
+	  --shrimp-format.
+	- Changed default to half-paired mode: paired reads will first be mapped
+	  as pairs, then  also as singletons.  To select  only the best mapping,
+	  see  --single-best-mapping.   NOTE: Half-paired  mode  will slow  down
+	  gmapper compared to its previous versions, but we felt it is desirable
+	  to have it.  If you only need paired mappings, see --no-half-paired.
+	- Changed the default  set of seeds to 3 seeds of  weight 12, (Thank you
+          Marta Gardea.)
+	- Changed default Smith-Waterman mode  to global. This forces the entire
+	  read to map to the reference.  For the old (local) alignment mode, see
+	  --local. Notably, mapping qualities are unavailable in this mode.
+	- Changed default allowable insert size  interval to 0,1000. (It used to
+          be 50,2000).
+	- Fixed some bugs involving pairing mode and insert sizes.
 	- Removed limit on the number of OMP threads. (It used to be 50.)
 
 2.1.1c: Feb 21, 2011
