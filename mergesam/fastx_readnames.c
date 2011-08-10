@@ -52,7 +52,8 @@ void parse_reads(fastx_readnames * fxrn) {
 							fxrn->reads_unseen++;
 							fxrn->reads_filled++;
 							fxrn->fastq_seen_name=true;
-							fxrn->fastq_seen_seq=options.colour_space ? -1 : 0;
+							//fxrn->fastq_seen_seq=options.colour_space ? -1 : 0;
+							fxrn->fastq_seen_seq=0;
 							fxrn->fastq_seen_qual=0;
 							fxrn->fastq_seen_plus=false;
 						}
@@ -61,12 +62,26 @@ void parse_reads(fastx_readnames * fxrn) {
 							if (read_name[0]=='+') {
 								fxrn->fastq_seen_plus=true;
 							} else {
+								if (options.mode_set==false) {
+									if (read_name[0]!='\0' && read_name[1]!='\0') {
+										if (read_name[1]<63) {
+											fprintf(stderr,"Detected colour-space!\n");
+											options.colour_space=true;
+										} else {
+											fprintf(stderr,"Detected letter-space!\n");
+											options.colour_space=false;
+										}
+										options.mode_set=true;
+
+									}
+								}
 								fxrn->fastq_seen_seq+=strlen(read_name)-1;
 							}
 						} else {
 							fxrn->fastq_seen_qual+=strlen(read_name)-1;
-							assert(fxrn->fastq_seen_qual<=fxrn->fastq_seen_seq);
-							if (fxrn->fastq_seen_qual==fxrn->fastq_seen_seq) {
+							assert(fxrn->fastq_seen_qual<=fxrn->fastq_seen_seq+(options.colour_space ? -1 : 0));
+							assert(options.mode_set);
+							if (fxrn->fastq_seen_qual==fxrn->fastq_seen_seq+(options.colour_space ? -1 : 0)) {
 								fxrn->fastq_seen_name=false;
 							}	
 						}

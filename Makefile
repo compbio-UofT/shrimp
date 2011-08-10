@@ -5,7 +5,7 @@
 ifndef CXXFLAGS
 CXXFLAGS=-g
 #CXXFLAGS=-O3 -DNDEBUG
-override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated 
+override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  
 endif
 
 SVN_VERSION=$(shell svnversion)

@@ -37,6 +37,47 @@ int64_t genome_length=0;
 char * command_line=NULL;
 
 
+char * reads_filename;
+
+void auto_detect_fastq(gzFile fp) {
+	// autodetect fasta/fastq format
+	char c;
+	if (options.fastq_set==false) {
+		c = gzgetc(fp);
+		while (c == '#' || c == ';') {
+			// discard this line
+			while (c != -1 && c != '\n')
+				c = gzgetc(fp);
+
+			if (gzeof(fp))
+				break;
+			if (c == -1) {
+				fprintf(stderr, "did not find the end of a comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
+				exit(1);
+			}
+
+			c = gzgetc(fp);
+		}
+		if (!gzeof(fp)) {
+			if (c == -1) {
+				fprintf(stderr, "did not find a non-comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
+				exit(1);
+			}
+			if (c == '@') {
+				fprintf(stderr,"detected fastq format in input file [%s]\n", reads_filename);
+				options.fastq = true;
+			} else if (c == '>') {
+				fprintf(stderr, "detected fasta format in input file [%s]\n", reads_filename);
+				options.fastq = false;
+			} else {
+				fprintf(stderr, "unrecognized character [%c] in input file [%s]. try disabling input autodetection\n", (char)c, reads_filename);
+				exit(1);
+			}
+			gzungetc(c, fp);
+		}
+	}
+}
+
 int64_t genome_length_from_headers(char ** sam_lines, int header_entries) {
 	int64_t g_length=0;
 	int i; 
@@ -172,10 +213,6 @@ void usage(char * s) {
 	fprintf(stderr,
 	"      --strata         Print only the best scoring hits\n");
 	fprintf(stderr,
-	"      --colour-space   Reads file contains ABSOLiD data\n");
-	fprintf(stderr,
-	"      --letter-space   Reads file contains non-ABSOLiD data\n");	
-	fprintf(stderr,
 	"      --unaligned-fastx\n");
 	fprintf(stderr,
 	"      --aligned-fastx\n");
@@ -191,8 +228,6 @@ struct option long_op[] =
 		{"report",1,0,'o'},
 		{"max-alignments",1,0,1},
 		{"sam-header",1,0,2},
-		{"colour-space",0,0,3},
-		{"letter-space",0,0,4},
                 {"help", 0, 0, 5},
 		{"buffer-size", 1, 0, 6},
 		{"read-size", 1, 0, 7},
@@ -294,6 +329,7 @@ int main (int argc, char ** argv) {
 	options.max_outputs=DEF_MAX_OUTPUTS;
 	options.expected_insert_size=DEF_INSERT_SIZE;	
 	options.fastq=false;
+	options.fastq_set=false;
 	options.all_contigs=false;
 	options.strata=false;
 	options.half_paired=false;
@@ -303,6 +339,7 @@ int main (int argc, char ** argv) {
 	options.unpaired=false;
 	options.colour_space=false;
 	options.letter_space=false;
+	options.mode_set=false;
 	options.buffer_size=DEF_BUFFER_SIZE;
 	options.read_size=DEF_READ_SIZE;
 	options.read_rate=DEF_READ_RATE;
@@ -443,10 +480,10 @@ int main (int argc, char ** argv) {
 		fprintf(stderr,"Setting max outputs to 1! because of single_best\n");	
 	}
 
-	if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
+	/*if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
 		fprintf(stderr,"can only enter either --colour-space or --letter-space not both!\n");
 		usage(argv[0]);
-	}
+	}*/
 	if (!options.sam_format) {
 		fprintf(stderr,"%s currently only supports sam format, please use '--sam' or '-E'\n",argv[0]);
 		usage(argv[0]);
@@ -476,7 +513,7 @@ int main (int argc, char ** argv) {
 	argv+=optind;
 	
 	//Variables for IO of read names
-	char * reads_filename=argv[0];
+	reads_filename=argv[0];
 	fprintf(stderr,"Using %s as reads filename\n",reads_filename);
 	argc--;
 	argv++;
@@ -556,6 +593,7 @@ int main (int argc, char ** argv) {
 	fprintf(stderr,"Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
 	bool have_non_eof_file=true;
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
+	auto_detect_fastq(fxrn.fb->frb.file);
 	while (!fxrn.reads_exhausted && have_non_eof_file) {
 		//fprintf(stderr,"Reads seen %lu, reads unseen %lu, reads filled %lu\n",fxrn.reads_seen,fxrn.reads_unseen,fxrn.reads_filled);
 		//Populate the hitlist to as large as possible

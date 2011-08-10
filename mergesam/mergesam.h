@@ -31,6 +31,8 @@ typedef struct runtime_options {
 	size_t alignments_stack_size;
 	int read_rate;
 	bool fastq;
+	bool fastq_set;
+	bool mode_set;
 	bool colour_space;
 	bool letter_space;
 	int expected_insert_size;
