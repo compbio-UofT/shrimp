@@ -977,26 +977,23 @@ Paired Mode
          CCT   CAT
          <--   <--
 
-    (R1:GGA, R2:TAC) or (R1:TAC, R2:GGA) are "opp-in"
-    (R1:GTA, R2:TCC) or (R1:TCC, R2:GTA) are "opp-out"
-    (R1:GGA, R2:GTA) or (R1:TAC, R2:TCC) are "col-fw"
-    (R1:GTA, R2:GGA) or (R1:TCC, R2:TAC) are "col-bw"
+    (R1:GGA, R2:TAC) or (R1:TAC, R2:GGA) are "opp-in", insert size = 8
+    (R1:GTA, R2:TCC) or (R1:TCC, R2:GTA) are "opp-out", insert size = 4
+    (R1:GGA, R2:GTA) or (R1:TAC, R2:TCC) are "col-fw", insert size = 6
+    (R1:GTA, R2:GGA) or (R1:TCC, R2:TAC) are "col-bw", insert size = 6
 
   [ -I/--isize <min,max> ]
 
-    Discard  any pair for  which  the insert size    between its two feet  falls
-    outside of this range. This  parameter is only  available in paired  mapping
-    mode. It defaults to "-I 50,2000".
+    Limit the search  space  for paired mappings to those  where the insert size
+    between the two feet falls in  the  given  range.  This  parameter  is  only
+    available in paired mapping mode. It defaults to "-I 0,1000".  In all paired
+    mapping  modes, the insert  is defined as  the distance between the 5'  ends
+    of the reads (see example above.)
 
-    Note: In all   paired mapping modes, the   insert is defined  as the genomic
-    region  strictly  between, and excluding   both CMWs for   its feet. (In the
-    example above,   it  equals  3.) Observe   that   this  differs  from  other
-    definitions. E.g., insert size in Illumina  reads is usually measured as the
-    distance between the 5' ends of the paired reads.
-
-    Note: These parameters are only used to limit the  search space where to map
-    each   read.  In SAM  output,  the  insert size  is  recalculated using  the
-    standard definition for SAM.
+    NOTE:  This limit is NOT strictly enforced.  By  nature  of  the  underlying
+    algorithms,  some paired mappings with inserts just outside the given  range
+    will also be considered.  These are not  discarded  by  gmapper  itself.  To
+    strictly enforce these bounds, use a script to filter the SAM output.
 
   [    --half-paired ]
 

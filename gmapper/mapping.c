@@ -1921,7 +1921,21 @@ readpair_compute_paired_hit(struct read_hit * rh1, struct read_hit * rh2, bool t
   dest->score = rh1->score_full + rh2->score_full;
   dest->pct_score = (1000 * 100 * dest->score)/dest->score_max;
   dest->key = threshold_is_absolute? dest->score : dest->pct_score;
-  dest->insert_size = abs(get_insert_size(rh1, rh2));
+  //dest->insert_size = abs(get_insert_size(rh1, rh2));
+  int ins_sz = get_insert_size(rh1, rh2);
+  int sign;
+  if (pair_mode == PAIR_OPP_IN || pair_mode == PAIR_COL_FW) {
+    if (rh1->gen_st == 0)
+      sign = +1;
+    else
+      sign = -1;
+  } else { // PAIR_OPP_OUT, PAIR_COL_BW
+    if (rh1->gen_st == 1)
+      sign = +1;
+    else
+      sign = -1;
+  }
+  dest->insert_size = sign * ins_sz;
   dest->improper_mapping = false;
   //tmp.isize_score=expected_isize==-1 ? 0 : abs(tmp.isize-expected_isize);
 }
