@@ -113,7 +113,7 @@
 	{"proj-histogram",0,0,'Y'},\
 	{"cachebypass-off",0,0,'Z'},\
 	{"help",0,0,'?'},\
-	{"spaced-kmers",0,0,'H'},\
+	{"hash-spaced-kmers",0,0,'H'},\
 	{"thread-stats",0,0,'D'},\
 	{"trim-off",0,0,'V'},\
 	{"strata",0,0,9},\

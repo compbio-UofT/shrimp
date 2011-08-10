@@ -661,7 +661,7 @@ Genome Projection
     Note: When running gmapper in colour space mode, seeds are applied to colour
     space representations of the genome and the reads.
 
-  [ -H/--spaced-kmers ]
+  [ -H/--hash-spaced-kmers ]
 
     Hash spaced kmers obtained from each spaced  seed into 24-bit strings before
     indexing them.
