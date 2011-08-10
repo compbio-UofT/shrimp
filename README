@@ -894,7 +894,11 @@ Filter 3: Scalar (Full) SW Alignment
 
     Output the top <num_outputs> filter 3 hits for each read/pair.
 
-  [ --strata ]
+  [    --max-alignments <n> ]
+
+    If more than <n> mappings for a read (pair) pass all filters, drop them all.
+
+  [    --strata ]
 
     Only output the highest scoring mappings for any given read, up to
     <num_outputs> mappings per read.
