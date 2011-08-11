@@ -896,12 +896,14 @@ Filter 3: Scalar (Full) SW Alignment
 
   [    --max-alignments <n> ]
 
-    If more than <n> mappings for a read (pair) pass all filters, drop them all.
+    If more  than <n>  mappings for a  read (pair)  pass all filters,  drop them
+    all. Also see Note on Post-alignment Option Ordering.
 
   [    --strata ]
 
-    Only output the highest scoring mappings for any given read, up to
-    <num_outputs> mappings per read.
+    Only  output  the  highest  scoring  mappings  for any  given  read,  up  to
+    <num_outputs>  mappings per read.   Also see  Note on  Post-alignment Option
+    Ordering.
 
   [ -a/--anchor-width <anchor_width> ]
 
@@ -1132,21 +1134,22 @@ Mapping Qualities
 
   [    --all-contigs ]
 
-    This flag specifies that all contigs of interest are included in  this  run.
-    When this is not the case  (which is the default),  gmapper  includes  extra
-    fields in its SAM output in order to  make  possible  the  recalculation  of
-    mapping qualities when merging mappings from different files.
+    This flag specifies  that all contigs of interest are  included in this run.
+    When this  is not the  case (which is  the default), gmapper  includes extra
+    fields in  its SAM  output in  order to make  possible the  recalculation of
+    mapping qualities when merging mappings from different files.  Also see Note
+    on Post-alignment Option Ordering.
 
   [    --single-best-mapping ]
 
     If mapping qualities are computed,  this flag tells gmapper to  only  output
     the "best" mapping for each read (or pair, in paired mode).
 
-    Note:  in  paired  mode,  if   --single-best-mapping   is  given   but   not
-    --all-contigs, gmapper outputs  the  best  mapping  from  each  class:  best
-    paired, best unpaired for the first read, and best unpaired for  the  second
-    read. These extra mappings are used  to  recompute  mapping  qualities  when
-    merging.
+    Note:   in  paired  mode,   if  --single-best-mapping   is  given   but  not
+    --all-contigs,  gmapper  outputs the  best  mapping  from  each class:  best
+    paired, best unpaired  for the first read, and best  unpaired for the second
+    read.  These extra  mappings are  used to  recompute mapping  qualities when
+    merging.  Also see Note on Post-alignment Option Ordering.
 
   [    --no-improper-mappings ]
 
@@ -1175,6 +1178,33 @@ Diagnostics
     trimming some of the outliers  often results in  a  dramatic speed boost  at
     very little, if any, cost to sensitivity.
 
+
+Note on Post-alignment Option Ordering
+--------------------------------------
+
+  The set of mappings which pass the Scalar/Full SW threshold are then processed
+  in this order:
+
+    (1) If --strata  is given, it is applied  first, based on (sum of) scores.
+
+    (2) If --max-alignments is gien, it is applied second.
+
+    (3) Mapping qualities are then computed based on the remaining reads.
+
+    (4) If --single-best-mapping is given for paired reads:
+
+      (4a) If --all-contigs is not given,  at most one top mapping in each class
+      is reported, where  the possible classes are: singleton  mapping for first
+      read, singleton mapping for second  read, paired mapping. Here, sorting is
+      by mapping quality.
+
+      (4b) If  --all-contigs is given,  at most one  mapping is output  for each
+      read pair. Selection between classes is done based on mapping quality.
+
+      Note: For unpaired reads, there is  only one class of mapping, so (4a) and
+      (4b) are equivalent  in terms of what mappings  are output.  However, they
+      are different  in that --all-contigs  also prevents additional  SAM fields
+      from being included in the output which would have been used by merging.
 
 --------------------------------------------------------------------------------
 6. Algorithms

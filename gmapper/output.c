@@ -718,6 +718,7 @@ compute_unpaired_mqv(read_entry * re, read_hit * * hits, int n_hits)
     hits[i]->sfrp->z1 = z1;
 
     hits[i]->sfrp->mqv = qv_from_pr_corr(hits[i]->sfrp->posterior / z1);
+    if (hits[i]->sfrp->mqv < 4) hits[i]->sfrp->mqv = 0;
   }
 }
 
@@ -856,6 +857,7 @@ compute_paired_mqv(pair_entry * pe)
       read_hit * rhp = &pe->re[nip]->final_unpaired_hits[i];
       double p_corr = (pr_top_random[1-nip] * pr_top_random[2] * pr_missed_mp[nip] / class_select_denom) * (rhp->sfrp->z0 / rhp->sfrp->z1);
       rhp->sfrp->mqv = qv_from_pr_corr(p_corr);
+      if (rhp->sfrp->mqv < 4) rhp->sfrp->mqv = 0;
     }
   }
   // paired:
@@ -864,6 +866,7 @@ compute_paired_mqv(pair_entry * pe)
       read_hit * rhp = &pe->final_paired_hit_pool[nip][pe->final_paired_hits[i].rh_idx[nip]];
       double p_corr = (pr_top_random[0] * pr_top_random[1] / class_select_denom) * (rhp->sfrp->z2 / (/*insert_size_denom * */rhp->sfrp->z3));
       rhp->sfrp->mqv = qv_from_pr_corr(p_corr);
+      if (rhp->sfrp->mqv < 4) rhp->sfrp->mqv = 0;
     }
   }
 }
