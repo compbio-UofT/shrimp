@@ -19,6 +19,46 @@
     return((void *)0);
 }*/
 
+
+bool auto_detect_fastq(gzFile fp, char * reads_filename) {
+	// autodetect fasta/fastq format
+	bool fastq=false;
+	char c;
+	c = gzgetc(fp);
+	while (c == '#' || c == ';') {
+		// discard this line
+		while (c != -1 && c != '\n')
+			c = gzgetc(fp);
+
+		if (gzeof(fp))
+			break;
+		if (c == -1) {
+			fprintf(stderr, "did not find the end of a comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
+			exit(1);
+		}
+
+		c = gzgetc(fp);
+	}
+	if (!gzeof(fp)) {
+		if (c == -1) {
+			fprintf(stderr, "did not find a non-comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
+			exit(1);
+		}
+		if (c == '@') {
+			fprintf(stderr,"detected fastq format in input file [%s]\n", reads_filename);
+			fastq = true;
+		} else if (c == '>') {
+			fprintf(stderr, "detected fasta format in input file [%s]\n", reads_filename);
+			fastq = false;
+		} else {
+			fprintf(stderr, "unrecognized character [%c] in input file [%s]. try disabling input autodetection\n", (char)c, reads_filename);
+			exit(1);
+		}
+		gzungetc(c, fp);
+	}
+	return fastq;
+}
+
 void fb_close(file_buffer * fb) {
 	free(fb->base);
 	free(fb->frb.base);

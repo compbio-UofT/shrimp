@@ -25,6 +25,7 @@ typedef struct file_buffer {
         file_read_buffer frb;
 } file_buffer;
 
+bool auto_detect_fastq(gzFile fp, char * reads_filename);
 void fb_close(file_buffer * fb);
 file_buffer * fb_open(char * path,size_t buffer_size,size_t read_size);
 void fill_read_buffer(file_read_buffer * frb);

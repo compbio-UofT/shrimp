@@ -79,8 +79,6 @@ int main (int argc, char ** argv) {
 	options.sam_format=false;
 	options.paired=false;
 	options.unpaired=false;
-	options.colour_space=false;
-	options.letter_space=false;
 	options.buffer_size=DEF_BUFFER_SIZE;
 	options.read_size=DEF_READ_SIZE;
 	options.read_rate=DEF_READ_RATE;
@@ -101,12 +99,6 @@ int main (int argc, char ** argv) {
 			break;
 		case 'N':
 			options.threads=atoi(optarg);
-			break;
-		case 3:
-			options.colour_space=true;
-			break;
-		case 4:
-			options.letter_space=true;
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);

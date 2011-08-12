@@ -44,44 +44,6 @@ char * command_line=NULL;
 //char * reads_filename;
 //reads_filename=NULL;
 
-void auto_detect_fastq(gzFile fp) {
-	// autodetect fasta/fastq format
-	char c;
-	if (options.fastq_set==false) {
-		c = gzgetc(fp);
-		while (c == '#' || c == ';') {
-			// discard this line
-			while (c != -1 && c != '\n')
-				c = gzgetc(fp);
-
-			if (gzeof(fp))
-				break;
-			if (c == -1) {
-				fprintf(stderr, "did not find the end of a comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
-				exit(1);
-			}
-
-			c = gzgetc(fp);
-		}
-		if (!gzeof(fp)) {
-			if (c == -1) {
-				fprintf(stderr, "did not find a non-comment line in the input file [%s]. try disabling input autodetection\n", reads_filename);
-				exit(1);
-			}
-			if (c == '@') {
-				fprintf(stderr,"detected fastq format in input file [%s]\n", reads_filename);
-				options.fastq = true;
-			} else if (c == '>') {
-				fprintf(stderr, "detected fasta format in input file [%s]\n", reads_filename);
-				options.fastq = false;
-			} else {
-				fprintf(stderr, "unrecognized character [%c] in input file [%s]. try disabling input autodetection\n", (char)c, reads_filename);
-				exit(1);
-			}
-			gzungetc(c, fp);
-		}
-	}
-}
 
 int64_t genome_length_from_headers(char ** sam_lines, int header_entries) {
 	int64_t g_length=0;
@@ -541,19 +503,47 @@ int main (int argc, char ** argv) {
         	c = getopt_long(argc, argv, short_op, long_op, &op_id);
 	}
 
+
+	/* SANITY CHECK ARGUMENTS */
+	/*	{"un",1,0,10},
+		{"al",1,0,11},
+		{"sam-unaligned",0,0,12},
+		{"report",1,0,'o'},
+		{"threads",1,0,'N'},
+		{"sam",0,0,'E'},
+		{"fastq", 0, 0, 'Q'},
+		{"strata",0,0,9},
+		{"max-alignments",1,0,14},
+		{"no-half-paired",0,0,19},
+		{"insert-size-dist",1,0,25},
+		{"single-best-mapping",0,0,37},
+		{"all-contigs",0,0,38},
+		{"half-paired",0,0,41},
+		{"no-mapping-qualities",0,0,39},
+		{"sam-header",1,0,2},
+		{"no-improper-mappings",0,0,42},
+		{"no-autodetect-input",0,0,48}, */
+	if (options.unaligned_reads_file!=NULL && options.aligned_reads_file!=NULL) {
+		fprintf(stderr," ! Please, '--un' xor '--al' == 1!\n");
+		exit(1);
+	}
+	
+	if (!options.sam_format && options.unaligned_reads_file==NULL && options.aligned_reads_file==NULL) {
+		fprintf(stderr," ! Mergesam currently only supports output in SAM or FAST(A/Q) format, please use one of '--un','--al',or '--sam'\n");
+		exit(1);
+	}
+
+	if (options.single_best && options.no_mapping_qualities) {
+		fprintf(stderr," ! '--single-best' cannot be used in combination with '--no-mapping-qualities'\n");
+		exit(1);
+	}
+
 	if (options.single_best) {
 		options.max_outputs=1;
 		fprintf(stderr," + Setting max outputs per class to 1, because of single_best.\n");	
 	}
 
-	/*if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
-		fprintf(stderr,"can only enter either --colour-space or --letter-space not both!\n");
-		usage(argv[0]);
-	}*/
-	if (!options.sam_format) {
-		fprintf(stderr," + %s currently only supports sam format, please use '--sam' or '-E'\n",argv[0]);
-		usage(argv[0]);
-	}
+	/* END OF SANITY CHECKING ... EVERYTHING IS SANE .. MAYBE ... */
 
 	omp_set_num_threads(options.threads); 
 	fprintf(stderr," + Running with %d threads!\n",options.threads);
@@ -656,8 +646,8 @@ int main (int argc, char ** argv) {
 	fprintf(stderr," + Setting up buffer with size %lu and read_size %lu\n",options.buffer_size,options.read_size);
 	bool have_non_eof_file=true;
 	fxrn.fb=fb_open(reads_filename,options.buffer_size,options.read_size);
-	if (!options.no_autodetect_input) {
-		auto_detect_fastq(fxrn.fb->frb.file);
+	if (!options.no_autodetect_input && !options.fastq_set) {
+		options.fastq=auto_detect_fastq(fxrn.fb->frb.file,reads_filename);
 	}
 
 	assert(options.unaligned_reads_file==NULL || options.aligned_reads_file==NULL);

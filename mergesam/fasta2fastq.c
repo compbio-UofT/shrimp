@@ -85,21 +85,16 @@ void usage(char * s) {
 	fprintf(stderr,"\nOptions:\n");
 	fprintf(stderr,
 	"      --help           This usage screen\n");
-	fprintf(stderr,
-	"      --colour-space   Reads file contains ABSOLiD data\n");
-	fprintf(stderr,
-	"      --letter-space   Reads file contains non-ABSOLiD data\n");	
 	exit(1);
 }
 
 
 struct option long_op[] =
         {
-		{"colour-space",0,0,3},
-		{"letter-space",0,0,4},
                 {"help", 0, 0, 5},
 		{"buffer-size", 1, 0, 6},
 		{"read-size", 1, 0, 7},
+		{"qv-offset",1,0,8},
                 {0,0,0,0}
         };
 
@@ -161,22 +156,10 @@ static size_t inline string_to_byte_size(char * s) {
 }
 
 int main (int argc, char ** argv) {
-	options.max_alignments=DEF_MAX_ALIGNMENTS;
-	options.max_outputs=DEF_MAX_OUTPUTS;
-	options.expected_insert_size=DEF_INSERT_SIZE;	
-	options.fastq=false;
-	options.strata=false;
-	options.half_paired=false;
-	options.sam_unaligned=false;
-	options.sam_format=false;
-	options.paired=false;
-	options.unpaired=false;
-	options.colour_space=false;
-	options.letter_space=false;
 	options.buffer_size=DEF_BUFFER_SIZE;
 	options.read_size=DEF_READ_SIZE;
-	options.read_rate=DEF_READ_RATE;
 	options.threads=1;
+	options.qv_offset=DEF_QV_OFFSET;
         int op_id;
         char short_op[] = "N:";
         char c = getopt_long(argc, argv, short_op, long_op, &op_id);
@@ -191,14 +174,11 @@ int main (int argc, char ** argv) {
 		case 5:
 			usage(argv[0]);
 			break;
+		case 8:
+			options.qv_offset=atoi(optarg);
+			break;
 		case 'N':
 			options.threads=atoi(optarg);
-			break;
-		case 3:
-			options.colour_space=true;
-			break;
-		case 4:
-			options.letter_space=true;
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
@@ -208,10 +188,9 @@ int main (int argc, char ** argv) {
         	c = getopt_long(argc, argv, short_op, long_op, &op_id);
 	}
 
-
-	if ((options.colour_space && options.letter_space) || (!options.colour_space && !options.letter_space)) {
-		fprintf(stderr,"can only enter either --colour-space or --letter-space not both!\n");
-		usage(argv[0]);
+	if (options.qv_offset<=0) {
+		fprintf(stderr,"Please specify a qv_offset. This is used when converting qual files into fastq format.\nFor SOLiD data this value will be most likely 34.\nFor Illumina data this value will be most likely 64, except for Illumina 1.8+ when it is 33.\n");		
+		exit(1);
 	}
 
 	fprintf(stderr,"Set to %d threads!\n",options.threads);

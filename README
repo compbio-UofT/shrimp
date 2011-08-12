@@ -372,8 +372,7 @@ The options used above have the following meaning:
 
 After the mapping jobs complete, we merge the results with:
 
-  $ $SHRIMP_FOLDER/bin/mergesam --letter-space \
-    reads.500kx2.36bp.ls.fa map.db?of4.sam > map.sam
+  $ $SHRIMP_FOLDER/bin/mergesam reads.500kx2.36bp.ls.fa map.db?of4.sam > map.sam
 
 Above, the merging script we used corresponds to "same query set" (same reads)
 and "different databases" (disjoint chunks of hg18).
