@@ -77,6 +77,10 @@ void usage(char * s) {
 	fprintf(stderr,
 	"   <qual>  The qual file corresponding to the fasta file\n");
 	fprintf(stderr,
+	"Required:\n");
+	fprintf(stderr,
+	"      --qv-offset      The ASCII offset for the integer values in the qual file\n");
+	fprintf(stderr,
 	"Parameters:      (all sizes are in bytes unless specified)\n");
 	fprintf(stderr,
 	"      --buffer-size    File buffer size in memory per file   (Default: %d)\n",DEF_BUFFER_SIZE);
@@ -100,7 +104,7 @@ struct option long_op[] =
 
 static inline bool fill_fb(file_buffer * fb) {
 	time_t io_start_time=time(NULL);
-	fprintf(stderr,"IO start ....");
+	fprintf(stderr,"IO start ... ");
 	bool has_changed=false;
 	while (!fb->exhausted) {
 		fill_read_buffer(&fb->frb);
@@ -111,7 +115,7 @@ static inline bool fill_fb(file_buffer * fb) {
 		}
 		has_changed=has_changed || fb->changed;
 	}
-	fprintf(stderr,"IO end .... %lu seconds\n",(time(NULL)-io_start_time));
+	fprintf(stderr,"IO end ... %lu seconds\n",(time(NULL)-io_start_time));
 	return has_changed;
 	//fprintf(stdout,"Filled %lu to %lu of %lu |%s|\n",fb->unseen_start, fb->unseen_end, fb->size,fb->base);
 }
@@ -190,6 +194,7 @@ int main (int argc, char ** argv) {
 
 	if (options.qv_offset<=0) {
 		fprintf(stderr,"Please specify a qv_offset. This is used when converting qual files into fastq format.\nFor SOLiD data this value will be most likely 34.\nFor Illumina data this value will be most likely 64, except for Illumina 1.8+ when it is 33.\n");		
+		usage(argv[0]);
 		exit(1);
 	}
 
