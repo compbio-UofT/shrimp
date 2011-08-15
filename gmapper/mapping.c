@@ -1129,8 +1129,9 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	    tmp_score = short_len * match_score;
 	  }
 	} else {
+	  int missing_matches = abs(re->anchors[st][i].length + re->anchors[st][j].length - short_len);
 	  tmp_score = re->anchors[st][i].score + re->anchors[st][j].score
-	    + abs(re->anchors[st][i].length + re->anchors[st][j].length - short_len) * (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
+	    + MAX(missing_matches - 5, 0) * (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
 	  if (long_len > short_len)
 	    tmp_score += gap_open_score + (long_len - short_len) * gap_extend_score;
 	}
