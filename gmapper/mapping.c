@@ -847,7 +847,7 @@ expand_anchor(read_entry * re, int st, anchor * a)
   a->x += min_i;
   a->y += min_i;
   a->length = max_i - min_i + 1;
-  if (a->length > 20) a->weight++;
+  //if (a->length > 20) a->weight++;
   a->score = max_sc;
   assert(a->score <= a->length * match_score && a->score >= a->length * mm_score);
 }
@@ -1091,7 +1091,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
       // avoid single matches when n=2
       if ((options->match_mode == 2
 	   || (options->match_mode == 3 && !heavy_mp))
-	  && re->anchors[st][i].weight == 1)
+	  && re->anchors[st][i].weight == 1 && !hack)
 	max_score = -1;
 
       for (j = i - 1;
