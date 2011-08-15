@@ -847,6 +847,7 @@ expand_anchor(read_entry * re, int st, anchor * a)
   a->x += min_i;
   a->y += min_i;
   a->length = max_i - min_i + 1;
+  if (a->length > 20) a->weight++;
   a->score = max_sc;
   assert(a->score <= a->length * match_score && a->score >= a->length * mm_score);
 }
