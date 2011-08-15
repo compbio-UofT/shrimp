@@ -34,6 +34,7 @@
 #include "../common/util.h"
 #include "../common/sw-post.h"
 #include "../common/sw-full-common.h"
+#include "../common/time_counter.h"
 
 
 static int	initialized;
@@ -79,7 +80,8 @@ typedef struct column{
 static struct column *	columns;
 static int max_len;
 
-static uint64_t		ticks, cells, invocs;
+static uint64_t		cells, invocs;
+static time_counter	tc;
 
 static int check;
 
@@ -87,7 +89,7 @@ static int check;
 			  pr_snp,pr_xover,pr_del_open,pr_del_extend,pr_ins_open,pr_ins_extend,\
 			  use_read_qvs,use_sanger_qvs,default_qual,qual_vector_offset,qual_delta,\
 			  init_bp,len,columns,max_len,\
-			  ticks,cells,invocs,check)
+			  tc,cells,invocs,check)
 
 
 /*********************************************************************************
@@ -422,8 +424,11 @@ post_sw_setup(int _max_len,
     columns[i].colserrrate = (double *)xmalloc(1 * sizeof(columns[i].colserrrate[0]));
   }
 
-  if (reset_stats)
-    ticks = cells = invocs = 0;
+  if (reset_stats) {
+    cells = invocs = 0;
+    tc.type = 1;
+    tc.counter = 0;
+  }
 
   initialized = 1;
 
@@ -448,14 +453,14 @@ post_sw_cleanup()
 
 
 int
-post_sw_stats(uint64_t * _invocs, uint64_t * _cells, uint64_t * _ticks)
+post_sw_stats(uint64_t * _invocs, uint64_t * _cells, double * _secs)
 {
   if (_invocs != NULL)
     *_invocs = invocs;
   if (_cells != NULL)
     *_cells = cells;
-  if (_ticks != NULL)
-    *_ticks = ticks;
+  if (_secs != NULL)
+    *_secs = time_counter_get_secs(&tc);
 
   return 1;
 }
@@ -599,7 +604,9 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 {
   double total_score;
 
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tc);
+
   invocs++;
 
   assert(sfrp != NULL);
@@ -706,6 +713,7 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
 #endif
 
   cells += 16*len;
-  after = rdtsc();
-  ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tc);
 }

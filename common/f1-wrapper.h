@@ -78,15 +78,15 @@ f1_free(void)
  * Called independently by various threads.
  */
 static inline void
-f1_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks, uint64_t *calls_bypassed)
+f1_stats(uint64_t *invocs, uint64_t *cells, double *secs, uint64_t *calls_bypassed)
 {
   if (calls_bypassed != NULL)
     *calls_bypassed = f1_calls_bypassed;
 
   if (!gapless_sw)
-    return sw_vector_stats(invocs, cells, ticks);
+    return sw_vector_stats(invocs, cells, secs);
   else
-    return sw_gapless_stats(invocs, cells, ticks);
+    return sw_gapless_stats(invocs, cells, NULL);
 }
 
 

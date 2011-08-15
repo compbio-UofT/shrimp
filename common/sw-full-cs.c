@@ -21,6 +21,7 @@
 #include "../common/fasta.h"
 #include "../common/sw-full-common.h"
 #include "../common/sw-full-cs.h"
+#include "../common/time_counter.h"
 
 typedef struct swcell {
   struct {
@@ -106,10 +107,11 @@ static int		anchor_width;
 static int		indel_taboo_len;
 
 /* statistics */
-static uint64_t		swticks, swcells, swinvocs;
+static uint64_t		swcells, swinvocs;
+static time_counter	sw_tc;
 
 #pragma omp threadprivate(initialised,db,qr,dblen,qrlen,a_gap_open,a_gap_ext,b_gap_open,b_gap_ext,match,mismatch,global_xover_penalty,\
-			  swmatrix,backtrace,dbalign,qralign,swticks,swcells,swinvocs,indel_taboo_len)
+			  swmatrix,backtrace,dbalign,qralign,sw_tc,swcells,swinvocs,indel_taboo_len)
 
 #define BT_CROSSOVER		0x80
 #define BT_CLIPPED		0xf0
@@ -1115,8 +1117,11 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b
   mismatch = _mismatch;
   global_xover_penalty = _global_xover_penalty;
 
-  if (reset_stats)
-    swticks = swcells = swinvocs = 0;
+  if (reset_stats) {
+    swcells = swinvocs = 0;
+    sw_tc.type = 1;
+    sw_tc.counter = 0;
+  }
 
   anchor_width = _anchor_width;
   indel_taboo_len = _indel_taboo_len;
@@ -1127,15 +1132,15 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b
 }
 
 void
-sw_full_cs_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
+sw_full_cs_stats(uint64_t *invocs, uint64_t *cells, double *secs)
 {
 	
   if (invocs != NULL)
     *invocs = swinvocs;
   if (cells != NULL)
     *cells = swcells;
-  if (ticks != NULL)
-    *ticks = swticks;
+  if (secs != NULL)
+    *secs = time_counter_get_secs(&sw_tc);
 }
 
 void
@@ -1146,7 +1151,8 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
   struct sw_full_results scratch;
   int i, j, k;
 
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(sw_tc);
 
   if (!initialised)
     abort();
@@ -1224,6 +1230,7 @@ sw_full_cs(uint32_t *genome_ls, int goff, int glen, uint32_t *read, int rlen,
 #endif
 
   //swcells += (glen * rlen);
-  after = rdtsc();
-  swticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //swticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(sw_tc);
 }

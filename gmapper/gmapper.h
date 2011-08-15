@@ -13,6 +13,7 @@
 #include "../gmapper/gmapper-definitions.h"
 #include "../common/debug.h"
 #include "../common/util.h"
+#include "../common/time_counter.h"
 
 #undef EXTERN
 #undef STATIC
@@ -97,6 +98,7 @@ EXTERN(bool,		extra_sam_fields,	false);
 EXTERN(bool,		single_best_mapping,	false);
 EXTERN(bool,		improper_mappings,	true);
 EXTERN(bool,		autodetect_input,	true);
+EXTERN(bool,		hack,			false);
 
 /* Scores */
 EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);
@@ -219,19 +221,28 @@ EXTERN(int,			anchor_list_big_gap,		DEF_ANCHOR_LIST_BIG_GAP);
 // thread-private globals
 typedef struct tpg_t {
   llint read_handle_usecs;
-  llint wait_ticks;
-  llint anchor_list_ticks;
-  llint region_counts_ticks;
-  llint mp_region_counts_ticks;
-  llint hit_list_ticks;
-  llint pass1_ticks;
-  llint get_vector_hits_ticks;
-  llint pass2_ticks;
-  llint duplicate_removal_ticks;
+  //llint wait_ticks;
+  time_counter wait_tc;
+  //llint anchor_list_ticks;
+  time_counter anchor_list_tc;
+  //llint region_counts_ticks;
+  time_counter region_counts_tc;
+  //llint mp_region_counts_ticks;
+  time_counter mp_region_counts_tc;
+  //llint hit_list_ticks;
+  time_counter hit_list_tc;
+  //llint pass1_ticks;
+  time_counter pass1_tc;
+  //llint get_vector_hits_ticks;
+  time_counter get_vector_hits_tc;
+  //llint pass2_ticks;
+  time_counter pass2_tc;
+  //llint duplicate_removal_ticks;
+  time_counter duplicate_removal_tc;
   stat_t anchor_list_init_size;
   stat_t n_big_gaps_anchor_list;
   stat_t n_anchors_discarded;
-} tpgT;
+} tpg_t;
 
 EXTERN(tpg_t,	tpg,	{});
 #pragma omp threadprivate(tpg)

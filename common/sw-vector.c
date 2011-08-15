@@ -21,6 +21,7 @@
 
 #include "../common/util.h"
 #include "../common/sw-vector.h"
+#include "../common/time_counter.h"
 
 
 static int	initialised;
@@ -33,10 +34,12 @@ static int	match, mismatch;
 static int	use_colours;
 
 /* statistics */
-static uint64_t swticks, swcells, swinvocs;
+//static uint64_t swticks, swcells, swinvocs;
+static uint64_t swcells, swinvocs;
+time_counter sw_tc;
 
 #pragma omp threadprivate(initialised,db,db_ls,qr,dblen,qrlen,nogap,b_gap,a_gap_open,a_gap_ext,\
-		b_gap_open,b_gap_ext,match,mismatch,use_colours,swticks,swcells,swinvocs)
+		b_gap_open,b_gap_ext,match,mismatch,use_colours,sw_tc,swcells,swinvocs)
 
 /*
  * Calculate the Smith-Waterman score.
@@ -424,8 +427,11 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 	mismatch = _mismatch;
 	use_colours = _use_colours;
 
-	if (reset_stats)
-		swticks = swcells = swinvocs = 0;
+	if (reset_stats) {
+	  swcells = swinvocs = 0;
+	  sw_tc.type = 1;
+	  sw_tc.counter = 0;
+	}
 
 	initialised = 1;
 
@@ -433,15 +439,15 @@ sw_vector_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 }
 
 void
-sw_vector_stats(uint64_t *invocs, uint64_t *cells, uint64_t *ticks)
+sw_vector_stats(uint64_t *invocs, uint64_t *cells, double *secs)
 {
 	
 	if (invocs != NULL)
 		*invocs = swinvocs;
 	if (cells != NULL)
 		*cells = swcells;
-	if (ticks != NULL)
-		*ticks = swticks;
+	if (secs != NULL)
+	  *secs = time_counter_get_secs(&sw_tc);
 }
 
 int
@@ -450,7 +456,8 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 {
 	int i, score;
 
-	llint before = rdtsc(), after;
+	//llint before = rdtsc(), after;
+	TIME_COUNTER_START(sw_tc);
 
 	if (!initialised)
 		abort();
@@ -500,8 +507,9 @@ sw_vector(uint32_t *genome, int goff, int glen, uint32_t *read, int rlen,
 	}
 
 	swcells += (glen * rlen);
-	after = rdtsc();
-	swticks += MAX(after - before, 0);
+	//after = rdtsc();
+	//swticks += MAX(after - before, 0);
+	TIME_COUNTER_STOP(sw_tc);
 
 	return (score);
 }

@@ -79,6 +79,7 @@ typedef struct _fasta_t {
 
 typedef struct _fasta_stats_t {
 	uint64_t	total_ticks;
+  double total_secs;
 } * fasta_stats_t;
 
 
@@ -91,6 +92,7 @@ uint32_t *fasta_bitfield_to_colourspace(fasta_t, uint32_t *, uint32_t, bool);
 uint32_t *bitfield_to_colourspace(uint32_t *, uint32_t, bool);
 uint32_t *fasta_sequence_to_bitfield(fasta_t, char *);
 fasta_stats_t fasta_stats(void);
+void	fasta_reset_stats(void);
 char      base_translate(int, bool);
 void	fasta_write_read(FILE* file, read_entry * re);
 void	fasta_write_fasta(FILE* file, char* seq);

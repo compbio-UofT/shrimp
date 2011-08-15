@@ -71,6 +71,7 @@ struct anchor {
   int		width;
   int		weight;
   int		cn;
+  int		score;
 };
 
 typedef struct read_entry {
@@ -147,6 +148,7 @@ typedef struct read_hit {
 
   int		saved; // =1 if this hit is selected to be output: do not free its sfrp any more
   int		n_paired_hit_idx;
+  int		score_wgen_alt;
 } read_hit;
 
 typedef struct read_hit_pair {

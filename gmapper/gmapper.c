@@ -359,20 +359,22 @@ launch_scan_threads()
     int thread_id = omp_get_thread_num();
     struct read_entry * re_buffer;
     int load, i;
-    llint before, after;
+    //llint before, after;
     //re_buffer = (struct read_entry *)xmalloc_m(chunk_size * sizeof(re_buffer[0]), "re_buffer");
     re_buffer = (read_entry *)my_malloc(chunk_size * sizeof(re_buffer[0]), &mem_thread_buffer, "re_buffer");
 
     while (read_more) {
       memset(re_buffer, 0, chunk_size * sizeof(re_buffer[0]));
 
-      before = rdtsc();
+      //before = rdtsc();
+      TIME_COUNTER_START(tpg.wait_tc);
 
       //Read in this threads 'chunk'
 #pragma omp critical (fill_reads_buffer)
       {
-	after = rdtsc();
-	tpg.wait_ticks += MAX(after - before, 0);
+	//after = rdtsc();
+	//tpg.wait_ticks += MAX(after - before, 0);
+	TIME_COUNTER_STOP(tpg.wait_tc);
 
 	thread_output_buffer_chunk[thread_id]=current_thread_chunk++;
 
@@ -725,11 +727,11 @@ print_statistics()
   tpg_t * tpgA = (tpg_t *)malloc(num_threads * sizeof(tpgA[0]));
 
   double hz;
-  uint64_t fasta_load_ticks;
+  double fasta_load_secs;
   fasta_stats_t fs;
 
   fs = fasta_stats();
-  fasta_load_ticks = fs->total_ticks;
+  fasta_load_secs = fs->total_secs;
   free(fs);
   hz = cpuhz();
 
@@ -739,43 +741,51 @@ print_statistics()
 
     memcpy(&tpgA[tid], &tpg, sizeof(tpg_t));
 
-    f1_stats(&tps[tid].f1_invocs, &tps[tid].f1_cells, &tps[tid].f1_ticks, NULL);
+    f1_stats(&tps[tid].f1_invocs, &tps[tid].f1_cells, &tps[tid].f1_secs, NULL);
 
-    tps[tid].f1_secs = (double)tps[tid].f1_ticks / hz;
+    //tps[tid].f1_secs = (double)tps[tid].f1_ticks / hz;
     tps[tid].f1_cellspersec = (double)tps[tid].f1_cells / tps[tid].f1_secs;
     if (isnan(tps[tid].f1_cellspersec))
       tps[tid].f1_cellspersec = 0;
 
     if (shrimp_mode == MODE_COLOUR_SPACE) {
-      sw_full_cs_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
-      post_sw_stats(&tps[tid].fwbw_invocs, &tps[tid].fwbw_cells, &tps[tid].fwbw_ticks);
+      sw_full_cs_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_secs);
+      post_sw_stats(&tps[tid].fwbw_invocs, &tps[tid].fwbw_cells, &tps[tid].fwbw_secs);
     } else {
-      sw_full_ls_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_ticks);
+      sw_full_ls_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_secs);
     }
 
-    tps[tid].f2_secs = (double)tps[tid].f2_ticks / hz;
+    //tps[tid].f2_secs = (double)tps[tid].f2_ticks / hz;
     tps[tid].f2_cellspersec = (double)tps[tid].f2_cells / tps[tid].f2_secs;
     if (isnan(tps[tid].f2_cellspersec))
       tps[tid].f2_cellspersec = 0;
 
-    tps[tid].fwbw_secs = (double)tps[tid].fwbw_ticks / hz;
+    //tps[tid].fwbw_secs = (double)tps[tid].fwbw_ticks / hz;
     tps[tid].fwbw_cellspersec = (double)tps[tid].fwbw_cells / tps[tid].fwbw_secs;
     if (isnan(tps[tid].fwbw_cellspersec))
       tps[tid].fwbw_cellspersec = 0;
 
-    tps[tid].readparse_secs = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)tpg.read_handle_usecs / 1.0e6) - ((double)tpg.wait_ticks / hz);
+    tps[tid].readparse_secs = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)tpg.read_handle_usecs / 1.0e6) - time_counter_get_secs(&tpg.wait_tc);
 
     tps[tid].scan_secs = ((double)tpg.read_handle_usecs / 1.0e6) - tps[tid].f1_secs - tps[tid].f2_secs - tps[tid].fwbw_secs;
     tps[tid].scan_secs = MAX(0, tps[tid].scan_secs);
 
-    tps[tid].anchor_list_secs = (double)tpg.anchor_list_ticks / hz;
-    tps[tid].hit_list_secs = (double)tpg.hit_list_ticks / hz;
-    tps[tid].duplicate_removal_secs = (double)tpg.duplicate_removal_ticks / hz;
-    tps[tid].region_counts_secs = (double)tpg.region_counts_ticks / hz;
-    tps[tid].mp_region_counts_secs = (double)tpg.mp_region_counts_ticks / hz;
-    tps[tid].pass1_secs = (double)tpg.pass1_ticks / hz;
-    tps[tid].get_vector_hits_secs = (double)tpg.get_vector_hits_ticks / hz;
-    tps[tid].pass2_secs = (double)tpg.pass2_ticks / hz;
+    //tps[tid].anchor_list_secs = (double)tpg.anchor_list_ticks / hz;
+    tps[tid].anchor_list_secs = time_counter_get_secs(&tpg.anchor_list_tc);
+    //tps[tid].hit_list_secs = (double)tpg.hit_list_ticks / hz;
+    tps[tid].hit_list_secs = time_counter_get_secs(&tpg.hit_list_tc);
+    //tps[tid].duplicate_removal_secs = (double)tpg.duplicate_removal_ticks / hz;
+    tps[tid].duplicate_removal_secs = time_counter_get_secs(&tpg.duplicate_removal_tc);
+    //tps[tid].region_counts_secs = (double)tpg.region_counts_ticks / hz;
+    tps[tid].region_counts_secs = time_counter_get_secs(&tpg.region_counts_tc);
+    //tps[tid].mp_region_counts_secs = (double)tpg.mp_region_counts_ticks / hz;
+    tps[tid].mp_region_counts_secs = time_counter_get_secs(&tpg.mp_region_counts_tc);
+    //tps[tid].pass1_secs = (double)tpg.pass1_ticks / hz;
+    tps[tid].pass1_secs = time_counter_get_secs(&tpg.pass1_tc);
+    //tps[tid].get_vector_hits_secs = (double)tpg.get_vector_hits_ticks / hz;
+    tps[tid].get_vector_hits_secs = time_counter_get_secs(&tpg.get_vector_hits_tc);
+    //tps[tid].pass2_secs = (double)tpg.pass2_ticks / hz;
+    tps[tid].pass2_secs = time_counter_get_secs(&tpg.pass2_tc);
     /*
 	  tps[tid].anchor_list_secs = (double)anchor_list_usecs[tid] / 1.0e6;
           tps[tid].hit_list_secs = (double)hit_list_usecs[tid] / 1.0e6;
@@ -806,7 +816,7 @@ print_statistics()
   for(i = 0; i < num_threads; i++){
     total_scan_secs += tps[i].scan_secs;
     total_readparse_secs += tps[i].readparse_secs;
-    total_wait_secs += (double)tpgA[i].wait_ticks / hz;
+    total_wait_secs += time_counter_get_secs(&tpgA[i].wait_tc);
 
     f1_total_secs += tps[i].f1_secs;
     f1_total_invocs += tps[i].f1_invocs;
@@ -843,11 +853,11 @@ print_statistics()
       fprintf(stderr, "%s%s" "Thread %-4d %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %9.2f %15s %9.2f %15s %9.2f %15s %9.2f %9.2f\n", my_tab, my_tab,
 	  i, tps[i].readparse_secs, tps[i].scan_secs,
 	  tps[i].region_counts_secs, tps[i].mp_region_counts_secs, tps[i].anchor_list_secs, tps[i].hit_list_secs,
-	  tps[i].pass1_secs, tps[i].get_vector_hits_secs, tps[i].pass2_secs, tps[i].duplicate_removal_secs,
+	      tps[i].pass1_secs, tps[i].get_vector_hits_secs, tps[i].pass2_secs, tps[i].duplicate_removal_secs,
 	  comma_integer(tps[i].f1_invocs), tps[i].f1_secs,
 	  comma_integer(tps[i].f2_invocs), tps[i].f2_secs,
 	  comma_integer(tps[i].fwbw_invocs), tps[i].fwbw_secs,
-	  (double)tpgA[i].wait_ticks / hz);
+	      time_counter_get_secs(&tpgA[i].wait_tc));
     }
     for (i = 0; i < num_threads; i++) {
       fprintf (stderr, "thrd:%d anchor_list_init_size:(%.2f, %.2f) anchors_discarded:(%.2f, %.2f) big_gaps:(%.2f, %.2f)\n",
@@ -905,7 +915,7 @@ print_statistics()
 
   fprintf(stderr, "%sMiscellaneous Totals:\n", my_tab);
   fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
-          "Fasta Lib Time:", (double)fasta_load_ticks / hz);
+          "Fasta Lib Time:", fasta_load_secs);
   fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
           "Read Load Time:", total_readparse_secs);
   fprintf(stderr, "%s%s%-24s" "%.2f seconds\n", my_tab, my_tab,
@@ -1349,6 +1359,7 @@ print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "All contigs:", all_contigs? "yes" : "no");
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Single best mapping:", single_best_mapping? "yes" : "no");
   }
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hack:", hack? "yes" : "no");
 
   // Scores
   fprintf(stderr, "\n");
@@ -1700,6 +1711,8 @@ int main(int argc, char **argv){
 	  a_gap_extend_score = DEF_CS_A_GAP_EXTEND;
 	  b_gap_extend_score = DEF_CS_B_GAP_EXTEND;
 	}
+
+	fasta_reset_stats();
 
 	fprintf(stderr, "--------------------------------------------------"
 			"------------------------------\n");
@@ -2238,6 +2251,9 @@ int main(int argc, char **argv){
 		  break;
 		case 124: // local alignment
 		  Gflag = false;
+		  break;
+		case 125: // hack
+		  hack = !hack;
 		  break;
 		default:
 			usage(progname, false);
@@ -2798,6 +2814,15 @@ int main(int argc, char **argv){
 	{
 	  // init thread-private globals
 	  memset(&tpg, 0, sizeof(tpg_t));
+	  tpg.wait_tc.type = 1;
+	  tpg.region_counts_tc.type = 1;
+	  tpg.mp_region_counts_tc.type = 1;
+	  tpg.anchor_list_tc.type = 1;
+	  tpg.hit_list_tc.type = 1;
+	  tpg.get_vector_hits_tc.type = 1;
+	  tpg.pass1_tc.type = 1;
+	  tpg.pass2_tc.type = 1;
+	  tpg.duplicate_removal_tc.type = 1;
 
 	  /* region handling */
 	  if (use_regions) {
@@ -2813,7 +2838,7 @@ int main(int argc, char **argv){
 	  if (f1_setup(max_window_len, longest_read_len,
 		       a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 		       match_score, shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score,
-		       shrimp_mode == MODE_COLOUR_SPACE, false)) {
+		       shrimp_mode == MODE_COLOUR_SPACE, true)) {
 	    fprintf(stderr, "failed to initialise vector Smith-Waterman (%s)\n", strerror(errno));
 	    exit(1);
 	  }
@@ -2824,11 +2849,11 @@ int main(int argc, char **argv){
 	    ret = sw_full_cs_setup(max_window_len, longest_read_len,
 				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
 				   match_score, mismatch_score,
-				   crossover_score, false, anchor_width, indel_taboo_len);
+				   crossover_score, true, anchor_width, indel_taboo_len);
 	  } else {
 	    ret = sw_full_ls_setup(max_window_len, longest_read_len,
 				   a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,
-				   match_score, mismatch_score, false, anchor_width);
+				   match_score, mismatch_score, true, anchor_width);
 	  }
 	  if (ret) {
 	    fprintf(stderr, "failed to initialise scalar Smith-Waterman (%s)\n", strerror(errno));

@@ -458,8 +458,9 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
 {
   int sn, i, offset, region;
   uint j;
-  llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.region_counts_tc);
   int number_in_pair = re->first_in_pair? 0 : 1;
 
   assert(use_regions);
@@ -531,16 +532,18 @@ read_get_region_counts(struct read_entry * re, int st, struct regions_options * 
     }
   }
 
-  after = rdtsc();
-  tpg.region_counts_ticks += MAX(after - before, 0);
   //region_counts_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  //after = rdtsc();
+  //tpg.region_counts_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.region_counts_tc);
 }
 
 
 static void
 read_get_mp_region_counts(struct read_entry * re, int st)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.mp_region_counts_tc);
 
   int nip, sn, i, offset, region;
   int first, last, max, k;
@@ -596,8 +599,9 @@ read_get_mp_region_counts(struct read_entry * re, int st)
     }
   }
 
-  after = rdtsc();
-  tpg.mp_region_counts_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.mp_region_counts_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.mp_region_counts_tc);
 }
 
 
@@ -799,6 +803,56 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 
 
 static void
+expand_anchor(read_entry * re, int st, anchor * a)
+{
+  uint32_t * db = (shrimp_mode == MODE_LETTER_SPACE? genome_contigs[a->cn] : genome_cs_contigs[a->cn]);
+  uint32_t * qr = re->read[st];
+  llint x = (llint)a->x - (llint)contig_offsets[a->cn];
+  int y = a->y;
+  int i, sc;
+  int mm_score = (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
+
+  // first, compute the real number of matches
+  assert(x + a->length <= genome_len[a->cn]);
+  assert(y + a->length <= re->read_len);
+  sc = 0;
+  for (i = 0; i < a->length; i++) {
+    sc += (EXTRACT(db, x + (llint)i) == EXTRACT(qr, y + i) ? match_score : mm_score);
+  }
+
+  // extend backward
+  int min_i = 0;
+  int max_sc = sc;
+  for (i = -1; x + i >= 0 && y + i >= 0; i--) {
+    sc += (EXTRACT(db, x + (llint)i) == EXTRACT(qr, y + i) ? match_score : mm_score);
+    if (sc < 0 || sc < max_sc + 5 * mm_score) break;
+    if (sc > max_sc) {
+      min_i = i;
+      max_sc = sc;
+    }
+  }
+
+  // extend forward
+  int max_i = a->length - 1;
+  for (i = max_i + 1; x + i < genome_len[a->cn] && y + i < re->read_len; i++) {
+    sc += (EXTRACT(db, x + i) == EXTRACT(qr, y + i) ? match_score : mm_score);
+    if (sc < 0 || sc < max_sc + 5 * mm_score) break;
+    if (sc > max_sc) {
+      max_i = i;
+      max_sc = sc;
+    }
+  }
+
+  // adjust anchor
+  a->x += min_i;
+  a->y += min_i;
+  a->length = max_i - min_i + 1;
+  a->score = max_sc;
+  assert(a->score <= a->length * match_score && a->score >= a->length * mm_score);
+}
+
+
+static void
 read_get_anchor_list_per_strand(struct read_entry * re, int st,
 				struct anchor_list_options * options)
 {
@@ -901,7 +955,8 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
 
       if (j >= 0
 	  && re->anchors[st][j].cn == re->anchors[st][re->n_anchors[st]-1].cn
-	  && anchor_uw_intersect(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
+	  //&& anchor_uw_intersect(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
+	  && anchor_uw_colinear(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1])) {
 	anchor_uw_join(&re->anchors[st][j], &re->anchors[st][re->n_anchors[st]-1]);
 	re->n_anchors[st]--;
       } else {
@@ -935,6 +990,11 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
     my_realloc(re->anchors[st], re->n_anchors[st] * sizeof(re->anchors[0][0]), list_sz * sizeof(re->anchors[0][0]),
 	       &mem_mapping, "anchors [%s]", re->name);
 
+  if (hack)
+    for (i = 0; i < re->n_anchors[st]; i++) {
+      expand_anchor(re, st, &re->anchors[st][i]);
+    }
+
   stat_add(&tpg.n_anchors_discarded, anchors_discarded);
   stat_add(&tpg.n_big_gaps_anchor_list, big_gaps);
 }
@@ -942,15 +1002,17 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
 static inline void
 read_get_anchor_list(struct read_entry * re, struct anchor_list_options * options)
 {
-  llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.anchor_list_tc);
 
   read_get_anchor_list_per_strand(re, 0, options);
   read_get_anchor_list_per_strand(re, 1, options);
 
-  after = rdtsc();
-  tpg.anchor_list_ticks += MAX(after - before, 0);
   //anchor_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  //after = rdtsc();
+  //tpg.anchor_list_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.anchor_list_tc);
 }
 
 
@@ -963,6 +1025,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
   int w_len;
   int short_len = 0, long_len = 0;
   int heavy_mp = false; // init not needed
+  int gap_open_score, gap_extend_score;
   struct anchor a[3];
 
   assert(re != NULL && options != NULL);
@@ -1004,7 +1067,12 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
      *  -  n=3: one kmer & >=2 kmers for mp
      */
     max_idx = i;
-    max_score = re->anchors[st][i].length * match_score;
+
+    if (!hack)
+      max_score = re->anchors[st][i].length * match_score;
+    else
+      max_score = re->anchors[st][i].score;
+
     if (options->match_mode == 3) {
       int region = re->anchors[st][i].x >> region_bits;
       assert(RG_VALID_MP_CNT(region_map[re->first_in_pair? 0 : 1][st][region]));
@@ -1032,25 +1100,41 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	if (re->anchors[st][j].y >= re->anchors[st][i].y) {
 	  continue;
 	}
+	if (hack
+	    && re->anchors[st][j].x == re->anchors[st][i].x
+	    && re->anchors[st][j].y == re->anchors[st][i].y)
+	  continue;
 	if (re->anchors[st][i].x - (llint)contig_offsets[cn] - re->anchors[st][i].y
 	    > re->anchors[st][j].x - (llint)contig_offsets[cn] - re->anchors[st][j].y)
 	  { // deletion in read
 	    short_len = (int)(re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
 	    long_len = (int)(re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
+	    gap_open_score = a_gap_open_score;
+	    gap_extend_score = a_gap_extend_score;
 	  }
 	else
 	  { // insertion in read
 	    short_len = (int)(re->anchors[st][i].x - re->anchors[st][j].x) + re->anchors[st][i].length;
 	    long_len = (int)(re->anchors[st][i].y - re->anchors[st][j].y) + re->anchors[st][i].length;
+	    gap_open_score = b_gap_open_score;
+	    gap_extend_score = b_gap_extend_score;
 	  }
 
-	if (long_len > short_len) {
-	  tmp_score = short_len * match_score + b_gap_open_score
-	    + (long_len - short_len) * b_gap_extend_score;
+	assert(long_len >= short_len);
+	if (!hack) {
+	  if (long_len > short_len) {
+	    tmp_score = short_len * match_score + b_gap_open_score
+	      + (long_len - short_len) * b_gap_extend_score;
+	  } else {
+	    tmp_score = short_len * match_score;
+	  }
 	} else {
-	  tmp_score = short_len * match_score;
+	  tmp_score = re->anchors[st][i].score + re->anchors[st][j].score
+	    + abs(re->anchors[st][i].length + re->anchors[st][j].length - short_len) * (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
+	  if (long_len > short_len)
+	    tmp_score += gap_open_score + (long_len - short_len) * gap_extend_score;
 	}
-
+	
 	if (tmp_score > max_score) {
 	  max_idx = j;
 	  max_score = tmp_score;
@@ -1139,15 +1223,17 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 static inline void
 read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
 {
-  llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.hit_list_tc);
 
   read_get_hit_list_per_strand(re, 0, options);
   read_get_hit_list_per_strand(re, 1, options);
 
-  after = rdtsc();
-  tpg.hit_list_ticks += MAX(after - before, 0);
   //hit_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  //after = rdtsc();
+  //tpg.hit_list_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.hit_list_tc);
 
 #ifdef DEBUG_HIT_LIST_CREATION
   fprintf(stderr, "Dumping hit list after creation for read:[%s]\n", re->name);
@@ -1244,13 +1330,15 @@ read_pass1_per_strand(struct read_entry * re, int st, struct pass1_options * opt
 static inline void
 read_pass1(struct read_entry * re, struct pass1_options * options)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.pass1_tc);
 
   read_pass1_per_strand(re, 0, options);
   read_pass1_per_strand(re, 1, options);
 
-  after = rdtsc();
-  tpg.pass1_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.pass1_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.pass1_tc);
 
 #ifdef DEBUG_HIT_LIST_PASS1
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
@@ -1270,7 +1358,8 @@ DEF_EXTHEAP(struct read_hit *,unpaired_pass1)
 static void
 read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, struct pass1_options * options)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.get_vector_hits_tc);
   int st, i;
 
   assert(re != NULL && a != NULL && load != NULL && *load == 0);
@@ -1298,8 +1387,9 @@ read_get_vector_hits(struct read_entry * re, struct read_hit * * a, int * load, 
     }
   }
 
-  after = rdtsc();
-  tpg.get_vector_hits_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.get_vector_hits_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.get_vector_hits_tc);
 }
 
 
@@ -1413,8 +1503,9 @@ static void
 read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 {
   int i, j, k, max, max_idx;
-  llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.duplicate_removal_tc);
 
   /*
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_align_cmp);
@@ -1490,9 +1581,10 @@ read_remove_duplicate_hits(struct read_hit * * hits_pass2, int * n_hits_pass2)
 
   *n_hits_pass2 = k;
 
-  after = rdtsc();
-  tpg.duplicate_removal_ticks += MAX(after - before, 0);
   //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  //after = rdtsc();
+  //tpg.duplicate_removal_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.duplicate_removal_tc);
 }
 
 
@@ -1524,7 +1616,8 @@ read_pass2(struct read_entry * re,
 	   struct read_hit * * hits_pass2, int * n_hits_pass2,
 	   struct pass2_options * options)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.pass2_tc);
 
   int i, cnt;
   assert(re != NULL && hits_pass1 != NULL && hits_pass2 != NULL);
@@ -1631,8 +1724,9 @@ read_pass2(struct read_entry * re,
     }
   }
 
-  after = rdtsc();
-  tpg.pass2_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.pass2_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.pass2_tc);
 
   return cnt >= options->stop_count;
 }
@@ -1767,7 +1861,8 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
 			 struct read_hit_pair * a, int * load,
 			 struct pairing_options * options)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.get_vector_hits_tc);
 
   int st1, st2, i, j;
   read_hit_pair tmp;
@@ -1813,8 +1908,9 @@ readpair_get_vector_hits(struct read_entry * re1, struct read_entry * re2,
     }
   }
 
-  after = rdtsc();
-  tpg.get_vector_hits_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.get_vector_hits_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.get_vector_hits_tc);
 }
 
 
@@ -2012,8 +2108,9 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
   */
 
   int tmp;
-  llint before = rdtsc(), after;
   //llint before = gettimeinusecs();
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.duplicate_removal_tc);
 
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_start_cmp);
   readpair_push_dominant_single_hits(hits_pass2, n_hits_pass2, threshold_is_absolute, 0, pass2_readpair_hit0_sfrp_gen_end_cmp);
@@ -2028,9 +2125,10 @@ readpair_remove_duplicate_hits(struct read_hit_pair * hits_pass2, int * n_hits_p
 
   *n_hits_pass2 = tmp;
 
-  after = rdtsc();
-  tpg.duplicate_removal_ticks += MAX(after - before, 0);
   //duplicate_removal_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
+  //after = rdtsc();
+  //tpg.duplicate_removal_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.duplicate_removal_tc);
 }
 
 
@@ -2044,7 +2142,8 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
 	       struct pairing_options * options,
 	       struct pass2_options * options1, struct pass2_options * options2)
 {
-  llint before = rdtsc(), after;
+  //llint before = rdtsc(), after;
+  TIME_COUNTER_START(tpg.pass2_tc);
 
   int i, j, cnt;
 
@@ -2137,8 +2236,9 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
     }
   }
 
-  after = rdtsc();
-  tpg.pass2_ticks += MAX(after - before, 0);
+  //after = rdtsc();
+  //tpg.pass2_ticks += MAX(after - before, 0);
+  TIME_COUNTER_STOP(tpg.pass2_tc);
 
   return cnt >= options->stop_count;
 }

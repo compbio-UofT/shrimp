@@ -18,8 +18,10 @@
 
 #include "../common/fasta.h"
 #include "../common/util.h"
+#include "../common/time_counter.h"
 
-static uint64_t total_ticks;
+//static uint64_t total_ticks;
+static time_counter fasta_tc;
 
 int fasta_basemap_char_to_int[128] = {
   /*  0 */ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
@@ -60,7 +62,8 @@ fasta_open(const char *file, int space, bool fastq, bool * fastq_var)
 	struct stat sb;
 	gzFile fp;
 	int c;
-	uint64_t before = rdtsc();
+	//uint64_t before = rdtsc();
+	TIME_COUNTER_START(fasta_tc);
 
 	assert(space == COLOUR_SPACE || space == LETTER_SPACE);
 
@@ -69,7 +72,7 @@ fasta_open(const char *file, int space, bool fastq, bool * fastq_var)
 	} else {
 		if (stat(file, &sb)) {
 			fprintf(stderr,"error: Syscall stat failed on file \"%s\"!\n",file);
-			total_ticks += (rdtsc() - before);
+			//total_ticks += (rdtsc() - before);
 			return NULL;
 		}
 		if (!S_ISREG(sb.st_mode)) {
@@ -84,7 +87,7 @@ fasta_open(const char *file, int space, bool fastq, bool * fastq_var)
 	}
 	if (fp == NULL) {
 		fprintf(stderr,"error: Failed to open \"%s\" for reading!\n",file);
-		total_ticks += (rdtsc() - before);
+		//total_ticks += (rdtsc() - before);
 		return NULL;		
 	}
 
@@ -193,13 +196,17 @@ fasta_open(const char *file, int space, bool fastq, bool * fastq_var)
 		fasta->translate[(int)'X'] = BASE_X;
 		fasta->translate[(int)'x'] = BASE_X;
 	}
+
+	TIME_COUNTER_STOP(fasta_tc);
+
 	return fasta;
 }
 
 void
 fasta_close(fasta_t fasta)
 {
-	uint64_t before = rdtsc();
+	//uint64_t before = rdtsc();
+	TIME_COUNTER_START(fasta_tc);
 
 	gzclose(fasta->fp);
 	free(fasta->file);
@@ -207,7 +214,8 @@ fasta_close(fasta_t fasta)
 	fasta->parse_buffer=0;
 	free(fasta);
 
-	total_ticks += (rdtsc() - before);
+	TIME_COUNTER_STOP(fasta_tc);
+	//total_ticks += (rdtsc() - before);
 }
 
 fasta_stats_t
@@ -216,9 +224,17 @@ fasta_stats()
 	fasta_stats_t fs;
 
 	fs = (fasta_stats_t)xmalloc(sizeof(*fs));
-	fs->total_ticks = total_ticks;
+	//fs->total_ticks = total_ticks;
+	fs->total_secs = time_counter_get_secs(&fasta_tc);
 
 	return (fs);
+}
+
+void
+fasta_reset_stats()
+{
+  fasta_tc.type = 1;
+  fasta_tc.counter = 0;
 }
 
 static char *
@@ -300,7 +316,8 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 	uint32_t quality_length = 0;
 	uint32_t plus_line_length = 0;
 	uint32_t read_name_length = 0;
-	uint64_t before = rdtsc();
+	//uint64_t before = rdtsc();
+	TIME_COUNTER_START(fasta_tc);
 	char c;
 	assert(re!=NULL);
 	if (fasta->fastq){
@@ -338,7 +355,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 				} else {
 					fprintf(stderr,"Expecting \"%c\" but got \"%c\" are you sure it's right format?\n",c,fasta->parse_buffer[0]);
 				}
-				total_ticks += (rdtsc() - before);
+				//total_ticks += (rdtsc() - before);
 				return (false);
 			}
 			if (fasta->buffer[i]=='\n') {
@@ -355,11 +372,11 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 
 	}
 	if (read_name_length==0) {
-		total_ticks += (rdtsc() - before);
+	  //total_ticks += (rdtsc() - before);
 		return (false);
 	}
 	if (read_name_length<=1 || !end_of_line) {
-		total_ticks += (rdtsc() - before);
+	  //total_ticks += (rdtsc() - before);
 		fprintf(stderr,"error: Invalid read name! Are you sure this is a FASTA or FASTQ file?\n%s\n",fasta->buffer);
 		return (false);
 	}	
@@ -390,7 +407,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 	}
 	if (sequence_length==0) {
 		fprintf(stderr,"Read in sequence of length zero!\n");
-		total_ticks += (rdtsc() - before);
+		//total_ticks += (rdtsc() - before);
 		return (false);
 	}
 	assert(sequence_length>0);
@@ -420,7 +437,7 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 		} while (fast_gzgets_safe(fasta) != NULL );
 		if (plus_line_length<1 || fasta->buffer[strlen(fasta->buffer)-1]!='\n') {
 			fprintf(stderr,"error: Error while readingin FASTQ entry!\n");
-			total_ticks += (rdtsc() - before);
+			//total_ticks += (rdtsc() - before);
 			return (false);	
 		}
 		re->plus_line = (char *)xmalloc(plus_line_length + 17);
@@ -468,13 +485,13 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);
-			total_ticks += (rdtsc() - before);
+			//total_ticks += (rdtsc() - before);
 			return (false);
 		} else if (quality_length != sequence_length-1 && fasta->space==COLOUR_SPACE) {
 			fprintf(stderr,"Read in quality string of wrong length!, %d vs %d\n",quality_length, sequence_length);
 			free(re->seq);
 			free(re->plus_line);
-			total_ticks += (rdtsc() - before);
+			//total_ticks += (rdtsc() - before);
 			return (false);
 		}
 		re->qual = (char *)xmalloc(quality_length + 17);
@@ -525,7 +542,8 @@ fasta_get_next_read_with_range(fasta_t fasta, read_entry * re )
 		assert(re->qual != NULL);
 		assert(re->plus_line != NULL);
 	}
-	total_ticks += (rdtsc() - before);
+	//total_ticks += (rdtsc() - before);
+	TIME_COUNTER_STOP(fasta_tc);
 	return (true);
 }
 
@@ -566,8 +584,8 @@ bitfield_to_colourspace(uint32_t *source, uint32_t length, bool is_rna)
   int a, lastbp = BASE_T;
   uint32_t *dst;
   uint32_t i;
-  uint64_t before = rdtsc();
-
+  //uint64_t before = rdtsc();
+  TIME_COUNTER_START(fasta_tc);
 
   dst = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
   memset(dst, 0, BPTO32BW(length) * sizeof(uint32_t));
@@ -578,7 +596,8 @@ bitfield_to_colourspace(uint32_t *source, uint32_t length, bool is_rna)
     lastbp = a;
   }
 
-  total_ticks += (rdtsc() - before);
+  //total_ticks += (rdtsc() - before);
+  TIME_COUNTER_STOP(fasta_tc);
   return (dst);
 }
 
@@ -587,7 +606,8 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 {
 	uint32_t i, length, idx;
 	uint32_t *bitfield;
-	uint64_t before = rdtsc();
+	//uint64_t before = rdtsc();
+	TIME_COUNTER_START(fasta_tc);
 	int a;
 	char c;
 
@@ -603,7 +623,7 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 		    c != 'G' && c != 'g' &&
 		    c != 'T' && c != 't') {
 			free(bitfield);
-			total_ticks += (rdtsc() - before);
+			//total_ticks += (rdtsc() - before);
 			return (NULL);
 		}
 		
@@ -640,7 +660,8 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 	else
 		assert(idx == length);
 
-	total_ticks += (rdtsc() - before);
+	//total_ticks += (rdtsc() - before);
+	TIME_COUNTER_STOP(fasta_tc);
 	return (bitfield);
 }
 
