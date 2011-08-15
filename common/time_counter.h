@@ -15,6 +15,12 @@ typedef struct time_counter {
   int type;
 } time_counter;
 
+#ifdef NDEBUG
+#define DEF_FAST_TIME_COUNTER	0
+#else
+#define DEF_FAST_TIME_COUNTER	1
+#endif
+
 
 static inline long long int
 time_counter_check(time_counter const * tc)

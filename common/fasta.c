@@ -20,6 +20,7 @@
 #include "../common/util.h"
 #include "../common/time_counter.h"
 
+
 //static uint64_t total_ticks;
 static time_counter fasta_tc;
 
@@ -233,7 +234,7 @@ fasta_stats()
 void
 fasta_reset_stats()
 {
-  fasta_tc.type = 1;
+  fasta_tc.type = DEF_FAST_TIME_COUNTER;
   fasta_tc.counter = 0;
 }
 

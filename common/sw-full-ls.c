@@ -608,7 +608,7 @@ sw_full_ls_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext,
 
 	if (reset_stats) {
 	  swcells = swinvocs = 0;
-	  sw_tc.type = 1;
+	  sw_tc.type = DEF_FAST_TIME_COUNTER;
 	  sw_tc.counter = 0;
 	}
 

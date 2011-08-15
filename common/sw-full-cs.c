@@ -1119,7 +1119,7 @@ sw_full_cs_setup(int _dblen, int _qrlen, int _a_gap_open, int _a_gap_ext, int _b
 
   if (reset_stats) {
     swcells = swinvocs = 0;
-    sw_tc.type = 1;
+    sw_tc.type = DEF_FAST_TIME_COUNTER;
     sw_tc.counter = 0;
   }
 

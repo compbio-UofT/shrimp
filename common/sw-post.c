@@ -426,7 +426,7 @@ post_sw_setup(int _max_len,
 
   if (reset_stats) {
     cells = invocs = 0;
-    tc.type = 1;
+    tc.type = DEF_FAST_TIME_COUNTER;
     tc.counter = 0;
   }
 

@@ -2814,15 +2814,15 @@ int main(int argc, char **argv){
 	{
 	  // init thread-private globals
 	  memset(&tpg, 0, sizeof(tpg_t));
-	  tpg.wait_tc.type = 1;
-	  tpg.region_counts_tc.type = 1;
-	  tpg.mp_region_counts_tc.type = 1;
-	  tpg.anchor_list_tc.type = 1;
-	  tpg.hit_list_tc.type = 1;
-	  tpg.get_vector_hits_tc.type = 1;
-	  tpg.pass1_tc.type = 1;
-	  tpg.pass2_tc.type = 1;
-	  tpg.duplicate_removal_tc.type = 1;
+	  tpg.wait_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.region_counts_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.mp_region_counts_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.anchor_list_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.hit_list_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.get_vector_hits_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.pass1_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.pass2_tc.type = DEF_FAST_TIME_COUNTER;
+	  tpg.duplicate_removal_tc.type = DEF_FAST_TIME_COUNTER;
 
 	  /* region handling */
 	  if (use_regions) {
