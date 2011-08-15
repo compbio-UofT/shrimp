@@ -1359,7 +1359,7 @@ print_settings() {
   fprintf(stderr, "%s%-40s%s\n", my_tab, "All contigs:", all_contigs? "yes" : "no");
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Single best mapping:", single_best_mapping? "yes" : "no");
   }
-  fprintf(stderr, "%s%-40s%s\n", my_tab, "Hack:", hack? "yes" : "no");
+  //fprintf(stderr, "%s%-40s%s\n", my_tab, "Hack:", hack? "yes" : "no");
 
   // Scores
   fprintf(stderr, "\n");
@@ -2252,9 +2252,9 @@ int main(int argc, char **argv){
 		case 124: // local alignment
 		  Gflag = false;
 		  break;
-		case 125: // hack
-		  hack = !hack;
-		  break;
+		//case 125: // hack
+		  //hack = !hack;
+		  //break;
 		default:
 			usage(progname, false);
 		}

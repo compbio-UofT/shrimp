@@ -152,8 +152,7 @@
 	{"sam-header-rg",1,0,46},\
 	{"sam-header-pg",1,0,47},\
 	{"no-autodetect-input",0,0,48},\
-	{"local",0,0,124},\
-	{"hack",0,0,125}\
+	{"local",0,0,124}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

@@ -991,10 +991,10 @@ read_get_anchor_list_per_strand(struct read_entry * re, int st,
     my_realloc(re->anchors[st], re->n_anchors[st] * sizeof(re->anchors[0][0]), list_sz * sizeof(re->anchors[0][0]),
 	       &mem_mapping, "anchors [%s]", re->name);
 
-  if (hack)
-    for (i = 0; i < re->n_anchors[st]; i++) {
-      expand_anchor(re, st, &re->anchors[st][i]);
-    }
+  //if (hack)
+  //  for (i = 0; i < re->n_anchors[st]; i++) {
+  //    expand_anchor(re, st, &re->anchors[st][i]);
+  //  }
 
   stat_add(&tpg.n_anchors_discarded, anchors_discarded);
   stat_add(&tpg.n_big_gaps_anchor_list, big_gaps);
@@ -1069,10 +1069,10 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
      */
     max_idx = i;
 
-    if (!hack)
-      max_score = re->anchors[st][i].length * match_score;
-    else
-      max_score = re->anchors[st][i].score;
+    //if (!hack)
+    max_score = re->anchors[st][i].length * match_score;
+    //else
+    //  max_score = re->anchors[st][i].score;
 
     if (options->match_mode == 3) {
       int region = re->anchors[st][i].x >> region_bits;
@@ -1091,7 +1091,7 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
       // avoid single matches when n=2
       if ((options->match_mode == 2
 	   || (options->match_mode == 3 && !heavy_mp))
-	  && re->anchors[st][i].weight == 1 && !hack)
+	  && re->anchors[st][i].weight == 1) // && !hack)
 	max_score = -1;
 
       for (j = i - 1;
@@ -1101,10 +1101,12 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	if (re->anchors[st][j].y >= re->anchors[st][i].y) {
 	  continue;
 	}
-	if (hack
-	    && re->anchors[st][j].x == re->anchors[st][i].x
-	    && re->anchors[st][j].y == re->anchors[st][i].y)
-	  continue;
+
+	//if (hack
+	//    && re->anchors[st][j].x == re->anchors[st][i].x
+	//    && re->anchors[st][j].y == re->anchors[st][i].y)
+	//  continue;
+
 	if (re->anchors[st][i].x - (llint)contig_offsets[cn] - re->anchors[st][i].y
 	    > re->anchors[st][j].x - (llint)contig_offsets[cn] - re->anchors[st][j].y)
 	  { // deletion in read
@@ -1122,20 +1124,20 @@ read_get_hit_list_per_strand(struct read_entry * re, int st, struct hit_list_opt
 	  }
 
 	assert(long_len >= short_len);
-	if (!hack) {
-	  if (long_len > short_len) {
-	    tmp_score = short_len * match_score + b_gap_open_score
-	      + (long_len - short_len) * b_gap_extend_score;
-	  } else {
-	    tmp_score = short_len * match_score;
-	  }
+	//if (!hack) {
+	if (long_len > short_len) {
+	  tmp_score = short_len * match_score + b_gap_open_score
+	    + (long_len - short_len) * b_gap_extend_score;
 	} else {
-	  int missing_matches = abs(re->anchors[st][i].length + re->anchors[st][j].length - short_len);
-	  tmp_score = re->anchors[st][i].score + re->anchors[st][j].score
-	    + MAX(missing_matches - 5, 0) * (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
-	  if (long_len > short_len)
-	    tmp_score += gap_open_score + (long_len - short_len) * gap_extend_score;
+	  tmp_score = short_len * match_score;
 	}
+	//} else {
+	//  int missing_matches = abs(re->anchors[st][i].length + re->anchors[st][j].length - short_len);
+	//  tmp_score = re->anchors[st][i].score + re->anchors[st][j].score
+	//    + MAX(missing_matches - 5, 0) * (shrimp_mode == MODE_LETTER_SPACE? mismatch_score : match_score + crossover_score);
+	//  if (long_len > short_len)
+	//    tmp_score += gap_open_score + (long_len - short_len) * gap_extend_score;
+	//}
 	
 	if (tmp_score > max_score) {
 	  max_idx = j;

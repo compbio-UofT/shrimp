@@ -98,7 +98,7 @@ EXTERN(bool,		extra_sam_fields,	false);
 EXTERN(bool,		single_best_mapping,	false);
 EXTERN(bool,		improper_mappings,	true);
 EXTERN(bool,		autodetect_input,	true);
-EXTERN(bool,		hack,			false);
+//EXTERN(bool,		hack,			false);
 
 /* Scores */
 EXTERN(int,		match_score,		DEF_LS_MATCH_SCORE);
