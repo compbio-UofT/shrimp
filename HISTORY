@@ -1,5 +1,7 @@
 2.2.0: Jul, 2011
 	- Added mapping quality values and base quality values (see README.)
+	- Vastly improved mergesam program that replaces  all  previous  merging
+	  scripts (see SPLITTING_AND_MERGING for reference.)
 	- Various algorithmic improvements behind the scenes.
 	- Changed default scoring scheme. Scores optimized for mapping hg data.
 	- Changed default thresholds.
@@ -9,7 +11,7 @@
 	  as pairs, then  also as singletons.  To select  only the best mapping,
 	  see  --single-best-mapping.   NOTE: Half-paired  mode  will slow  down
 	  gmapper compared to its previous versions, but we felt it is desirable
-	  to have it.  If you only need paired mappings, see --no-half-paired.
+	  to have it.  If you need only paired mappings, see --no-half-paired.
 	- Changed the default  set of seeds to 3 seeds of  weight 12, (Thank you
           Marta Gardea.)
 	- Changed default Smith-Waterman mode  to global. This forces the entire

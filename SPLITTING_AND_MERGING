@@ -84,14 +84,65 @@ At this point, we have 4 output files. We merge them in two steps.
 
 First, we merge hits of the *same* reads across *different* pieces of the genome:
 
-$ merge-hits-same-qr-diff-db map-qr1of2-db*of2.out >map-qr1of2.out
-$ merge-hits-same-qr-diff-db map-qr2of2-db*of2.out >map-qr2of2.out
+$ mergesam qr-1of2.fa map-qr1of2-db*of2.out >map-qr1of2.out
+$ mergesam qr-2of2.fa map-qr2of2-db*of2.out >map-qr2of2.out
 
 Finally, merge hits of *different* reads across the *same* genome (now, all of
 it):
 
-$ merge-hits-diff-qr-same-db map-qr*of2.out >map.out
+$ mergesam <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2.out >map.out
 
-Note: The merging can in principle be performed the other way around, first by
-the same genome piece, then by the same reads, but it is more costly (in terms
-of running time) to do so.
+Alternatively, we can combine all merging in a single step as follows:
+
+$ mergesam <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2-db*of2.out >map.out
+
+
+Merging and Mapping Qualities
+-----------------------------
+
+As of v2.2.0, gmapper supports mapping qualities. These statistics need to be
+updated in nontrivial ways during merging. Particularly, merging mappings of the
+same read to different reference chunks must be accompanied by mapping quality
+recalculation. For this reason, gmapper by default includes in the SAM output
+several special fields which are used to perform MQ recalculation during
+merging. To inhibit the inclusion of these fields in the output, the final
+merging step for every read should include the option --all-contigs (to either
+gmapper itself or mergesam). However, the only negative effect of those extra
+fields is wasted space: their presence or absence does not affect the actual
+mappings in any other way.
+
+Assume we have 2 read chunks and 2 reference chunks as in the example before,
+and we want the single best mapping for every read (pair). By default, gmapper
+includes the extra SAM fields in the 4 original runs. Moreover, since we are
+only interested in the single best mapping, we can additionally give
+--single-best-mapping to each of the 4 gmapper runs. We can merge the results as
+follows:
+
+(i) All together in one step:
+
+$ mergesam --single-best-mapping --all-contigs <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2-db*of2.out >map.out
+
+Depending on the size of the mapping and the number of files involved, one might
+prefer to split this work into several parts.
+
+(ii) Across reference chunks, then across reads:
+
+$ mergesam --single-best-mapping --all-contigs qr-1of2.fa map-qr1of2-db*of2.out >map-qr1of2.out
+$ mergesam --single-best-mapping --all-contigs qr-2of2.fa map-qr2of2-db*of2.out >map-qr2of2.out
+$ mergesam --no-mapping-qualities --leave-mapq <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2.out >map.out
+
+Above, in each of the first two runs all mappings for the reads in those runs
+are inspected, hence it is correct to include --all-contigs at that early
+point. In the last merge step, the existing mapping qualities are left alone.
+
+(iii) Across reads, then across reference chunks:
+
+$ mergesam <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2-db1of2.out >map-db1of2.out
+$ mergesam <(cat qr-1of2.fa qr-2of2.fa) map-qr*of2-db2of2.out >map-db2of2.out
+$ mergesam --single-best-mapping --all-contigs <(cat qr-1of2.fa qr-2of2.fa) map-db*of2.out >map.out
+
+Above, one could include --single-best-mapping in the first 2 merge jobs, but
+that would have no effect. However, it would be an error to give --all-contigs
+to either of those: in that case, the third merge job would need to recompute
+mapping qualities of a read across different reference chunks, but the extra SAM
+fields that are needed would be missing.
