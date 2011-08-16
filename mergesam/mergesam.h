@@ -21,8 +21,8 @@
 
 //IO SETTINGS
 #define DEF_READ_SIZE	1024*10
-#define DEF_BUFFER_SIZE	1024*1024*50
-#define DEF_READ_RATE 6000
+#define DEF_BUFFER_SIZE	1024*1024*200
+#define DEF_READ_RATE 60000
 #define DEF_ALIGNMENTS_STACK_SIZE DEF_READ_RATE*2
 typedef struct runtime_options {
 	//efficiency options

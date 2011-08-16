@@ -304,7 +304,7 @@ static inline void consolidate_single(pp_ll ** ll,int map_class,pretty ** unalig
 				//if we have not summed this file into z1, do so now
 				if (!options.no_mapping_qualities) {
 					if ((HAS_ZUNPAIRED & pa->has_zs) != HAS_ZUNPAIRED) {
-						fprintf(stderr,"UNPAIRED: There has been an error, cannot compute single_best if Z fields are incomplete\n");
+						fprintf(stderr,"%s: There has been an error, cannot compute single_best if Z fields are incomplete\n",map_class == UNPAIRED ? "UNPAIRED" : "HALF-PAIRED");
 						fprintf(stderr,"Read %s only has z fields Z 0:%d,1:%d,2:%d,3:%d,4:%d,5:%d,6:%d\n",pa->read_name,
 							pa->has_zs&HAS_Z0,pa->has_zs&HAS_Z1,pa->has_zs&HAS_Z2,pa->has_zs&HAS_Z3,pa->has_zs&HAS_Z4,pa->has_zs&HAS_Z5,pa->has_zs&HAS_Z6);
 						exit(1);
