@@ -68,8 +68,8 @@ inline static void
 init_cell(int idx, int local_alignment) {
   if (local_alignment) {
 	  swmatrix[idx].score_northwest = 0;
-	  swmatrix[idx].score_north = 0;
-	  swmatrix[idx].score_west = 0;
+	  swmatrix[idx].score_north = -b_gap_open;
+	  swmatrix[idx].score_west = -a_gap_open;
   } else {
 	  swmatrix[idx].score_northwest = -INT_MAX/2;
 	  swmatrix[idx].score_north = -INT_MAX/2;
@@ -105,7 +105,8 @@ static void print_sw(int lena, int lenb) {
 			if (tmp<-1000) {
 				printf("%5d ",-99);
 			} else {
-				printf("%5d ",tmp);
+			  //printf("%5d ",tmp);
+			  printf("%5d/%5d/%5d ", curr.score_north,curr.score_west,curr.score_northwest);
 			}
 		}
 		printf("\n");
@@ -385,10 +386,12 @@ full_sw(int lena, int lenb, int threshscore, int maxscore, int *iret, int *jret,
 
   *iret = max_i;
   *jret = max_j;
-  //fprintf(stderr,"Returning i = %d, j= %d, score= %d , maxscore=%d\n",i,j,score,maxscore);
-  //print_sw(lena,lenb);
-  //print_sw_backtrace(lena,lenb);
-  //fprintf(stderr,"Final score is %d\n",score);
+#ifdef DEBUG_SW
+  fprintf(stderr,"Returning i = %d, j= %d, score= %d , maxscore=%d\n",i,j,score,maxscore);
+  print_sw(lena,lenb);
+  print_sw_backtrace(lena,lenb);
+  fprintf(stderr,"Final score is %d\n",score);
+#endif
   if (score == maxscore || !local_alignment)
     return score;
   else if (anchors != NULL)
