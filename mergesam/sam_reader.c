@@ -531,6 +531,25 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 						best_alignment->mate_pair->mate_genome_start_unpadded=best_alignment->genome_start_unpadded;	
 
 						assert(best_alignment->mate_pair->mapped);
+
+						fill_cigar_len(best_alignment);
+						char ba_cigar_ops[best_alignment->num_cigar];
+						uint32_t ba_cigar_lengths[best_alignment->num_cigar];
+						best_alignment->cigar_ops=ba_cigar_ops;
+						best_alignment->cigar_lengths=ba_cigar_lengths;
+						pretty_cigar_parse(best_alignment);
+						calculate_genome_end(best_alignment);
+
+						fill_cigar_len(best_alignment->mate_pair);
+						char ba_mp_cigar_ops[best_alignment->mate_pair->num_cigar];
+						uint32_t ba_mp_cigar_lengths[best_alignment->mate_pair->num_cigar];
+						best_alignment->mate_pair->cigar_ops=ba_mp_cigar_ops;
+						best_alignment->mate_pair->cigar_lengths=ba_mp_cigar_lengths;
+						pretty_cigar_parse(best_alignment->mate_pair);
+						calculate_genome_end(best_alignment->mate_pair);
+
+						calculate_genome_end(best_alignment->mate_pair);
+						calculate_insert_size(best_alignment,best_alignment->mate_pair);
 					}
 				}
 			}

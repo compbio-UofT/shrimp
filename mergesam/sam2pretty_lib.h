@@ -60,8 +60,6 @@ struct pretty {
 	int32_t pretty_clipped_read_start;
 	int32_t pretty_clipped_read_end;
 
-
-
 	char* genome_sequence;
 	int32_t genome_length;
 
@@ -180,6 +178,11 @@ void pretty_print_sam_unaligned(pretty * pa,bool inplace);
 void pretty_from_aux_inplace(pretty * pa);
 void pretty_print_sam_fastx(pretty* pa, bool inplace );
 int pretty_get_flag(pretty * pa );
+
+void calculate_genome_end(pretty * pa);
+void calculate_insert_size(pretty * pa, pretty * pa_mp);
+void pretty_cigar_parse(pretty * pa);
+void fill_cigar_len(pretty *pa);
 
 double inv_tnlog(int x);
 

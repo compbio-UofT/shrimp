@@ -472,6 +472,80 @@ void pretty_cigar_parse(pretty * pa) {
 	return;
 }
 
+
+void calculate_genome_end(pretty * pa) {
+	if (pa->num_cigar==0) {
+		fprintf(stderr,"this read has no cigar string! %s\n",pa->read_name);	
+		exit(1);
+	}
+	pa->genome_start_padded=pa->genome_start_unpadded;
+	pa->genome_end_padded=pa->genome_start_unpadded;
+	pa->genome_end_unpadded=pa->genome_start_unpadded;
+	assert(pa->num_cigar>0);
+	int32_t i;
+	bool start = true;
+	for (i=0; i<pa->num_cigar; i++) {
+		int32_t length=pa->cigar_lengths[i];
+		switch (pa->cigar_ops[i]) {
+			case 'N':
+			case 'D':
+			case 'M':
+				start=false;
+				pa->genome_end_unpadded+=length;
+				pa->genome_end_padded+=length;
+				break;
+			case 'S':
+			case 'H':
+				if (start) {
+					pa->genome_start_padded-=length;
+				} else {
+					pa->genome_end_padded+=length;	
+				}
+				break;
+			case 'P':
+			case 'I':
+				start=false;
+				break;
+			default:
+				fprintf(stderr,"Error calculating pretty genome,%s\n",pa->cigar);
+				exit(1);
+		}
+	}
+	pa->genome_end_padded--;
+	pa->genome_end_unpadded--;
+	return;	
+}
+void calculate_insert_size(pretty * pa, pretty * pa_mp) {
+	int isize=0;
+	if (pa->reference_name==NULL || pa_mp->reference_name==NULL) {
+		fprintf(stderr,"Cannot calculate insert size when reference names are not defined! %s, %s\n",pa->read_name,pa_mp->read_name);
+		exit(1);
+	}
+	if (strcmp(pa->reference_name,pa_mp->reference_name) == 0) {
+		pa->mate_reference_name= "=";
+		pa_mp->mate_reference_name="=";
+		int fivep = 0;
+		int fivep_mp = 0;
+		if (pa->reverse)
+			fivep = pa->genome_end_unpadded;
+		else
+			fivep = pa->genome_start_unpadded - 1;
+
+		if (pa_mp->reverse)
+			fivep_mp = pa_mp->genome_end_unpadded;
+		else
+			fivep_mp = pa_mp->genome_start_unpadded-1;
+
+		isize = (fivep_mp - fivep);
+	} else { // map to different chromosomes
+		isize = 0;
+	}
+	
+	pa->isize=isize;
+	pa_mp->isize=-isize;
+	return;
+}
+
 //char* pretty_genome(char* cigar, int32_t num_cigar, int32_t strand, int32_t * genome_start, int32_t * genome_end) {
 void pretty_genome(pretty * pa) {
 	if (pa->pretty_length==0) {
@@ -1364,6 +1438,16 @@ pretty * pretty_from_string_inplace(char * sam_string,size_t length_of_string,pr
 	return pa;	
 }
 
+void fill_cigar_len(pretty * pa) { 
+	int32_t i,cigar_len=strlen(pa->cigar);
+	pa->num_cigar=0;
+	for (i=0; i<cigar_len; i++) {
+		if (pa->cigar[i]>=65) {
+			pa->num_cigar++;	
+		}
+	}
+}
+
 pretty * pretty_from_string(char* sam_string) {
 		if (sam_string[strlen(sam_string)-1]=='\n') {
 			sam_string[strlen(sam_string)-1]='\0';
@@ -1419,13 +1503,14 @@ pretty * pretty_from_string(char* sam_string) {
 					}
 					strcpy(pa->cigar,tok);
 					{
-						int32_t i,cigar_len=strlen(pa->cigar);
+						fill_cigar_len(pa);
+						/*int32_t i,cigar_len=strlen(pa->cigar);
 						pa->num_cigar=0;
 						for (i=0; i<cigar_len; i++) {
 							if (pa->cigar[i]>=65) {
 								pa->num_cigar++;	
 							}
-						}
+						}*/
 					}
 					break;
 				case 6:
