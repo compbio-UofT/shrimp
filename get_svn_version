@@ -1,0 +1,11 @@
+#!/bin/bash
+EXEC_PATH="$(which svnversion 2>/dev/null | head -n 1)"
+if [ -z "$EXEC_PATH" ]; then
+  echo "exported"
+else
+  if [ ! -x "$EXEC_PATH" ]; then
+    echo "exported"
+  else
+    svnversion
+  fi
+fi

@@ -802,6 +802,7 @@ advance_index_in_genomemap(struct read_entry * re, int st,
 }
 
 
+/*
 static void
 expand_anchor(read_entry * re, int st, anchor * a)
 {
@@ -851,6 +852,7 @@ expand_anchor(read_entry * re, int st, anchor * a)
   a->score = max_sc;
   assert(a->score <= a->length * match_score && a->score >= a->length * mm_score);
 }
+*/
 
 
 static void

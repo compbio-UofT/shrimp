@@ -3,12 +3,12 @@
 #CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
 
 ifndef CXXFLAGS
-CXXFLAGS=-g
-#CXXFLAGS=-O3 -DNDEBUG
+#CXXFLAGS=-g
+CXXFLAGS=-O3 -DNDEBUG
 override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  
 endif
 
-SVN_VERSION=$(shell svnversion)
+SVN_VERSION=$(shell ./get_svn_version)
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
 
 #CXX=/opt/intel/cce/10.1.015/bin/icc
