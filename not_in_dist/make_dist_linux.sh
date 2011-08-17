@@ -20,7 +20,7 @@ GZ_FILENAME=${TAR_FILENAME}.gz
 rm -rf ${SHRiMP_FOLDER}
 while read line; do mkdir -p `dirname $(echo ${SHRiMP_FOLDER}/$line | sed 's/\/\.\//\//g')` 2> /dev/null;  ln -s $(dirname `pwd`)/$(echo $line | sed 's/^\.\///g') ${SHRiMP_FOLDER}/$(echo $line | sed 's/^\.\///g'); done < all_files
 rm -rf ${SHRiMP_FOLDER}/bin
-export CXXFLAGS='-m32 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS'
+export CXXFLAGS='-m32 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel'
 export CXX=/opt/intel/cc/10.1.015/bin/icc
 pushd `pwd`/../
 make clean; make
@@ -45,7 +45,7 @@ GZ_FILENAME=${TAR_FILENAME}.gz
 rm -rf ${SHRiMP_FOLDER}
 while read line; do mkdir -p `dirname $(echo ${SHRiMP_FOLDER}/$line | sed 's/\/\.\//\//g')` 2> /dev/null;  ln -s $(dirname `pwd`)/$(echo $line | sed 's/^\.\///g') ${SHRiMP_FOLDER}/$(echo $line | sed 's/^\.\///g'); done < all_files
 rm -rf ${SHRiMP_FOLDER}/bin
-export CXXFLAGS='-g -m64 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS'
+export CXXFLAGS='-m64 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel'
 export CXX=/opt/intel/cce/10.1.015/bin/icc
 pushd `pwd`/../
 make clean; make
