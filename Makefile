@@ -1,19 +1,26 @@
-# $Id: Makefile,v 1.23 2009/06/16 23:26:20 rumble Exp $
-#CXXFLAGS=-Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel
-#CXXFLAGS=-Kc++ -O2 -openmp -DNDEBUG -static-intel -g 
+ifndef BUILD_TYPE
+BUILD_TYPE=production
+endif
+
+ifdef USE_ICC
+CXX=/opt/intel/cce/10.1.015/bin/icc
+endif
 
 ifndef CXXFLAGS
-#CXXFLAGS=-g
+ifeq ($(BUILD_TYPE), production)
 CXXFLAGS=-O3 -DNDEBUG
-override CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated  
+else
+CXXFLAGS=-g
+endif
+ifdef USE_ICC
+CXXFLAGS+=-Kc++ -wd383,981,1572 -axP -ipo -openmp -static-intel
+else
+CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
+endif
 endif
 
 SVN_VERSION=$(shell ./get_svn_version)
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
-
-#CXX=/opt/intel/cce/10.1.015/bin/icc
-#CXXFLAGS=-g -m64 -Kc++ -wd383,981,1572 -axP -O3 -ipo -openmp -DNDEBUG -static-intel -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS
-#CXX=/filer/misko/intel_suite/compilerpro-12.0.0.084/bin/intel64/icc
 
 LD=$(CXX)
 LDFLAGS=-lm -lz -lstdc++ -lrt
