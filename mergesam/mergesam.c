@@ -52,15 +52,23 @@ int64_t genome_length_from_headers(char ** sam_lines, int header_entries) {
 		char * line = sam_lines[i];
 		if (line[0]=='@' && line[1]=='S' && line[2]=='Q') {
 			int x;
-			for (x=4; line[x]!='L' && line[x]!='\0'; x++);
-			if (line[x]=='\0') {
+			for (x=4; line[x]!='\0'; x++) {
+				if (line[x]=='\t' && line[x+1]=='L' && line[x+2]=='N') {
+					x++;
+					break;
+				}
+			}
+			if (line[x]=='\0' || line[x]!='L') {
 				fprintf(stderr,"Invalid sam header format\n");
 				exit(1);
 			}	
 			assert(line[x]=='L');
-			assert(line[++x]!='\0'); //N
-			assert(line[++x]!='\0'); //:
-			assert(line[++x]!='\0');
+			x++;
+			assert(line[x]!='\0'); //N
+			x++;
+			assert(line[x]!='\0'); //:
+			x++;
+			assert(line[x]!='\0');
 			int y=x;
 			while (line[y]!='\t' && line[y]!='\0' && line[y]!='\n') {
 				y++;
