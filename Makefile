@@ -1,22 +1,26 @@
 ifndef BUILD_TYPE
-BUILD_TYPE=production
+  BUILD_TYPE=production
 endif
 
 ifdef USE_ICC
-CXX=/opt/intel/cce/10.1.015/bin/icc
+  CXX=/opt/intel/cce/10.1.015/bin/icc
 endif
 
 ifndef CXXFLAGS
-ifeq ($(BUILD_TYPE), production)
-CXXFLAGS=-O3 -DNDEBUG
-else
-CXXFLAGS=-g
-endif
-ifdef USE_ICC
-CXXFLAGS+=-Kc++ -wd383,981,1572 -axP -ipo -openmp -static-intel
-else
-CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
-endif
+  ifeq ($(BUILD_TYPE), production)
+    CXXFLAGS=-O3 -DNDEBUG
+  else
+    ifeq ($(BUILD_TYPE), testing)
+      CXXFLAGS=-g -O3
+    else
+      CXXFLAGS=-g
+    endif
+  endif
+  ifdef USE_ICC
+    CXXFLAGS+=-Kc++ -wd383,981,1572 -axP -ipo -openmp -static-intel
+  else
+    CXXFLAGS+=-mmmx -msse -msse2 -fopenmp -Wall -Wno-deprecated
+  endif
 endif
 
 SVN_VERSION=$(shell ./get_svn_version)
