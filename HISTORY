@@ -1,4 +1,4 @@
-2.2.0: Jul, 2011
+2.2.0: Aug, 2011
 	- Added mapping quality values and base quality values (see README.)
 	- Vastly improved mergesam program that replaces  all  previous  merging
 	  scripts (see SPLITTING_AND_MERGING for reference.)
