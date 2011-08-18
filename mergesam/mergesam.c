@@ -317,6 +317,7 @@ int main (int argc, char ** argv) {
 	strcpy(command_line,pg_line_prefix);
 	for (i=0; i<argc; i++) {
 		strcat(command_line,argv[i]);
+		strcat(command_line," ");
 	}	
 	options.unaligned_reads_file=NULL;
 	options.aligned_reads_file=NULL;
