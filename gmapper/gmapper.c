@@ -1142,6 +1142,17 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
           "      --sam-header      Use file as SAM header\n");
   fprintf(stderr,
+	  "      --single-best-mapping Report only the best mapping(s), this is not strata (see README)\n");
+  fprintf(stderr,
+          "      --all-contigs     Report a maximum of 1 mapping for each read.\n");
+  fprintf(stderr,
+          "      --no-mapping-qualities Do not compute mapping qualities\n");
+  fprintf(stderr,
+	  "      --insert-size-dist Specifies the mean and stddev of the insert sizes\n");
+  fprintf(stderr,
+	  "      --no-improper-mappings (see README)\n");
+  if (full_usage) {
+  fprintf(stderr,
           "      --trim-front      Trim front of reads by this amount\n");
   fprintf(stderr,
           "      --trim-end        Trim end of reads by this amount\n");
@@ -1150,61 +1161,85 @@ usage(char * progname, bool full_usage){
   fprintf(stderr,
           "      --trim-second     Trim only second read in pair\n");
   fprintf(stderr,
-          "      --expected-isize  Use this to tie break for high scoring pairs\n");
-
+          "      --min-avg-qv      The minimum average quality value of a read\n");
+  fprintf(stderr,
+          "      --progress        Display a progress line each <value> reads. (default %d)\n",progress);
+  fprintf(stderr,
+ 	  "      --save-mmap       Save genome projection to shared memory\n");
+  fprintf(stderr,
+          "      --load-mmap       Load genome projection from shared memory\n");
+  fprintf(stderr,
+          "      --indel-taboo-len Prevent indels from starting or ending in the tail\n");
+  fprintf(stderr,
+          "      --shrimp-format   Output mappings in SHRiMP format (default: %s)\n",Eflag ? "disabled" : "enabled");
+  fprintf(stderr,
+          "      --qv-offset       (see README)\n");
+  fprintf(stderr,
+          "      --sam-header-hd   (see README)\n");
+  fprintf(stderr,
+          "      --sam-header-sq   (see README)\n");
+  fprintf(stderr,
+          "      --sam-header-rg   (see README)\n");
+  fprintf(stderr,
+          "      --sam-header-pg   (see README)\n");
+  fprintf(stderr,
+          "      --no-autodetect-input (see README)\n");
+  }
   fprintf(stderr, "\n");
   fprintf(stderr, "Options:\n");
 
   fprintf(stderr,
-	  "   -U/--ungapped        Perform Ungapped Alignment    (default: disabled)\n");
+	  "   -U/--ungapped        Perform Ungapped Alignment    (default: %s)\n", gapless_sw ? "enabled" : "disabled");
   fprintf(stderr,
-          "      --global          Perform full global alignment (default: disabled)\n");
+          "      --global          Perform full global alignment (default: %s)\n", Gflag ? "enabled" : "disabled");
+  fprintf(stderr,
+          "      --local           Perform local alignment       (default: %s)\n", Gflag ? "disabled" : "enabled");
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
-          "      --bfast           Try to align like bfast       (default: disabled)\n");
+          "      --bfast           Try to align like bfast       (default: %s)\n", Bflag ? "enabled" : "disabled");
   }
   fprintf(stderr,
-	  "   -C/--negative        Negative Strand Aln. Only     (default: disabled)\n");
+	  "   -C/--negative        Negative Strand Aln. Only     (default: %s)\n", Cflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -F/--positive        Positive Strand Aln. Only     (default: disabled)\n");
+	  "   -F/--positive        Positive Strand Aln. Only     (default: %s)\n", Fflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -P/--pretty          Pretty Print Alignments       (default: disabled)\n");
+	  "   -P/--pretty          Pretty Print Alignments       (default: %s)\n", Pflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -E/--sam             Output SAM Format             (default: disabled)\n");
+	  "   -E/--sam             Output SAM Format             (default: %s)\n", Eflag ? "enabled" : "disabled");
   fprintf(stderr,
-  	  "   -Q/--fastq           Reads are in fastq format     (default: disabled)\n");
+  	  "   -Q/--fastq           Reads are in fastq format     (default: %s)\n", Qflag ? "enabled" : "disabled");
   if (full_usage) {
   fprintf(stderr,
-	  "   -R/--print-reads     Print Reads in Output         (default: disabled)\n");
+	  "   -R/--print-reads     Print Reads in Output         (default: %s)\n", Rflag ? "enabled" : "disabled");
  // fprintf(stderr,
 //	  "    -T    (does nothing since default) Reverse Tie-break on Negative Strand          (default: enabled)\n");
   fprintf(stderr,
 	  "   -t/--tiebreak-off    Disable Reverse Tie-break\n");
   fprintf(stderr,
-	  "                                  on Negative Strand  (default: enabled)\n");
+	  "                                  on Negative Strand  (default: %s)\n",Tflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -X/--isize-hist      Print Insert Size Histogram   (default: disabled)\n");
+	  "   -X/--isize-hist      Print Insert Size Histogram   (default: %s)\n", Xflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -Y/--proj-hist       Print Genome Proj. Histogram  (default: disabled)\n");
+	  "   -Y/--proj-hist       Print Genome Proj. Histogram  (default: %s)\n", Yflag ? "enabled" : "disabled");
   fprintf(stderr,
 	  "   -Z/--bypass-off      Disable Cache Bypass for SW\n");
   fprintf(stderr,
-	  "                                    Vector Calls      (default: enabled)\n");
+	  "                                    Vector Calls      (default: %s)\n", hash_filter_calls ? "enabled" : "disabled");
   fprintf(stderr,
 	  "   -H/--spaced-kmers    Hash Spaced Kmers in Genome\n");
   fprintf(stderr,
-	  "                                    Projection        (default: disabled)\n");
+	  "                                    Projection        (default: %s)\n", Hflag ? "enabled" : "disabled");
   fprintf(stderr,
-	  "   -D/--thread-stats    Individual Thread Statistics  (default: disabled)\n");
+	  "   -D/--thread-stats    Individual Thread Statistics  (default: %s)\n", Dflag ? "enabled" : "disabled");
   fprintf(stderr,
 	  "   -V/--trim-off        Disable Automatic Genome\n");
   fprintf(stderr,
-	  "                                 Index Trimming       (default: enabled)\n");
+	  "                                 Index Trimming       (default: %s)\n", Vflag ? "enabled" : "disabled");
   }
   fprintf(stderr,
-	  "      --sam-unaligned   Unaligned reads in SAM output (default: disabled)\n");
+	  "      --sam-unaligned   Unaligned reads in SAM output (default: %s)\n", sam_unaligned ? "enabled" : "disabled");
   fprintf(stderr,
-	  "      --half-paired     Output half mapped read pairs (default: disabled)\n");
+	  "      --half-paired     Output half mapped read pairs (default: %s)\n", half_paired ? "enabled" : "disabled");
   fprintf(stderr,
 	  "      --strata          Print only the best scoring hits\n");
   fprintf(stderr,
