@@ -1,11 +1,44 @@
 #!/bin/bash
+VERSION_FILE="SVN_VERSION"
 EXEC_PATH="$(which svnversion 2>/dev/null | head -n 1)"
 if [ -z "$EXEC_PATH" ]; then
-  echo "exported"
+  EXISTS_SVNVERSION=0
 else
   if [ ! -x "$EXEC_PATH" ]; then
-    echo "exported"
+    EXISTS_SVNVERSION=0
   else
+    EXISTS_SVNVERSION=1
+  fi
+fi
+
+if [ "$EXISTS_SVNVERSION" = 1 ]; then
+  if [ "$(svnversion)" = "exported" ]; then
+    UNDER_SVN=0
+  else
+    UNDER_SVN=1
+  fi
+fi
+
+if [ -r "$VERSION_FILE" ]; then
+  EXISTS_FILE=1
+else
+  EXISTS_FILE=0
+fi
+
+if [ "$EXISTS_SVNVERSION" = 0 ]; then
+  if [ "$EXISTS_FILE" = 1 ]; then
+    cat "$VERSION_FILE"
+  else
+    echo "missing_svn_version"
+  fi
+else
+  if [ "$UNDER_SVN" = 1 ]; then
     svnversion
+  else
+    if [ "$EXISTS_FILE" = 1 ]; then
+      cat "$VERSION_FILE"
+    else
+      echo "missing_svn_version"
+    fi
   fi
 fi

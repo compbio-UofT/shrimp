@@ -1506,6 +1506,8 @@ set_mode_from_string(char const * s) {
     hash_filter_calls = false;
     match_mode = 1;
     window_len = 100.0;
+    Gflag = false;
+    compute_mapping_qualities = false;
 
     return 1;
   } else {
@@ -2118,6 +2120,7 @@ int main(int argc, char **argv){
                             fprintf(stderr, "error: unrecognized mode (%s)\n", c);
                             exit(1);
                           } 
+			  match_mode_set = true;
                           c = strtok(NULL, ",");
                         } while (c != NULL);
                         break;
