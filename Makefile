@@ -27,7 +27,14 @@ SVN_VERSION=$(shell ./get_svn_version)
 override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
 
 LD=$(CXX)
+
+UNAME := $(shell uname)
+ifeq ($(UNAME), Darwin)
+LDFLAGS=-lm -lz -lstdc++
+else
 LDFLAGS=-lm -lz -lstdc++ -lrt
+endif 
+
 LN=ln
 
 all: bin/gmapper bin/probcalc bin/prettyprint bin/probcalc_mp \

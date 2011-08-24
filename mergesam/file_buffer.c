@@ -7,7 +7,8 @@
 #include "file_buffer.h"
 
 //#define MIN(a,b) (((a) < (b)) ? (a) : (b))
-/*void * memrchr(const void *s, int c, size_t n) {
+#ifdef __APPLE__
+void * memrchr(const void *s, int c, size_t n) {
     const unsigned char *cp;
     if (n != 0) {
 	cp = (unsigned char *)s + n;
@@ -17,7 +18,8 @@
  	} while (--n != 0);
     }
     return((void *)0);
-}*/
+}
+#endif
 
 
 bool auto_detect_fastq(gzFile fp, char * reads_filename) {
