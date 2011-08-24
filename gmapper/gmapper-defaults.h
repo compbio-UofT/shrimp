@@ -153,7 +153,8 @@
 	{"sam-header-pg",1,0,47},\
 	{"no-autodetect-input",0,0,48},\
 	{"local",0,0,124},\
-	{"no-qv-check",0,0,123}\
+	{"no-qv-check",0,0,123},\
+	{"ignore-qvs",0,0,125}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

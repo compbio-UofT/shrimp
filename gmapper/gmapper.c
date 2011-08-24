@@ -471,7 +471,7 @@ launch_scan_threads()
 	}
 	//compute average quality value
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
-	if (Qflag && min_avg_qv >= 0) {
+	if (Qflag && !ignore_qvs && min_avg_qv >= 0) {
 	  //fprintf(stderr, "read:[%s] qual:[%s]", re_buffer[i].name, re_buffer[i].qual);
 	  re_buffer[i].avg_qv = 0;
 	  for (char * c = re_buffer[i].qual; *c != 0; c++) {
@@ -479,10 +479,10 @@ launch_scan_threads()
 	  }
 	  //fprintf(stderr, " avg_qv:%d\n", re_buffer[i].avg_qv);
 	}
-	if (!no_qv_check) {
+	if (Qflag && !ignore_qvs && !no_qv_check) {
 		for (char * c =re_buffer[i].qual; *c !=0; c++) {
 			int qual_value=(*c-qual_delta);
-			if (qual_value<=-10 || qual_value>=50) {
+			if (qual_value<-10 || qual_value>50) {
 				fprintf(stderr,"The qv-offset might be set incorrectly! Currenty qvs are interpreted as PHRED+%d\
  and a qv of %d was observed. To disable this error, etiher set the offset correctly or disable this check (see README).\n",qual_delta,qual_value);
 				exit(1);
@@ -509,7 +509,7 @@ launch_scan_threads()
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
 	    || re_buffer[i].read_len > longest_read_len
-	    || (Qflag && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
+	    || (Qflag && !ignore_qvs && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
 	    ) {
 	  if (re_buffer[i].max_n_kmers < 0) {
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
@@ -543,7 +543,7 @@ launch_scan_threads()
 
 	re_buffer[i].window_len = (uint16_t)abs_or_pct(window_len,re_buffer[i].read_len);
 	// compute position-based crossover scores based on qvs
-	if (shrimp_mode == MODE_COLOUR_SPACE && Qflag) {
+	if (shrimp_mode == MODE_COLOUR_SPACE && Qflag && !ignore_qvs) {
 	  int j;
 
 	  re_buffer[i].crossover_score = (int *)xmalloc(re_buffer[i].read_len * sizeof(re_buffer[i].crossover_score[0]));
@@ -1395,8 +1395,11 @@ print_settings() {
   fprintf(stderr, "%s%-40s%d\n", my_tab, "Region overlap:", region_overlap);
   }
   if (Qflag) {
+  fprintf(stderr, "%s%-40s%s\n", my_tab, "Ignore QVs:", ignore_qvs? "yes" : "no");
+  }
+  if (Qflag && !ignore_qvs) {
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
-  fprintf(stderr, "%s%-40s%d\n", my_tab, "Base qv delta:", qual_delta);
+  fprintf(stderr, "%s%-40sPHRED+%d\n", my_tab, "QV input encoding:", qual_delta);
   }
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute mapping qualities:", compute_mapping_qualities? "yes" : "no");
   if (compute_mapping_qualities)
@@ -2303,9 +2306,9 @@ int main(int argc, char **argv){
 		case 124: // local alignment
 		  Gflag = false;
 		  break;
-		//case 125: // hack
-		  //hack = !hack;
-		  //break;
+		case 125: // --ignore-qvs
+		  ignore_qvs = true;
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2915,7 +2918,7 @@ int main(int argc, char **argv){
 	  if (shrimp_mode == MODE_COLOUR_SPACE) {
 	    post_sw_setup(max_window_len + longest_read_len,
 			  pr_mismatch, pr_xover, pr_del_open, pr_del_extend, pr_ins_open, pr_ins_extend,
-			  Qflag, use_sanger_qvs, qual_vector_offset, qual_delta, true);
+			  Qflag && !ignore_qvs, use_sanger_qvs, qual_vector_offset, qual_delta, true);
 	  }
 
 	}

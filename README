@@ -1076,6 +1076,11 @@ Input Control
     50.  This  helps  prevent mix-up between various input formats.  This option
     diables this check.
 
+  [    --ignore-qvs ]
+
+    When input is fastq, completely ignore base/colour qvs from the analysis, as
+    if the input were fasta.
+
 
 Output Control
 --------------

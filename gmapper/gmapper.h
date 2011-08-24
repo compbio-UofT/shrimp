@@ -99,6 +99,7 @@ EXTERN(bool,		extra_sam_fields,	false);
 EXTERN(bool,		single_best_mapping,	false);
 EXTERN(bool,		improper_mappings,	true);
 EXTERN(bool,		autodetect_input,	true);
+EXTERN(bool,		ignore_qvs,		false);		/* if input is fastq, ignore qvs in analysis */
 //EXTERN(bool,		hack,			false);
 
 /* Scores */
