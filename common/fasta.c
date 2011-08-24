@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 
+#include "../gmapper/gmapper.h"
 #include "../common/fasta.h"
 #include "../common/util.h"
 #include "../common/time_counter.h"

@@ -1065,6 +1065,10 @@ Input Control
     The minimum average quality value of a read for it to even be considered for
     mapping. The default is 10.
 
+  [    --no-qv-check ]
+
+    Disable the check for reasonable qv scores.
+
 
 Output Control
 --------------

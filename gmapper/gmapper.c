@@ -479,6 +479,16 @@ launch_scan_threads()
 	  }
 	  //fprintf(stderr, " avg_qv:%d\n", re_buffer[i].avg_qv);
 	}
+	if (!no_qv_check) {
+		for (char * c =re_buffer[i].qual; *c !=0; c++) {
+			int qual_value=(*c-qual_delta);
+			if (qual_value<=-10 || qual_value>=50) {
+				fprintf(stderr,"The qv-offset might be set incorrectly! Currenty qvs are interpreted as PHRED+%d\
+ and a qv of %d was observed. To disable this error, etiher set the offset correctly or disable this check (see README).\n",qual_delta,qual_value);
+				exit(1);
+			}
+		}
+	}
 
 	re_buffer[i].read[0] = fasta_sequence_to_bitfield(fasta, re_buffer[i].seq);
 	re_buffer[i].max_n_kmers = re_buffer[i].read_len - min_seed_span + 1;

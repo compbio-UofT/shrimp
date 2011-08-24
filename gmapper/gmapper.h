@@ -70,6 +70,7 @@ EXTERN(char *,		load_mmap,		NULL);
 EXTERN(unsigned int,	progress,		DEF_PROGRESS);
 
 EXTERN(bool,		compute_mapping_qualities,	true);
+EXTERN(bool,		no_qv_check,			false);
 //EXTERN(int,		score_difference_mq_cutoff,	0);
 EXTERN(bool,		all_contigs,			false);
 EXTERN(bool,		use_sanger_qvs,			true);
