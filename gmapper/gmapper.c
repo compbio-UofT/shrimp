@@ -2297,6 +2297,9 @@ int main(int argc, char **argv){
 		case 48: // no-autodetect-input
 		  autodetect_input = false;
 		  break;
+		case 123:
+		  no_qv_check=true;
+		  break;
 		case 124: // local alignment
 		  Gflag = false;
 		  break;
