@@ -1065,9 +1065,16 @@ Input Control
     The minimum average quality value of a read for it to even be considered for
     mapping. The default is 10.
 
+  [    --qv-offset <value> ]
+
+    Interpret qvs in fastq input as PHRED+<value>.  The default is 33 for colour
+    space and 64 for letter space.
+
   [    --no-qv-check ]
 
-    Disable the check for reasonable qv scores.
+    By default, gmapper crashes if it detects a qv less than -10 or greater than
+    50.  This  helps  prevent mix-up between various input formats.  This option
+    diables this check.
 
 
 Output Control
