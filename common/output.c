@@ -103,7 +103,7 @@ editstr(const char *dbalign, const char *qralign)
 		if (qralign[i] == '-') {
 			strbuf_append(sb, "-");
 		} else {
-			assert(i > 0 || dbalign[i] == toupper((int)qralign[i]));
+			//assert(i > 0 || dbalign[i] == toupper((int)qralign[i]));
 			if (dbalign[i] == toupper((int)qralign[i])) {
 				strbuf_append(sb, "x");
 				consec++;
