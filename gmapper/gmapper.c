@@ -284,44 +284,9 @@ static void trim_read(struct read_entry * re) {
  * Launch the threads that will scan the reads
  */
 static bool
-launch_scan_threads()
+launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 {
   llint last_nreads, last_time_usecs;
-
-  fasta_t fasta = NULL, left_fasta = NULL, right_fasta = NULL;
-
-  //open the fasta file and check for errors
-  if (single_reads_file) {  
-    fasta = fasta_open(reads_filename, shrimp_mode, Qflag, autodetect_input? &Qflag : NULL);
-    if (fasta == NULL) {
-      fprintf(stderr, "error: failed to open read file [%s]\n", reads_filename);
-      return (false);
-    } else {
-      fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
-    }
-  } else {
-    left_fasta = fasta_open(left_reads_filename,shrimp_mode,Qflag, autodetect_input? &Qflag : NULL);
-    if (left_fasta == NULL) {
-      fprintf(stderr, "error: failed to open read file [%s]\n", left_reads_filename);
-      return (false);
-    }
-    right_fasta = fasta_open(right_reads_filename,shrimp_mode,Qflag);
-    if (right_fasta == NULL) {
-      fprintf(stderr, "error: failed to open read file [%s]\n", right_reads_filename);
-      return (false);
-    }
-    // WHY? the code above sets both ->space to shrimp_mode anyhow
-    //if (right_fasta->space != left_fasta->space) {
-    //  fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
-    //  return (false);
-    //}
-    fasta=left_fasta;
-    fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename,right_reads_filename);
-  }
-
-  if ((pair_mode != PAIR_NONE || !single_reads_file) && (chunk_size%2)!=0) {
-    fprintf(stderr,"error: when in paired mode or using options -1 and -2, then thread chunk size must be even\n"); 
-  }
 
   bool read_more = true, more_in_left_file = true, more_in_right_file=true;
 
@@ -655,12 +620,6 @@ launch_scan_threads()
   my_free(thread_output_buffer_chunk, sizeof(unsigned int) * num_threads,
 	  &mem_thread_buffer, "thread_output_buffer_chunk");
 
-  if (single_reads_file) {
-    fasta_close(fasta);
-  } else {
-    fasta_close(left_fasta);
-    fasta_close(right_fasta);
-  }
   return true;
 }
 
@@ -1399,7 +1358,7 @@ print_settings() {
   }
   if (Qflag && !ignore_qvs) {
   fprintf(stderr, "%s%-40s%d%s\n", my_tab, "Minimum average qv:", min_avg_qv, min_avg_qv < 0? " (none)" : "");
-  fprintf(stderr, "%s%-40sPHRED+%d\n", my_tab, "QV input encoding:", qual_delta);
+  //fprintf(stderr, "%s%-40sPHRED+%d\n", my_tab, "QV input encoding:", qual_delta);
   }
   fprintf(stderr, "%s%-40s%s\n", my_tab, "Compute mapping qualities:", compute_mapping_qualities? "yes" : "no");
   if (compute_mapping_qualities)
@@ -1744,6 +1703,8 @@ int main(int argc, char **argv){
 	bool match_score_set, mismatch_score_set, xover_score_set;
 	bool match_mode_set = false;
 	bool qual_delta_set = false;
+
+	fasta_t fasta = NULL, left_fasta = NULL, right_fasta = NULL;
 
 	my_alloc_init(64l*1024l*1024l*1024l, 64l*1024l*1024l*1024l);
 
@@ -2317,12 +2278,9 @@ int main(int argc, char **argv){
 	argc -= optind;
 	argv += optind;
 
-	// set default quality value delta
-	if (Qflag && !qual_delta_set) {
-	  if (shrimp_mode == MODE_LETTER_SPACE)
-	    qual_delta = DEF_LS_QUAL_DELTA;
-	  else
-	    qual_delta = DEF_CS_QUAL_DELTA;
+	if ((pair_mode != PAIR_NONE || !single_reads_file) && (chunk_size % 2) != 0) {
+	  logit(0, "in paired mode or if using options -1 and -2, the thread chunk size must be even; adjusting it to [%d]", chunk_size + 1);
+	  chunk_size++;
 	}
 
 	if (!Gflag && compute_mapping_qualities) {
@@ -2863,6 +2821,47 @@ int main(int argc, char **argv){
 	//TODO setup need max window and max read len
 	//int longest_read_len = 2000;
 	int max_window_len = (int)abs_or_pct(window_len,longest_read_len);
+
+	// open input files, and set Qflag accordingly
+	if (single_reads_file) {  
+	  fasta = fasta_open(reads_filename, shrimp_mode, Qflag, autodetect_input? &Qflag : NULL);
+	  if (fasta == NULL) {
+	    crash(1, 1, "failed to open read file [%s]", reads_filename);
+	  } else {
+	    fprintf(stderr, "- Processing read file [%s]\n", reads_filename);
+	  }
+	} else {
+	  left_fasta = fasta_open(left_reads_filename, shrimp_mode, Qflag, autodetect_input? &Qflag : NULL);
+	  if (left_fasta == NULL) {
+	    crash(1, 1, "failed to open read file [%s]", left_reads_filename);
+	  }
+	  right_fasta = fasta_open(right_reads_filename, shrimp_mode, Qflag);
+	  if (right_fasta == NULL) {
+	    crash(1, 1, "failed to open read file [%s]", right_reads_filename);
+	  }
+	  // WHY? the code above sets both ->space to shrimp_mode anyhow
+	  //if (right_fasta->space != left_fasta->space) {
+	  //  fprintf(stderr,"error: when using -1 and -2, both files must be either only colour space or only letter space!\n");
+	  //  return (false);
+	  //}
+	  fasta = left_fasta;
+	  fprintf(stderr, "- Processing read files [%s , %s]\n", left_reads_filename, right_reads_filename);
+	}
+
+	// set default quality value delta
+	if (Qflag) {
+	  if (!qual_delta_set) {
+	    if (shrimp_mode == MODE_LETTER_SPACE)
+	      qual_delta = DEF_LS_QUAL_DELTA;
+	    else
+	      qual_delta = DEF_CS_QUAL_DELTA;
+	    logit(0, "quality value format not set explicitly; using PHRED+%d", qual_delta);
+	  } else {
+	    logit(0, "quality value format set to PHRED+%d", qual_delta);
+	  }
+	}
+
+
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,\
 		match_score, mismatch_score,shrimp_mode,crossover_score,anchor_width) num_threads(num_threads)
 	{
@@ -2972,12 +2971,19 @@ int main(int argc, char **argv){
 	  free(output);
 	}
 	before = gettimeinusecs();
-	bool launched = launch_scan_threads();
+	bool launched = launch_scan_threads(fasta, left_fasta, right_fasta);
 	if (!launched) {
 	  fprintf(stderr,"error: a fatal error occured while launching scan thread(s)!\n");
 	  exit(1);
 	}
 	mapping_wallclock_usecs += (gettimeinusecs() - before);
+
+	if (single_reads_file) {
+	  fasta_close(fasta);
+	} else {
+	  fasta_close(left_fasta);
+	  fasta_close(right_fasta);
+	}
 	
 	print_statistics();
 #pragma omp parallel shared(longest_read_len,max_window_len,a_gap_open_score, a_gap_extend_score, b_gap_open_score, b_gap_extend_score,	\

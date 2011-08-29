@@ -92,7 +92,7 @@ EXTERN(bool,		Eflag,			true);		/* output sam format */
 EXTERN(bool,		Xflag,			false);		/* print insert histogram */
 EXTERN(bool,		Yflag,			false);		/* print genome projection histogram */
 EXTERN(bool,		Vflag,			true);		/* automatic genome index trimming */
-EXTERN(bool,		Qflag,			false);		/* use fastq reads */
+EXTERN(bool,		Qflag,			true);		/* use fastq reads */
 EXTERN(bool,		Gflag,			true);		/* global alignment flag ! */
 EXTERN(bool,		Bflag,			false);		/* be like bfast - cs only! */
 EXTERN(bool,		extra_sam_fields,	false);
