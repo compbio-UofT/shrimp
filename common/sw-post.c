@@ -507,7 +507,7 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
       col = EXTRACT(read, j);
       if ((len == 0 && start_run == BASE_N) || col == BASE_N) {
 	//columns[len].ncols = 0; // no emission
-	columns[len].cols[0] = BASE_A;
+	columns[len].cols[0] = BASE_0;
 	columns[len].colserrrate[0] = .75;
       } else {
 	columns[len].cols[0] = EXTRACT(read, j) ^ (len == 0? start_run : 0);
