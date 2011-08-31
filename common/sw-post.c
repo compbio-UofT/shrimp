@@ -147,7 +147,7 @@ void printStates(states* allstates, int stateslen, FILE* stream) {
   for (i=0; i< stateslen; i++) {
     fprintf(stream, "\nCOLORS[%d] ",i);
     for (k = 0; k < allstates[i].ncols; k++) {
-            fprintf(stream, "%d ",allstates[i].cols[k]);
+      fprintf(stream, "%d (%g)",allstates[i].cols[k], allstates[i].colserrrate[k]);
     }
   }
   for (i=0; i< stateslen; i++) {
@@ -503,25 +503,26 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
       }
 
       // MATCH or INSERTION
-
       columns[len].ncols = 1;
       col = EXTRACT(read, j);
       if ((len == 0 && start_run == BASE_N) || col == BASE_N) {
-	columns[len].ncols = 0; // no emission
+	//columns[len].ncols = 0; // no emission
+	columns[len].cols[0] = BASE_A;
+	columns[len].colserrrate[0] = .75;
       } else {
 	columns[len].cols[0] = EXTRACT(read, j) ^ (len == 0? start_run : 0);
+	if (use_read_qvs) {
+	  columns[len].colserrrate[0] = pr_err_from_qv((len == 0? MIN(min_qv, (int)qual[qual_vector_offset + j]) : (int)qual[qual_vector_offset + j]) - qual_delta);
+	  if (!use_sanger_qvs) {
+	    columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
+	  }
+	  if (columns[len].colserrrate[0] > .75) columns[len].colserrrate[0] = .75;
+	} else {
+	  columns[len].colserrrate[0] = pr_xover;
+	} 
       }
       columns[len].base_call = char_to_base(sfrp->qralign[i]);
       assert(base_to_char(columns[len].base_call, LETTER_SPACE) == toupper(sfrp->qralign[i]));
-
-      if (use_read_qvs) {
-	columns[len].colserrrate[0] = pr_err_from_qv(MIN(min_qv, (int)qual[qual_vector_offset + j]) - qual_delta);
-	if (!use_sanger_qvs) {
-	  columns[len].colserrrate[0] /= (1 + columns[len].colserrrate[0]);
-	}
-      } else {
-	columns[len].colserrrate[0] = pr_xover;
-      }
 
       len++;
       j++;
