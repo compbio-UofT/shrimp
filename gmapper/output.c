@@ -2,6 +2,7 @@
 
 #include <omp.h>
 
+#include "gmapper.h"
 #include "output.h"
 #include "../common/output.h"
 #include "mapping.h"
@@ -512,6 +513,13 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 					qual[(qual_len-1)-i]=re->qual[i];
 				}
 				qual[qual_len]='\0';
+			}
+			if (qual_delta!=33) { 
+				int qual_len = strlen(re->qual); //not same as read_len, for color space reads... apperently.....
+				int i;
+				for (i=0; i<qual_len; i++) {
+					qual[i]=qual[i]-qual_delta+33;
+				}
 			}
 		}
 	//else in colour space dont print a qual string

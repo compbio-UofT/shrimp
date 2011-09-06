@@ -434,6 +434,20 @@ launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 	    trim_read(&re_buffer[i]);
 	  }
 	}
+        if (shrimp_mode == MODE_LETTER_SPACE && trim_illumina) { 
+		int trailing_Bs=0;
+		for (int j=0; j<(int)strlen(re_buffer[i].qual); j++) {
+			if (re_buffer[i].qual[j]!='B') {
+				trailing_Bs=0;
+			} else {
+				trailing_Bs+=1;
+			}
+		}
+		if (trim_illumina && trailing_Bs>0) {
+			re_buffer[i].seq[strlen(re_buffer[i].seq)-trailing_Bs]='\0';
+			re_buffer[i].qual[strlen(re_buffer[i].qual)-trailing_Bs]='\0';
+		}
+	}
 	//compute average quality value
 	re_buffer[i].read_len = strlen(re_buffer[i].seq);
 	if (Qflag && !ignore_qvs && min_avg_qv >= 0) {
@@ -474,7 +488,7 @@ launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 	//Check if we can actually use this read
 	if (re_buffer[i].max_n_kmers < 0
 	    || re_buffer[i].read_len > longest_read_len
-	    || (Qflag && !ignore_qvs && min_avg_qv >= 0 && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
+	    || (Qflag && !ignore_qvs && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
 	    ) {
 	  if (re_buffer[i].max_n_kmers < 0) {
 	    fprintf(stderr, "warning: skipping read [%s]; smaller then any seed!\n",
@@ -1166,6 +1180,9 @@ usage(char * progname, bool full_usage){
   if (shrimp_mode == MODE_COLOUR_SPACE) {
   fprintf(stderr,
           "      --bfast           Try to align like bfast       (default: %s)\n", Bflag ? "enabled" : "disabled");
+  } else {
+  fprintf(stderr,
+          "      --trim-illumina   Trim trailing B qual values   (default: %s)\n", trim_illumina ? "enabled" : "disabled");
   }
   fprintf(stderr,
 	  "   -C/--negative        Negative Strand Aln. Only     (default: %s)\n", Cflag ? "enabled" : "disabled");
@@ -2260,6 +2277,9 @@ int main(int argc, char **argv){
 		  break;
 		case 48: // no-autodetect-input
 		  autodetect_input = false;
+		  break;
+		case 3:
+		  trim_illumina=true;
 		  break;
 		case 123:
 		  no_qv_check=true;

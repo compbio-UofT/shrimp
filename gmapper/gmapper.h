@@ -63,6 +63,7 @@ EXTERN(int,		trim_front,		0);
 EXTERN(int,		trim_end,		0);
 EXTERN(bool,		trim_first,		true);
 EXTERN(bool,		trim_second,		true);
+EXTERN(bool,		trim_illumina,		false);
 EXTERN(char *,		save_file,		NULL);
 EXTERN(char *,		load_file,		NULL);
 EXTERN(char *,		save_mmap,		NULL);

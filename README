@@ -1081,6 +1081,26 @@ Input Control
     When input is fastq, completely ignore base/colour qvs from the analysis, as
     if the input were fasta.
 
+  [    --trim-front <value> ]
+  
+    Trim the front of read (or both reads of pair), by this amount.
+
+  [    --trim-end <value> ]
+  
+    Trim the end of read (or both reads of pair), by this amount.
+
+  [    --trim-first ]
+  
+    Trim only the first read in read pair.
+
+  [    --trim-second ]
+
+    Trim only the second read in the read pair.
+
+  [    --trim-illumina ]
+
+    Trim trailing sequence that has 'B' (2) quality values. 
+
 
 Output Control
 --------------

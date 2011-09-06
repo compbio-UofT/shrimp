@@ -167,6 +167,7 @@
 
 #define DEF_LETTER_SPACE_OPTIONS \
 {\
+	{"trim-illumina",0,0,3},\
 	{0,0,0,0}\
 }
 
