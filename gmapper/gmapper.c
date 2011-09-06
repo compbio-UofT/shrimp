@@ -736,6 +736,7 @@ print_statistics()
       post_sw_stats(&tps[tid].fwbw_invocs, &tps[tid].fwbw_cells, &tps[tid].fwbw_secs);
     } else {
       sw_full_ls_stats(&tps[tid].f2_invocs, &tps[tid].f2_cells, &tps[tid].f2_secs);
+      tps[tid].fwbw_secs = 0;
     }
 
     //tps[tid].f2_secs = (double)tps[tid].f2_ticks / hz;
@@ -744,9 +745,11 @@ print_statistics()
       tps[tid].f2_cellspersec = 0;
 
     //tps[tid].fwbw_secs = (double)tps[tid].fwbw_ticks / hz;
-    tps[tid].fwbw_cellspersec = (double)tps[tid].fwbw_cells / tps[tid].fwbw_secs;
-    if (isnan(tps[tid].fwbw_cellspersec))
-      tps[tid].fwbw_cellspersec = 0;
+    if (shrimp_mode == MODE_COLOUR_SPACE) {
+      tps[tid].fwbw_cellspersec = (double)tps[tid].fwbw_cells / tps[tid].fwbw_secs;
+      if (isnan(tps[tid].fwbw_cellspersec))
+        tps[tid].fwbw_cellspersec = 0;
+    }
 
     tps[tid].readparse_secs = ((double)mapping_wallclock_usecs / 1.0e6) - ((double)tpg.read_handle_usecs / 1.0e6) - time_counter_get_secs(&tpg.wait_tc);
 
