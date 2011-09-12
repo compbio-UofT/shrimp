@@ -84,7 +84,7 @@ int64_t genome_length_from_headers(char ** sam_lines, int header_entries) {
 
 
 void process_sam_headers() {
-	if (found_sam_headers && sam_header_filename==NULL) {
+	if (found_sam_headers) {
 		int header_entries=0;
 		int i;
 		for (i=0; i<options.number_of_sam_files; i++) {
@@ -306,7 +306,7 @@ int main (int argc, char ** argv) {
 	char pg_line_prefix[]="@PG	ID:mergesam	VN:2.2.0	CL:";
 	size_t command_line_length=strlen(pg_line_prefix);
 	for (i=0; i<argc; i++) {
-		command_line_length+=strlen(argv[i])+1;
+		command_line_length+=strlen(argv[i])+2;
 	}
 	command_line=(char*)malloc(sizeof(char)*command_line_length);
 	if (command_line==NULL) {

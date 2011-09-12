@@ -450,9 +450,6 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 			//fprintf(stderr,"compute second %e %e %e %ld\n",second_leg_list->head->z[4],second_leg_list->head->z[5],second_leg_scale,genome_length);
 		}
 		double class_denom = (!paired_empty ? paired_scale : 0.0) + (!first_empty ? first_leg_scale : 0.0 ) + (!second_empty ? second_leg_scale : 0.0);
-		if (first_leg_scale>0) {
-			fprintf(stderr,"HAVE f %e %e %e %lu\nHAVE s %e %e %e %lu\n,  %e\n",first_leg_scale,second_leg_list->head->z[4],first_leg_list->head->z[5],genome_length,second_leg_scale,first_leg_list->head->z[4],second_leg_list->head->z[5],genome_length,class_denom);\
-		}
 		//fprintf(stderr,"class %e , pair %e, first %e, second %e\n",class_denom,paired_scale,first_leg_scale,second_leg_scale);
 		if (class_denom>0) {
 			pretty * pa;
@@ -474,7 +471,6 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 				for (pa=first_leg_list->head; pa!=NULL; pa=pa->next) {
 					assert(pa->mapped && !pa->mate_pair->mapped);
 					pa->mapq=qv_from_pr_corr((pa->z[0]*first_leg_scale)/(pa->z[1]*class_denom));	
-					fprintf(stderr,"FIRST %e %e / %e %e, %e, %u\n",pa->z[0],first_leg_scale,pa->z[1],class_denom,(pa->z[0]*first_leg_scale)/(pa->z[1]*class_denom),pa->mapq);
 					if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
 						best_alignment=pa;
 					}
@@ -485,7 +481,6 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 				for (pa=second_leg_list->head; pa!=NULL; pa=pa->next) {
 					assert(pa->mapped && !pa->mate_pair->mapped);
 					pa->mapq=qv_from_pr_corr((pa->z[0]*second_leg_scale)/(pa->z[1]*class_denom));	
-					fprintf(stderr,"SECOND %e %e / %e %e, %e, %u\n",pa->z[0],second_leg_scale,pa->z[1],class_denom,(pa->z[0]*second_leg_scale)/(pa->z[1]*class_denom),pa->mapq);
 					if (best_alignment==NULL || pa->mapq>best_alignment->mapq) {
 						best_alignment=pa;
 					}
