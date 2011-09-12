@@ -1,0 +1,45 @@
+#!/bin/bash
+VERSION_FILE="GIT_VERSION"
+EXEC_PATH="$(which git 2>/dev/null | head -n 1)"
+if [ -z "$EXEC_PATH" ]; then
+  EXISTS_GITVERSION=0
+else
+  if [ ! -x "$EXEC_PATH" ]; then
+    EXISTS_GITVERSION=0
+  else
+    EXISTS_GITVERSION=1
+  fi
+fi
+
+if [ "$EXISTS_GITVERSION" = 1 ]; then
+  git describe --always &>/dev/null
+  if [ "$?" -ne 0 ]; then
+    UNDER_GIT=0
+  else
+    UNDER_GIT=1
+  fi
+fi
+
+if [ -r "$VERSION_FILE" ]; then
+  EXISTS_FILE=1
+else
+  EXISTS_FILE=0
+fi
+
+if [ "$EXISTS_GITVERSION" = 0 ]; then
+  if [ "$EXISTS_FILE" = 1 ]; then
+    cat "$VERSION_FILE"
+  else
+    echo "missing_git_version"
+  fi
+else
+  if [ "$UNDER_GIT" = 1 ]; then
+    git describe --always
+  else
+    if [ "$EXISTS_FILE" = 1 ]; then
+      cat "$VERSION_FILE"
+    else
+      echo "missing_git_version"
+    fi
+  fi
+fi

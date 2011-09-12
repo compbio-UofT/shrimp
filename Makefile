@@ -23,8 +23,8 @@ ifndef CXXFLAGS
   endif
 endif
 
-SVN_VERSION=$(shell ./get_svn_version)
-override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DSVN_VERSION=$(SVN_VERSION)
+GIT_VERSION=$(shell ./get_git_version)
+override CXXFLAGS+=-D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -DGIT_VERSION=$(GIT_VERSION)
 
 LD=$(CXX)
 

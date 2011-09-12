@@ -5,7 +5,7 @@ pushd `pwd`/../
 make clean
 popd
 sh get_files
-svnversion > ../SVN_VERSION
+git describe --always > ../GIT_VERSION
 echo ./SVN_VERSION >> all_files
 
 
