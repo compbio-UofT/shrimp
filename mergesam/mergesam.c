@@ -122,6 +122,7 @@ void process_sam_headers() {
 		assert(index>0);
 		fprintf(stdout,"%s\n",sam_lines[0]);
 		bool printed_pg_self=false;
+		if (sam_header_filename==NULL) { 
 		for (i=1; i<index; i++) {
 			int ret=sam_lines[i-1]!=NULL ? strcmp(sam_lines[i],sam_lines[i-1]) : 1;
 			if (!printed_pg_self && strncmp(sam_lines[i],"@PG",strlen("@PG"))==0) {
@@ -136,6 +137,7 @@ void process_sam_headers() {
 				sam_lines[i]=NULL;
 			}
 		}	
+		}
 		if (!printed_pg_self) {
 			fprintf(stdout,"%s\n",command_line);
 			printed_pg_self=true;
