@@ -11,10 +11,15 @@
 
 #ifdef NDEBUG
 #define MYALLOC_DISABLE_CRT
+#define MYALLOC_DISABLE_ALERT
 #endif
 
 #ifndef MYALLOC_DISABLE_CRT
 #define MYALLOC_ENABLE_CRT
+#endif
+
+#ifndef MYALLOC_DISABLE_ALERT
+#define MYALLOC_ENABLE_ALERT
 #endif
 
 
@@ -31,7 +36,9 @@ extern size_t max_mem;
 extern size_t crt_mem;
 extern bool warned_max;
 #endif
+#ifdef MYALLOC_ENABLE_ALERT
 extern size_t alert_mem;
+#endif
 extern bool warned_fail;
 
 
@@ -44,7 +51,9 @@ my_alloc_init(size_t _max_mem, size_t _alert_mem)
   crt_mem = 0;
   warned_max = false;
 #endif
+#ifdef MYALLOC_ENABLE_ALERT
   alert_mem = _alert_mem;
+#endif
   warned_fail = false;
   my_alloc_initialized = true;
 }
@@ -173,6 +182,7 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
     }
 #endif
 
+#ifdef MYALLOC_ENABLE_ALERT
     if (size > alert_mem) {
 #ifdef NDEBUG
       fprintf(stderr, "my_malloc alert: size=%lld\n", (long long)size);
@@ -184,6 +194,7 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
       va_end(fmtargs);
 #endif
     }
+#endif
 
     res = malloc(size);
 
@@ -258,6 +269,7 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
     }
 #endif
 
+#ifdef MYALLOC_ENABLE_ALERT
     if (size > alert_mem) {
 #ifdef NDEBUG
       fprintf(stderr, "my_calloc alert: size=%lld\n", (long long)size);
@@ -269,6 +281,7 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
       va_end(fmtargs);
 #endif
     }
+#endif
 
     res = calloc(size, 1);
 
@@ -343,6 +356,7 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
     }
 #endif
 
+#ifdef MYALLOC_ENABLE_ALERT
     if ((long long)size - (long long)old_size > (long long)alert_mem) {
 #ifdef NDEBUG
       fprintf(stderr, "my_realloc alert: size=%lld\n", (long long)size - (long long)old_size);
@@ -354,6 +368,7 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
       va_end(fmtargs);
 #endif
     }
+#endif
 
     res = realloc(p, size);
 
