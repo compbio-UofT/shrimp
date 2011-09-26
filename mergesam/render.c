@@ -35,8 +35,8 @@ size_t render_sam_unaligned_string(pretty * pa, char * buffer, size_t buffer_siz
 		"*",
 		0,
 		0,
-		"*",
-		"*");
+		pa->colour_space ? "*" : pa->read_string,
+		pa->colour_space ? "*" : pa->read_qualities);
 	if (pa->colour_space) {
 		if (pa->has_cs_qualities) {
 			position+=snprintf(buffer+position,buffer_size-position,"\tCQ:Z:%s",pa->cs_qualities);
