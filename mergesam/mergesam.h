@@ -31,6 +31,7 @@ typedef struct runtime_options {
 	size_t alignments_stack_size;
 	int read_rate;
 	int threads;
+	int min_mapq;
 	//gmapper supported options
 	bool fastq;
 	bool fastq_set;

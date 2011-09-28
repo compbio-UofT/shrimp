@@ -49,6 +49,9 @@ size_t render_sam_unaligned_string(pretty * pa, char * buffer, size_t buffer_siz
 	if (pa->has_r2) {
 		position+=snprintf(buffer+position,buffer_size-position,"\tR2:Z:%s",pa->r2);
 	}
+	if (pa->aux!=NULL) {
+		position+=snprintf(buffer+position,buffer_size-position,"\t%s",pa->aux);
+	}
 	return position;
 }
 
@@ -218,13 +221,16 @@ size_t render_sam_bound(pretty * pa ) {
 }
 
 size_t render_sam_string(pretty * pa, char * buffer, size_t buffer_size) {
+	if (!pa->mapped) {
+		return render_sam_unaligned_string(pa,buffer,buffer_size);
+	}	
 	pa->flags=pretty_get_flag(pa);
 	size_t position = snprintf(buffer,buffer_size,"%s\t%d\t%s\t%d\t%d\t%s\t%s\t%d\t%d\t%s\t%s",
 		pa->read_name,
 		pa->flags,
 		pa->reference_name,
 		pa->genome_start_unpadded,
-		pa->mapq,
+		pa->mapq >= 4 ? pa->mapq : 0,
 		pa->cigar,
 		(strcmp(pa->reference_name,pa->mate_reference_name)==0 ? "=" : pa->mate_reference_name),
 		pa->mate_genome_start_unpadded,

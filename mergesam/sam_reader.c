@@ -58,6 +58,23 @@ static inline void pp_ll_zero(pp_ll * ll) {
 	ll->length=0;
 }
 
+static inline void pp_ll_remove_next(pp_ll* ll, pretty * pa ) {
+	if (pa==NULL) {
+		if (ll->length>0) {
+			assert(ll->head!=NULL);
+			ll->head=ll->head->next;
+		}
+		ll->length-=1;
+		return;
+	}
+	if (pa->next==NULL) {
+		return;
+	} else { 
+		pa->next=pa->next->next;
+		ll->length-=1;
+	}	
+}
+
 static inline void pp_ll_append(pp_ll* ll,pretty * pa) {
 	if ( ll->length==0 ) {
 		ll->head=pa;
@@ -451,7 +468,7 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 		}
 		double class_denom = (!paired_empty ? paired_scale : 0.0) + (!first_empty ? first_leg_scale : 0.0 ) + (!second_empty ? second_leg_scale : 0.0);
 		//fprintf(stderr,"class %e , pair %e, first %e, second %e\n",class_denom,paired_scale,first_leg_scale,second_leg_scale);
-		if (class_denom>0) {
+		if (options.unpaired || class_denom>0) {
 			pretty * pa;
 			//update the paired mapping qualities
 			if (!paired_empty) {
@@ -553,12 +570,40 @@ void pp_ll_combine_and_check(pp_ll * m_ll,pp_ll ** ll,heap_pa *h,output_buffer *
 				}
 			}
 			pp_ll_append(m_ll,best_alignment);		
+			
 		}
 	} else {
 		pp_ll_append_list(m_ll,paired_list);
 		pp_ll_append_list(m_ll,first_leg_list);
 		pp_ll_append_list(m_ll,second_leg_list);
 		pp_ll_append_list(m_ll,unpaired_list);
+	}
+
+	if (m_ll->length>0 && options.all_contigs && options.min_mapq>0) {
+		pretty * previous=NULL;
+		pretty * current;
+		current=m_ll->head;
+		while (current!=NULL) {
+			int mapq=MAX(current->mapq, current->paired_sequencing ? current->mate_pair->mapq : 0 );
+			if (mapq<options.min_mapq) {
+				pp_ll_remove_next(m_ll,previous);
+				if (previous==NULL) {
+					current=m_ll->head;
+				} else {
+					current=previous->next;
+				}
+			} else {
+				if (current->paired_sequencing) {
+					if (current->mapq<options.min_mapq) {
+						current->mapped=false;
+					} else if (current->mate_pair->mapq<options.min_mapq) {
+						current->mate_pair->mapped=false;
+					}
+				}
+				previous=current;
+				current=current->next;
+			}
+		}	
 	}
 
 	//remove the z fields from output if all contigs is set

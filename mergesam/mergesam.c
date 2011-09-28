@@ -193,6 +193,8 @@ void usage(char * s) {
 	fprintf(stderr,
 	"      --single-best-mapping   See documentation, output onlt *best (Default: disabled)\n");
 	fprintf(stderr,
+	"      --min-mapq              Minimum mapping quality              (Default: 0)\n");
+	fprintf(stderr,
 	"      --all-contigs           Output given no more merging after   (Default: disabled)\n");
 	fprintf(stderr,
 	"      --half-paired           Output half-paired mappings          (Default: enabled)\n");
@@ -239,6 +241,7 @@ struct option long_op[] =
 		{"read-size", 1, 0, 7},
 		{"read-rate",1,0,8},
 		{"stack-size",1,0,'s'},
+		{"min-mapq",1,0,4},
                 {0,0,0,0}
         };
 
@@ -353,6 +356,7 @@ int main (int argc, char ** argv) {
 	options.read_size=DEF_READ_SIZE;
 	options.read_rate=DEF_READ_RATE;
 	options.alignments_stack_size=DEF_ALIGNMENTS_STACK_SIZE;
+	options.min_mapq=0;
 	found_sam_headers=false;
         int op_id;
         char short_op[] = "o:QN:Es:au";
@@ -505,6 +509,10 @@ int main (int argc, char ** argv) {
 		//leave-mapq
 		case 3:
 			options.leave_mapq=true;
+			break;
+		//min mapq
+		case 4:
+			options.min_mapq=atoi(optarg);
 			break;
 		default:
 			fprintf(stderr,"%d : %c , %d is not an option!\n",c,(char)c,op_id);
