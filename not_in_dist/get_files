@@ -1,1 +1,1 @@
- find ../ | grep -v "\.svn" | grep -v "\.swp$" | grep -v "\.gz$" | grep -v "not_in_dist"  > all_files_n_folders; while read line; do if [ ! -d $line ]; then echo $line | sed 's/\.\./\./g'; fi; done < all_files_n_folders > all_files
+ find ../ | grep -v "\.git" | grep -v "\.swp$" | grep -v "\.gz$" | grep -v "not_in_dist"  > all_files_n_folders; while read line; do if [ ! -d $line ]; then echo $line | sed 's/\.\./\./g'; fi; done < all_files_n_folders > all_files
