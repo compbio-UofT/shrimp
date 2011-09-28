@@ -6,7 +6,7 @@ make clean
 popd
 sh get_files
 git describe --always > ../GIT_VERSION
-echo ./SVN_VERSION >> all_files
+echo ./GIT_VERSION >> all_files
 
 
 #find version
