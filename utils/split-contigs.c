@@ -26,8 +26,8 @@ char * contig_name[MAX_CONTIGS];
 int contig_size[MAX_CONTIGS];
 long long unsigned chunk_size[MAX_CONTIGS];
 
-int n_seeds = 4;
-int weight[20] = { 12, 12, 12, 12 };
+int n_seeds = 3;
+int weight[20] = { 12, 12, 12 };
 
 double overhead_mem = 1.5;
 

@@ -168,8 +168,8 @@ def main(argv):
 	tmp_file.close()
 
 	#do the seeds - seeds are gauranteed to be valid by h_flag check
-	default_number_seeds=4
-	default_seed_weights="12,12,12,12"
+	default_number_seeds=3
+	default_seed_weights="12,12,12"
 	hash_table_weight=12
 	seed_weights=""
 	if not h_flag:
