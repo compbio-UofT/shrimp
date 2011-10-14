@@ -615,6 +615,8 @@ fasta_sequence_to_bitfield(fasta_t fasta, char *sequence)
 	char c;
 
 	length = strlen(sequence);
+	if (length == 0) return NULL;
+
 	bitfield = (uint32_t *)xmalloc(BPTO32BW(length) * sizeof(uint32_t));
 	memset(bitfield, 0, BPTO32BW(length) * sizeof(uint32_t));
 

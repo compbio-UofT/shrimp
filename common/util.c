@@ -542,6 +542,8 @@ reverse_complement_read_ls(uint32_t * read,uint32_t len, bool is_rna){
 	uint32_t * rev_cmp;
 	uint32_t i, j, fudge, up, down;
 
+	if (len == 0) return NULL;
+
 	rev_cmp = (uint32_t *)xmalloc(sizeof(uint32_t)*BPTO32BW(len));
 	for (i = 0, j = BPTO32BW(len) - 1; i <= j; i++, j--) {
 		rev_cmp[i] = swap_nibbles(read[j]);
