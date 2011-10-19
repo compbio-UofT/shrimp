@@ -283,16 +283,18 @@ extract_name(char *buffer, char * * ranges)
 
 
 void fasta_write_fasta(FILE * file, char * seq) {
-	assert(seq!=NULL);
-	int index=0;
-	int length=strlen(seq);
-	char buffer[FASTA_PER_LINE];
-	while (index<length) {
-		int copy_over=MIN(FASTA_PER_LINE-1,length-index);
-		memcpy(buffer,seq,copy_over);
-		buffer[copy_over]='\0';
-		fprintf(file,"%s\n",buffer);
-		index+=copy_over;	
+	assert(seq != NULL);
+	int index = 0;
+	int length = strlen(seq);
+	//char buffer[FASTA_PER_LINE];
+	while (index < length) {
+		int copy_over = MIN(FASTA_PER_LINE - 1, length - index);
+		//memcpy(buffer,seq,copy_over);
+		//buffer[copy_over]='\0';
+		//fprintf(file,"%s\n",buffer);
+		fwrite(&seq[index], sizeof(char), copy_over, file);
+		fputc('\n', file);
+		index += copy_over;	
 	}
 }
 
