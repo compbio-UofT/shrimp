@@ -269,6 +269,7 @@ EXTERN(uint32_t **,		genome_cs_contigs,		NULL);
 EXTERN(uint32_t **,		genome_cs_contigs_rc,		NULL);
 EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
+EXTERN(uint32_t *,		genome_start_offset,		NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 EXTERN(long long int,		total_genome_size,		0);
 
@@ -370,10 +371,27 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, int sn)
 /* get contig number from absolute index */
 static inline void
 get_contig_num(uint32_t idx, int * cn) {
+  /*
   *cn = 0;
   while (*cn < num_contigs - 1
 	 && idx >= contig_offsets[*cn + 1])
     (*cn)++;
+  */
+
+  assert(genome_start_offset != NULL);
+
+  int l, r, m;
+
+  l = 0;
+  r = num_contigs;
+  while (l + 1 < r) {
+    m = (r + l)/2;
+    if (idx < genome_start_offset[m])
+      r = m;
+    else
+      l = m;
+  }
+  *cn = l;
 
   assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }

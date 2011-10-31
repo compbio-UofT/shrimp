@@ -2787,6 +2787,12 @@ int main(int argc, char **argv){
 
 	load_genome_usecs += (gettimeinusecs() - before);
 
+	// Compute genome_start_offset[]
+	genome_start_offset = (uint32_t *)my_malloc(num_contigs * sizeof(uint32_t), &mem_genomemap, "genome_start_offset");
+	genome_start_offset[0] = 0;
+	for (i = 1; i < num_contigs; i++)
+	  genome_start_offset[i] = genome_start_offset[i - 1] + genome_len[i - 1];
+
 	//
 	// Automatic genome index trimming
 	//
@@ -3029,6 +3035,8 @@ int main(int argc, char **argv){
 			&mem_mapping, "region_map");
 	  }
 	}
+
+	my_free(genome_start_offset, num_contigs * sizeof(uint32_t), &mem_genomemap, "genome_start_offset");
 
 	if (load_mmap != NULL) {
 	  // munmap?
