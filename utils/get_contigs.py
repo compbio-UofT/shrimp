@@ -11,15 +11,15 @@ def get_contigs(reference_filename,splits_filename,prefix=""):
 	line=h.readline()
 	while line:
 		if line[0]=='>' and len(current_contig)>0:
-			ref_contigs[current_contig[0][1:].strip()]="".join(current_contig)
+			ref_contigs[current_contig[0][1:].split()[0]]="".join(current_contig)
 			current_contig=[]
 		current_contig.append(line)
 		line=h.readline()
 	if len(current_contig)>0:
-		ref_contigs[current_contig[0][1:].strip()]="".join(current_contig)
+		ref_contigs[current_contig[0][1:].split()[0]]="".join(current_contig)
 		current_contig=[]
 	h.close()
-	
+
 	#Read in the splits
 	h=open(splits_filename,'r')
 	chunks={}
