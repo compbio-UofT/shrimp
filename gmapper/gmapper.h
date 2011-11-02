@@ -14,6 +14,7 @@
 #include "../common/debug.h"
 #include "../common/util.h"
 #include "../common/time_counter.h"
+#include "../common/gen-st.h"
 
 #undef EXTERN
 #undef STATIC
@@ -269,9 +270,9 @@ EXTERN(uint32_t **,		genome_cs_contigs,		NULL);
 EXTERN(uint32_t **,		genome_cs_contigs_rc,		NULL);
 EXTERN(int *,			genome_initbp,			NULL);
 EXTERN(uint32_t	*,		genome_len,			NULL);
-EXTERN(uint32_t *,		genome_start_offset,		NULL);
 EXTERN(bool,			genome_is_rna,			false);	/* is genome RNA (has uracil)?*/
 EXTERN(long long int,		total_genome_size,		0);
+EXTERN(gen_st,			contig_offsets_gen_st,		{});
 
 EXTERN(ptr_and_sz *,		genomemap_block,		NULL);
 EXTERN(ptr_and_sz,		genome_contigs_block,		{});
@@ -378,20 +379,22 @@ get_contig_num(uint32_t idx, int * cn) {
     (*cn)++;
   */
 
-  assert(genome_start_offset != NULL);
-
+  /*
   int l, r, m;
 
   l = 0;
   r = num_contigs;
   while (l + 1 < r) {
     m = (r + l)/2;
-    if (idx < genome_start_offset[m])
+    if (idx < contig_offsets[m])
       r = m;
     else
       l = m;
   }
   *cn = l;
+  */
+
+  *cn = gen_st_search(&contig_offsets_gen_st, idx);
 
   assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
