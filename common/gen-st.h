@@ -1,11 +1,14 @@
 #ifndef __GEN_ST_H
 #define __GEN_ST_H
 
+#include <stdint.h>
 #include <assert.h>
 
+//#define GEN_ST_BASE t->b
+#define GEN_ST_BASE 17
 
 typedef struct {
-  int *	a;
+  uint32_t *	a;
   int *	pow;
   int	b;
   int	h;
@@ -14,12 +17,12 @@ typedef struct {
 } gen_st;
 
 
-void gen_st_init(gen_st *, int, int *, int);
+void gen_st_init(gen_st *, int, uint32_t *, int);
 void gen_st_delete(gen_st *);
 
 
 static inline int
-gen_st_search_node(int * node, int load, int val)
+gen_st_search_node(uint32_t * node, int load, uint32_t val)
 {
   assert(node != NULL);
 
@@ -49,10 +52,10 @@ gen_st_search_node(int * node, int load, int val)
 
 
 static inline int
-gen_st_search(gen_st * t, int val)
+gen_st_search(gen_st * t, uint32_t val)
 {
   int node_depth, node_lev_idx, node_abs_idx, nodes_above;
-  int * node;
+  uint32_t * node;
   int range_start, range_end;
   int k, h, idx, delta;
 
@@ -68,20 +71,20 @@ gen_st_search(gen_st * t, int val)
   h = t->h;
 
   while (h > 1) {
-    assert(range_end - range_start > t->b - 1);
+    assert(range_end - range_start > GEN_ST_BASE - 1);
     assert(t->pow[h - 1] - 1 < range_end - range_start && range_end - range_start <= t->pow[h] - 1);
 
-    idx = gen_st_search_node(node, t->b - 1, val);
+    idx = gen_st_search_node(node, GEN_ST_BASE - 1, val);
     idx--;
 
-    k = ((range_end - range_start) - (t->pow[h - 1] - 1)) / ((t->b - 1) * t->pow[h - 2]);
-    assert(0 <= k && k <= t->b);
+    k = ((range_end - range_start) - (t->pow[h - 1] - 1)) / ((GEN_ST_BASE - 1) * t->pow[h - 2]);
+    assert(0 <= k && k <= GEN_ST_BASE);
 
-    if (k == t->b) {
+    if (k == GEN_ST_BASE) {
       range_start += (idx + 1) * t->pow[h - 1];
       range_end = range_start + t->pow[h - 1] - 1;
     } else {
-      delta = (range_end - range_start) - (t->b - 1) - k * (t->pow[h - 1] - 1) - (t->b - k - 1) * (t->pow[h - 2] - 1);
+      delta = (range_end - range_start) - (GEN_ST_BASE - 1) - k * (t->pow[h - 1] - 1) - (GEN_ST_BASE - k - 1) * (t->pow[h - 2] - 1);
       if (idx < k) {
 	range_start += (idx + 1) * t->pow[h - 1];
 	if (idx + 1 < k) {
@@ -95,11 +98,11 @@ gen_st_search(gen_st * t, int val)
 	range_end = range_start + t->pow[h - 2] - 1;
       }
     }
-    node_lev_idx = node_lev_idx * t->b + idx + 1;
+    node_lev_idx = node_lev_idx * GEN_ST_BASE + idx + 1;
     nodes_above += t->pow[node_depth];
     node_depth++;
     node_abs_idx = nodes_above + node_lev_idx;
-    node = &t->a[node_abs_idx * (t->b - 1)];
+    node = &t->a[node_abs_idx * (GEN_ST_BASE - 1)];
 
     assert(0 <= node_lev_idx && node_lev_idx < t->pow[node_depth]);
     assert(node_depth < t->h);
@@ -112,10 +115,10 @@ gen_st_search(gen_st * t, int val)
     assert(h == 0 || node_abs_idx < t->n_nodes);
   }
 
-  assert(range_end - range_start <= t->b - 1);
+  assert(range_end - range_start <= GEN_ST_BASE - 1);
 
   if (h == 1) {
-    idx = gen_st_search_node(node, range_end - range_start, val);
+    idx = gen_st_search_node(node, GEN_ST_BASE - 1, val);
     range_start += idx;
   }
 

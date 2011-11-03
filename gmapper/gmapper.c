@@ -2788,7 +2788,7 @@ int main(int argc, char **argv){
 	load_genome_usecs += (gettimeinusecs() - before);
 
 	// initialize general search tree for contig offsets
-	gen_st_init(&contig_offsets_gen_st, 17, (int *)contig_offsets, num_contigs);
+	gen_st_init(&contig_offsets_gen_st, 17, contig_offsets, num_contigs);
 
 	//
 	// Automatic genome index trimming

@@ -1,5 +1,7 @@
 #include <stdlib.h>
 #include <math.h>
+#include <limits.h>
+#include <string.h>
 #include <assert.h>
 
 #include "gen-st.h"
@@ -10,10 +12,10 @@
  * with the keys from the given a. The subtree will have the given h.
  */
 static void
-gen_st_fill(gen_st * t, int d, int lev_idx, int h, int * a, int n)
+gen_st_fill(gen_st * t, int d, int lev_idx, int h, uint32_t * a, int n)
 {
   int abs_idx, delta, k, i, j, prev_j, left_child_lev_idx;
-  int * node;
+  uint32_t * node;
 
   if (n == 0) return;
 
@@ -74,16 +76,22 @@ gen_st_fill(gen_st * t, int d, int lev_idx, int h, int * a, int n)
 
 
 void
-gen_st_init(gen_st * t, int b, int * a, int n)
+gen_st_init(gen_st * t, int b, uint32_t * a, int n)
 {
   int tmp;
+  uint32_t * a_aux;
 
   assert(t != NULL);
   assert(b >= 2);
 
   t->b = b;
-  t->n_keys = n;
-  t->n_nodes = (n == 0? 0 : (n - 1) / (b - 1) + 1);
+  t->b = GEN_ST_BASE; // hard-coded to be equal to 17 during searching
+  t->n_keys = (n == 0? 0 : ((n - 1) / (t->b - 1) + 1) * (t->b - 1));
+  a_aux = (uint32_t *)malloc(t->n_keys * sizeof(uint32_t));
+  memcpy(a_aux, a, n * sizeof(uint32_t));
+  for (int i = n; i < t->n_keys; i++)
+    a_aux[i] = UINT_MAX;
+  t->n_nodes = t->n_keys / (t->b - 1);
 
   for (t->h = 0, tmp = 1; n > tmp - 1; t->h++, tmp *= t->b);
   //t->h = (int)ceil(log(t->n_keys + 1) / log(t->b));
@@ -94,8 +102,10 @@ gen_st_init(gen_st * t, int b, int * a, int n)
     t->pow[i] = t->pow[i - 1] * t->b;
 
   // finally, set up a
-  t->a = (int *)malloc(t->n_keys * sizeof(int));
-  gen_st_fill(t, 0, 0, t->h, a, n);
+  t->a = (uint32_t *)malloc(t->n_keys * sizeof(uint32_t));
+  gen_st_fill(t, 0, 0, t->h, a_aux, t->n_keys);
+
+  free(a_aux);
 }
 
 
