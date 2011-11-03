@@ -372,12 +372,16 @@ kmer_to_mapidx_orig(uint32_t *kmerWindow, int sn)
 /* get contig number from absolute index */
 static inline void
 get_contig_num(uint32_t idx, int * cn) {
-  /*
-  *cn = 0;
-  while (*cn < num_contigs - 1
-	 && idx >= contig_offsets[*cn + 1])
-    (*cn)++;
-  */
+
+  if (num_contigs < 100)
+    {
+      *cn = 0;
+      while (*cn < num_contigs - 1
+	     && idx >= contig_offsets[*cn + 1])
+	(*cn)++;
+    }
+  else
+    {
 
   /*
   int l, r, m;
@@ -394,7 +398,8 @@ get_contig_num(uint32_t idx, int * cn) {
   *cn = l;
   */
 
-  *cn = gen_st_search(&contig_offsets_gen_st, idx);
+      *cn = gen_st_search(&contig_offsets_gen_st, idx);
+    }
 
   assert(contig_offsets[*cn] <= idx && idx < contig_offsets[*cn] + genome_len[*cn]);
 }
