@@ -124,13 +124,17 @@ size_t render_fastx_string(pretty * pa, char * buffer, size_t buffer_size) {
 		}
 	}
 	size_t position;
-	if (qualities==NULL) {
-		//fasta
-		position=snprintf(buffer,buffer_size,">%s\n%s\n",pa->read_name,read);
+	if (read!=NULL && read[0]!='\0' && (read[0]!='*' || read[1]!='\0')) {
+		if (qualities==NULL) {
+			//fasta
+			position=snprintf(buffer,buffer_size,">%s\n%s\n",pa->read_name,read);
+		} else {
+			//fastq
+			position=snprintf(buffer,buffer_size,"@%s\n%s\n+\n%s",pa->read_name,read,qualities);
+		} 
 	} else {
-		//fastq
-		position=snprintf(buffer,buffer_size,"@%s\n%s\n+\n%s",pa->read_name,read,qualities);
-	} 
+		*buffer='\0';
+	}
 	return position;
 }
 

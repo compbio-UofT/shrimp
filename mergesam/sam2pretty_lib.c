@@ -108,7 +108,13 @@ void pretty_match(pretty * pa) {
 	for (i=0; i<pretty_read_string_length; i++){
 		char rc = r[i]>90 ? r[i]-32 : r[i];
 		char gc = g[i]>90 ? g[i]-32 : g[i];
-		if (g[i]=='-' || r[i]=='-' || gc!=rc) {
+		if (r[i]>96) {
+			if (gc==rc) {
+				m[i]='X';
+			} else {
+				m[i]='x';
+			}
+		} else if (g[i]=='-' || r[i]=='-' || gc!=rc) {
 			m[i]=' ';
 		} else if (pa->has_cs_edit_string && pa->pretty_read_string[i]>96) {
 			m[i]='X';
@@ -122,30 +128,71 @@ void pretty_match(pretty * pa) {
 }
 
 
-void make_pretty_edit_string(const char * match, const char * read , char * target) {
+void make_pretty_edit_string(const char * pretty_match, const char * pretty_read, const char  * pretty_genome , int clipped_read_start, int clipped_read_end, char * target) {
 	target[0]='\0';
 	int strech=0;
 	int i;
-	for (i=0; i<(int)strlen(match); i++) {
-		if (match[i]!='X') {
+	bool read_gap=false;
+	bool ref_gap=false;
+	int read_gaps=0;
+	for (i=clipped_read_start-1; i<read_gaps+clipped_read_end; i++) {
+		//handle gaps in the genome
+		if (pretty_genome[i]!='-' && ref_gap) {
+			sprintf(target+strlen(target),")");
+			ref_gap=false;
+		}	
+		if (pretty_match[i]=='|') {
 			strech++;
-		} else if (match[i]==' ') {
-			sprintf(target+strlen(target),"%d%c",strech==i ? strech : strech + 1,read[i]);
-			strech=0;
-		} else if (match[i]=='X') {
+		} else if (pretty_match[i]==' ') {
 			if (strech!=0) {
-				sprintf(target+strlen(target),"%d",strech==i ? strech : strech+1);
+				sprintf(target+strlen(target),"%d",strech);
+			}
+			if (pretty_genome[i]=='-' && ref_gap==false) {
+				sprintf(target+strlen(target),"(");
+				ref_gap=true;
+			}
+			sprintf(target+strlen(target),"%c",pretty_read[i]);
+			strech=0;
+		} else if (pretty_match[i]=='x' || pretty_match[i]=='X') {
+			if (strech!=0) {
+				sprintf(target+strlen(target),"%d",strech);
 			}
 			sprintf(target+strlen(target),"x");
-			strech=0;
+			if (pretty_genome[i]=='-' && ref_gap==false) {
+				sprintf(target+strlen(target),"(");
+				ref_gap=true;
+			}
+			if (pretty_match[i]=='x') {
+				sprintf(target+strlen(target),"%c",pretty_read[i]>96 ? pretty_read[i]-32 : pretty_read[i]);
+				strech=0;
+			} else {
+				strech=1;
+			}
 		} else {
-			fprintf(stderr,"Cannot find case for %c !!\n",match[i]);
+			fprintf(stderr,"Cannot find case for %c !!\n",pretty_match[i]);
 			exit(1);
+		}
+		//handle gaps in the read
+		if (pretty_read[i]=='-') {
+			if (read_gap==false) {
+				read_gap=true;
+			} 
+			read_gaps++;
+		} else if (read_gap) {
+			read_gap=false;
 		}
 	}
 	if (strech!=0) {
-		sprintf(target+strlen(target),"%d",strech==i ? strech : strech + 1);
+		sprintf(target+strlen(target),"%d",strech);
+
 	}
+		if (ref_gap) {
+			sprintf(target+strlen(target),")");
+			ref_gap=false;
+		}	
+		if (read_gap) {
+			read_gap=false;
+		}
 		
 }
 
@@ -176,12 +223,12 @@ void pretty_print(pretty * pa) {
 	char pretty_edit_string[pretty_edit_string_buffer_length];
 	pretty_edit_string[0]='\0';
 	if (pa->pretty_read_string!=NULL && pa->pretty_match_string!=NULL) {
-		make_pretty_edit_string(pa->pretty_match_string,pa->pretty_read_string,pretty_edit_string);
+		make_pretty_edit_string(pa->pretty_match_string,pa->pretty_read_string,pa->pretty_genome_string,pa->clipped_read_start,pa->clipped_read_end,pretty_edit_string);
 	}
 	if (pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)		
-		printf("> %s%s\t%s\t%c\t%d\t%d\t%d\t%d\t%d\t%s\n",pa->read_name,suffix,pa->reference_name,strand,
-			pa->genome_start_padded,pa->genome_end_padded,pa->clipped_read_start,pa->clipped_read_end,
-			pa->unclipped_read_length,pretty_edit_string);	
+		printf(">%s%s\t%s\t%c\t%d\t%d\t%d\t%d\t%d\t%d\t%s\n",pa->read_name,suffix,pa->reference_name,strand,
+			pa->genome_start_unpadded,pa->genome_end_unpadded,pa->clipped_read_start,pa->clipped_read_end,
+			pa->unclipped_read_length,pa->score,pretty_edit_string);	
 	if (pa->pretty_length>0) {
 	if (sam2pretty_lib_verbose && pa->genome_start_padded!=0 && pa->genome_end_padded!=0 && pa->clipped_read_start !=0 && pa->clipped_read_end !=0 && pa->unclipped_read_length!=0)
 		printf(">> Pretty SAM Alignment:\n");	
@@ -654,6 +701,22 @@ void pretty_genome(pretty * pa) {
 	return;	
 }
 
+
+void remove_gaps(char * s) {
+	size_t length=strlen(s);
+	int i; 
+	int gaps=0;
+	for (i=0; i<length; i++) {
+		if (s[i]=='-') {
+			gaps++;
+		} else {
+			s[i-gaps]=s[i];
+		}
+	}
+	s[i]='\0';
+}
+
+
 //char* pretty_ls_seq(char* seq, char* cigar, int32_t num_cigar, int32_t strand, int32_t * read_start, int32_t * read_end) {
 void pretty_ls(pretty * pa) {
 	if (pa->pretty_length==0) {
@@ -695,6 +758,7 @@ void pretty_ls(pretty * pa) {
 	if (pa->has_cs_edit_string && pa->reverse) {
 		reverse_complement(source_string);
 	}
+	remove_gaps(source_string);
 	for (i=0; i<pa->num_cigar; i++) {
 		int32_t length=pa->cigar_lengths[i];
 		switch (pa->cigar_ops[i]) {
@@ -746,6 +810,7 @@ void pretty_ls(pretty * pa) {
 	}
 	free(source_string);
 	pa->pretty_read_string[current_pretty_read_string_index]='\0';
+	//printf("ls : |%s| %d\n",pa->pretty_read_string,current_pretty_read_string_index);
 	pa->clipped_read_start=1;
 	pa->pretty_clipped_read_start=1;
 	for (i=0; i<pa->num_cigar; i++) {
