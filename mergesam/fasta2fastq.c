@@ -321,6 +321,10 @@ int main (int argc, char ** argv) {
 		//fprintf(stderr,"END OF IT |%s|\n",qual_fb->base+qual_fb->unseen_start%qual_fb->size);
 		qual_li->start+=lines_processed;
 		fasta_li->start+=lines_processed;
+		if (lines_processed>0) {
+			qual_fb->exhausted=false;
+			fasta_fb->exhausted=false;
+		}
 		iterations++;
 		if ( (clock()-last_time)/options.threads > CLOCKS_PER_SEC/4) {
 			double lines_per_second=qual_li->start/( (double)(clock()-start_time)/(CLOCKS_PER_SEC*options.threads));
