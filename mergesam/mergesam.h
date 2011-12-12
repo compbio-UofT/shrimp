@@ -6,7 +6,7 @@
 
 #define DEF_INSERT_SIZE -1
 
-#define GROWTH_FACTOR 1.3
+#define GROWTH_FACTOR 1.7
 #define SIZE_READ_NAME 255
 //#define MIN(a,b) (((a) < (b)) ? (a) : (b))
 #define MAX_INT32	2147483647
