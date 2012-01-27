@@ -198,7 +198,7 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
 
     res = malloc(size);
 
-    if (res == NULL) {
+    if (size > 0 && res == NULL) {
       // spit error message and crash
 #ifdef NDEBUG
 	fprintf(stderr, "my_malloc error: malloc failed\n");
@@ -285,7 +285,7 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
 
     res = calloc(size, 1);
 
-    if (res == NULL) {
+    if (size > 0 && res == NULL) {
       // spit error message and crash
 #ifdef NDEBUG
       fprintf(stderr, "my_calloc error: calloc failed\n");

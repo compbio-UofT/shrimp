@@ -483,12 +483,15 @@ launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 	} else {
 	  re_buffer[i].read[1] = reverse_complement_read_ls(re_buffer[i].read[0], re_buffer[i].read_len, re_buffer[i].is_rna);
 	}
+	if (re_buffer[i].max_n_kmers < 0)
+	  re_buffer[i].max_n_kmers = 0;
 	if (re_buffer[i].read_len > 0)
 	  re_buffer[i].avg_qv /= re_buffer[i].read_len;
 
 	//Check if we can actually use this read
-	if (re_buffer[i].max_n_kmers <= 0
-	    || re_buffer[i].read_len > longest_read_len
+	if (//re_buffer[i].max_n_kmers <= 0
+	    //|| 
+	    re_buffer[i].read_len > longest_read_len
 	    || (Qflag && !ignore_qvs && re_buffer[i].avg_qv < min_avg_qv) // ignore reads with low avg qv
 	    ) {
 	  if (re_buffer[i].max_n_kmers <= 0) {
