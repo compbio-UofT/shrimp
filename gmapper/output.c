@@ -81,6 +81,48 @@ reverse_cigar(cigar_t * cigar)
 
 
 static char *
+reverse_alignment_edit_string(char * editstr)
+{
+  int n = strlen(editstr);
+  char * res = (char *)malloc((n + 1) * sizeof(char));
+  int i = 0;
+  while (i < n) {
+    if (isdigit(editstr[n - 1 - i])) {
+      int j = i + 1;
+      while (j < n && isdigit(editstr[n - 1 - j])) j++;
+      j--;
+      memcpy(&res[i], &editstr[n - 1 - j], (j - i + 1) * sizeof(char));
+      i = j + 1;
+    } else if (editstr[n - 1 - i] == '-' || editstr[n - 1 - i] == 'x') {
+      res[i] = editstr[n - 1 - i];
+      i++;
+    } else if (editstr[n - 1 - i] == ')') {
+      res[i] = '(';
+      i++;
+    } else if (editstr[n - 1 - i] == '(') {
+      res[i] = ')';
+      i++;
+    } else if (editstr[n - 1 - i] == 'A') {
+      res[i] = 'T';
+      i++;
+    } else if (editstr[n - 1 - i] == 'C') {
+      res[i] = 'G';
+      i++;
+    } else if (editstr[n - 1 - i] == 'G') {
+      res[i] = 'C';
+      i++;
+    } else if (editstr[n - 1 - i] == 'T') {
+      res[i] = 'A';
+      i++;
+    } else
+      assert(0);
+  }
+  res[n] = 0;
+  return res;
+}
+
+
+static char *
 make_cigar_string(cigar_t * cigar)
 {
 	int string_length=cigar->size; //1 char for each op
@@ -699,8 +741,18 @@ hit_output(struct read_entry * re, struct read_hit * rh, struct read_hit * rh_mp
 			*output_buffer+=snprintf(*output_buffer,output_buffer_end-*output_buffer,"\tRG:Z:%s",sam_read_group_name);
 	}
 	if (extra_sam_fields) {
-	  *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer, "\tZM:i:%d\tZR:i:%d\tZV:i:%d\tZH:i:%d",
-				     rh->matches, rh->score_window_gen, rh->score_vector, rh->sfrp->score);
+	  char * editstr = alignment_edit_string(rh->sfrp->dbalign, rh->sfrp->qralign);
+	  if (reverse_strand) {
+	    char * tmp = reverse_alignment_edit_string(editstr);
+	    free(editstr);
+	    editstr = tmp;
+	  }
+	  *output_buffer += snprintf(*output_buffer, output_buffer_end - *output_buffer,
+				     "\tZM:i:%d\tZR:i:%d\tZV:i:%d\tZH:i:%d\tZE:Z:%s",
+				     rh->matches, rh->score_window_gen,
+				     rh->score_vector, rh->sfrp->score,
+				     editstr);
+	  free(editstr);
 	}
 	if (cigar_binary!=NULL) {
 		free_cigar(cigar_binary);

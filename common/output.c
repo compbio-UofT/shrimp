@@ -57,8 +57,8 @@ readtostr(const uint32_t *read, u_int len, bool use_colours, int initbp)
  *	Two sequencing errors: 4x15x6	(25 total matches)
  *	etc.
  */
-static char *
-editstr(const char *dbalign, const char *qralign)
+char *
+alignment_edit_string(const char *dbalign, const char *qralign)
 {
 	strbuf_t sb;
 	char *str;
@@ -328,7 +328,7 @@ output_normal(const char *readname, const char *contigname,
 	strbuf_append(sb, ">%s\t%s\t%c", readname, contigname,
 	    (revcmpl) ? '-' : '+');
 
-	edit = editstr(dbalign, qralign);
+	edit = alignment_edit_string(dbalign, qralign);
 	/*
 	ret = editstr_to_sfr(edit, &sfr_tmp);
 	assert(ret &&
