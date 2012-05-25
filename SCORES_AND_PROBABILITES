@@ -1,0 +1,110 @@
+
+Purpose
+-------
+
+This document describes the relation between Smith-Waterman scores and prior mutation probabilites, and its goal is to give a basic idea how SW scores could be tweaked in specific situations. The description is not specific to SHRiMP, it probably applies to other SW-based alignment programs. As such, we are primarily concerned with the situation of aligning one donor read against a known reference (not, e.g., aligning 2 full sequences against each other).
+
+DISCLAIMER: Each set of scores inevitably leads to certain alignment artifacts. In general these are very difficult to predict. If you do decide to use a peculiar set of scores based on this document, please don't ask us what artifacts they lead to - we don't know, all we can do is guess! The most common questions we see along these lines involve unexpected behaviour from setting (or not setting) sc_xover appropriately with colour space (Solid) data.
+
+
+Introduction
+------------
+
+The purpose of SW scores is to facilitate the alignment of a donor sequence against a reference sequence by taking into account prior knowledge of the expected the mutation rate between the individuals. We say that a set of prior mutation probabilites (short: probabilities) and a set of SW scores are "compatible" if the alignment with the maximum SW score has the maximum likelihood given that prior.
+
+Given one set of prior mutation probabilites, there are *several* sets of SW scores that are compatible with it. Conversely, given one set of SW scores, there are *several* sets of probabilites compatible with it. Informally, the reason for this "one-to-many" relation is because our definition of compatibility remains valid when we do scaling.
+
+
+Formulas
+--------
+
+Here are the basic formulas used by SHRiMP. (It is not our goal here to explain where they come from).
+
+sc_match := 2 * a + b + a * log(1 - pr_mismatch)
+sc_mismatch := 2 * a + b + a * log(pr_mismatch/3)
+sc_xover := a * log(pr_xover/3) [only relevant for colour space (Solid) data]
+sc_ins_opn := a * log(pr_ins_opn)
+sc_del_opn := a * log(pr_del_opn)
+sc_ins_ext := a * log(pr_ins_ext) + b
+sc_del_ext := a * log(pr_del_ext)
+
+Glossary:
+
+- All logs are base 2.
+
+- The scores on the left are the ones which can be set on the gmapper CL.
+
+- pr_mismatch: The probability a base (letter) in the donor _read_ (not reference!) is different than the corresponding base in the reference. "Different" means, e.g., 'A' -> any of 'C'/'G'/'T'. So the probability 'A' -> 'T' is pr_mismatch/3.
+
+- pr_snp: The probability a base in the donor _reference_ is different than the corresponding base in the reference. This doesn't appear in the formulas above, but is used below.
+
+For letter space (Illumina) data, mismatches arise because of SNPs and because of sequencing errors. However, the probability of a SNP is usually much smaller (at least 1 order of magnitude) than the probability of an error. Hence for letter space, pr_mismatch = pr_seq_error.
+
+For colour space (Solid) data, mismatches are SNPs. Hence in this case, pr_mismatch = pr_snp.
+
+- pr_xover: The probability of a sequencing error in colour space data.
+
+- a, b: these are free constants which control the scaling of the scores. Also, the scores used in alignment are rounded to integers, and a and b can be used to make sure these integers are good approximations of the corresponding real valued quantities.
+
+- insertions/deletions: The reason that insertion and deletion extension scores are different is, informally, because one consumes a read letter and the other doesn't.
+
+- open/extend: In SHRiMP, an indel of length 1 costs sc_*_opn + sc_*_ext, which intuitively corresponds to pr_*_open * pr_*_ext.
+
+
+Setup
+-----
+
+SHRiMP (gmapper) is given as input a set of scores. Based on these, it infers the associated probabilites as follows:
+
+In colour space:
+
+- pr_xover is set to .03 (which is close to the general error rate for Solid data)
+
+- The following are then computed in order: a, pr_mismatch, b, pr_{ins/del}_{opn/ext}
+  FYI, with the default scores, a ~= 3.0103, b ~= 3.9588
+
+- Colour qvs are used during the alignment by modifying sc_xover on a per-colour position basis. As such, the value of sc_xover given on the gmapper CL and reported in the log output corresponds to an input qv of about 17 (after PHRED decoding). So, e.g., if the initial colour in q read has a qv of 40, the corresponding sc_xover used for calling an error at that position is smaller (more negative) than the default sc_xover value.
+
+In letter space:
+
+- pr_mismatch is set to .01 (which is close to the geneal error rate for Illumina data)
+
+- The following are then computed in order: a, b, pr_{ins/del}_{opn/ext}
+  FYI, with the default scores, a ~= 3.0435, b ~= 3.9574
+
+- Input qvs are not used during the alignment at all. Instead, they are simply copied over to the QUAL string of SAM output.
+
+
+At the beginning of a run, gmapper reports the computed probabilities in the log file, next to the corresponding scores.
+
+
+How To Tweak Scores
+-------------------
+
+Suppose you know pr_snp, pr_gap_opn, and pr_gap_ext. Here's how to set the SW scores.
+
+In colour space:
+
+- pr_xover is fixed to .03, so one can control a by changing sc_xover.
+
+- Compute (sc_match - sc_mismatch) := a * log((1 - pr_snp)/(pr_snp/3)).
+
+- Pick an integer interval containing 0 that approximates [sc_mismatch, sc_match]. If the approximation is poor (e.g, fractional part of difference ~ 0.5), tweak a as explained above, can repeat the calculation.
+
+- Also, the absolute values of the scores should not be too large (risk of overflow, also depending on read length). Keep them below 64. Again, tweak a for this purpose.
+
+- Once you fix sc_match, compute b from the formula of sc_match.
+
+- Compute sc_{ins/del}_{opn/ext} from a, b, and your pr_gap_*.
+
+In letter space:
+
+- pr_snp is usually irrelevant for setting scores because pr_seq_error >> pr_snp.
+
+- pr_mismatch is fixed at .01, so (sc_match - sc_mismatch)/a is a constant.
+
+- Pick [sc_mismatch, sc_match] as explained above; now compute a from this.
+
+- Compute b from formula of sc_match.
+
+- Compute sc_{ins/del}_{opn/ext} from a, b, and your pr_gap_*.
