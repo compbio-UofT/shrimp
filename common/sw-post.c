@@ -552,6 +552,43 @@ load_local_vectors(uint32_t * read, int _init_bp, char * qual, struct sw_full_re
 
 
 static void
+fix_base_calls(uint32_t * read, struct sw_full_results * sfrp,
+	       states* allstates, int stateslen)
+{
+  int i = 0;
+  int j = 0;
+  int prev_base = init_bp;
+  sfrp->matches = 0;
+  sfrp->mismatches = 0;
+  sfrp->crossovers = 0;
+  while (sfrp->qralign[i] != 0) {
+    if (sfrp->qralign[i] != '-') {
+      // position i in qralign corresponds to pos j in allstates
+      int crt_base = allstates[j].max_posterior;
+      sfrp->qralign[i] = base_to_char(crt_base, LETTER_SPACE);
+      if ((prev_base ^ crt_base) == allstates[j].cols[0]) {
+	sfrp->qralign[i] = toupper(base_to_char(crt_base, LETTER_SPACE));
+      } else {
+	sfrp->qralign[i] = tolower(base_to_char(crt_base, LETTER_SPACE));
+	++(sfrp->crossovers);
+      }
+      if (sfrp->dbalign[i] != '-') {
+	if (toupper(sfrp->dbalign[i]) == toupper(sfrp->qralign[i])) {
+	  ++(sfrp->matches);
+	} else {
+	  ++(sfrp->mismatches);
+	}
+      }
+      prev_base = crt_base;
+      ++j;
+    }
+    ++i;
+  }
+  assert(j == stateslen);
+}
+
+
+static void
 get_base_qualities(struct sw_full_results * sfrp)
 {
   int i, k;
@@ -677,6 +714,7 @@ post_sw(uint32_t * read, int _init_bp, char * qual,
   load_local_vectors(read, _init_bp, qual, sfrp);
   total_score = forward_backward(columns, len);
   post_traceback(columns, len, total_score);
+  fix_base_calls(read, sfrp, columns, len);
   get_base_qualities(sfrp);
   sfrp->posterior = get_posterior(sfrp, total_score);
 
