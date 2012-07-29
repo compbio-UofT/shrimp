@@ -312,12 +312,15 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
   }
 
 #ifdef DEBUG_HIT_LIST_PAIR_UP
+#pragma omp critical (log)
+  {
   fprintf(stderr, "Dumping hit list after pair-up for read:[%s]\n", re1->name);
   dump_hit_list(re1, 0, false, false);
   dump_hit_list(re1, 1, false, false);
   fprintf(stderr, ".. and read:[%s]\n", re2->name);
   dump_hit_list(re2, 0, false, false);
   dump_hit_list(re2, 1, false, false);
+  }
 #endif
 }
 
@@ -1236,6 +1239,12 @@ read_get_hit_list(struct read_entry * re, struct hit_list_options * options)
   read_get_hit_list_per_strand(re, 0, options);
   read_get_hit_list_per_strand(re, 1, options);
 
+  // assign sort indexes
+  for (int i = 0; i < re->n_hits[0]; ++i)
+    re->hits[0][i].sort_idx = i;
+  for (int i = 0; i < re->n_hits[1]; ++i)
+    re->hits[1][i].sort_idx = re->n_hits[0] + i;
+
   //hit_list_usecs[omp_get_thread_num()] += gettimeinusecs() - before;
   //after = rdtsc();
   //tpg.hit_list_ticks += MAX(after - before, 0);
@@ -1347,9 +1356,12 @@ read_pass1(struct read_entry * re, struct pass1_options * options)
   TIME_COUNTER_STOP(tpg.pass1_tc);
 
 #ifdef DEBUG_HIT_LIST_PASS1
+#pragma omp critical (log)
+  {
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
   dump_hit_list(re, 0, options->only_paired, false);
   dump_hit_list(re, 1, options->only_paired, false);
+  }
 #endif
 }
 
@@ -1993,11 +2005,36 @@ pass2_readpair_hit1_sfrp_gen_end_cmp(void const * e1, void const * e2)
   return pass2_read_hit_sfrp_gen_end_cmp_base(((read_hit_pair *)e1)->rh[1], ((read_hit_pair *)e2)->rh[1]);
 }
 
+
 static int
 pass2_readpair_pointer_cmp(void const * e1, void const * e2)
 {
   struct read_hit_pair * rhpp1 = (struct read_hit_pair *)e1;
   struct read_hit_pair * rhpp2 = (struct read_hit_pair *)e2;
+
+  if ((rhpp1->rh[0] == NULL) != (rhpp2->rh[0] == NULL)) {
+    if (rhpp1->rh[0] == NULL)
+      return -1;
+    else
+      return 1;
+  }	
+
+  if ((rhpp1->rh[0] != NULL) and (rhpp2->rh[0] != NULL)
+      and (rhpp1->rh[0]->sort_idx != rhpp2->rh[0]->sort_idx))
+    return rhpp1->rh[0]->sort_idx - rhpp2->rh[0]->sort_idx;
+  else {
+    if ((rhpp1->rh[1] == NULL) != (rhpp2->rh[1] == NULL)) {
+      if (rhpp1->rh[1] == NULL)
+	return -1;
+      else
+	return 1;
+    }
+
+    if (rhpp1->rh[1] != NULL)
+      return rhpp1->rh[1]->sort_idx - rhpp2->rh[1]->sort_idx;
+    else
+      return 0;
+  }
 
   if (rhpp1->rh[0] < rhpp2->rh[0])
     return -1;
@@ -2183,19 +2220,46 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   }
 
 #ifdef DEBUG_HIT_LIST_PASS2
+#pragma omp critical (log)
+  {
   fprintf(stderr, "Dumping paired hits after pass2 (before duplicates removal and sorting) for reads:[%s,%s]\n",
 	  re1->name, re2->name);
   for (i = 0; i < n_hits_pass1; i++) {
     dump_hit(hits_pass1[i].rh[0]);
     dump_hit(hits_pass1[i].rh[1]);
   }
+  }
 #endif
 
   // remove duplicates
   readpair_remove_duplicate_hits(hits_pass2, n_hits_pass2, IS_ABSOLUTE(options->pass2_threshold));
 
+#ifdef DEBUG_HIT_LIST_PASS2_AFTER
+#pragma omp critical (log)
+  {
+  fprintf(stderr, "Dumping paired hits after pass2 (after duplicates removal) for reads:[%s,%s]\n",
+	  re1->name, re2->name);
+  for (i = 0; i < *n_hits_pass2; i++) {
+    dump_hit(hits_pass2[i].rh[0]);
+    dump_hit(hits_pass2[i].rh[1]);
+  }
+  }
+#endif
+
   // sort by score
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_score_cmp);
+
+#ifdef DEBUG_HIT_LIST_PASS2_AFTER
+#pragma omp critical (log)
+  {
+  fprintf(stderr, "Dumping paired hits after pass2 (after duplicates removal and sorting) for reads:[%s,%s]\n",
+	  re1->name, re2->name);
+  for (i = 0; i < *n_hits_pass2; i++) {
+    dump_hit(hits_pass2[i].rh[0]);
+    dump_hit(hits_pass2[i].rh[1]);
+  }
+  }
+#endif
 
   // trim excess mappings
   if (*n_hits_pass2 > options->pass2_num_outputs)
