@@ -1,3 +1,9 @@
+2.2.3: July, 2012
+	- Stabilized output by removing pointer sorting.
+	- Fixed a colour space bug in which FW/BW changes a base  call  made  by
+	  SW, and the change is not propagated to the output.
+	- As before, a colour space "." is treated as a "0" with qv=0.  Now,  no
+	  crossover is reported if "0" fits the called donor read.
 2.2.2: December 12, 2011
 	- Changed default 'Match Window Overlap Length' to 90%
 	- Increased the default buffer size of mergesam
