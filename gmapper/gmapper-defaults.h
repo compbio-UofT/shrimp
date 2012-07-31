@@ -154,7 +154,8 @@
 	{"no-autodetect-input",0,0,48},\
 	{"local",0,0,124},\
 	{"no-qv-check",0,0,123},\
-	{"ignore-qvs",0,0,125}\
+	{"ignore-qvs",0,0,125},\
+	{"pr-xover",1,0,126}\
 }
 
 #define DEF_COLOUR_SPACE_OPTIONS \

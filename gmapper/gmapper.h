@@ -116,7 +116,7 @@ EXTERN(int,		crossover_score,	DEF_CS_XOVER_SCORE);
 EXTERN(double,		score_alpha,		0.0);
 EXTERN(double,		score_beta,		0.0);
 EXTERN(double,		pr_mismatch,		0.0);
-EXTERN(double,		pr_xover,		0.0);
+EXTERN(double,		pr_xover,		0.03);
 EXTERN(double,		pr_del_open,		0.0);
 EXTERN(double,		pr_del_extend,		0.0);
 EXTERN(double,		pr_ins_open,		0.0);

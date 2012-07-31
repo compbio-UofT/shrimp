@@ -2300,6 +2300,9 @@ int main(int argc, char **argv){
 		case 125: // --ignore-qvs
 		  ignore_qvs = true;
 		  break;
+		case 126:
+		  pr_xover = atof(optarg);
+		  break;
 		default:
 			usage(progname, false);
 		}
@@ -2548,7 +2551,7 @@ int main(int argc, char **argv){
 	/* Set probabilities from scores */
 	if (shrimp_mode == MODE_COLOUR_SPACE) {
 	  // CS: pr_xover ~= .03 => alpha => pr_mismatch => rest
-	  pr_xover = .03;
+	  //pr_xover = .03;
 	  score_alpha = (double)crossover_score / (log(pr_xover/3)/log(2.0));
 	  pr_mismatch = 1.0/(1.0 + 1.0/3.0 * pow(2.0, ((double)match_score - (double)mismatch_score)/score_alpha));
 	} else {
