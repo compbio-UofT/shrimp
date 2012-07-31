@@ -384,7 +384,7 @@ launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 	  nreads_mod += load;
 	  if (nreads_mod >= progress) {
 	    llint time_usecs = gettimeinusecs();
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
 	    {
 	    fprintf(stderr, "%lld %d %d.\r", nreads,
 		    (int)(((double)(nreads - last_nreads)/(double)(time_usecs - last_time_usecs)) * 3600.0 * 1.0e6),

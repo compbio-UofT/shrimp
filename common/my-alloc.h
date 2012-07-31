@@ -67,7 +67,7 @@ my_malloc_long(size_t size, count_t * counter, int options, char const * msg, ..
 #endif
   void * res;
 
-#pragma omp critical (my_alloc)
+#pragma omp critical (cs_my_alloc)
   {
     if (options & MYALLOC_COUNT_IT) {
       if (crt_mem + size > max_mem) {
@@ -162,7 +162,7 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
 #endif
 
 #ifdef MYALLOC_ENABLE_CRT
-#pragma omp critical (my_alloc)
+#pragma omp critical (cs_my_alloc)
   {
     if (crt_mem + size > max_mem) {
       if (!warned_max) {
@@ -249,7 +249,7 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
 #endif
 
 #ifdef MYALLOC_ENABLE_CRT
-#pragma omp critical (my_alloc)
+#pragma omp critical (cs_my_alloc)
   {
     if (crt_mem + size > max_mem) {
       if (!warned_max) {
@@ -336,7 +336,7 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
 #endif
 
 #ifdef MYALLOC_ENABLE_CRT
-#pragma omp critical (my_alloc)
+#pragma omp critical (cs_my_alloc)
   {
     if ((crt_mem - old_size) + size > max_mem) {
       if (!warned_max) {
@@ -421,7 +421,7 @@ my_free(void * p, size_t size, count_t * counter, char const * msg = NULL, ...)
 #endif
 
 #ifdef MYALLOC_ENABLE_CRT
-#pragma omp critical (my_alloc)
+#pragma omp critical (cs_my_alloc)
   {
 #ifndef NDEBUG
     if (size > crt_mem) {

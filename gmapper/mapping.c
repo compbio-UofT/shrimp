@@ -312,7 +312,7 @@ readpair_pair_up_hits(struct read_entry * re1, struct read_entry * re2)
   }
 
 #ifdef DEBUG_HIT_LIST_PAIR_UP
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
   {
   fprintf(stderr, "Dumping hit list after pair-up for read:[%s]\n", re1->name);
   dump_hit_list(re1, 0, false, false);
@@ -1356,7 +1356,7 @@ read_pass1(struct read_entry * re, struct pass1_options * options)
   TIME_COUNTER_STOP(tpg.pass1_tc);
 
 #ifdef DEBUG_HIT_LIST_PASS1
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
   {
   fprintf(stderr, "Dumping hit list after pass1 for read:[%s]\n", re->name);
   dump_hit_list(re, 0, options->only_paired, false);
@@ -2220,7 +2220,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   }
 
 #ifdef DEBUG_HIT_LIST_PASS2
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
   {
   fprintf(stderr, "Dumping paired hits after pass2 (before duplicates removal and sorting) for reads:[%s,%s]\n",
 	  re1->name, re2->name);
@@ -2235,7 +2235,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   readpair_remove_duplicate_hits(hits_pass2, n_hits_pass2, IS_ABSOLUTE(options->pass2_threshold));
 
 #ifdef DEBUG_HIT_LIST_PASS2_AFTER
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
   {
   fprintf(stderr, "Dumping paired hits after pass2 (after duplicates removal) for reads:[%s,%s]\n",
 	  re1->name, re2->name);
@@ -2250,7 +2250,7 @@ readpair_pass2(struct read_entry * re1, struct read_entry * re2,
   qsort(hits_pass2, *n_hits_pass2, sizeof(hits_pass2[0]), pass2_read_hit_pair_score_cmp);
 
 #ifdef DEBUG_HIT_LIST_PASS2_AFTER
-#pragma omp critical (log)
+#pragma omp critical (cs_stderr)
   {
   fprintf(stderr, "Dumping paired hits after pass2 (after duplicates removal and sorting) for reads:[%s,%s]\n",
 	  re1->name, re2->name);
