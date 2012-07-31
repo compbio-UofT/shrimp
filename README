@@ -807,6 +807,13 @@ Smith-Waterman Scores
     Available only in colour  space mode. Disable  with a prohibitive value: "-x
     -255".
 
+  [    --pr-xover <pr_xover> ]
+
+    Sets the default crossover  probability.  This  is  used  to  compute  other
+    probabilities from scores.  During  alignment,  the  probability a colour is
+    wrong is derived from its quality values  (if available)  rather than  using
+    this default. (Default: 0.03)
+
 
 Filter 1: Window Generation
 ---------------------------

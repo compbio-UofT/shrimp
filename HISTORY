@@ -4,6 +4,9 @@
 	  SW, and the change is not propagated to the output.
 	- As before, a colour space "." is treated as a "0" with qv=0.  Now,  no
 	  crossover is reported if "0" fits the called donor read.
+	- Added option to change the default  crossover  probability  (which  is
+	  .03).  This is used to  derive  certain  internal  parameters.  During
+	  mapping, input qvs (when available) override this value.
 2.2.2: December 12, 2011
 	- Changed default 'Match Window Overlap Length' to 90%
 	- Increased the default buffer size of mergesam

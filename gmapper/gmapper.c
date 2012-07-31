@@ -1231,6 +1231,10 @@ usage(char * progname, bool full_usage){
 	  "   -V/--trim-off        Disable Automatic Genome\n");
   fprintf(stderr,
 	  "                                 Index Trimming       (default: %s)\n", Vflag ? "enabled" : "disabled");
+  fprintf(stderr,
+	  "      --pr-xover        Set the Default Crossover Probability\n");
+  fprintf(stderr,
+	  "                                                      (default: %.1e)\n", pr_xover);
   }
   fprintf(stderr,
 	  "      --sam-unaligned   Unaligned reads in SAM output (default: %s)\n", sam_unaligned ? "enabled" : "disabled");
