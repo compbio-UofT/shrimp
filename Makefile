@@ -8,10 +8,10 @@ endif
 
 ifndef CXXFLAGS
   ifeq ($(BUILD_TYPE), production)
-    CXXFLAGS=-O3 -DNDEBUG
+    CXXFLAGS=-g -O2 -DNDEBUG
   else
     ifeq ($(BUILD_TYPE), testing)
-      CXXFLAGS=-g -O3
+      CXXFLAGS=-g -O2
     else
       CXXFLAGS=-g
     endif

@@ -58,85 +58,6 @@ my_alloc_init(size_t _max_mem, size_t _alert_mem)
   my_alloc_initialized = true;
 }
 
-/*
-static inline void *
-my_malloc_long(size_t size, count_t * counter, int options, char const * msg, ...)
-{
-#ifndef NDEBUG
-  va_list fmtargs;
-#endif
-  void * res;
-
-#pragma omp critical (cs_my_alloc)
-  {
-    if (options & MYALLOC_COUNT_IT) {
-      if (crt_mem + size > max_mem) {
-	if ((options & MYALLOC_WARN_MAX) && !warned_max) {
-	  warned_max = true;
-	  fprintf(stderr, "my-alloc warning: exceeding maximum memory"
-#ifdef NDEBUG
-		  "\n");
-#else
-	  ": ");
-	  va_start(fmtargs, msg);
-	  vfprintf(stderr, msg, fmtargs);
-	  va_end(fmtargs);
-#endif
-	}
-	if (options & MYALLOC_ERR_MAX) {
-	  fprintf(stderr, "my-alloc error: exceeding maximum memory"
-#ifdef NDEBUG
-		  "\n");
-#else
-	  ": ");
-	  va_start(fmtargs, msg);
-	  vfprintf(stderr, msg, fmtargs);
-	  va_end(fmtargs);
-#endif
-	  exit(1);
-	}
-      }
-    }
-
-    res = malloc(size);
-
-    if (res == NULL) {
-      if ((options & MYALLOC_WARN_FAIL) && !warned_fail) {
-	warned_fail = true;
-	fprintf(stderr, "my-alloc warning: malloc failed"
-#ifdef NDEBUG
-		"\n");
-#else
-	": ");
-	va_start(fmtargs, msg);
-	vfprintf(stderr, msg, fmtargs);
-	va_end(fmtargs);
-#endif
-      }
-      if (options & MYALLOC_ERR_FAIL) {
-	fprintf(stderr, "my-alloc error: malloc failed"
-#ifdef NDEBUG
-		"\n");
-#else
-	": ");
-	va_start(fmtargs, msg);
-	vfprintf(stderr, msg, fmtargs);
-	va_end(fmtargs);
-#endif
-	exit(1);
-      }
-    } else {
-      if (options & MYALLOC_COUNT_IT)
-	crt_mem += size;
-      if (counter != NULL)
-	count_add(counter, size);
-    }
-
-  }
-  return res;
-}
-*/
-
 
 static inline void *
 my_malloc(size_t size, count_t * counter, char const * msg, ...)
@@ -196,7 +117,14 @@ my_malloc(size_t size, count_t * counter, char const * msg, ...)
     }
 #endif
 
-    res = malloc(size);
+#ifdef MYALLOC_ENABLE_CS
+#pragma omp critical(alloc_cs)
+    {
+#endif
+      res = malloc(size);
+#ifdef MYALLOC_ENABLE_CS
+    }
+#endif
 
     if (size > 0 && res == NULL) {
       // spit error message and crash
@@ -283,7 +211,14 @@ my_calloc(size_t size, count_t * counter, char const * msg, ...)
     }
 #endif
 
-    res = calloc(size, 1);
+#ifdef MYALLOC_ENABLE_CS
+#pragma omp critical(alloc_cs)
+    {
+#endif
+      res = calloc(size, 1);
+#ifdef MYALLOC_ENABLE_CS
+    }
+#endif
 
     if (size > 0 && res == NULL) {
       // spit error message and crash
@@ -370,7 +305,14 @@ my_realloc(void * p, size_t size, size_t old_size, count_t * counter, char const
     }
 #endif
 
-    res = realloc(p, size);
+#ifdef MYALLOC_ENABLE_CS
+#pragma omp critical(alloc_cs)
+    {
+#endif
+      res = realloc(p, size);
+#ifdef MYALLOC_ENABLE_CS
+    }
+#endif
 
     if (size > 0 && res == NULL) {
       // spit error message and crash
@@ -438,7 +380,14 @@ my_free(void * p, size_t size, count_t * counter, char const * msg = NULL, ...)
     assert(size <= crt_mem);
 #endif
 
-    free(p);
+#ifdef MYALLOC_ENABLE_CS
+#pragma omp critical(alloc_cs)
+    {
+#endif
+      free(p);
+#ifdef MYALLOC_ENABLE_CS
+    }
+#endif
 
 #ifdef MYALLOC_ENABLE_CRT
     crt_mem -= size;
