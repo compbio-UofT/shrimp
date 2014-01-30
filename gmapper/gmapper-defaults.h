@@ -94,7 +94,7 @@
 	{"open-q",1,0,'q'},\
 	{"ext-r",1,0,'e'},\
 	{"ext-q",1,0,'f'},\
-	{"cmv-threshold",1,0,'r'},\
+	{"cmw-threshold",1,0,'r'},\
 	{"full-threshold",1,0,'h'},\
 	{"threads",1,0,'N'},\
 	{"thread-chunk",1,0,'K'},\
