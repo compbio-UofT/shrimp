@@ -273,9 +273,9 @@ static void trim_read(struct read_entry * re) {
 			re->qual[i]=re->qual[i+trim_front];
 		}
 	}
-	memset(re->seq+i,0,17);
+	re->seq[i] = '\0';
 	if (Qflag) {
-		memset(re->qual+i,0,17);
+		re->qual[i] = '\0';
 	}
 	return;
 }
@@ -426,15 +426,15 @@ launch_scan_threads(fasta_t fasta, fasta_t left_fasta, fasta_t right_fasta)
 	
 	//Trim the reads
 	if (trim) {
-	  if (pair_mode != PAIR_NONE) {
+	  if (pair_mode == PAIR_NONE) {
+	    trim_read(&re_buffer[i]);
+	  } else if (i % 2 == 1){
 	    if (trim_first) {
 	      trim_read(&re_buffer[i-1]);
 	    }
 	    if (trim_second) {
 	      trim_read(&re_buffer[i]);
 	    }
-	  } else {
-	    trim_read(&re_buffer[i]);
 	  }
 	}
         if (shrimp_mode == MODE_LETTER_SPACE && trim_illumina) { 
@@ -2130,7 +2130,6 @@ int main(int argc, char **argv){
                         } while (c != NULL);
                         break;
 		case 21:
-			trim=true;
 			trim_front=atoi(optarg);
 			if (shrimp_mode == MODE_COLOUR_SPACE) {
 				fprintf(stderr,"--trim-front cannot be used in colour space mode!\n");
@@ -2140,14 +2139,17 @@ int main(int argc, char **argv){
 				fprintf(stderr,"--trim-front value must be positive\n");
 				exit(1);
 			}
+			if (trim_front>0)
+				trim=true;
 			break;
 		case 22:
-			trim=true;
 			trim_end=atoi(optarg);
 			if (trim_end<0) {
 				fprintf(stderr,"--trim-end value must be positive\n");
 				exit(1);
 			}
+			if (trim_end>0)
+				trim=true;
 			break;
 		case 23:
 			trim=true;
